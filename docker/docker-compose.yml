@@ -1,0 +1,30 @@
+services:
+  # Dịch vụ đẩy init.sql lên Aiven
+  mysql_init:
+    image: mysql:8.0
+    container_name: gen-mysql-initializer
+    restart: "no"
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD_LOCAL}
+    volumes:
+      - ./init.sql:/init.sql
+    command: >
+      sh -c "mysql -h ${DB_HOST} 
+      -P ${DB_PORT} -u ${DB_USER} -p${DB_PASSWORD} 
+      ${DB_NAME} < /init.sql && echo 'DONE: Data pushed to Cloud successfully!'"
+
+  # Dịch vụ quản lý giao diện
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: gen-phpmyadmin-cloud
+    restart: always
+    env_file: .env
+    environment:
+      PMA_HOST: ${DB_HOST}
+      PMA_PORT: ${DB_PORT}
+      PMA_USER: ${DB_USER}
+      PMA_PASSWORD: ${DB_PASSWORD}
+      PMA_DB: ${DB_NAME}
+    ports:
+      - "8081:80"
