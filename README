@@ -1,0 +1,18 @@
+Cách chạy DB 
+
+Bước 1: Truy cập vào thư mục chứa file cấu hình
+cd "D:\Visua Studio Code\CAP2\docker"
+
+chạy:
+docker compose down -v
+docker compose up -d --build
+docker ps
+
+# Dừng và xóa các container, network, và volume cũ (nếu có)
+docker compose down -v
+
+# Build lại image và khởi chạy container ở chế độ ngầm (detached mode)
+docker compose up -d --build
+
+# Kiểm tra trạng thái các container đang hoạt động
+docker ps
