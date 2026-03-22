@@ -1,16 +1,16 @@
 const express = require('express');
 const mysql = require('mysql2');
 const bcrypt = require('bcrypt');
-const cors = require('cors');
+const cors = require('cors'); // Thêm thư viện này để tránh lỗi chặn cổng
 const app = express();
-require('dotenv').config();
+
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-//  KẾT NỐI CLOUD AIVEN (Dùng biến môi trường)
+// 1. KẾT NỐI CLOUD AIVEN (Dùng biến môi trường)
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
@@ -21,7 +21,6 @@ const db = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10
 });
-
 // Kiểm tra kết nối khi khởi động
 db.getConnection((err, conn) => {
     if (err) console.error("❌ Lỗi kết nối Database Aiven:", err);

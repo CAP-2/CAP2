@@ -1,12 +1,26 @@
 {
-  "name": "family-tree-login",
-  "version": "1.0.0",
-  "main": "server.js",
-  "dependencies": {
-    "bcrypt": "^5.1.1",
-    "body-parser": "^1.20.2",
-    "dotenv": "^17.3.1",
-    "express": "^4.18.2",
-    "mysql2": "^3.9.1"
-  }
+    "name": "family-tree-project",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite --port 5173",
+        "backend": "npx nodemon server.js",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "bcrypt": "^5.1.1",
+        "body-parser": "^1.20.2",
+        "cors": "^2.8.5",
+        "dotenv": "^17.3.1",
+        "express": "^4.18.2",
+        "mysql2": "^3.9.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-router-dom": "^6.22.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.2.1",
+        "vite": "^5.0.0"
+    }
 }
