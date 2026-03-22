@@ -1,0 +1,22 @@
+.login-page {
+    font-family: sans-serif;
+    background: #e9ecef;
+    display: flex;
+    justify-content: center;
+    padding-top: 100px;
+    height: 100vh;
+}
+
+.login-box {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    width: 320px;
+}
+
+.login-box input,
+.login-box button {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+}

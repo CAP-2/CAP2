@@ -16,3 +16,23 @@ docker compose up -d --build
 
 # Kiểm tra trạng thái các container đang hoạt động
 docker ps
+
+
+Bước 2:Chạy Back end
+.env
+
+
+Lệch Chạy
+cd 'D:\Visua Studio Code\CAP2\Backend'
+
+npm install
+npm run dev
+
+
+Bước 3: Chạy Front end
+.env
+VITE_API_URL=http://localhost:3000
+
+cd 'D:\Visua Studio Code\CAP2\Frontend'
+npm install
+npm run dev
