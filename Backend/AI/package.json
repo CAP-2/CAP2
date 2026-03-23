@@ -1,0 +1,38 @@
+{
+    "name": "gen-link-backend",
+    "version": "1.0.0",
+    "description": "GEN-LINK Family Heritage & Genealogy backend",
+    "main": "dist/interfaces/http/server.js",
+    "scripts": {
+        "dev": "ts-node-dev --respawn --transpile-only src/interfaces/http/server.ts",
+        "build": "tsc",
+        "start": "node dist/interfaces/http/server.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "@google/generative-ai": "^0.21.0",
+        "@langchain/community": "^0.3.0",
+        "@langchain/core": "^0.3.0",
+        "@langchain/google-genai": "^0.1.12",
+        "@langchain/textsplitters": "^0.0.3",
+        "axios": "^1.7.0",
+        "chromadb": "^1.9.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.0",
+        "express": "^4.19.0",
+        "multer": "^1.4.5-lts.1",
+        "mysql2": "^3.20.0",
+        "tesseract.js": "^5.0.0",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.19",
+        "@types/express": "^4.17.21",
+        "@types/multer": "^1.4.7",
+        "@types/node": "^20.11.19",
+        "ts-node-dev": "^2.0.0",
+        "typescript": "^5.4.0"
+    }
+}
