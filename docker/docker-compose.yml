@@ -28,3 +28,24 @@ services:
       PMA_DB: ${DB_NAME}
     ports:
       - "8081:80"
+
+  chromadb:
+    image: chromadb/chroma
+    container_name: gen-chromadb
+    restart: always
+    volumes:
+      - ./chroma_data:/chroma/data
+    ports:
+      - "8000:8000"
+
+  ai_service:
+    build:
+      context: ../Backend/AI
+      dockerfile: Dockerfile
+    container_name: gen-ai-service
+    restart: always
+    env_file: .env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mysql_init
