@@ -7,6 +7,8 @@ import Login from "./Login/Login";
 import Register from "./Register/Register";
 import Waiting from "./Waiting/Waiting";
 import Manager from "./Manager/Manager";
+import Admin from "./Admin/Admin";
+import Member from "./Member/Member";
 
 // Nếu bạn có file CSS chung cho toàn app
 import "./App.css";
@@ -23,6 +25,8 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/waiting" element={<Waiting />} />
         <Route path="/manager" element={<Manager />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/member" element={<Member />} />
 
         {/* Trang 404 hoặc quay về Login nếu gõ sai URL */}
         <Route path="*" element={<Login />} />

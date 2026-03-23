@@ -37,13 +37,13 @@ db.getConnection((err, conn) => {
 
 // 2. LOGIC ĐĂNG KÝ (Trả về JSON thay vì redirect)
 app.post('/register', async(req, res) => {
-    const { first_name, last_name, email, password, dob, gender, target_tree_id } = req.body;
+    const { first_name, last_name, email, password, dob, hometown, target_tree_id } = req.body;
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = `INSERT INTO users (first_name, last_name, email, password_hash, date_of_birth, gender, target_tree_id, status) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`;
+        const sql = `INSERT INTO users (first_name, last_name, email, password_hash, date_of_birth, hometown, target_tree_id, role_id, status) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 3, 'pending')`;
 
-        db.query(sql, [first_name, last_name, email, hashedPassword, dob, gender, target_tree_id], (err) => {
+        db.query(sql, [first_name, last_name, email, hashedPassword, dob, hometown, target_tree_id], (err) => {
             if (err) return res.status(400).json({ message: "Email đã tồn tại hoặc dữ liệu sai!" });
             // Gửi JSON thành công để React biết đường chuyển trang
             res.json({ success: true, message: "Đăng ký thành công, chờ phê duyệt!" });
@@ -113,4 +113,4 @@ app.post('/approve/:id', (req, res) => {
     });
 });
 
-app.listen(3000, () => console.log('🚀 Backend chạy tại http://localhost:3000'));
+app.listen(5000, () => console.log('🚀 Backend chạy tại http://localhost:5000'));

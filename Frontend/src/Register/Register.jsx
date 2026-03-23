@@ -9,8 +9,8 @@ const Register = () => {
     email: "",
     password: "",
     dob: "",
-    target_tree_id: "1",
-    gender: "0",
+    hometown: "",
+    target_tree_id: "",
   });
 
   const handleChange = (e) => {
@@ -37,10 +37,13 @@ const Register = () => {
         <h2>Đăng ký</h2>
 
         <form onSubmit={handleRegister}>
-          <input name="first_name" placeholder="Tên" onChange={handleChange} />
-          <input name="last_name" placeholder="Họ" onChange={handleChange} />
-          <input name="email" placeholder="Email" onChange={handleChange} />
-          <input name="password" type="password" onChange={handleChange} />
+          <input name="first_name" placeholder="Tên" onChange={handleChange} required />
+          <input name="last_name" placeholder="Họ" onChange={handleChange} required />
+          <input name="email" placeholder="Email" type="email" onChange={handleChange} required />
+          <input name="password" type="password" placeholder="Mật khẩu" onChange={handleChange} required />
+          <input name="dob" type="date" placeholder="Ngày sinh" onChange={handleChange} required />
+          <input name="hometown" placeholder="Quê quán" onChange={handleChange} required />
+          <input name="target_tree_id" placeholder="Target Tree ID" onChange={handleChange} required />
 
           <button type="submit">Đăng ký</button>
         </form>

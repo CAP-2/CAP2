@@ -6,24 +6,29 @@ import { loginAPI } from "../api/authService";
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
 
     try {
       const res = await loginAPI({ email, password });
 
-      if (res.token) {
-        localStorage.setItem("token", res.token);
+      if (res.success) {
+        localStorage.setItem("user", JSON.stringify(res.user));
+
+        // Điều hướng dựa trên role
+        if (res.user.role === 1) {
+          window.location.href = "/admin";
+        } else if (res.user.role === 2) {
+          window.location.href = "/manager";
+        } else if (res.user.role === 3) {
+          window.location.href = "/member";
+        }
       }
-
-      console.log(res);
-
-      // test điều hướng
-      window.location.href = "/manager";
-
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     }
   };
 
@@ -31,6 +36,8 @@ const Login = () => {
     <div className="login-page">
       <div className="login-box">
         <h2>Đăng nhập</h2>
+
+        {error && <p style={{ color: 'red' }}>{error}</p>}
 
         <form onSubmit={handleLogin}>
           <input
