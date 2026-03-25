@@ -48,8 +48,8 @@ const Login = () => {
     <div className="login-page">
       <div className="login-box">
         <div className="login-header">
-          <h2>Đăng nhập</h2>
-          <p>Hệ thống Quản lý Gia phả</p>
+          <h2>Chào mừng đến với Gia Phả Việt!</h2>
+          <p>Hãy đăng nhập để tiếp tục</p>
         </div>
 
         {error && <div className="error-alert">{error}</div>}
@@ -58,7 +58,7 @@ const Login = () => {
           <div className="input-field">
             <input
               type="email"
-              placeholder="Email của bạn"
+              placeholder="Tên đăng nhập"
               value={email}
               required
               onChange={(e) => setEmail(e.target.value)}
@@ -76,13 +76,14 @@ const Login = () => {
           </div>
 
           <button type="submit" className="btn-login" disabled={loading}>
-            {loading ? "Đang xác thực..." : "Vào hệ thống"}
+            {loading ? "Đang xác thực..." : "Đăng nhập"}
           </button>
         </form>
 
         <div className="login-footer">
           <p>
-            Chưa có tài khoản? <Link to="/register">Đăng ký thành viên</Link>
+            <span>Chưa có tài khoản? <Link to="/register">Đăng ký</Link></span>
+            <span><Link to="/forgot">Quên mật khẩu?</Link></span>
           </p>
         </div>
       </div>
