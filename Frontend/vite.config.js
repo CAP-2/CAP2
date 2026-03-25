@@ -6,7 +6,7 @@ export default defineConfig({
     server: {
         proxy: {
             '/api': {
-                target: 'http://localhost:3000', // Cổng Backend của bạn
+                target: 'http://localhost:5000', // Cổng Backend của bạn
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/api/, ''), // Bỏ chữ /api khi gửi sang Backend
             }

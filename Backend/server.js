@@ -1,17 +1,17 @@
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const cors = require('cors');
 
 const app = express();
 
-// 3. Middleware
-app.use(cors()); // Bây giờ biến 'cors' đã được định nghĩa, sẽ không còn lỗi ReferenceError
+// Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 4. KẾT NỐI CLOUD AIVEN (Dùng biến môi trường để Git không chặn)
+// KẾT NỐI CLOUD AIVEN
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 16931,
@@ -23,93 +23,134 @@ const db = mysql.createPool({
     connectionLimit: 10
 });
 
-// Kiểm tra kết nối
+// Kiểm tra kết nối khi khởi động
 db.getConnection((err, conn) => {
     if (err) {
-        console.error("❌ Lỗi kết nối Database Aiven:");
-        console.error("- Kiểm tra xem file .env có nằm cùng thư mục với server.js không?");
-        console.error("- Chi tiết lỗi:", err.message);
+        console.error("❌ Lỗi kết nối Database Aiven:", err.message);
     } else {
         console.log("✅ Đã kết nối Database Aiven thành công!");
         conn.release();
     }
 });
 
-// 2. LOGIC ĐĂNG KÝ (Trả về JSON thay vì redirect)
+// ==========================================
+// 1. LOGIC ĐĂNG KÝ (FIXED)
+// ==========================================
 app.post('/register', async(req, res) => {
-    const { first_name, last_name, email, password, dob, hometown, target_tree_id } = req.body;
+    const {
+        email,
+        password,
+        display_name,
+        first_name,
+        middle_name,
+        surname,
+        birth_date,
+        gender,
+        hometown,
+        clan_id
+    } = req.body;
+
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const sql = `INSERT INTO users (first_name, last_name, email, password_hash, date_of_birth, hometown, target_tree_id, role_id, status) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 3, 'pending')`;
 
-        db.query(sql, [first_name, last_name, email, hashedPassword, dob, hometown, target_tree_id], (err) => {
-            if (err) return res.status(400).json({ message: "Email đã tồn tại hoặc dữ liệu sai!" });
-            // Gửi JSON thành công để React biết đường chuyển trang
-            res.json({ success: true, message: "Đăng ký thành công, chờ phê duyệt!" });
+        // Bước 1: Chèn vào bảng people
+        const sqlPeople = `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`;
+
+        db.query(sqlPeople, [clan_id || 1, display_name, first_name, middle_name, surname, gender, birth_date, hometown], (err, result) => {
+            if (err) {
+                console.error("❌ LỖI DATABASE (BẢNG PEOPLE):", err.sqlMessage || err);
+                return res.status(400).json({ message: "Lỗi dữ liệu cá nhân: " + (err.sqlMessage || "") });
+            }
+
+            const personId = result.insertId;
+
+            // Bước 2: Chèn vào bảng accounts
+            const sqlAccount = `INSERT INTO accounts (email, password, person_id, role_id) VALUES (?, ?, ?, 3)`;
+
+            db.query(sqlAccount, [email, hashedPassword, personId], (err2) => {
+                if (err2) {
+                    console.error("❌ LỖI DATABASE (BẢNG ACCOUNTS):", err2.sqlMessage || err2);
+                    return res.status(400).json({ message: "Lỗi tài khoản: " + (err2.sqlMessage || "Email đã tồn tại") });
+                }
+                res.json({ success: true, message: "Đăng ký thành công!" });
+            });
         });
-    } catch (e) { res.status(500).json({ message: "Lỗi hệ thống!" }); }
+    } catch (e) {
+        console.error("❌ LỖI HỆ THỐNG:", e);
+        res.status(500).json({ message: "Lỗi hệ thống nghiêm trọng!" });
+    }
 });
 
-// 3. LOGIC ĐĂNG NHẬP (Trả về JSON kèm thông tin User)
+// ==========================================
+// 2. LOGIC ĐĂNG NHẬP 
+// ==========================================
+
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
-    const sql = "SELECT * FROM users WHERE email = ?";
+
+    // DEBUG 1: Xem React gửi gì lên
+    console.log("--- BƯỚC 1: DỮ LIỆU TỪ REACT ---");
+    console.log("Email:", email);
+    console.log("Password nhập vào:", password);
+
+    const sql = `SELECT a.*, p.display_name FROM accounts a 
+                 LEFT JOIN people p ON a.person_id = p.id 
+                 WHERE a.email = ?`;
 
     db.query(sql, [email], async(err, results) => {
         if (err) return res.status(500).json({ message: "Lỗi Server" });
+
         if (results.length > 0) {
             const user = results[0];
 
-            if (user.status === 'pending') {
-                return res.status(403).json({ message: "Tài khoản đang chờ phê duyệt!" });
-            }
-            if (user.status === 'rejected') {
-                return res.status(403).json({ message: "Yêu cầu đã bị từ chối." });
-            }
+            // DEBUG 2: Xem Database trả về gì
+            console.log("--- BƯỚC 2: DỮ LIỆU TỪ DATABASE ---");
+            console.log("Password Hash trong DB:", user.password);
+            console.log("Độ dài chuỗi Hash:", user.password ? user.password.length : 0);
 
-            const match = await bcrypt.compare(password, user.password_hash);
-            if (match) {
-                // Trả về dữ liệu user để React lưu vào localStorage/State
-                res.json({
-                    success: true,
-                    user: { id: user.user_id, name: user.first_name, role: user.role_id }
-                });
-            } else { res.status(401).json({ message: "Sai mật khẩu!" }); }
-        } else { res.status(404).json({ message: "Tài khoản không tồn tại!" }); }
+            try {
+                const match = await bcrypt.compare(password, user.password);
+                console.log("--- BƯỚC 3: KẾT QUẢ SO SÁNH ---");
+                console.log("Khớp mật khẩu không?:", match);
+
+                if (match) {
+                    res.json({ success: true, user: { id: user.id, role_id: user.role_id } });
+                } else {
+                    res.status(401).json({ message: "Mật khẩu không chính xác!" });
+                }
+            } catch (e) {
+                console.log("Lỗi Bcrypt:", e.message);
+                res.status(500).json({ message: "Lỗi mã hóa" });
+            }
+        } else {
+            res.status(404).json({ message: "Tài khoản không tồn tại!" });
+        }
     });
 });
 
-// 4. API LẤY DANH SÁCH CHỜ
+// ==========================================
+// 3. DANH SÁCH CHỜ & PHÊ DUYỆT
+// ==========================================
 app.get('/pending-users', (req, res) => {
-    db.query("SELECT user_id, first_name, last_name, email, date_of_birth, target_tree_id FROM users WHERE status = 'pending'", (err, results) => {
+    const sql = `
+        SELECT a.id as account_id, p.first_name, p.surname, a.email, p.birth_date, p.clan_id 
+        FROM accounts a
+        JOIN people p ON a.person_id = p.id
+        WHERE a.role_id = 3`;
+
+    db.query(sql, (err, results) => {
         if (err) return res.status(500).json([]);
         res.json(results);
     });
 });
 
-// 5. API PHÊ DUYỆT THÀNH VIÊN
 app.post('/approve/:id', (req, res) => {
-    const userId = req.params.id;
-    db.getConnection((err, connection) => {
-        if (err) return res.status(500).json({ message: "Lỗi kết nối" });
-        connection.beginTransaction((err) => {
-            connection.query("UPDATE users SET status = 'active' WHERE user_id = ?", [userId], (err) => {
-                if (err) return connection.rollback(() => res.status(500).json({ message: "Lỗi bước 1" }));
-
-                const sqlLink = `INSERT INTO family_tree_members (family_tree_id, user_id)
-                                 SELECT target_tree_id, user_id FROM users WHERE user_id = ?`;
-
-                connection.query(sqlLink, [userId], (err) => {
-                    if (err) return connection.rollback(() => res.status(500).json({ message: "Lỗi bước 2" }));
-
-                    connection.commit((err) => {
-                        if (err) return connection.rollback(() => res.status(500).json({ message: "Lỗi commit" }));
-                        res.json({ success: true });
-                    });
-                });
-            });
-        });
+    const accountId = req.params.id;
+    const sql = "UPDATE accounts SET role_id = 2 WHERE id = ?";
+    db.query(sql, [accountId], (err, result) => {
+        if (err) return res.status(500).json({ success: false });
+        res.json({ success: true });
     });
 });
 
