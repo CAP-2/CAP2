@@ -1,0 +1,88 @@
+.home-container {
+    font-family: 'Inter', sans-serif;
+    color: #333;
+}
+
+.hero-section {
+    height: 80vh;
+    background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://images.unsplash.com/photo-1509099836639-18ba1795216d?q=80&w=2000');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: white;
+}
+
+.hero-content h1 {
+    font-size: 3.5rem;
+    margin-bottom: 20px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.hero-btns {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.hero-btns button {
+    padding: 15px 35px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 30px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-login {
+    background-color: #8b4513;
+    color: white;
+}
+
+.btn-login:hover {
+    background-color: #a0522d;
+    transform: translateY(-3px);
+}
+
+.btn-register {
+    background-color: white;
+    color: #8b4513;
+}
+
+.btn-register:hover {
+    background-color: #f0f0f0;
+    transform: translateY(-3px);
+}
+
+.features-section {
+    display: flex;
+    justify-content: space-around;
+    padding: 80px 10%;
+    background-color: #fdfaf6;
+}
+
+.feature-card {
+    flex: 1;
+    text-align: center;
+    padding: 20px;
+    margin: 0 15px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+}
+
+.feature-card .icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+.home-footer {
+    padding: 40px;
+    text-align: center;
+    background: #2c1810;
+    color: #d2b48c;
+}

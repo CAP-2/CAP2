@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./manager.css";
-import { getPendingUsers, approveUserAPI } from "../api/managerService";
+import { getPendingUsers, approveUserAPI } from "../../api/managerService";
 const Manager = () => {
   const [users, setUsers] = useState([]);
 

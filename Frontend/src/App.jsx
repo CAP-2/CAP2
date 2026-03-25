@@ -1,37 +1,38 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
-// Import các Components từ thư mục tương ứng
-// Lưu ý: Đảm bảo tên file bên trong thư mục khớp chính xác (Login.jsx, Register.jsx...)
-import Login from "./Login/Login";
-import Register from "./Register/Register";
-import Waiting from "./Waiting/Waiting";
-import Manager from "./Manager/Manager";
-import Admin from "./Admin/Admin";
-import Member from "./Member/Member";
+// Import các trang 
+import Home from "./pages/Home/Home"; 
+import Login from "./pages/Login/Login";
+import Register from "./pages/Register/Register";
+import Admin from "./Admin/Admin";    
+import Manager from "./pages/Manager/Manager";
+import Member from "./pages/Member/Member";
+import Waiting from "./pages/Waiting/Waiting";
 
-// Nếu bạn có file CSS chung cho toàn app
 import "./App.css";
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
-        {/* Điều hướng trang chủ mặc định vào Login */}
-        <Route path="/" element={<Navigate to="/login" />} />
-
-        {/* Các Route chính */}
+        {/* Trang chủ là cửa ngõ đầu tiên */}
+        <Route path="/" element={<Home />} />
+        
+        {/* Các trang chức năng */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/waiting" element={<Waiting />} />
-        <Route path="/manager" element={<Manager />} />
+        
+        {/* Phân quyền */}
         <Route path="/admin" element={<Admin />} />
+        <Route path="/manager" element={<Manager />} />
         <Route path="/member" element={<Member />} />
+        <Route path="/waiting" element={<Waiting />} />
 
-        {/* Trang 404 hoặc quay về Login nếu gõ sai URL */}
-        <Route path="*" element={<Login />} />
+        {/* Mặc định quay về Home */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 

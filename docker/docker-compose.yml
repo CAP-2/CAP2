@@ -1,20 +1,7 @@
-services:
-  # # Dịch vụ đẩy init.sql lên Aiven
-  # mysql_init:
-  #   image: mysql:8.0
-  #   container_name: gen-mysql-initializer
-  #   restart: "no"
-  #   env_file: .env
-  #   environment:
-  #     MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD_LOCAL}
-  #   volumes:
-  #     - ./init.sql:/init.sql
-  #   command: >
-  #     sh -c "mysql -h ${DB_HOST} 
-  #     -P ${DB_PORT} -u ${DB_USER} -p${DB_PASSWORD} 
-  #     ${DB_NAME} < /init.sql && echo 'DONE: Data pushed to Cloud successfully!'"
+version: '3.8'
 
-  # Dịch vụ quản lý giao diện
+services:
+  # Dịch vụ quản lý giao diện Database (Truy cập qua localhost:8081)
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: gen-phpmyadmin-cloud
@@ -25,10 +12,11 @@ services:
       PMA_PORT: ${DB_PORT}
       PMA_USER: ${DB_USER}
       PMA_PASSWORD: ${DB_PASSWORD}
-      PMA_DB: ${DB_NAME}
+      # PMA_ARBITRARY: 1 # Mở dòng này nếu bạn muốn tự nhập Host/User tại màn hình login
     ports:
       - "8081:80"
 
+  # Cơ sở dữ liệu Vector cho AI
   chromadb:
     image: chromadb/chroma
     container_name: gen-chromadb
@@ -38,6 +26,7 @@ services:
     ports:
       - "8000:8000"
 
+  # Dịch vụ Backend AI
   ai_service:
     build:
       context: ../Backend/AI
@@ -47,5 +36,4 @@ services:
     env_file: .env
     ports:
       - "4000:4000"
-    depends_on:
-      - mysql_init
+    # Đã gỡ bỏ depends_on vì mysql_init không còn tồn tại
