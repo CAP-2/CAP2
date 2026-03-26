@@ -21,8 +21,9 @@ const Login = () => {
 
       // res.success là flag từ API trả về
       if (res && res.success) {
-        // Lưu thông tin user (bao gồm role_id, person_id) vào localStorage
+        // Lưu thông tin user + token để gọi các API cần xác thực JWT
         localStorage.setItem("user", JSON.stringify(res.user));
+        if (res.token) localStorage.setItem("token", res.token);
         
         // Điều hướng dựa trên role_id trong Database của bạn
         // 1: Admin, 2: Manager, 3: Member
@@ -32,6 +33,8 @@ const Login = () => {
           navigate("/admin");
         } else if (roleId === 2) {
           navigate("/manager");
+        } else if (roleId === 3) {
+          navigate("/member");
         } else {
           navigate("/member");
         }

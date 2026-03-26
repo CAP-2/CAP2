@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Home from "./pages/Home/Home"; 
 import Login from "./pages/Login/Login";
 import Register from "./pages/Register/Register";
+import ClanRegister from "./pages/ClanRegister/ClanRegister";
 import Admin from "./Admin/Admin";    
 import Manager from "./pages/Manager/Manager";
 import Member from "./pages/Member/Member";
@@ -22,6 +23,7 @@ function App() {
         {/* Các trang chức năng */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/clan-register" element={<ClanRegister />} />
         
         {/* Phân quyền */}
         <Route path="/admin" element={<Admin />} />

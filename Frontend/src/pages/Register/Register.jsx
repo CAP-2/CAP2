@@ -53,11 +53,11 @@ const Register = () => {
   return (
     <div className="register-page">
       <div className="form-container">
-        <h2>Tạo dòng họ mới</h2>
-        <p className="subtitle">Hãy điền thông tin để tạo dòng họ mới</p>
+        <h2>Tạo tài khoản mới</h2>
+        <p className="subtitle">Vui lòng điền thông tin để tạo tài khoản mới</p>
 
         <div className="info-link">
-          Bạn muốn đăng ký vào dòng họ đã có? <Link to="/member">Tìm hiểu thêm</Link>
+          Bạn muốn tạo dòng họ mới? <Link to="/clan-register">Tìm hiểu thêm</Link>
         </div>
 
         {error && <div className="error-box">{error}</div>}
@@ -82,8 +82,14 @@ const Register = () => {
           <input name="email" value={form.email} placeholder="Email đăng nhập" type="email" onChange={handleChange} required />
           <input name="password" value={form.password} type="password" placeholder="Mật khẩu" onChange={handleChange} required />
           <input name="hometown" value={form.hometown} placeholder="Quê quán" onChange={handleChange} required />
-          
-          <input name="clan_id" value={form.clan_id} placeholder="Mã họ tộc (Clan ID)" type="number" onChange={handleChange} required />
+
+          <input
+            name="clan_id"
+            value={form.clan_id}
+            placeholder="ID dòng họ (Clan ID) — có thể bỏ trống"
+            type="number"
+            onChange={handleChange}
+          />
 
           <div className="checkbox-group">
             <input type="checkbox" id="terms" required />

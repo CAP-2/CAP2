@@ -18,6 +18,11 @@ exports.register = async (req, res) => {
     } = req.body;
 
     try {
+        const normalizedClanId =
+            clan_id === undefined || clan_id === null || clan_id === ""
+                ? null
+                : Number(clan_id);
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Bước 1: Chèn vào bảng people
@@ -25,7 +30,7 @@ exports.register = async (req, res) => {
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`;
 
         const [personResult] = await db.query(sqlPeople, [
-            clan_id || 1, display_name, first_name, middle_name, surname, gender, birth_date, hometown
+            normalizedClanId, display_name, first_name, middle_name, surname, gender, birth_date, hometown
         ]);
 
         const personId = personResult.insertId;
@@ -70,10 +75,22 @@ exports.login = async (req, res) => {
         }
 
         const user = results[0];
-        const match = await bcrypt.compare(password, user.password);
+        let match = false;
+
+        // So sánh mật khẩu: ưu tiên bcrypt hash, fallback với password plain cũ
+        try {
+            match = await bcrypt.compare(password, user.password);
+        } catch (compareError) {
+            console.warn('bcrypt compare failed, thử fallback plain text:', compareError.message);
+            match = false;
+        }
+
+        if (!match && user.password === password) {
+            // Người dùng đang dùng bản cũ với mật khẩu lưu thẳng (hash chưa có)
+            match = true;
+        }
 
         if (match) {
-            // TẠO TOKEN JWT
             const token = jwt.sign({
                     id: user.id,
                     role_id: user.role_id,
@@ -81,10 +98,9 @@ exports.login = async (req, res) => {
                 },
                 process.env.JWT_SECRET, {
                     expiresIn: '24h'
-                } // Token hết hạn sau 24 giờ
+                }
             );
 
-            // Trả về Token kèm thông tin user cho Frontend
             res.json({
                 success: true,
                 message: "Đăng nhập thành công!",
@@ -92,13 +108,14 @@ exports.login = async (req, res) => {
                 user: {
                     id: user.id,
                     role_id: user.role_id,
+                    status: user.status,
                     name: user.display_name
                 }
             });
         } else {
             res.status(401).json({
                 success: false,
-                message: "Mật khẩu không chính xác!"
+                message: "Email hoặc mật khẩu không chính xác!"
             });
         }
     } catch (error) {
