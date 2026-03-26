@@ -301,8 +301,12 @@ const Manager = () => {
                       <div className="mgr-row">
                         <span className="mgr-rowKey">Vai trò</span>
                         <span className="mgr-rowVal">
-                          {user.role_id === 2 ? "Manager" : user.role_id === 4 ? "Member" : "Chờ duyệt"}
+                          {user.role_id === 2 ? "Manager" : user.role_id === 3 ? "Member" : `Role ${user.role_id}`}
                         </span>
+                      </div>
+                      <div className="mgr-row">
+                        <span className="mgr-rowKey">Trạng thái</span>
+                        <span className="mgr-rowVal">{user.status || "—"}</span>
                       </div>
                     </div>
 

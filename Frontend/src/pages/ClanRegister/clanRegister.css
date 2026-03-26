@@ -1,0 +1,127 @@
+:root {
+    --primary: #d91c1c;
+    --primary-light: #ef4444;
+    --card-bg: #ffffff;
+    --text: #111827;
+    --muted: #6b7280;
+    --link-color: #0066cc;
+}
+
+.clan-register-page {
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    background: transparent;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.clan-register-container {
+    background: var(--card-bg);
+    padding: 32px;
+    border-radius: 18px;
+    border: 4px solid var(--primary);
+    border-top: 6px solid var(--primary);
+    border-top-left-radius: 28px;
+    border-top-right-radius: 28px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+    width: min(440px, 100%);
+    max-width: 460px;
+}
+
+.clan-register-container h2 {
+    text-align: center;
+    color: var(--text);
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.subtitle {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.info-link {
+    text-align: center;
+    background: #dbeafe;
+    color: var(--link-color);
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.info-link a {
+    color: var(--link-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.error-box {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid #fca5a5;
+    color: #b91c1c;
+    border-radius: 8px;
+    background: #fef2f2;
+    font-size: 14px;
+}
+
+.clan-register-container input,
+.clan-register-container button {
+    width: 100%;
+    padding: 12px 14px;
+    margin: 8px 0;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-sizing: border-box;
+    background: #fff;
+    font-size: 15px;
+    color: #111827;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.clan-register-container input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(217, 28, 28, 0.16);
+    outline: none;
+}
+
+.submit-btn {
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+.submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.footer-link {
+    text-align: center;
+    margin-top: 14px;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.footer-link a {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.footer-link a:hover {
+    color: #b91c1c;
+    text-decoration: underline;
+}
+

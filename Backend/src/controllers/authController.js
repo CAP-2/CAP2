@@ -18,6 +18,11 @@ exports.register = async (req, res) => {
     } = req.body;
 
     try {
+        const normalizedClanId =
+            clan_id === undefined || clan_id === null || clan_id === ""
+                ? null
+                : Number(clan_id);
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Bước 1: Chèn vào bảng people
@@ -25,7 +30,7 @@ exports.register = async (req, res) => {
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`;
 
         const [personResult] = await db.query(sqlPeople, [
-            clan_id || 1, display_name, first_name, middle_name, surname, gender, birth_date, hometown
+            normalizedClanId, display_name, first_name, middle_name, surname, gender, birth_date, hometown
         ]);
 
         const personId = personResult.insertId;
@@ -103,6 +108,7 @@ exports.login = async (req, res) => {
                 user: {
                     id: user.id,
                     role_id: user.role_id,
+                    status: user.status,
                     name: user.display_name
                 }
             });

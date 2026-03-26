@@ -33,7 +33,7 @@ const Home = () => {
         <div className="hero-left">
           <h1>Gìn giữ cổ nguyên, kết nối thế hệ</h1>
           <p>Nền tảng quản lý gia phả toàn diện giúp gìn giữ và chia sẻ lịch sử gia tộc một cách dễ dàng và an toàn</p>
-          <button className="btn-primary" onClick={() => navigate('/register')}>Tạo dòng họ ngay</button>
+          <button className="btn-primary" onClick={() => navigate('/clan-register')}>Tạo dòng họ ngay</button>
         </div>
         <div className="hero-right">
           <div className="hero-image">
