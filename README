@@ -31,7 +31,7 @@ npm run dev
 
 Bước 3: Chạy Front end
 .env
-VITE_API_URL=http://localhost:3000
+VITE_API_URL=http://localhost:5000
 
 cd 'D:\Visua Studio Code\CAP2\Frontend'
 npm install
