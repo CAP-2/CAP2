@@ -6,9 +6,9 @@ export default defineConfig({
     server: {
         proxy: {
             '/api': {
-                target: 'http://localhost:5000', // Cổng Backend của bạn
+                target: 'http://localhost:3000', // Cổng Backend đang chạy bằng nodemon
                 changeOrigin: true,
-                rewrite: (path) => path.replace(/^\/api/, ''), // Bỏ chữ /api khi gửi sang Backend
+                rewrite: (path) => path, // Giữ nguyên path '/api/auth/login', '/api/manager/*'
             }
         }
     }

@@ -70,10 +70,22 @@ exports.login = async (req, res) => {
         }
 
         const user = results[0];
-        const match = await bcrypt.compare(password, user.password);
+        let match = false;
+
+        // So sánh mật khẩu: ưu tiên bcrypt hash, fallback với password plain cũ
+        try {
+            match = await bcrypt.compare(password, user.password);
+        } catch (compareError) {
+            console.warn('bcrypt compare failed, thử fallback plain text:', compareError.message);
+            match = false;
+        }
+
+        if (!match && user.password === password) {
+            // Người dùng đang dùng bản cũ với mật khẩu lưu thẳng (hash chưa có)
+            match = true;
+        }
 
         if (match) {
-            // TẠO TOKEN JWT
             const token = jwt.sign({
                     id: user.id,
                     role_id: user.role_id,
@@ -81,10 +93,9 @@ exports.login = async (req, res) => {
                 },
                 process.env.JWT_SECRET, {
                     expiresIn: '24h'
-                } // Token hết hạn sau 24 giờ
+                }
             );
 
-            // Trả về Token kèm thông tin user cho Frontend
             res.json({
                 success: true,
                 message: "Đăng nhập thành công!",
@@ -98,7 +109,7 @@ exports.login = async (req, res) => {
         } else {
             res.status(401).json({
                 success: false,
-                message: "Mật khẩu không chính xác!"
+                message: "Email hoặc mật khẩu không chính xác!"
             });
         }
     } catch (error) {
