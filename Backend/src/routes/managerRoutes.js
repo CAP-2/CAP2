@@ -15,4 +15,12 @@ router.get('/pending', verifyToken, checkRole([1, 2]), managerController.getPend
 router.post('/approve/:id', verifyToken, checkRole([1, 2]), managerController.approveUser);
 router.post('/reject/:id', verifyToken, checkRole([1, 2]), managerController.rejectUser);
 
+// Routes duyệt bài viết/media
+router.get('/pending-posts', verifyToken, checkRole([1, 2]), managerController.getPendingPosts);
+router.post('/approve-post/:id', verifyToken, checkRole([1, 2]), managerController.approvePost);
+router.post('/reject-post/:id', verifyToken, checkRole([1, 2]), managerController.rejectPost);
+
+// Route Quản lý Đa phương tiện (Media Management)
+router.get('/media', verifyToken, checkRole([1, 2]), managerController.getMedia);
+
 module.exports = router;
