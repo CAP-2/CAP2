@@ -76,3 +76,63 @@ exports.rejectUser = async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi từ chối' });
     }
 };
+
+exports.getPendingPosts = async (req, res) => {
+    try {
+        const sql = `
+            SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name, author.email as author_email
+            FROM posts p
+            JOIN accounts a ON p.author_id = a.id
+            JOIN people author ON a.person_id = author.id
+            WHERE p.status = 'pending'
+            ORDER BY p.created_at DESC
+        `;
+        const [results] = await db.query(sql);
+        res.json(results);
+    } catch (error) {
+        console.error('getPendingPosts error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi lấy danh sách bài viết chờ duyệt' });
+    }
+};
+
+exports.approvePost = async (req, res) => {
+    const postId = req.params.id;
+    try {
+        const sql = "UPDATE posts SET status = 'approved' WHERE id = ?";
+        await db.query(sql, [postId]);
+        res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
+    } catch (error) {
+        console.error('approvePost error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi phê duyệt bài viết' });
+    }
+};
+
+exports.rejectPost = async (req, res) => {
+    const postId = req.params.id;
+    try {
+        const sql = "UPDATE posts SET status = 'rejected' WHERE id = ?";
+        await db.query(sql, [postId]);
+        res.json({ success: true, message: 'Đã từ chối bài viết!' });
+    } catch (error) {
+        console.error('rejectPost error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi từ chối bài viết' });
+    }
+};
+
+exports.getMedia = async (req, res) => {
+    try {
+        const sql = `
+            SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name
+            FROM posts p
+            JOIN accounts a ON p.author_id = a.id
+            JOIN people author ON a.person_id = author.id
+            WHERE p.image_url IS NOT NULL AND p.image_url != '' AND p.status != 'rejected'
+            ORDER BY p.created_at DESC
+        `;
+        const [results] = await db.query(sql);
+        res.json(results);
+    } catch (error) {
+        console.error('getMedia error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi lấy danh sách dữ liệu truyền thông (Media)' });
+    }
+};

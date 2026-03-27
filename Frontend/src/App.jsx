@@ -11,6 +11,9 @@ import Manager from "./pages/Manager/Manager";
 import Member from "./pages/Member/Member";
 import Waiting from "./pages/Waiting/Waiting";
 
+// Import Chatbot Component
+import AIChat from "./components/AIChat/AIChat";
+
 import "./App.css";
 
 function App() {
@@ -34,6 +37,7 @@ function App() {
         {/* Mặc định quay về Home */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      <AIChat />
     </Router>
   );
 }
