@@ -6,6 +6,10 @@ import {
   getPendingUsers,
   approveUserAPI,
   rejectUserAPI,
+  getPendingPosts,
+  approvePostAPI,
+  rejectPostAPI,
+  getMediaAPI,
 } from "../../api/managerService";
 
 const Manager = () => {
@@ -16,6 +20,8 @@ const Manager = () => {
   });
   const [members, setMembers] = useState([]);
   const [pending, setPending] = useState([]);
+  const [pendingPosts, setPendingPosts] = useState([]);
+  const [mediaList, setMediaList] = useState([]);
   const [search, setSearch] = useState("");
   const [activeSection, setActiveSection] = useState("members");
   const [loading, setLoading] = useState(true);
@@ -25,14 +31,18 @@ const Manager = () => {
     setError("");
     setLoading(true);
     try {
-      const [statsData, membersData, pendingData] = await Promise.all([
+      const [statsData, membersData, pendingData, postsData, mediaData] = await Promise.all([
         getStats(),
         getMembers(),
         getPendingUsers(),
+        getPendingPosts(),
+        getMediaAPI()
       ]);
       setStats(statsData);
       setMembers(membersData);
       setPending(pendingData);
+      setPendingPosts(postsData);
+      setMediaList(mediaData);
     } catch (e) {
       setError(e?.message || "Không thể tải dữ liệu manager");
     } finally {
@@ -51,6 +61,16 @@ const Manager = () => {
 
   const doReject = async (id) => {
     await rejectUserAPI(id);
+    await loadAll();
+  };
+
+  const doApprovePost = async (id) => {
+    await approvePostAPI(id);
+    await loadAll();
+  };
+
+  const doRejectPost = async (id) => {
+    await rejectPostAPI(id);
     await loadAll();
   };
 
@@ -352,22 +372,109 @@ const Manager = () => {
         ) : null}
 
         {activeSection === "moderation" ? (
-          <section className="mgr-panel">
-            <div className="mgr-panelTitle">Điều tiết nội dung (Content Moderation)</div>
-            <div className="mgr-panelText">
-              Kiểm soát thông tin, hình ảnh và tư liệu do các thành viên đóng góp.
+          <section>
+            <div className="mgr-listHeader">
+              <div className="mgr-listTitle">
+                Bài viết chờ duyệt ({pendingPosts.length})
+              </div>
+              <div className="mgr-listHint">
+                Kiểm duyệt hình ảnh và thông tin do thành viên đóng góp.
+              </div>
             </div>
-            <div className="mgr-panelEmpty">Chưa triển khai backend. Hiện mới dựng UI.</div>
+
+            <div className="mgr-cardGrid">
+              {pendingPosts.map((post) => (
+                <div className="mgr-card" key={post.post_id}>
+                  <div className="mgr-cardCover" style={{ height: "120px" }}>
+                    {post.image_url ? (
+                      <img src={post.image_url} alt="Post content" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }} />
+                    ) : (
+                      <div className="mgr-cardMeta" style={{ padding: "10px", color: "white" }}>[Không có hình ảnh đính kèm]</div>
+                    )}
+                  </div>
+                  
+                  <div className="mgr-cardBody">
+                    <div className="mgr-cardName">{post.author_name}</div>
+                    <div className="mgr-cardMeta" style={{ marginBottom: "10px" }}>{post.author_email}</div>
+                    
+                    <div className="mgr-cardRows" style={{ WebkitLineClamp: 3, display: "-webkit-box", WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      "{post.content}"
+                    </div>
+                    <div className="mgr-cardMeta" style={{ fontSize: "0.8rem", marginTop: "10px" }}>Đăng lúc: {new Date(post.created_at).toLocaleString()}</div>
+
+                    <div className="mgr-cardActions" style={{ marginTop: "15px" }}>
+                      <button className="mgr-btnOk" onClick={() => doApprovePost(post.post_id)}>Duyệt hiển thị</button>
+                      <button className="mgr-btnDanger" onClick={() => doRejectPost(post.post_id)}>Từ chối</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {!loading && pendingPosts.length === 0 ? (
+                <div className="mgr-empty">Chưa có bài viết nào chờ duyệt</div>
+              ) : null}
+            </div>
           </section>
         ) : null}
 
         {activeSection === "media" ? (
-          <section className="mgr-panel">
-            <div className="mgr-panelTitle">Quản lý hồ sơ đa phương tiện (Media Management)</div>
-            <div className="mgr-panelText">
-              Lưu trữ và tổ chức các hồ sơ số hóa, hình ảnh và lịch sử truyền miệng.
+          <section>
+            <div className="mgr-listHeader">
+              <div className="mgr-listTitle">
+                Thư viện Đa phương tiện (Media Gallery)
+              </div>
+              <div className="mgr-listHint">
+                Lưu trữ các hình ảnh, tài liệu số hóa của gia phả. Có thể chọn upload ảnh mới bằng nút bên góc trái.
+              </div>
             </div>
-            <div className="mgr-panelEmpty">Chưa triển khai backend. Hiện mới dựng UI.</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "15px", marginTop: "20px" }}>
+              {mediaList.map((media) => (
+                <div key={media.post_id} style={{ backgroundColor: "var(--mgr-surface)", borderRadius: "var(--mgr-radius)", overflow: "hidden", display: "flex", flexDirection: "column", border: "1px solid var(--mgr-border)" }}>
+                  <div style={{ height: "180px", width: "100%", position: "relative" }}>
+                    <img src={media.image_url} alt="Media" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                  <div style={{ padding: "10px", fontSize: "0.85rem", color: "var(--mgr-text-mute)" }}>
+                    <div style={{ fontWeight: "600", color: "var(--mgr-text-main)", marginBottom: "4px" }}>Đăng bởi: {media.author_name}</div>
+                    <div>{new Date(media.created_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+
+              {!loading && mediaList.length === 0 ? (
+                <div className="mgr-empty" style={{ gridColumn: "1 / -1" }}>Chưa có hình ảnh nào trong thư viện</div>
+              ) : null}
+            </div>
+            
+            <div style={{ marginTop: "30px", padding: "20px", background: "var(--mgr-surface)", border: "1px dashed var(--mgr-border)", borderRadius: "var(--mgr-radius)", textAlign: "center" }}>
+              <div style={{ marginBottom: "15px", color: "var(--mgr-text-main)", fontWeight: "500" }}>Số hóa hình ảnh gia phả (AI OCR / Restore)</div>
+              <input 
+                 type="file" 
+                 id="ai-upload" 
+                 style={{ display: "none" }} 
+                 accept="image/*" 
+                 onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const user = JSON.parse(localStorage.getItem('user') || "{}");
+                    const formData = new FormData();
+                    formData.append('userId', String(user.id || 1));
+                    formData.append('image', file);
+                    try {
+                        const res = await fetch('/ai/vision/restore-ocr-and-ingest', { method: 'POST', body: formData });
+                        const data = await res.json();
+                        if (res.ok) alert("Số hóa tài liệu thành công! OCR Text: " + (data.data?.ocr?.text || ""));
+                        else alert("Lỗi tích hợp: " + data.message);
+                    } catch (err) {
+                        alert("Lỗi upload AI: " + err.message);
+                    }
+                 }}
+              />
+              <label htmlFor="ai-upload" className="mgr-btnPrimary" style={{ display: "inline-block", cursor: "pointer" }}>
+                Chọn tập tin tải lên ...
+              </label>
+              <div style={{ marginTop: "10px", fontSize: "0.8rem", color: "var(--mgr-text-mute)" }}>Sử dụng công nghệ RAG/Vision của AI Service</div>
+            </div>
           </section>
         ) : null}
       </main>
