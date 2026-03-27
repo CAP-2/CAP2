@@ -151,6 +151,16 @@
   color: #2a3a58;
 }
 
+.usr-pillBtn {
+  cursor: pointer;
+  border: 1px solid var(--usr-border);
+}
+
+.usr-pillBtn.isActive {
+  background: rgba(27, 155, 113, 0.12);
+  border-color: rgba(27, 155, 113, 0.25);
+}
+
 .usr-hero {
   border-radius: 18px;
   position: relative;
@@ -283,6 +293,30 @@
   cursor: not-allowed;
 }
 
+.usr-btnDanger {
+  border: none;
+  background: linear-gradient(135deg, #dc3545, #ff6b7a);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.usr-accountPanel {
+  margin-top: -4px;
+}
+
+.usr-accountGrid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.usr-accountActions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .usr-file {
   border: 1px solid var(--usr-border);
   background: #fff;
@@ -336,6 +370,37 @@
   font-weight: 700;
   line-height: 1.45;
   font-size: 0.92rem;
+}
+
+.usr-treeMemberHeader {
+  margin-top: 14px;
+  font-weight: 900;
+}
+
+.usr-treeMemberGrid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.usr-treeMemberCard {
+  border: 1px solid var(--usr-border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--usr-shadow-soft);
+  padding: 10px 12px;
+}
+
+.usr-treeMemberName {
+  font-weight: 900;
+}
+
+.usr-treeMemberMeta {
+  margin-top: 3px;
+  font-size: 0.9rem;
+  color: var(--usr-muted);
+  font-weight: 700;
 }
 
 .usr-chat {
@@ -513,4 +578,36 @@
   color: #2a3a58;
   font-weight: 750;
   line-height: 1.45;
+}
+
+/* Classic mode: tông cam + cỡ chữ lớn hơn */
+.usr-shell.isClassic {
+  --usr-bg: #fff7ee;
+  --usr-surface: #ffffff;
+  --usr-text: #4a2b12;
+  --usr-muted: #8e5a34;
+  --usr-border: #f0d3b6;
+  --usr-primary: #e67e22;
+  font-size: 17px;
+}
+
+.usr-shell.isClassic .usr-panelTitle,
+.usr-shell.isClassic .usr-brandTitle,
+.usr-shell.isClassic .usr-heroTitle {
+  font-size: 1.15em;
+}
+
+.usr-shell.isClassic .usr-navItem,
+.usr-shell.isClassic .usr-input,
+.usr-shell.isClassic .usr-textarea,
+.usr-shell.isClassic .usr-resultDesc,
+.usr-shell.isClassic .usr-treeMemberMeta {
+  font-size: 1.04em;
+}
+
+.usr-shell.isClassic .usr-hero {
+  background:
+    radial-gradient(900px 300px at 20% 10%, rgba(230, 126, 34, 0.35), transparent 60%),
+    radial-gradient(900px 300px at 75% 20%, rgba(241, 196, 15, 0.25), transparent 60%),
+    linear-gradient(120deg, rgba(122, 66, 18, 0.85), rgba(122, 66, 18, 0.55));
 }
