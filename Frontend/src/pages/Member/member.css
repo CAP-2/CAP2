@@ -390,6 +390,19 @@
   background: #fff;
   box-shadow: var(--usr-shadow-soft);
   padding: 10px 12px;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.usr-treeMemberCard:hover {
+  border-color: rgba(27, 155, 113, 0.35);
+  box-shadow: 0 10px 26px rgba(20, 35, 70, 0.12);
+  transform: translateY(-1px);
+}
+
+.usr-treeMemberCard:focus-visible {
+  outline: 2px solid var(--usr-primary);
+  outline-offset: 2px;
 }
 
 .usr-treeMemberName {
@@ -401,6 +414,128 @@
   font-size: 0.9rem;
   color: var(--usr-muted);
   font-weight: 700;
+}
+
+/* Modal thành viên trong cây */
+.usr-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(20, 35, 70, 0.45);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  animation: usr-modalFadeIn 0.18s ease;
+}
+
+@keyframes usr-modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.usr-modal {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: min(85vh, 640px);
+  overflow: auto;
+  background: var(--usr-surface);
+  border-radius: var(--usr-radius);
+  box-shadow: var(--usr-shadow);
+  border: 1px solid var(--usr-border);
+  padding: 22px 22px 20px;
+  animation: usr-modalPop 0.2s ease;
+}
+
+@keyframes usr-modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.usr-modalClose {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--usr-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.usr-modalClose:hover {
+  background: var(--usr-bg);
+  color: var(--usr-text);
+}
+
+.usr-modalAvatarWrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.usr-modalAvatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--usr-border);
+  box-shadow: var(--usr-shadow-soft);
+}
+
+.usr-modalTitle {
+  margin: 0 40px 14px 0;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.25;
+  color: var(--usr-text);
+}
+
+.usr-modalDl {
+  margin: 0;
+}
+
+.usr-modalRow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--usr-border);
+  font-size: 0.92rem;
+}
+
+.usr-modalRow:last-child {
+  border-bottom: none;
+}
+
+.usr-modalRow dt {
+  margin: 0;
+  color: var(--usr-muted);
+  font-weight: 800;
+}
+
+.usr-modalRow dd {
+  margin: 0;
+  color: var(--usr-text);
+  font-weight: 700;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .usr-chat {

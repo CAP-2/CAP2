@@ -136,7 +136,9 @@ exports.getDashboard = async (req, res) => {
     if (clanId) {
       const [peopleRows] = await db.query(
         `
-          SELECT id, display_name, first_name, middle_name, surname, generation, hometown, birth_date
+          SELECT id, display_name, first_name, middle_name, surname, generation, branch,
+                 hometown, address, birth_date, death_date, is_living, gender,
+                 phone, email, avatar_url, bio
           FROM people
           WHERE clan_id = ?
           ORDER BY generation, surname, first_name

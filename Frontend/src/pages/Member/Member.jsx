@@ -9,6 +9,19 @@ import {
   updateMemberProfile,
 } from "../../api/memberService";
 
+function formatMemberDate(value) {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString("vi-VN");
+}
+
+function genderLabel(g) {
+  if (g === 1 || g === "1") return "Nam";
+  if (g === 2 || g === "2") return "Nữ";
+  return null;
+}
+
 const Member = () => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("discover");
@@ -41,6 +54,7 @@ const Member = () => {
   }, [navigate]);
 
   const [treeMembers, setTreeMembers] = useState([]);
+  const [treeMemberDetail, setTreeMemberDetail] = useState(null);
   const [discoverItemsFromDb, setDiscoverItemsFromDb] = useState([]);
 
   const [discoverQuery, setDiscoverQuery] = useState("");
@@ -154,6 +168,15 @@ const Member = () => {
   }, []);
 
   const userName = user?.name || "Thành viên";
+
+  useEffect(() => {
+    if (!treeMemberDetail) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setTreeMemberDetail(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [treeMemberDetail]);
 
   useEffect(() => {
     const load = async () => {
@@ -432,7 +455,19 @@ const Member = () => {
                   return `${m.display_name || ""} ${m.surname || ""} ${m.first_name || ""} ${m.hometown || ""} ${m.generation || ""}`.toLowerCase().includes(q);
                 })
                 .map((m) => (
-                  <div className="usr-treeMemberCard" key={m.id}>
+                  <div
+                    className="usr-treeMemberCard"
+                    key={m.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setTreeMemberDetail(m)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setTreeMemberDetail(m);
+                      }
+                    }}
+                  >
                     <div className="usr-treeMemberName">
                       {m.display_name || `${m.surname || ""} ${m.middle_name || ""} ${m.first_name || ""}`.trim()}
                     </div>
@@ -631,6 +666,74 @@ const Member = () => {
           </section>
         ) : null}
       </main>
+
+      {treeMemberDetail ? (
+        <div
+          className="usr-modalOverlay"
+          role="presentation"
+          onClick={() => setTreeMemberDetail(null)}
+        >
+          <div
+            className="usr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="usr-tree-member-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="usr-modalClose"
+              aria-label="Đóng"
+              onClick={() => setTreeMemberDetail(null)}
+            >
+              ×
+            </button>
+            {(() => {
+              const p = treeMemberDetail;
+              const fullName =
+                p.display_name ||
+                [p.surname, p.middle_name, p.first_name].filter(Boolean).join(" ").trim() ||
+                "Thành viên";
+              const living =
+                p.is_living === undefined || p.is_living === null ? null : Number(p.is_living) === 1;
+              const deathStr = formatMemberDate(p.death_date);
+              const rows = [
+                ["Đời thứ", p.generation != null && p.generation !== "" ? `Đời thứ ${p.generation}` : null],
+                ["Chi", p.branch != null && p.branch !== "" ? `Chi thứ ${p.branch}` : null],
+                ["Giới tính", genderLabel(p.gender)],
+                ["Ngày sinh", formatMemberDate(p.birth_date)],
+                living === true ? ["Tình trạng", "Còn sống"] : null,
+                living === false || deathStr ? ["Ngày mất", deathStr || (living === false ? "—" : null)] : null,
+                ["Quê quán", p.hometown || null],
+                ["Địa chỉ", p.address || null],
+                ["Điện thoại", p.phone || null],
+                ["Email", p.email || null],
+                ["Giới thiệu", p.bio || null],
+              ].filter((row) => row && row[1] != null && row[1] !== "");
+              return (
+                <>
+                  {p.avatar_url ? (
+                    <div className="usr-modalAvatarWrap">
+                      <img className="usr-modalAvatar" src={p.avatar_url} alt="" />
+                    </div>
+                  ) : null}
+                  <h2 className="usr-modalTitle" id="usr-tree-member-modal-title">
+                    {fullName}
+                  </h2>
+                  <dl className="usr-modalDl">
+                    {rows.map(([label, val]) => (
+                      <div className="usr-modalRow" key={label}>
+                        <dt>{label}</dt>
+                        <dd>{val}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
