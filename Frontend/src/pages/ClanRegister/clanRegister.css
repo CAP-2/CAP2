@@ -15,6 +15,7 @@
     align-items: center;
     min-height: 100vh;
     padding: 20px;
+    position: relative;
 }
 
 .clan-register-container {
@@ -51,15 +52,12 @@
     /* Tạo độ nổi cho nút */
 }
 
-
-/* Nút phụ (Link button) - Hiện rõ viền và nền nhạt */
-
 .link-button {
     background: #fef2f2 !important;
-    /* Nền đỏ cực nhạt để hiện rõ khối nút */
     color: var(--primary) !important;
     border: 2px solid var(--primary) !important;
-    /* Viền đậm hơn */
+    border-radius: 9999px !important;
+    border: none !important;
     font-weight: 700;
     cursor: pointer;
     margin-top: 8px;
@@ -139,4 +137,119 @@
     color: var(--primary);
     font-weight: 600;
     text-decoration: none;
+}
+
+.policy-link {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-weight: 600;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 14px;
+}
+
+.policy-link:hover {
+    text-decoration: none;
+}
+
+.policy-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.policy-modal-card {
+    max-width: 700px;
+    width: min(100%, 700px);
+    max-height: 80vh;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.policy-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.policy-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #1f2937;
+    font-weight: 700;
+    text-align: left;
+    flex: 1;
+}
+
+.policy-modal-close {
+    border: none;
+    background: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #dc2626;
+    font-weight: 700;
+    line-height: 1;
+    padding: 4px 8px;
+}
+
+.policy-modal-close:hover {
+    color: #b91c1c;
+}
+
+.policy-modal-body {
+    padding: 14px 16px;
+    overflow: auto;
+    height: 100%;
+    text-align: left;
+}
+
+.policy-modal-body pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: #e0e0e0;
+    color: #ffffff;
+    border-radius: 9999px !important;
+    border: none !important;
+    padding: 12px 28px !important;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    justify-content: center;
+    line-height: 1;
+}
+
+.back-btn:hover {
+    background: #d4d4d4 !important;
+    color: var(--primary) !important;
+    transform: translateY(-2px);
 }

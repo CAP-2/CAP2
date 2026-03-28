@@ -2,11 +2,33 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./register.css";
 import { registerAPI } from "../../api/authService";
+import termsText from "./terms.txt?raw";
+import privacyText from "./privacy.txt?raw";
 
 const Register = () => {
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalContent, setModalContent] = useState("");
+
+  const openModal = (type) => {
+    if (type === "terms") {
+      setModalTitle("Điều khoản sử dụng");
+      setModalContent(termsText);
+    } else if (type === "privacy") {
+      setModalTitle("Chính sách bảo mật");
+      setModalContent(privacyText);
+    }
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalTitle("");
+    setModalContent("");
+  };
 
   const [form, setForm] = useState({
     display_name: "",
@@ -17,7 +39,7 @@ const Register = () => {
     password: "",
     birth_date: "",
     hometown: "",
-    gender: "1", // Mặc định là Nam
+    gender: "1",
     clan_id: "",
   });
 
@@ -34,16 +56,12 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Gửi dữ liệu form. 
-      // Chú ý: form.gender và form.clan_id sẽ được authService convert sang số.
       const res = await registerAPI(form);
-      
       if (res.success) {
         alert("Đăng ký thành công! Vui lòng chờ phê duyệt.");
         navigate("/waiting");
       }
     } catch (err) {
-      // Bây giờ err.message sẽ chứa lỗi thật từ SQL (nếu bạn đã sửa server.js như mình chỉ)
       setError(err.message);
     } finally {
       setLoading(false);
@@ -52,7 +70,8 @@ const Register = () => {
 
   return (
     <div className="register-page">
-      <div className="form-container">
+      <Link to="/" className="back-btn">← Back to Home</Link>
+      <div className="register-container">
         <h2>Tạo tài khoản mới</h2>
         <p className="subtitle">Vui lòng điền thông tin để tạo tài khoản mới</p>
 
@@ -94,18 +113,35 @@ const Register = () => {
           <div className="checkbox-group">
             <input type="checkbox" id="terms" required />
             <label htmlFor="terms">
-              Tôi đồng ý với <a href="#terms">Điều khoản sử dụng</a> và <a href="#privacy">Chính sách bảo mật</a>
+              Tôi đồng ý 
+              <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("terms"); }}> Điều khoản sử dụng</a>
+              và
+              <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("privacy"); }}>Chính sách bảo mật</a>
             </label>
           </div>
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? "Đang xử lý..." : "Đăng ký"}
+            {loading ? "Đang xử lý..." : "Đăng ký tài khoản"}
           </button>
         </form>
 
         <p className="footer-link">
           Đã có tài khoản? <Link to="/login">Đăng nhập ngay</Link>
         </p>
+
+        {modalOpen && (
+          <div className="policy-modal-overlay" onClick={closeModal}>
+            <div className="policy-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="policy-modal-header">
+                <h3>{modalTitle}</h3>
+                <button className="policy-modal-close" type="button" onClick={closeModal}>×</button>
+              </div>
+              <div className="policy-modal-body">
+                <pre>{modalContent}</pre>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

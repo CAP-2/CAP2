@@ -52,6 +52,7 @@ const Login = () => {
 
   return (
     <div className="login-page">
+      <Link to="/" className="back-btn">← Back to Home</Link>
       <div className="login-box">
         <div className="login-header">
           <h2>Chào mừng đến với Gia Phả Việt!</h2>

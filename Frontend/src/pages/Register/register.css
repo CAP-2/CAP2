@@ -1,188 +1,244 @@
 :root {
     --primary: #d91c1c;
     --primary-light: #ef4444;
-    --bg: #e9fff3;
+    --bg: #f8fafc;
     --card-bg: #ffffff;
     --text: #111827;
-    --muted: #6b7280;
+    --muted: #4b5563;
     --link-color: #0066cc;
 }
 
-html, body {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    background: linear-gradient(135deg, #f0f4ff 0%, #f9faff 100%);
-}
-
-#root {
-    height: 100%;
-}
-
 .register-page {
-    font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
-    background: transparent;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    padding: 20px;
-}
-
-.form-container {
-    background: var(--card-bg);
-    padding: 32px;
-    border-radius: 18px;
-    border: 4px solid #d91c1c;
-    border-top: 6px solid #d91c1c;
-    border-top-left-radius: 28px;
-    border-top-right-radius: 28px;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
-    width: min(440px, 100%);
-    max-width: 460px;
+    padding: 40px 20px;
+    background-color: var(--bg);
     position: relative;
 }
 
-.form-container h2 {
+.register-container {
+    background: var(--card-bg);
+    padding: 40px;
+    /* Tăng từ 32px lên 40px */
+    border-radius: 24px;
+    border: 5px solid var(--primary);
+    border-top: 10px solid var(--primary);
+    /* Nhấn mạnh phần đỉnh */
+    border-top-left-radius: 40px;
+    border-top-right-radius: 40px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 520px;
+    /* Tăng từ 440px lên 520px cho thoải mái */
+    position: relative;
+}
+
+.register-container h2 {
     text-align: center;
     color: var(--text);
-    margin-top: 0;
-    margin-bottom: 8px;
-    font-weight: 700;
+    margin: 0 0 10px 0;
+    font-size: 30px;
+    /* To và rõ hơn */
+    font-weight: 800;
 }
 
 .subtitle {
     text-align: center;
     color: var(--muted);
-    margin-top: 0;
-    margin-bottom: 20px;
-    font-size: 14px;
+    margin-bottom: 25px;
+    font-size: 16px;
 }
 
-.form-container .info-link {
+.info-link {
     text-align: center;
-    background: #dbeafe;
+    background: #eff6ff;
     color: var(--link-color);
-    padding: 10px 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
+    padding: 14px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-size: 15px;
+    border: 1px dashed #bfdbfe;
 }
 
-.form-container .info-link a {
+.info-link a {
     color: var(--link-color);
-    text-decoration: none;
-    font-weight: 600;
+    text-decoration: underline;
+    font-weight: 700;
 }
 
-.form-container input,
-.form-container select,
-.form-container button {
+
+/* Form Styling */
+
+.register-container input,
+.register-container select {
     width: 100%;
-    padding: 12px 14px;
-    margin: 8px 0;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
+    padding: 15px 18px;
+    /* To hơn để dễ bấm trên mobile/tablet */
+    margin: 10px 0;
+    border: 2px solid #e5e7eb;
+    /* Viền dày hơn chút */
+    border-radius: 12px;
     box-sizing: border-box;
     background: #fff;
-    font-size: 15px;
-    color: #111827;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    font-size: 16px;
+    color: var(--text);
+    transition: all 0.2s ease-in-out;
 }
 
-.form-container input:focus,
-.form-container select:focus {
+.register-container input:focus,
+.register-container select:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(217, 28, 28, 0.16);
+    box-shadow: 0 0 0 5px rgba(217, 28, 28, 0.15);
     outline: none;
+    background: #fff;
 }
 
 .input-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 12px;
+    /* Khoảng cách giữa các ô rộng hơn */
 }
 
 @media (max-width: 540px) {
     .input-row {
         grid-template-columns: 1fr;
+        gap: 0;
     }
 }
 
+
+/* Nút bấm */
+
 .submit-btn {
-    background: #d91c1c;
-    color: white;
-    border: none;
+    width: 100%;
+    background: var(--primary) !important;
+    color: white !important;
+    border: none !important;
     font-weight: 700;
     cursor: pointer;
-    border-radius: 8px;
-    margin-top: 8px;
+    margin-top: 20px;
+    padding: 18px !important;
+    border-radius: 12px;
+    font-size: 18px;
+    box-shadow: 0 8px 15px rgba(217, 28, 28, 0.3);
+    transition: all 0.3s ease;
 }
 
 .submit-btn:hover:not(:disabled) {
-    background: #b91c1c;
+    background: #b91c1c !important;
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(217, 28, 28, 0.4);
+}
+
+.submit-btn:active {
     transform: translateY(-1px);
 }
 
-.submit-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
 .error-box {
-    margin-bottom: 12px;
-    padding: 10px 12px;
+    margin-bottom: 20px;
+    padding: 15px;
     border: 1px solid #fca5a5;
     color: #b91c1c;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fef2f2;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 500;
 }
 
 .checkbox-group {
     display: flex;
     align-items: flex-start;
-    margin: 12px 0;
-    gap: 8px;
+    margin: 18px 0;
+    gap: 12px;
 }
 
 .checkbox-group input[type="checkbox"] {
-    width: auto;
-    margin: 4px 0 0 0;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--primary);
+    margin-top: 3px;
     cursor: pointer;
 }
 
 .checkbox-group label {
-    font-size: 14px;
+    font-size: 15px;
     color: var(--text);
-    cursor: pointer;
-    line-height: 1.4;
+    line-height: 1.6;
 }
 
-.checkbox-group a {
+.policy-link {
     color: var(--primary);
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.checkbox-group a:hover {
+    font-weight: 700;
     text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
 }
 
 .footer-link {
     text-align: center;
-    margin-top: 14px;
-    color: var(--text);
-    font-size: 14px;
+    margin-top: 25px;
+    font-size: 16px;
+    color: var(--muted);
 }
 
 .footer-link a {
     color: var(--primary);
-    font-weight: 600;
+    font-weight: 700;
     text-decoration: none;
 }
 
 .footer-link a:hover {
-    color: #b91c1c;
     text-decoration: underline;
+}
+
+
+/* Modal rộng rãi hơn */
+
+.policy-modal-card {
+    max-width: 850px;
+    width: 95%;
+    max-height: 85vh;
+    border-radius: 20px;
+}
+
+.policy-modal-header h3 {
+    font-size: 22px;
+}
+
+.policy-modal-body pre {
+    font-size: 16px;
+    padding: 10px;
+}
+
+.back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: #e0e0e0;
+    color: #ffffff;
+    border-radius: 9999px !important;
+    border: none !important;
+    padding: 12px 28px !important;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    justify-content: center;
+    line-height: 1;
+}
+
+.back-btn:hover {
+    background: #d4d4d4 !important;
+    color: var(--primary) !important;
+    transform: translateY(-2px);
 }

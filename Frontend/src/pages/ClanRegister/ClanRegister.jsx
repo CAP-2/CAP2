@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./clanRegister.css";
 import { registerClanManagerAPI } from "../../api/authService";
+import termsText from "./terms.txt?raw";
+import privacyText from "./privacy.txt?raw";
 
 const ClanRegister = () => {
   const navigate = useNavigate();
@@ -9,6 +11,26 @@ const ClanRegister = () => {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [clanName, setClanName] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalContent, setModalContent] = useState("");
+
+  const openModal = (type) => {
+    if (type === "terms") {
+      setModalTitle("Điều khoản sử dụng");
+      setModalContent(termsText);
+    } else if (type === "privacy") {
+      setModalTitle("Chính sách bảo mật");
+      setModalContent(privacyText);
+    }
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalTitle("");
+    setModalContent("");
+  };
 
   const [managerForm, setManagerForm] = useState({
     display_name: "",
@@ -69,6 +91,7 @@ const ClanRegister = () => {
 
   return (
     <div className="clan-register-page">
+      <Link to="/" className="back-btn">← Back to Home</Link>
       <div className="clan-register-container">
         {step === 1 ? (
           <>
@@ -171,15 +194,24 @@ const ClanRegister = () => {
                 onChange={handleManagerChange}
                 required
               />
+             <div className="checkbox-group">
+              <input type="checkbox" id="terms" required />
+              <label htmlFor="terms">
+                Tôi đồng ý 
+                <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("terms"); }}> Điều khoản sử dụng</a>
+                và
+                <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("privacy"); }}>Chính sách bảo mật</a>
+              </label>
+            </div>
 
               <button type="submit" className="submit-btn" disabled={loading}>
-                {loading ? "Đang xử lý..." : "Hoàn tất đăng ký Manager"}
+                {loading ? "Đang xử lý..." : "Hoàn tất đăng ký "}
               </button>
             </form>
 
             <p className="footer-link">
               <button type="button" className="link-button" onClick={() => setStep(1)}>
-                Quay về bước trước
+               ←  Quay về bước trước
               </button>
             </p>
 
@@ -187,6 +219,22 @@ const ClanRegister = () => {
               Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
             </p>
           </>
+        )}
+
+        {modalOpen && (
+          <div className="policy-modal-overlay" onClick={closeModal}>
+            <div className="policy-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="policy-modal-header">
+                <h3>{modalTitle}</h3>
+                <button className="policy-modal-close" type="button" onClick={closeModal}>
+                  ×
+                </button>
+              </div>
+              <div className="policy-modal-body">
+                <pre>{modalContent}</pre>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
