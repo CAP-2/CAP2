@@ -194,11 +194,11 @@ const Home = () => {
             </div>
           </div>
           <div className="footer-section">
-            <h4>Liên hệ</h4>
-            <p>Địa chỉ: 123 Lê Lợi 555</p>
-            <p>Công ty cổ phần HGD</p>
-            <p>SDT: 0905 851 889</p>
-            <p>Email: contact@giaphaViet.vn</p>
+            <h4>C2.SE56</h4>
+            <p>Địa chỉ: Đà Nẵng</p>
+            <p>Công ty cổ phần wuân</p>
+            <p>SDT: 0378029323</p>
+            <p>Email: 16.nguyenquan2004@gmail.com</p>
           </div>
         </div>
         <div className="footer-bottom">

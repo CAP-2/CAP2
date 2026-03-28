@@ -7,5 +7,6 @@ const clanController = require('../controllers/clanController');
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/register-clan', clanController.registerClan);
+router.post('/register-clan-manager', clanController.registerClanWithManager);
 
 module.exports = router;
