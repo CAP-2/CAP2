@@ -25,10 +25,13 @@ const Login = () => {
         localStorage.setItem("user", JSON.stringify(res.user));
         if (res.token) localStorage.setItem("token", res.token);
         
-        // Điều hướng dựa trên role_id trong Database của bạn
-        // 1: Admin, 2: Manager, 3: Member
-        const roleId = res.user.role_id;
+        // Điều hướng: pending -> phòng chờ; 1 Admin -> /admin; 2 Manager -> /manager; 3 User -> /member
+        if (res.user.status === "pending") {
+          navigate("/waiting");
+          return;
+        }
 
+        const roleId = res.user.role_id;
         if (roleId === 1) {
           navigate("/admin");
         } else if (roleId === 2) {

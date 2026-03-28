@@ -28,16 +28,13 @@ exports.getStats = async (req, res) => {
         }
 
         if (req.user.role_id === 1) {
-            // Admin vẫn lấy toàn bộ
-            const [counts] = await db.query(`
-                ${totalMembersSql};
-                ${totalManagersSql};
-                ${totalPendingSql};
-            `);
+            const [rowsMembers] = await db.query(totalMembersSql);
+            const [rowsManagers] = await db.query(totalManagersSql);
+            const [rowsPending] = await db.query(totalPendingSql);
             return res.json({
-                total_members: counts[0][0].cnt,
-                total_managers: counts[1][0].cnt,
-                total_pending: counts[2][0].cnt,
+                total_members: rowsMembers[0].cnt,
+                total_managers: rowsManagers[0].cnt,
+                total_pending: rowsPending[0].cnt,
             });
         }
 
@@ -117,7 +114,19 @@ exports.getPendingUsers = async (req, res) => {
 exports.approveUser = async (req, res) => {
     const accountId = req.params.id;
     try {
-        // Duyệt tài khoản: luôn chuyển về active, và với user thường thì giữ role_id = 3
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query(
+                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
+                [accountId]
+            );
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được duyệt thành viên cùng dòng họ' });
+            }
+        }
         const sql = "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?";
         await db.query(sql, [accountId]);
         res.json({ success: true, message: 'Phê duyệt thành công!' });
@@ -130,6 +139,19 @@ exports.approveUser = async (req, res) => {
 exports.rejectUser = async (req, res) => {
     const accountId = req.params.id;
     try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query(
+                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
+                [accountId]
+            );
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được từ chối thành viên cùng dòng họ' });
+            }
+        }
         const sql = "UPDATE accounts SET status = 'rejected' WHERE id = ?";
         await db.query(sql, [accountId]);
         res.json({ success: true, message: 'Đã từ chối tài khoản (chuyển trạng thái rejected)' });
@@ -171,6 +193,16 @@ exports.getPendingPosts = async (req, res) => {
 exports.approvePost = async (req, res) => {
     const postId = req.params.id;
     try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM posts WHERE id = ?', [postId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được duyệt bài viết cùng dòng họ' });
+            }
+        }
         const sql = "UPDATE posts SET status = 'approved' WHERE id = ?";
         await db.query(sql, [postId]);
         res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
@@ -183,6 +215,16 @@ exports.approvePost = async (req, res) => {
 exports.rejectPost = async (req, res) => {
     const postId = req.params.id;
     try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM posts WHERE id = ?', [postId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được từ chối bài viết cùng dòng họ' });
+            }
+        }
         const sql = "UPDATE posts SET status = 'rejected' WHERE id = ?";
         await db.query(sql, [postId]);
         res.json({ success: true, message: 'Đã từ chối bài viết!' });
