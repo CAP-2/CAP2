@@ -1,16 +1,55 @@
 const db = require('../config/db');
 
+const getManagerClanId = async (accountId) => {
+    const [accountRows] = await db.query(
+        `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
+        [accountId]
+    );
+    if (!accountRows || accountRows.length === 0) return null;
+    return accountRows[0].clan_id;
+};
+
 exports.getStats = async (req, res) => {
     try {
-        // Thống kê nhiều thông tin của manager
-        const [counts] = await db.query(`
-            SELECT
-                (SELECT COUNT(*) FROM accounts WHERE role_id IN (2,3) AND status = 'active') AS total_members,
-                (SELECT COUNT(*) FROM accounts WHERE role_id = 2 AND status = 'active') AS total_managers,
-                (SELECT COUNT(*) FROM accounts WHERE status = 'pending') AS total_pending
-        `);
+        let totalMembersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id IN (2,3) AND a.status = 'active'";
+        let totalManagersSql = "SELECT COUNT(*) AS cnt FROM accounts WHERE role_id = 2 AND status = 'active'";
+        let totalPendingSql = "SELECT COUNT(*) AS cnt FROM accounts WHERE status = 'pending'";
+        let params = [];
 
-        res.json(counts[0]);
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            totalMembersSql += " AND p.clan_id = ?";
+            totalManagersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id = 2 AND a.status = 'active' AND p.clan_id = ?";
+            totalPendingSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.status = 'pending' AND p.clan_id = ?";
+            params = [clanId, clanId, clanId];
+        }
+
+        if (req.user.role_id === 1) {
+            // Admin vẫn lấy toàn bộ
+            const [counts] = await db.query(`
+                ${totalMembersSql};
+                ${totalManagersSql};
+                ${totalPendingSql};
+            `);
+            return res.json({
+                total_members: counts[0][0].cnt,
+                total_managers: counts[1][0].cnt,
+                total_pending: counts[2][0].cnt,
+            });
+        }
+
+        const [membersCount] = await db.query(totalMembersSql, [params[0]]);
+        const [managerCount] = await db.query(totalManagersSql, [params[1]]);
+        const [pendingCount] = await db.query(totalPendingSql, [params[2]]);
+
+        res.json({
+            total_members: membersCount[0].cnt,
+            total_managers: managerCount[0].cnt,
+            total_pending: pendingCount[0].cnt,
+        });
     } catch (error) {
         console.error('getStats error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy thống kê' });
@@ -19,16 +58,28 @@ exports.getStats = async (req, res) => {
 
 exports.getAllMembers = async (req, res) => {
     try {
-        const sql = `
+        let sql = `
             SELECT a.id AS account_id, a.email, a.role_id, a.status,
                    p.first_name, p.surname, p.birth_date, p.clan_id, p.gender
             FROM accounts a
             JOIN people p ON a.person_id = p.id
             WHERE a.role_id IN (2,3) AND a.status = 'active'
-            ORDER BY p.surname, p.first_name
         `;
 
-        const [results] = await db.query(sql);
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND p.clan_id = ?';
+            params.push(clanId);
+        }
+
+        sql += ' ORDER BY p.surname, p.first_name';
+
+        const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
         console.error('getAllMembers error:', error);
@@ -38,13 +89,24 @@ exports.getAllMembers = async (req, res) => {
 
 exports.getPendingUsers = async (req, res) => {
     try {
-        const sql = `
+        let sql = `
             SELECT a.id as account_id, a.role_id, a.status, p.first_name, p.surname, a.email, p.birth_date, p.clan_id 
             FROM accounts a
             JOIN people p ON a.person_id = p.id
             WHERE a.status = 'pending'`;
 
-        const [results] = await db.query(sql);
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND p.clan_id = ?';
+            params.push(clanId);
+        }
+
+        const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
         console.error('getPendingUsers error:', error);
@@ -79,15 +141,26 @@ exports.rejectUser = async (req, res) => {
 
 exports.getPendingPosts = async (req, res) => {
     try {
-        const sql = `
+        let sql = `
             SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name, author.email as author_email
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id
             WHERE p.status = 'pending'
-            ORDER BY p.created_at DESC
         `;
-        const [results] = await db.query(sql);
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND p.clan_id = ?';
+            params.push(clanId);
+        }
+
+        sql += ' ORDER BY p.created_at DESC';
+        const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
         console.error('getPendingPosts error:', error);
@@ -121,15 +194,26 @@ exports.rejectPost = async (req, res) => {
 
 exports.getMedia = async (req, res) => {
     try {
-        const sql = `
+        let sql = `
             SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id
             WHERE p.image_url IS NOT NULL AND p.image_url != '' AND p.status != 'rejected'
-            ORDER BY p.created_at DESC
         `;
-        const [results] = await db.query(sql);
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND p.clan_id = ?';
+            params.push(clanId);
+        }
+
+        sql += ' ORDER BY p.created_at DESC';
+        const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
         console.error('getMedia error:', error);
