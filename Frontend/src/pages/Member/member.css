@@ -303,6 +303,39 @@
   cursor: pointer;
 }
 
+.usr-accountReadonly {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(111, 127, 152, 0.45);
+  background: rgba(244, 247, 251, 0.65);
+  display: grid;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.usr-accountReadonly > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+}
+
+.usr-accountReadonlyLabel {
+  font-weight: 800;
+  color: var(--usr-muted);
+  min-width: 140px;
+}
+
+.usr-accountReadonlyVal {
+  font-weight: 800;
+  color: var(--usr-text);
+}
+
+.usr-accountPasswordTitle {
+  margin-top: 22px;
+}
+
 .usr-accountPanel {
   margin-top: -4px;
 }
@@ -607,6 +640,89 @@
   margin-top: 10px;
   color: var(--usr-muted);
   font-weight: 700;
+}
+
+/* Cây gia phả đệ quy (member — mục Cây gia phả) */
+.usr-familyTreeWrap {
+  overflow-x: auto;
+  padding: 8px 4px 4px;
+}
+
+.usr-familyTreeRoot,
+.usr-familyTreeBranch {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.usr-familyTreeRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.usr-familyTreeBranch {
+  margin-top: 12px;
+  margin-left: 8px;
+  padding-left: 20px;
+  border-left: 2px solid rgba(111, 127, 152, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.usr-familyTreeItem {
+  position: relative;
+}
+
+.usr-familyTreeBranch .usr-familyTreeItem::before {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: 22px;
+  width: 18px;
+  height: 2px;
+  background: rgba(111, 127, 152, 0.4);
+  border-radius: 1px;
+}
+
+.usr-familyTreeCard {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--usr-border);
+  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+  box-shadow: var(--usr-shadow-soft);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.usr-familyTreeCard:hover {
+  border-color: rgba(27, 155, 113, 0.35);
+  box-shadow: 0 10px 26px rgba(20, 35, 70, 0.1);
+  transform: translateY(-1px);
+}
+
+.usr-familyTreeCard:focus-visible {
+  outline: 2px solid var(--usr-primary);
+  outline-offset: 2px;
+}
+
+.usr-familyTreeName {
+  font-weight: 900;
+  color: var(--usr-text);
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.usr-familyTreeGen {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--usr-muted);
 }
 
 .usr-mediaGrid {

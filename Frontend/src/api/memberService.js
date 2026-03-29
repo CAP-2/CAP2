@@ -38,6 +38,18 @@ export const updateMemberProfile = async (payload) => {
   return parseResponse(res, "Không thể cập nhật thông tin");
 };
 
+export const changeMemberPassword = async (payload) => {
+  const res = await fetch(`${BASE_URL}/password`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse(res, "Không thể đổi mật khẩu");
+};
+
 export const getMemberChat = async () => {
   const res = await fetch(`${BASE_URL}/chat`, {
     headers: getAuthHeaders(),

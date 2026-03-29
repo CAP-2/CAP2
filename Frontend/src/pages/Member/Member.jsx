@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./member.css";
 import {
+  changeMemberPassword,
   createMemberReminder,
   getMemberChat,
   getMemberDashboard,
@@ -22,6 +23,54 @@ function genderLabel(g) {
   return null;
 }
 
+function readSessionUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function personTreeLabel(p) {
+  return (
+    p.display_name ||
+    [p.surname, p.middle_name, p.first_name].filter(Boolean).join(" ").trim() ||
+    "Thành viên"
+  );
+}
+
+/** Node: { person, children: Node[] } — cây từ API member/dashboard */
+function FamilyTreeNode({ node, onSelectPerson }) {
+  const p = node.person;
+  const hasKids = node.children?.length > 0;
+  return (
+    <li className="usr-familyTreeItem">
+      <div
+        className="usr-familyTreeCard"
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelectPerson(p)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelectPerson(p);
+          }
+        }}
+      >
+        <span className="usr-familyTreeName">{personTreeLabel(p)}</span>
+        <span className="usr-familyTreeGen">Đời {p.generation ?? "—"}</span>
+      </div>
+      {hasKids ? (
+        <ul className="usr-familyTreeBranch">
+          {node.children.map((ch) => (
+            <FamilyTreeNode key={ch.person.id} node={ch} onSelectPerson={onSelectPerson} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 const Member = () => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("discover");
@@ -32,7 +81,9 @@ const Member = () => {
   const [error, setError] = useState("");
   const [clanInfo, setClanInfo] = useState({ clan_name: "", history: "" });
   const [accountForm, setAccountForm] = useState({
-    display_name: "",
+    surname: "",
+    middle_name: "",
+    first_name: "",
     email: "",
     hometown: "",
     generation: "",
@@ -40,6 +91,12 @@ const Member = () => {
     spouse_id: "",
     children_ids: "",
   });
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   useEffect(() => {
     try {
@@ -54,8 +111,11 @@ const Member = () => {
   }, [navigate]);
 
   const [treeMembers, setTreeMembers] = useState([]);
+  const [familyTreeRoots, setFamilyTreeRoots] = useState([]);
   const [treeMemberDetail, setTreeMemberDetail] = useState(null);
   const [discoverItemsFromDb, setDiscoverItemsFromDb] = useState([]);
+  /** Meta chỉ đọc: trạng thái tài khoản & person_id (đồng bộ từ API) */
+  const [accountMeta, setAccountMeta] = useState({ status: "", person_id: null, role_id: null });
 
   const [discoverQuery, setDiscoverQuery] = useState("");
   const discoverResults = useMemo(() => {
@@ -90,24 +150,6 @@ const Member = () => {
       setError(e?.message || "Không thể gửi chat");
     }
   };
-
-  // Interactive visualization (placeholder)
-  const treeNodes = useMemo(() => {
-    const sample = treeMembers.slice(0, 5);
-    const positions = [
-      { x: 160, y: 40 },
-      { x: 80, y: 120 },
-      { x: 240, y: 120 },
-      { x: 80, y: 200 },
-      { x: 240, y: 200 },
-    ];
-    return sample.map((m, idx) => ({
-      id: String(m.id),
-      label: m.display_name || `${m.surname || ""} ${m.first_name || ""}`.trim(),
-      x: positions[idx]?.x || 160,
-      y: positions[idx]?.y || 40 + idx * 30,
-    }));
-  }, [treeMembers]);
 
   // Photo restore (frontend-only preview)
   const [photoFile, setPhotoFile] = useState(null);
@@ -159,14 +201,7 @@ const Member = () => {
     }
   }, [activeSection]);
 
-  const user = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
-
+  const user = readSessionUser();
   const userName = user?.name || "Thành viên";
 
   useEffect(() => {
@@ -178,89 +213,125 @@ const Member = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [treeMemberDetail]);
 
+  const loadDashboard = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) setLoading(true);
+    setError("");
+    try {
+      const dash = await getMemberDashboard();
+      const p = dash.profile || {};
+      const c = dash.clan || {};
+      const u = readSessionUser();
+      setClanInfo({ clan_name: c.clan_name || "", history: c.history || "" });
+      setTreeMembers(dash.treeMembers || []);
+      setFamilyTreeRoots(dash.familyTree?.roots || []);
+      setDiscoverItemsFromDb(dash.discoverItems || []);
+      setReminders(dash.reminders || []);
+      setAccountMeta({
+        status: p.status || "",
+        person_id: p.person_id ?? null,
+        role_id: p.role_id ?? null,
+      });
+      setAccountForm({
+        surname: p.surname ?? "",
+        middle_name: p.middle_name ?? "",
+        first_name: p.first_name ?? "",
+        email: p.email || u.email || "",
+        hometown: p.hometown || u.hometown || "",
+        generation: p.generation ?? "",
+        family_id: p.family_id ?? "",
+        spouse_id: p.spouse_id ?? "",
+        children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : "",
+      });
+      const chatRes = await getMemberChat();
+      const messages = (chatRes.messages || []).map((m) => ({
+        role: m.sender_type === "user" ? "user" : "ai",
+        text: m.content,
+      }));
+      setChat(
+        messages.length > 0
+          ? messages
+          : [{ role: "ai", text: "Chào bạn! Bạn có thể hỏi về phả hệ, người thân, hoặc sự kiện gia đình." }]
+      );
+    } catch (e) {
+      setError(e?.message || "Không thể tải dữ liệu thành viên");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const dash = await getMemberDashboard();
-        const p = dash.profile || {};
-        const c = dash.clan || {};
-        setClanInfo({ clan_name: c.clan_name || "", history: c.history || "" });
-        setTreeMembers(dash.treeMembers || []);
-        setDiscoverItemsFromDb(dash.discoverItems || []);
-        setReminders(dash.reminders || []);
-        setAccountForm({
-          display_name: p.display_name || user?.name || "",
-          email: p.email || user?.email || "",
-          hometown: p.hometown || user?.hometown || "",
-          generation: p.generation ?? "",
-          family_id: p.family_id ?? "",
-          spouse_id: p.spouse_id ?? "",
-          children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : "",
-        });
-        const chatRes = await getMemberChat();
-        const messages = (chatRes.messages || []).map((m) => ({
-          role: m.sender_type === "user" ? "user" : "ai",
-          text: m.content,
-        }));
-        setChat(
-          messages.length > 0
-            ? messages
-            : [{ role: "ai", text: "Chào bạn! Bạn có thể hỏi về phả hệ, người thân, hoặc sự kiện gia đình." }]
-        );
-      } catch (e) {
-        setError(e?.message || "Không thể tải dữ liệu thành viên");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [user?.email, user?.hometown, user?.name]);
+    loadDashboard();
+  }, [loadDashboard]);
 
   const saveAccountInfo = async () => {
     try {
+      setError("");
+      const genRaw = String(accountForm.generation).trim();
+      const genNum = genRaw === "" ? null : Number(genRaw);
+      if (genRaw !== "" && !Number.isFinite(genNum)) {
+        setError("Đời (generation) phải là số hợp lệ hoặc để trống.");
+        return;
+      }
+      const fidStr = String(accountForm.family_id ?? "").trim();
+      const sidStr = String(accountForm.spouse_id ?? "").trim();
+      const kidsStr = String(accountForm.children_ids ?? "").trim();
+      const kidsNums = kidsStr
+        .split(",")
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v));
+
       const payload = {
-        ...accountForm,
-        generation:
-          String(accountForm.generation).trim() === ""
-            ? null
-            : Number(accountForm.generation),
-        family_id:
-          String(accountForm.family_id).trim() === ""
-            ? null
-            : Number(accountForm.family_id),
-        spouse_id:
-          String(accountForm.spouse_id).trim() === ""
-            ? null
-            : Number(accountForm.spouse_id),
-        children_ids: String(accountForm.children_ids || "")
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((v) => Number.isFinite(v)),
+        surname: accountForm.surname,
+        middle_name: accountForm.middle_name,
+        first_name: accountForm.first_name,
+        email: accountForm.email,
+        hometown: accountForm.hometown,
+        generation: genNum,
       };
+      if (fidStr !== "") payload.family_id = Number(fidStr);
+      if (sidStr !== "") payload.spouse_id = Number(sidStr);
+      if (kidsStr !== "") payload.children_ids = kidsNums;
       const res = await updateMemberProfile(payload);
       const p = res.profile || {};
+      const prev = readSessionUser();
       const merged = {
-        ...user,
-        name: p.display_name || accountForm.display_name || user?.name || "Thành viên",
-        email: p.email || accountForm.email || user?.email || "",
-        hometown: p.hometown || accountForm.hometown || user?.hometown || "",
-        status: p.status || user?.status,
-        role_id: p.role_id || user?.role_id,
+        ...prev,
+        name: p.display_name ?? prev.name ?? "Thành viên",
+        email: p.email ?? accountForm.email ?? prev.email ?? "",
+        hometown: p.hometown ?? accountForm.hometown ?? prev.hometown ?? "",
+        status: p.status ?? prev.status,
+        role_id: p.role_id ?? prev.role_id,
       };
       localStorage.setItem("user", JSON.stringify(merged));
-      setAccountForm((prev) => ({
-        ...prev,
-        generation: p.generation ?? prev.generation,
-        family_id: p.family_id ?? "",
-        spouse_id: p.spouse_id ?? "",
-        children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : prev.children_ids,
-      }));
+      await loadDashboard({ silent: true });
       setShowAccountPanel(false);
+    } catch (e) {
+      setError(e?.message || "Không thể cập nhật thông tin tài khoản");
+    }
+  };
+
+  const savePassword = async () => {
+    try {
       setError("");
-    } catch {
-      setError("Không thể cập nhật thông tin tài khoản");
+      if (passwordForm.next !== passwordForm.confirm) {
+        setError("Mật khẩu mới và nhập lại không khớp.");
+        return;
+      }
+      if (passwordForm.next.length < 6) {
+        setError("Mật khẩu mới cần ít nhất 6 ký tự.");
+        return;
+      }
+      setPasswordSaving(true);
+      await changeMemberPassword({
+        current_password: passwordForm.current,
+        new_password: passwordForm.next,
+      });
+      setPasswordForm({ current: "", next: "", confirm: "" });
+    } catch (e) {
+      setError(e?.message || "Không thể đổi mật khẩu");
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -341,20 +412,57 @@ const Member = () => {
           <section className="usr-panel usr-accountPanel">
             <div className="usr-panelTitle">Thông tin tài khoản</div>
             <div className="usr-panelText">
-              Bạn có thể chỉnh sửa thông tin cơ bản, khai báo quan hệ gia đình (ID people) và đăng xuất.
+              Chỉnh họ, tên đệm, tên; email, quê quán, đời và quan hệ gia đình (theo mã trong hệ thống). Tên hiển thị trong hệ
+              thống được ghép tự động từ họ và tên. Email đăng nhập phải là duy nhất.
+            </div>
+            <div className="usr-accountReadonly">
+              <div>
+                <span className="usr-accountReadonlyLabel">Trạng thái</span>
+                <span className="usr-accountReadonlyVal">
+                  {accountMeta.status === "active"
+                    ? "Đang hoạt động"
+                    : accountMeta.status === "pending"
+                      ? "Chờ duyệt"
+                      : accountMeta.status === "rejected"
+                        ? "Từ chối"
+                        : accountMeta.status || "—"}
+                </span>
+              </div>
+              <div>
+                <span className="usr-accountReadonlyLabel">Mã người (person_id)</span>
+                <span className="usr-accountReadonlyVal">
+                  {accountMeta.person_id != null ? accountMeta.person_id : "Chưa liên kết — không lưu được quan hệ gia đình"}
+                </span>
+              </div>
             </div>
             <div className="usr-reminderForm usr-accountGrid">
               <input
                 className="usr-input"
-                value={accountForm.display_name}
-                onChange={(e) => setAccountForm((p) => ({ ...p, display_name: e.target.value }))}
-                placeholder="Tên hiển thị"
+                value={accountForm.surname}
+                onChange={(e) => setAccountForm((p) => ({ ...p, surname: e.target.value }))}
+                placeholder="Họ (vd: Nguyễn)"
+                autoComplete="family-name"
+              />
+              <input
+                className="usr-input"
+                value={accountForm.middle_name}
+                onChange={(e) => setAccountForm((p) => ({ ...p, middle_name: e.target.value }))}
+                placeholder="Tên đệm (có thể để trống)"
+                autoComplete="additional-name"
+              />
+              <input
+                className="usr-input"
+                value={accountForm.first_name}
+                onChange={(e) => setAccountForm((p) => ({ ...p, first_name: e.target.value }))}
+                placeholder="Tên (vd: Văn A)"
+                autoComplete="given-name"
               />
               <input
                 className="usr-input"
                 value={accountForm.email}
                 onChange={(e) => setAccountForm((p) => ({ ...p, email: e.target.value }))}
                 placeholder="Email"
+                autoComplete="email"
               />
               <input
                 className="usr-input"
@@ -389,10 +497,58 @@ const Member = () => {
                 onChange={(e) => setAccountForm((p) => ({ ...p, children_ids: e.target.value }))}
                 placeholder="ID con (cách nhau dấu phẩy, ví dụ: 12, 25)"
               />
-              <button className="usr-btnPrimary" type="button" onClick={saveAccountInfo}>
-                Lưu thay đổi
+              <button
+                className="usr-btnPrimary"
+                type="button"
+                onClick={saveAccountInfo}
+                disabled={loading || accountMeta.person_id == null}
+                title={
+                  accountMeta.person_id == null
+                    ? "Tài khoản chưa gắn với hồ sơ người trong phả hệ — không thể lưu."
+                    : undefined
+                }
+              >
+                Lưu hồ sơ
               </button>
             </div>
+
+            <div className="usr-panelTitle usr-accountPasswordTitle">Đổi mật khẩu</div>
+            <div className="usr-panelText">Nhập mật khẩu hiện tại và mật khẩu mới (tối thiểu 6 ký tự).</div>
+            <div className="usr-reminderForm usr-accountGrid">
+              <input
+                className="usr-input"
+                type="password"
+                value={passwordForm.current}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, current: e.target.value }))}
+                placeholder="Mật khẩu hiện tại"
+                autoComplete="current-password"
+              />
+              <input
+                className="usr-input"
+                type="password"
+                value={passwordForm.next}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, next: e.target.value }))}
+                placeholder="Mật khẩu mới"
+                autoComplete="new-password"
+              />
+              <input
+                className="usr-input"
+                type="password"
+                value={passwordForm.confirm}
+                onChange={(e) => setPasswordForm((p) => ({ ...p, confirm: e.target.value }))}
+                placeholder="Nhập lại mật khẩu mới"
+                autoComplete="new-password"
+              />
+              <button
+                className="usr-btnPrimary"
+                type="button"
+                onClick={savePassword}
+                disabled={loading || passwordSaving}
+              >
+                {passwordSaving ? "Đang đổi…" : "Đổi mật khẩu"}
+              </button>
+            </div>
+
             <div className="usr-accountActions">
               <button className="usr-btnDanger" type="button" onClick={logout}>
                 Đăng xuất
@@ -513,32 +669,28 @@ const Member = () => {
           </section>
         ) : null}
 
-        {/* TREE */}
+        {/* TREE — đệ quy từ đời 1, con theo families/children */}
         {activeSection === "tree" ? (
           <section className="usr-panel">
-            <div className="usr-panelTitle">Interactive Visualization (demo)</div>
-            <div className="usr-panelText">Hiện là sơ đồ mẫu để mô phỏng cây gia phả tương tác.</div>
+            <div className="usr-panelTitle">Cây gia phả</div>
+            <div className="usr-panelText">
+              Gốc cây là các thành viên đời 1 (nếu không có đời 1 thì dùng đời nhỏ nhất trong dòng họ). Các thế hệ sau lấy từ
+              bảng gia đình và con: con được nối ưu tiên với cha nếu có, không thì với mẹ. Bấm vào thẻ để xem chi tiết.
+            </div>
 
-            <div className="usr-treeWrap">
-              <svg className="usr-tree" viewBox="0 0 320 240" role="img" aria-label="Cây gia phả demo">
-                <line x1="160" y1="52" x2="80" y2="112" stroke="rgba(111,127,152,0.55)" strokeWidth="2" />
-                <line x1="160" y1="52" x2="240" y2="112" stroke="rgba(111,127,152,0.55)" strokeWidth="2" />
-                <line x1="80" y1="132" x2="80" y2="192" stroke="rgba(111,127,152,0.55)" strokeWidth="2" />
-                <line x1="240" y1="132" x2="240" y2="192" stroke="rgba(111,127,152,0.55)" strokeWidth="2" />
-
-                {treeNodes.map((n) => (
-                  <g key={n.id}>
-                    <rect x={n.x - 46} y={n.y - 16} width="92" height="32" rx="12" fill="white" stroke="rgba(228,235,245,1)" />
-                    <text x={n.x} y={n.y + 5} textAnchor="middle" fontSize="11" fill="#2a3a58" fontWeight="700">
-                      {n.label}
-                    </text>
-                  </g>
-                ))}
-              </svg>
-
-              <div className="usr-treeHint">
-                Bạn muốn cây tương tác thật (zoom/pan, click node, load dữ liệu nhiều thế hệ) thì mình sẽ tích hợp thư viện (ví dụ React Flow / D3) và nối API.
-              </div>
+            <div className="usr-treeWrap usr-familyTreeWrap">
+              {familyTreeRoots.length === 0 ? (
+                <div className="usr-treeHint">
+                  Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ, có ít nhất một thành viên đời 1 (hoặc đời gốc), và các quan hệ
+                  cha/mẹ–con trong bảng gia đình.
+                </div>
+              ) : (
+                <ul className="usr-familyTreeRoot" role="tree" aria-label="Cây gia phả theo đời">
+                  {familyTreeRoots.map((root) => (
+                    <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setTreeMemberDetail} />
+                  ))}
+                </ul>
+              )}
             </div>
           </section>
         ) : null}

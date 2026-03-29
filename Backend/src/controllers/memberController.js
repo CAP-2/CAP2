@@ -1,4 +1,13 @@
 const db = require("../config/db");
+const bcrypt = require("bcryptjs");
+
+/** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
+const buildDisplayNameFromParts = (surname, middleName, firstName) => {
+  const s = surname == null ? "" : String(surname).trim();
+  const m = middleName == null ? "" : String(middleName).trim();
+  const f = firstName == null ? "" : String(firstName).trim();
+  return [s, m, f].filter(Boolean).join(" ").trim();
+};
 
 const getAccountContext = async (accountId) => {
   const sql = `
@@ -121,6 +130,62 @@ const getOwnedFamilyRelations = async (personId) => {
   };
 };
 
+/**
+ * Cây gia phả: gốc = đời 1 (hoặc đời nhỏ nhất nếu không có đời 1).
+ * Con cái: bảng children + families; ưu tiên nối con với cha (father_id), không có cha thì mẹ.
+ */
+const buildFamilyTree = (peopleRows, familyRows, childRows) => {
+  const peopleMap = Object.fromEntries(peopleRows.map((p) => [p.id, p]));
+  const childrenByFamily = new Map();
+  for (const row of childRows) {
+    if (!childrenByFamily.has(row.family_id)) childrenByFamily.set(row.family_id, []);
+    childrenByFamily.get(row.family_id).push(row.person_id);
+  }
+
+  const childrenByParent = new Map();
+  for (const fam of familyRows) {
+    const kids = childrenByFamily.get(fam.id) || [];
+    const parentId = fam.father_id || fam.mother_id;
+    if (!parentId) continue;
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+    const list = childrenByParent.get(parentId);
+    for (const cid of kids) {
+      if (!list.includes(cid)) list.push(cid);
+    }
+  }
+
+  let roots = peopleRows.filter((p) => Number(p.generation) === 1).sort((a, b) => a.id - b.id);
+  if (roots.length === 0 && peopleRows.length > 0) {
+    const gens = peopleRows.map((p) => Number(p.generation)).filter((g) => Number.isFinite(g) && g > 0);
+    const minGen = gens.length ? Math.min(...gens) : 1;
+    roots = peopleRows.filter((p) => Number(p.generation) === minGen).sort((a, b) => a.id - b.id);
+  }
+
+  const placed = new Set();
+
+  const buildNode = (personId) => {
+    const person = peopleMap[personId];
+    if (!person) return null;
+    if (placed.has(personId)) return null;
+    placed.add(personId);
+    const rawChildIds = childrenByParent.get(personId) || [];
+    const children = [];
+    for (const cid of rawChildIds) {
+      const childNode = buildNode(cid);
+      if (childNode) children.push(childNode);
+    }
+    return { person, children };
+  };
+
+  const rootNodes = [];
+  for (const r of roots) {
+    const node = buildNode(r.id);
+    if (node) rootNodes.push(node);
+  }
+
+  return { roots: rootNodes };
+};
+
 exports.getDashboard = async (req, res) => {
   try {
     const accountId = req.user.id;
@@ -132,6 +197,7 @@ exports.getDashboard = async (req, res) => {
     const clanId = context.clan_id;
     let treeMembers = [];
     let reminders = [];
+    let familyTree = { roots: [] };
 
     if (clanId) {
       const [peopleRows] = await db.query(
@@ -146,6 +212,22 @@ exports.getDashboard = async (req, res) => {
         [clanId]
       );
       treeMembers = peopleRows;
+
+      const [familyRows] = await db.query(
+        `SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC`,
+        [clanId]
+      );
+      const [childRows] = await db.query(
+        `
+          SELECT c.family_id, c.person_id, c.sort_order
+          FROM children c
+          INNER JOIN families f ON c.family_id = f.id
+          WHERE f.clan_id = ?
+          ORDER BY c.family_id, c.sort_order, c.id
+        `,
+        [clanId]
+      );
+      familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
 
       const [eventRows] = await db.query(
         `
@@ -203,6 +285,7 @@ exports.getDashboard = async (req, res) => {
         history: context.clan_history,
       },
       treeMembers,
+      familyTree,
       discoverItems,
       reminders,
     });
@@ -215,7 +298,8 @@ exports.getDashboard = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const accountId = req.user.id;
-    const { display_name, email, hometown, generation, family_id, spouse_id, children_ids } = req.body;
+    const { surname, middle_name, first_name, email, hometown, generation, family_id, spouse_id, children_ids } =
+      req.body;
     const hasFamilyField = Object.prototype.hasOwnProperty.call(req.body, "family_id");
     const hasSpouseField = Object.prototype.hasOwnProperty.call(req.body, "spouse_id");
     const hasChildrenField = Object.prototype.hasOwnProperty.call(req.body, "children_ids");
@@ -241,16 +325,37 @@ exports.updateProfile = async (req, res) => {
       return res.status(400).json({ success: false, message: "Một hoặc nhiều ID quan hệ không tồn tại trong bảng people" });
     }
 
-    if (email && email !== context.account_email) {
-      await db.query("UPDATE accounts SET email = ? WHERE id = ?", [email, accountId]);
+    if (email && String(email).trim() !== String(context.account_email || "").trim()) {
+      const [dupEmail] = await db.query("SELECT id FROM accounts WHERE email = ? AND id <> ?", [
+        String(email).trim(),
+        accountId,
+      ]);
+      if (dupEmail.length > 0) {
+        return res.status(400).json({ success: false, message: "Email đã được tài khoản khác sử dụng" });
+      }
+      await db.query("UPDATE accounts SET email = ? WHERE id = ?", [String(email).trim(), accountId]);
     }
 
-    await db.query("UPDATE people SET display_name = ?, hometown = ?, generation = ? WHERE id = ?", [
-      display_name || context.display_name || "",
-      hometown || context.hometown || "",
-      Number.isFinite(generationNumber) ? generationNumber : context.generation || 1,
-      context.person_id,
-    ]);
+    const nextSurname = surname !== undefined && surname !== null ? String(surname).trim() : (context.surname || "") || "";
+    const nextMiddle =
+      middle_name !== undefined && middle_name !== null ? String(middle_name).trim() : (context.middle_name || "") || "";
+    const nextFirst =
+      first_name !== undefined && first_name !== null ? String(first_name).trim() : (context.first_name || "") || "";
+    const nextDisplay =
+      buildDisplayNameFromParts(nextSurname, nextMiddle, nextFirst) || (context.display_name || "").trim() || "";
+
+    await db.query(
+      "UPDATE people SET surname = ?, middle_name = ?, first_name = ?, display_name = ?, hometown = ?, generation = ? WHERE id = ?",
+      [
+        nextSurname,
+        nextMiddle,
+        nextFirst,
+        nextDisplay,
+        hometown !== undefined && hometown !== null ? String(hometown).trim() : context.hometown || "",
+        Number.isFinite(generationNumber) ? generationNumber : context.generation || 1,
+        context.person_id,
+      ]
+    );
 
     // Tìm family đang sở hữu (nếu có)
     const [selfFamilyRows] = await db.query(
@@ -290,7 +395,10 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    if (hasSpouseField || hasChildrenField) {
+    // Chỉ tạo/sửa bản ghi families khi thực sự gửi vợ/chồng hoặc có ít nhất một ID con (tránh 400 khi client gửi children_ids rỗng)
+    const needsNewOrUpdateFamilyRow =
+      hasSpouseField || (hasChildrenField && childrenIds.length > 0);
+    if (needsNewOrUpdateFamilyRow) {
       if (!selfFamilyId) {
         if (!context.clan_id) {
           return res.status(400).json({
@@ -329,10 +437,14 @@ exports.updateProfile = async (req, res) => {
       message: "Cập nhật thông tin thành công",
       profile: {
         account_id: fresh.account_id,
+        person_id: fresh.person_id,
         role_id: fresh.role_id,
         status: fresh.status,
         email: fresh.account_email,
         display_name: fresh.display_name,
+        surname: fresh.surname,
+        middle_name: fresh.middle_name,
+        first_name: fresh.first_name,
         hometown: fresh.hometown,
         generation: fresh.generation,
         family_id: relations.family_id,
@@ -343,6 +455,53 @@ exports.updateProfile = async (req, res) => {
   } catch (error) {
     console.error("updateProfile error:", error);
     return res.status(500).json({ success: false, message: "Lỗi cập nhật thông tin" });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const { current_password, new_password } = req.body;
+    const cur = String(current_password ?? "");
+    const next = String(new_password ?? "").trim();
+
+    if (!next || next.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu mới phải có ít nhất 6 ký tự",
+      });
+    }
+    if (cur === "") {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập mật khẩu hiện tại" });
+    }
+
+    const [rows] = await db.query("SELECT password FROM accounts WHERE id = ? LIMIT 1", [accountId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản" });
+    }
+
+    const stored = rows[0].password;
+    let match = false;
+    try {
+      match = await bcrypt.compare(cur, stored);
+    } catch {
+      match = false;
+    }
+    if (!match && stored === cur) {
+      match = true;
+    }
+
+    if (!match) {
+      return res.status(401).json({ success: false, message: "Mật khẩu hiện tại không đúng" });
+    }
+
+    const hashed = await bcrypt.hash(next, 10);
+    await db.query("UPDATE accounts SET password = ? WHERE id = ?", [hashed, accountId]);
+
+    return res.json({ success: true, message: "Đã đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error("changePassword error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi đổi mật khẩu" });
   }
 };
 
