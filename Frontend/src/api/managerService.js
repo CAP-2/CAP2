@@ -1,9 +1,14 @@
 const BASE_URL = "/api/manager";
 
+/**
+ * Lấy Header chứa Token xác thực từ LocalStorage
+ */
 const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
 };
+
+// --- QUẢN LÝ THỐNG KÊ & THÀNH VIÊN ---
 
 export const getStats = async () => {
     try {
@@ -27,6 +32,44 @@ export const getMembers = async () => {
     }
 };
 
+/** Lấy quan hệ huyết thống (cha/mẹ) + hôn nhân (vợ/chồng, con) của một thành viên (account_id). */
+export const getMemberRelations = async (accountId) => {
+    try {
+        const res = await fetch(`${BASE_URL}/members/${accountId}/relations`, { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Không thể lấy quan hệ thành viên");
+        return data;
+    } catch (error) {
+        console.error("Lỗi getMemberRelations:", error);
+        throw error;
+    }
+};
+
+/**
+ * @param {number} accountId — account_id của thành viên
+ * @param {{ mode: 'bloodline'|'marriage', parent_father_id?: number|null, parent_mother_id?: number|null, family_id?: number|null, spouse_id?: number|null, children_ids?: number[]|string }} body
+ */
+export const updateMemberRelations = async (accountId, body) => {
+    try {
+        const res = await fetch(`${BASE_URL}/members/${accountId}/relations`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(),
+            },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Không thể lưu quan hệ");
+        return data;
+    } catch (error) {
+        console.error("Lỗi updateMemberRelations:", error);
+        throw error;
+    }
+};
+
+// --- QUẢN LÝ NGƯỜI DÙNG (CHỜ DUYỆT/DUYỆT/TỪ CHỐI) ---
+
 export const getPendingUsers = async () => {
     try {
         const res = await fetch(`${BASE_URL}/pending`, { headers: getAuthHeaders() });
@@ -47,7 +90,6 @@ export const approveUserAPI = async (id) => {
                 ...getAuthHeaders(),
             },
         });
-
         if (!res.ok) throw new Error("Duyệt người dùng thất bại");
         return await res.json();
     } catch (error) {
@@ -72,6 +114,8 @@ export const rejectUserAPI = async (id) => {
         throw error;
     }
 };
+
+// --- QUẢN LÝ BÀI VIẾT (PENDING POSTS) ---
 
 export const getPendingPosts = async () => {
     try {
@@ -111,6 +155,8 @@ export const rejectPostAPI = async (id) => {
         throw error;
     }
 };
+
+// --- QUẢN LÝ TRUYỀN THÔNG (MEDIA) ---
 
 export const getMediaAPI = async () => {
     try {

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./manager.css";
 import {
   getStats,
   getMembers,
+  getMemberRelations,
+  updateMemberRelations,
   getPendingUsers,
   approveUserAPI,
   rejectUserAPI,
@@ -26,6 +28,14 @@ const Manager = () => {
   const [activeSection, setActiveSection] = useState("members");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [lineageAccountId, setLineageAccountId] = useState("");
+  const [relationMode, setRelationMode] = useState("bloodline");
+  const [bloodlineForm, setBloodlineForm] = useState({ parent_father_id: "", parent_mother_id: "" });
+  const [marriageForm, setMarriageForm] = useState({ family_id: "", spouse_id: "", children_ids: "" });
+  const [lineageLoading, setLineageLoading] = useState(false);
+  const [lineageSaving, setLineageSaving] = useState(false);
+  const [lineageMsg, setLineageMsg] = useState("");
 
   const loadAll = async () => {
     setError("");
@@ -53,6 +63,79 @@ const Manager = () => {
   useEffect(() => {
     loadAll();
   }, []);
+
+  const loadLineageRelations = useCallback(async (accountId) => {
+    if (!accountId) return;
+    setLineageLoading(true);
+    setLineageMsg("");
+    try {
+      const data = await getMemberRelations(accountId);
+      if (data.bloodline) {
+        setBloodlineForm({
+          parent_father_id: data.bloodline.parent_father_id ?? "",
+          parent_mother_id: data.bloodline.parent_mother_id ?? "",
+        });
+      } else {
+        setBloodlineForm({ parent_father_id: "", parent_mother_id: "" });
+      }
+      const m = data.marriage || {};
+      setMarriageForm({
+        family_id: m.family_id ?? "",
+        spouse_id: m.spouse_id ?? "",
+        children_ids: Array.isArray(m.children_ids) ? m.children_ids.join(", ") : "",
+      });
+    } catch (e) {
+      setLineageMsg(e?.message || "Không thể tải quan hệ");
+    } finally {
+      setLineageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== "lineage" || !lineageAccountId) return;
+    loadLineageRelations(Number(lineageAccountId));
+  }, [activeSection, lineageAccountId, loadLineageRelations]);
+
+  const saveLineageRelations = async () => {
+    const id = Number(lineageAccountId);
+    if (!Number.isFinite(id)) {
+      setLineageMsg("Vui lòng chọn thành viên.");
+      return;
+    }
+    setLineageSaving(true);
+    setLineageMsg("");
+    try {
+      if (relationMode === "bloodline") {
+        const pf = String(bloodlineForm.parent_father_id).trim();
+        const pm = String(bloodlineForm.parent_mother_id).trim();
+        await updateMemberRelations(id, {
+          mode: "bloodline",
+          parent_father_id: pf === "" ? null : Number(pf),
+          parent_mother_id: pm === "" ? null : Number(pm),
+        });
+      } else {
+        const payload = { mode: "marriage" };
+        const fid = String(marriageForm.family_id).trim();
+        const sid = String(marriageForm.spouse_id).trim();
+        const kids = String(marriageForm.children_ids).trim();
+        if (fid !== "") payload.family_id = Number(fid);
+        if (sid !== "") payload.spouse_id = Number(sid);
+        if (kids !== "") {
+          payload.children_ids = kids
+            .split(",")
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isFinite(n));
+        }
+        await updateMemberRelations(id, payload);
+      }
+      setLineageMsg("Đã lưu quan hệ vào cơ sở dữ liệu.");
+      await loadLineageRelations(id);
+    } catch (e) {
+      setLineageMsg(e?.message || "Không thể lưu quan hệ");
+    } finally {
+      setLineageSaving(false);
+    }
+  };
 
   const doApprove = async (id) => {
     await approveUserAPI(id);
@@ -352,12 +435,172 @@ const Manager = () => {
         ) : null}
 
         {activeSection === "lineage" ? (
-          <section className="mgr-panel">
+          <section className="mgr-panel" style={{ maxWidth: "720px" }}>
             <div className="mgr-panelTitle">Quản lý dữ liệu gia phả (Lineage Management)</div>
             <div className="mgr-panelText">
-              Tạo mới, cập nhật và liên kết các thành viên để xây dựng cây gia phả kỹ thuật số.
+              Chọn thành viên, sau đó dùng một trong hai chế độ: <strong>chỉ định huyết thống</strong> (gắn người này là con
+              của cha/mẹ trong cùng dòng họ) hoặc <strong>chỉ định hôn nhân</strong> (vợ/chồng và các con — cùng logic lưu
+              bảng <code>families</code> / <code>children</code> như trang thành viên). Dữ liệu được gửi lên API và lưu MySQL.
             </div>
-            <div className="mgr-panelEmpty">Chưa triển khai backend. Bạn có thể yêu cầu mình làm CRUD + liên kết cha/mẹ/vợ/chồng/con.</div>
+
+            <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <label className="mgr-listHint" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                Thành viên
+                <select
+                  className="mgr-inputLike"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--mgr-border)",
+                    background: "var(--mgr-surface)",
+                    color: "var(--mgr-text-main)",
+                    fontSize: "0.95rem",
+                  }}
+                  value={lineageAccountId}
+                  onChange={(e) => setLineageAccountId(e.target.value)}
+                >
+                  <option value="">— Chọn thành viên —</option>
+                  {members.map((m) => (
+                    <option key={m.account_id} value={m.account_id}>
+                      {m.surname} {m.first_name} · account #{m.account_id}
+                      {m.person_id != null ? ` · person #${m.person_id}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "center" }}>
+                <span className="mgr-listHint">Chế độ chỉ định:</span>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="mgr-relation-mode"
+                    checked={relationMode === "bloodline"}
+                    onChange={() => setRelationMode("bloodline")}
+                  />
+                  Huyết thống (cha / mẹ → con)
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="mgr-relation-mode"
+                    checked={relationMode === "marriage"}
+                    onChange={() => setRelationMode("marriage")}
+                  />
+                  Hôn nhân (vợ/chồng, con)
+                </label>
+              </div>
+
+              {lineageLoading ? <div className="mgr-subtle">Đang tải quan hệ hiện tại…</div> : null}
+
+              {relationMode === "bloodline" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <label className="mgr-listHint" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    ID cha (people.id, có thể để trống một phía)
+                    <input
+                      type="number"
+                      value={bloodlineForm.parent_father_id}
+                      onChange={(e) => setBloodlineForm((p) => ({ ...p, parent_father_id: e.target.value }))}
+                      placeholder="VD: 12"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--mgr-border)",
+                        background: "var(--mgr-bg)",
+                      }}
+                    />
+                  </label>
+                  <label className="mgr-listHint" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    ID mẹ (people.id)
+                    <input
+                      type="number"
+                      value={bloodlineForm.parent_mother_id}
+                      onChange={(e) => setBloodlineForm((p) => ({ ...p, parent_mother_id: e.target.value }))}
+                      placeholder="VD: 15"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--mgr-border)",
+                        background: "var(--mgr-bg)",
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+                  <label className="mgr-listHint" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    ID families (tùy chọn)
+                    <input
+                      type="number"
+                      value={marriageForm.family_id}
+                      onChange={(e) => setMarriageForm((p) => ({ ...p, family_id: e.target.value }))}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--mgr-border)",
+                        background: "var(--mgr-bg)",
+                      }}
+                    />
+                  </label>
+                  <label className="mgr-listHint" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    ID vợ/chồng (people.id)
+                    <input
+                      type="number"
+                      value={marriageForm.spouse_id}
+                      onChange={(e) => setMarriageForm((p) => ({ ...p, spouse_id: e.target.value }))}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--mgr-border)",
+                        background: "var(--mgr-bg)",
+                      }}
+                    />
+                  </label>
+                  <label
+                    className="mgr-listHint"
+                    style={{ display: "flex", flexDirection: "column", gap: "6px", gridColumn: "1 / -1" }}
+                  >
+                    ID các con (people.id, cách nhau bởi dấu phẩy)
+                    <input
+                      value={marriageForm.children_ids}
+                      onChange={(e) => setMarriageForm((p) => ({ ...p, children_ids: e.target.value }))}
+                      placeholder="VD: 20, 21"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--mgr-border)",
+                        background: "var(--mgr-bg)",
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+
+              {lineageMsg ? (
+                <div className={lineageMsg.includes("lưu") && !lineageMsg.includes("Không") ? "mgr-subtle" : "mgr-alert"}>
+                  {lineageMsg}
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  className="mgr-btnPrimary"
+                  type="button"
+                  disabled={!lineageAccountId || lineageSaving}
+                  onClick={saveLineageRelations}
+                >
+                  {lineageSaving ? "Đang lưu…" : "Lưu lên database"}
+                </button>
+                <button
+                  className="mgr-btnGhost"
+                  type="button"
+                  disabled={!lineageAccountId || lineageLoading}
+                  onClick={() => lineageAccountId && loadLineageRelations(Number(lineageAccountId))}
+                >
+                  Tải lại quan hệ
+                </button>
+              </div>
+            </div>
           </section>
         ) : null}
 
