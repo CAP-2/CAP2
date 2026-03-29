@@ -2,7 +2,7 @@ Cách chạy DB
 
 Bước 1: Truy cập vào thư mục chứa file cấu hình
 cd "D:\Visua Studio Code\CAP2\docker"
-
+ABC TEST
 chạy:
 docker compose down -v
 docker compose up -d --build
