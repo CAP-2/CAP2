@@ -9,8 +9,11 @@ const {
 // Chỉ Admin (1) và Manager (2) mới được truy cập manager dashboard
 router.get('/stats', verifyToken, checkRole([1, 2]), managerController.getStats);
 router.get('/members', verifyToken, checkRole([1, 2]), managerController.getAllMembers);
+router.post('/members', verifyToken, checkRole([1, 2]), managerController.createMember);
 router.get('/members/:id/relations', verifyToken, checkRole([1, 2]), managerController.getMemberRelations);
 router.put('/members/:id/relations', verifyToken, checkRole([1, 2]), managerController.updateMemberRelations);
+router.get('/members/:id', verifyToken, checkRole([1, 2]), managerController.getMemberDetail);
+router.put('/members/:id', verifyToken, checkRole([1, 2]), managerController.updateMemberByManager);
 router.get('/pending', verifyToken, checkRole([1, 2]), managerController.getPendingUsers);
 
 // Admin (1) và Manager (2) đều có thể duyệt/từ chối tài khoản chờ

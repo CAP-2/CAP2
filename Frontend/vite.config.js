@@ -6,7 +6,8 @@ export default defineConfig({
     server: {
         proxy: {
             '/api': {
-                target: 'http://localhost:3000', // Cổng Backend đang chạy bằng nodemon
+                // Phải trùng với PORT trong Backend (server.js: process.env.PORT || 3000)
+                target: 'http://localhost:3000',
                 changeOrigin: true,
                 rewrite: (path) => path, // Giữ nguyên path '/api/auth/login', '/api/manager/*'
             }

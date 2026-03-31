@@ -32,6 +32,26 @@ export const getMembers = async () => {
     }
 };
 
+/** Tạo thành viên mới (account active + people). Manager: tự gắn clan; Admin: gửi clan_id trong body. */
+export const createMember = async (payload) => {
+    try {
+        const res = await fetch(`${BASE_URL}/members`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(),
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Không thể tạo thành viên");
+        return data;
+    } catch (error) {
+        console.error("Lỗi createMember:", error);
+        throw error;
+    }
+};
+
 /** Lấy quan hệ huyết thống (cha/mẹ) + hôn nhân (vợ/chồng, con) của một thành viên (account_id). */
 export const getMemberRelations = async (accountId) => {
     try {
@@ -64,6 +84,37 @@ export const updateMemberRelations = async (accountId, body) => {
         return data;
     } catch (error) {
         console.error("Lỗi updateMemberRelations:", error);
+        throw error;
+    }
+};
+
+export const getMemberDetail = async (accountId) => {
+    try {
+        const res = await fetch(`${BASE_URL}/members/${accountId}`, { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Không thể lấy chi tiết thành viên");
+        return data;
+    } catch (error) {
+        console.error("Lỗi getMemberDetail:", error);
+        throw error;
+    }
+};
+
+export const updateMemberByManager = async (accountId, body) => {
+    try {
+        const res = await fetch(`${BASE_URL}/members/${accountId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(),
+            },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "Không thể cập nhật thành viên");
+        return data;
+    } catch (error) {
+        console.error("Lỗi updateMemberByManager:", error);
         throw error;
     }
 };

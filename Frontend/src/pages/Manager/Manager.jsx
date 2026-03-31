@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./manager.css";
 import {
   getStats,
   getMembers,
   getMemberRelations,
   updateMemberRelations,
+  getMemberDetail,
+  updateMemberByManager,
+  createMember,
   getPendingUsers,
   approveUserAPI,
   rejectUserAPI,
@@ -13,8 +17,86 @@ import {
   rejectPostAPI,
   getMediaAPI,
 } from "../../api/managerService";
+import {
+  getMemberDashboard,
+  updateMemberProfile,
+  changeMemberPassword,
+} from "../../api/memberService";
+
+function readSessionUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+const emptyMemberEditForm = () => ({
+  email: "",
+  status: "active",
+  role_id: "3",
+  new_password: "",
+  surname: "",
+  middle_name: "",
+  first_name: "",
+  gender: "1",
+  birth_date: "",
+  death_date: "",
+  is_living: "1",
+  generation: "1",
+  branch: "",
+  hometown: "",
+  address: "",
+  phone: "",
+  people_email: "",
+  zalo: "",
+  facebook: "",
+  avatar_url: "",
+  bio: "",
+  note: "",
+  clan_id: "",
+  family_id: "",
+  spouse_id: "",
+  children_ids: "",
+  parent_father_id: "",
+  parent_mother_id: "",
+});
+
+function mapMemberToForm(m) {
+  return {
+    email: m.email || "",
+    status: m.status || "active",
+    role_id: String(m.role_id ?? 3),
+    new_password: "",
+    surname: m.surname ?? "",
+    middle_name: m.middle_name ?? "",
+    first_name: m.first_name ?? "",
+    gender: m.gender == null || m.gender === "" ? "" : String(m.gender),
+    birth_date: m.birth_date || "",
+    death_date: m.death_date || "",
+    is_living: m.is_living === 0 || m.is_living === false ? "0" : "1",
+    generation: m.generation != null ? String(m.generation) : "1",
+    branch: m.branch != null ? String(m.branch) : "",
+    hometown: m.hometown || "",
+    address: m.address || "",
+    phone: m.phone || "",
+    people_email: m.people_email || "",
+    zalo: m.zalo || "",
+    facebook: m.facebook || "",
+    avatar_url: m.avatar_url || "",
+    bio: m.bio || "",
+    note: m.note || "",
+    clan_id: m.clan_id != null ? String(m.clan_id) : "",
+    family_id: m.marriage?.family_id != null ? String(m.marriage.family_id) : "",
+    spouse_id: m.marriage?.spouse_id != null ? String(m.marriage.spouse_id) : "",
+    children_ids: Array.isArray(m.marriage?.children_ids) ? m.marriage.children_ids.join(", ") : "",
+    parent_father_id: m.bloodline?.parent_father_id != null ? String(m.bloodline.parent_father_id) : "",
+    parent_mother_id: m.bloodline?.parent_mother_id != null ? String(m.bloodline.parent_mother_id) : "",
+  };
+}
 
 const Manager = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     total_members: 0,
     total_managers: 0,
@@ -25,9 +107,50 @@ const Manager = () => {
   const [pendingPosts, setPendingPosts] = useState([]);
   const [mediaList, setMediaList] = useState([]);
   const [search, setSearch] = useState("");
-  const [activeSection, setActiveSection] = useState("members");
+  const [activeSection, setActiveSection] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const sessionRoleId = readSessionUser().role_id;
+  const [overviewCreate, setOverviewCreate] = useState({
+    email: "",
+    password: "",
+    surname: "",
+    middle_name: "",
+    first_name: "",
+    gender: "1",
+    birth_date: "",
+    hometown: "",
+    generation: "1",
+    clan_id: "",
+  });
+  const [overviewCreateMsg, setOverviewCreateMsg] = useState("");
+  const [overviewCreateSaving, setOverviewCreateSaving] = useState(false);
+
+  const [managerMeta, setManagerMeta] = useState({ person_id: null, role_id: null });
+  const [overviewAccount, setOverviewAccount] = useState({
+    email: "",
+    surname: "",
+    middle_name: "",
+    first_name: "",
+    hometown: "",
+    generation: "",
+  });
+  const [overviewPassword, setOverviewPassword] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [overviewAccountMsg, setOverviewAccountMsg] = useState("");
+  const [overviewAccountLoading, setOverviewAccountLoading] = useState(false);
+  const [overviewAccountSaving, setOverviewAccountSaving] = useState(false);
+  const [overviewPasswordSaving, setOverviewPasswordSaving] = useState(false);
+
+  const [memberEditId, setMemberEditId] = useState(null);
+  const [memberEditLoading, setMemberEditLoading] = useState(false);
+  const [memberEditSaving, setMemberEditSaving] = useState(false);
+  const [memberEditMsg, setMemberEditMsg] = useState("");
+  const [memberEditForm, setMemberEditForm] = useState(() => emptyMemberEditForm());
 
   const [lineageAccountId, setLineageAccountId] = useState("");
   const [relationMode, setRelationMode] = useState("bloodline");
@@ -63,6 +186,239 @@ const Manager = () => {
   useEffect(() => {
     loadAll();
   }, []);
+
+  useEffect(() => {
+    if (!memberEditId) {
+      setMemberEditForm(emptyMemberEditForm());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setMemberEditLoading(true);
+      setMemberEditMsg("");
+      try {
+        const data = await getMemberDetail(memberEditId);
+        if (cancelled) return;
+        setMemberEditForm(mapMemberToForm(data.member));
+      } catch (e) {
+        if (!cancelled) setMemberEditMsg(e?.message || "Không tải được chi tiết thành viên");
+      } finally {
+        if (!cancelled) setMemberEditLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [memberEditId]);
+
+  const saveMemberEdit = async () => {
+    if (!memberEditId) return;
+    setMemberEditSaving(true);
+    setMemberEditMsg("");
+    try {
+      const f = memberEditForm;
+      const payload = {
+        email: f.email.trim(),
+        status: f.status,
+        surname: f.surname,
+        middle_name: f.middle_name,
+        first_name: f.first_name,
+        gender: f.gender === "" ? null : Number(f.gender),
+        birth_date: f.birth_date || null,
+        death_date: f.death_date || null,
+        is_living: f.is_living === "1",
+        generation: Number(f.generation) || 1,
+        branch: f.branch.trim() === "" ? null : Number(f.branch),
+        hometown: f.hometown,
+        address: f.address,
+        phone: f.phone,
+        people_email: f.people_email,
+        zalo: f.zalo,
+        facebook: f.facebook,
+        avatar_url: f.avatar_url.trim() === "" ? null : f.avatar_url.trim(),
+        bio: f.bio,
+        note: f.note,
+        children_ids:
+          f.children_ids.trim() === ""
+            ? []
+            : f.children_ids
+                .split(",")
+                .map((s) => Number(s.trim()))
+                .filter((n) => Number.isFinite(n)),
+      };
+      if (f.new_password.trim()) payload.new_password = f.new_password.trim();
+      if (sessionRoleId === 1) {
+        payload.role_id = Number(f.role_id);
+        if (f.clan_id.trim() !== "") payload.clan_id = Number(f.clan_id);
+      }
+      const fid = f.family_id.trim();
+      const sid = f.spouse_id.trim();
+      if (fid !== "") payload.family_id = Number(fid);
+      if (sid !== "") payload.spouse_id = Number(sid);
+      const pf = f.parent_father_id.trim();
+      const pm = f.parent_mother_id.trim();
+      if (pf !== "" || pm !== "") {
+        payload.parent_father_id = pf === "" ? null : Number(pf);
+        payload.parent_mother_id = pm === "" ? null : Number(pm);
+      }
+      const res = await updateMemberByManager(memberEditId, payload);
+      setMemberEditMsg("Đã lưu thành công.");
+      setMemberEditForm(mapMemberToForm(res.member));
+      await loadAll();
+    } catch (e) {
+      setMemberEditMsg(e?.message || "Không thể lưu");
+    } finally {
+      setMemberEditSaving(false);
+    }
+  };
+
+  const loadOverviewProfile = useCallback(async () => {
+    setOverviewAccountLoading(true);
+    setOverviewAccountMsg("");
+    try {
+      const dash = await getMemberDashboard();
+      const p = dash.profile || {};
+      setManagerMeta({ person_id: p.person_id ?? null, role_id: p.role_id ?? null });
+      setOverviewAccount({
+        email: p.email || "",
+        surname: p.surname ?? "",
+        middle_name: p.middle_name ?? "",
+        first_name: p.first_name ?? "",
+        hometown: p.hometown || "",
+        generation: p.generation ?? "",
+      });
+    } catch (e) {
+      setOverviewAccountMsg(
+        e?.message || "Không tải được hồ sơ (tài khoản có thể chưa gắn người trong phả hệ — chỉ chỉnh được khi có person_id)."
+      );
+      setManagerMeta({ person_id: null, role_id: readSessionUser().role_id ?? null });
+    } finally {
+      setOverviewAccountLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== "overview") return;
+    loadOverviewProfile();
+  }, [activeSection, loadOverviewProfile]);
+
+  const submitOverviewCreateMember = async () => {
+    setOverviewCreateMsg("");
+    setOverviewCreateSaving(true);
+    try {
+      const payload = {
+        email: overviewCreate.email.trim(),
+        password: overviewCreate.password,
+        surname: overviewCreate.surname.trim(),
+        middle_name: overviewCreate.middle_name.trim(),
+        first_name: overviewCreate.first_name.trim(),
+        gender: overviewCreate.gender === "" ? null : Number(overviewCreate.gender),
+        birth_date: overviewCreate.birth_date.trim() || null,
+        hometown: overviewCreate.hometown.trim(),
+        generation:
+          overviewCreate.generation.trim() === "" ? 1 : Number(overviewCreate.generation),
+      };
+      if (sessionRoleId === 1) {
+        const cid = Number(overviewCreate.clan_id);
+        if (!Number.isFinite(cid)) {
+          setOverviewCreateMsg("Admin cần nhập mã dòng họ (clan_id).");
+          return;
+        }
+        payload.clan_id = cid;
+      }
+      await createMember(payload);
+      setOverviewCreateMsg("Đã tạo thành viên và kích hoạt tài khoản.");
+      setOverviewCreate((p) => ({
+        ...p,
+        email: "",
+        password: "",
+        surname: "",
+        middle_name: "",
+        first_name: "",
+        birth_date: "",
+        hometown: "",
+      }));
+      await loadAll();
+    } catch (e) {
+      setOverviewCreateMsg(e?.message || "Không thể tạo thành viên");
+    } finally {
+      setOverviewCreateSaving(false);
+    }
+  };
+
+  const saveOverviewAccount = async () => {
+    setOverviewAccountMsg("");
+    if (managerMeta.person_id == null) {
+      setOverviewAccountMsg("Tài khoản chưa liên kết hồ sơ người (person) — không thể lưu qua API này.");
+      return;
+    }
+    const genRaw = String(overviewAccount.generation).trim();
+    const genNum = genRaw === "" ? null : Number(genRaw);
+    if (genRaw !== "" && !Number.isFinite(genNum)) {
+      setOverviewAccountMsg("Đời (generation) phải là số hợp lệ hoặc để trống.");
+      return;
+    }
+    setOverviewAccountSaving(true);
+    try {
+      await updateMemberProfile({
+        surname: overviewAccount.surname,
+        middle_name: overviewAccount.middle_name,
+        first_name: overviewAccount.first_name,
+        email: overviewAccount.email,
+        hometown: overviewAccount.hometown,
+        generation: genNum,
+      });
+      const prev = readSessionUser();
+      const merged = {
+        ...prev,
+        name:
+          [overviewAccount.surname, overviewAccount.middle_name, overviewAccount.first_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || prev.name,
+        email: overviewAccount.email.trim() || prev.email,
+        hometown: overviewAccount.hometown || prev.hometown,
+      };
+      localStorage.setItem("user", JSON.stringify(merged));
+      setOverviewAccountMsg("Đã cập nhật thông tin tài khoản.");
+      await loadOverviewProfile();
+    } catch (e) {
+      setOverviewAccountMsg(e?.message || "Không thể lưu hồ sơ");
+    } finally {
+      setOverviewAccountSaving(false);
+    }
+  };
+
+  const saveOverviewPassword = async () => {
+    setOverviewAccountMsg("");
+    if (overviewPassword.next !== overviewPassword.confirm) {
+      setOverviewAccountMsg("Mật khẩu mới và nhập lại không khớp.");
+      return;
+    }
+    if (overviewPassword.next.length < 6) {
+      setOverviewAccountMsg("Mật khẩu mới cần ít nhất 6 ký tự.");
+      return;
+    }
+    setOverviewPasswordSaving(true);
+    try {
+      await changeMemberPassword({
+        current_password: overviewPassword.current,
+        new_password: overviewPassword.next,
+      });
+      setOverviewPassword({ current: "", next: "", confirm: "" });
+      setOverviewAccountMsg("Đã đổi mật khẩu thành công.");
+    } catch (e) {
+      setOverviewAccountMsg(e?.message || "Không thể đổi mật khẩu");
+    } finally {
+      setOverviewPasswordSaving(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
+  };
 
   const loadLineageRelations = useCallback(async (accountId) => {
     if (!accountId) return;
@@ -286,6 +642,9 @@ const Manager = () => {
             <button className="mgr-iconBtn" type="button" onClick={loadAll} title="Tải lại">
               ↻
             </button>
+            <button className="mgr-btnGhost mgr-logoutBtn" type="button" onClick={logout} title="Đăng xuất">
+              Đăng xuất
+            </button>
           </div>
         </div>
 
@@ -313,20 +672,225 @@ const Manager = () => {
 
         {activeSection === "overview" ? (
           <section className="mgr-grid2">
-            <div className="mgr-panel">
-              <div className="mgr-panelTitle">Quản lý dữ liệu gia phả (Lineage)</div>
+            <div className="mgr-panel mgr-panel--wide">
+              <div className="mgr-panelTitle">Tạo thành viên mới</div>
               <div className="mgr-panelText">
-                Tạo mới, cập nhật và liên kết các thành viên để xây dựng cây gia phả kỹ thuật số.
+                Thêm tài khoản Member (đã kích hoạt) vào đúng dòng họ của bạn. Thành viên có thể đăng nhập bằng email và mật
+                khẩu bạn đặt. Sau đó có thể chỉnh quan hệ tại mục Lineage Management.
               </div>
-              <div className="mgr-panelEmpty">Chưa có backend. Hiện mới dựng UI.</div>
+              <div className="mgr-overviewFormGrid">
+                <input
+                  className="mgr-field"
+                  type="email"
+                  placeholder="Email đăng nhập *"
+                  value={overviewCreate.email}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, email: e.target.value }))}
+                  autoComplete="off"
+                />
+                <input
+                  className="mgr-field"
+                  type="password"
+                  placeholder="Mật khẩu (≥6 ký tự) *"
+                  value={overviewCreate.password}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, password: e.target.value }))}
+                  autoComplete="new-password"
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Họ *"
+                  value={overviewCreate.surname}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, surname: e.target.value }))}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Tên đệm"
+                  value={overviewCreate.middle_name}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, middle_name: e.target.value }))}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Tên *"
+                  value={overviewCreate.first_name}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, first_name: e.target.value }))}
+                />
+                <select
+                  className="mgr-field"
+                  value={overviewCreate.gender}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, gender: e.target.value }))}
+                >
+                  <option value="1">Nam</option>
+                  <option value="2">Nữ</option>
+                  <option value="">Không khai báo</option>
+                </select>
+                <input
+                  className="mgr-field"
+                  type="date"
+                  value={overviewCreate.birth_date}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, birth_date: e.target.value }))}
+                />
+                <input
+                  className="mgr-field"
+                  type="number"
+                  min={1}
+                  placeholder="Đời (generation)"
+                  value={overviewCreate.generation}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, generation: e.target.value }))}
+                />
+                <input
+                  className="mgr-field"
+                  style={{ gridColumn: sessionRoleId === 1 ? "span 1" : "1 / -1" }}
+                  placeholder="Quê quán"
+                  value={overviewCreate.hometown}
+                  onChange={(e) => setOverviewCreate((p) => ({ ...p, hometown: e.target.value }))}
+                />
+                {sessionRoleId === 1 ? (
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="Mã dòng họ (clan_id) *"
+                    value={overviewCreate.clan_id}
+                    onChange={(e) => setOverviewCreate((p) => ({ ...p, clan_id: e.target.value }))}
+                  />
+                ) : null}
+              </div>
+              {overviewCreateMsg ? (
+                <div className={overviewCreateMsg.startsWith("Đã ") ? "mgr-subtle" : "mgr-alert"} style={{ marginTop: 10 }}>
+                  {overviewCreateMsg}
+                </div>
+              ) : null}
+              <div className="mgr-panelActions" style={{ marginTop: 12 }}>
+                <button
+                  className="mgr-btnPrimary"
+                  type="button"
+                  disabled={overviewCreateSaving}
+                  onClick={submitOverviewCreateMember}
+                >
+                  {overviewCreateSaving ? "Đang tạo…" : "Tạo thành viên"}
+                </button>
+                <button className="mgr-btnGhost" type="button" onClick={() => setActiveSection("lineage")}>
+                  Liên kết quan hệ (Lineage)
+                </button>
+              </div>
+            </div>
+
+            <div className="mgr-panel mgr-panel--wide">
+              <div className="mgr-panelTitle">Thông tin tài khoản của bạn</div>
+              <div className="mgr-panelText">
+                Chỉnh họ tên, email, quê quán, đời — cùng API với trang thành viên. Đổi mật khẩu cần nhập đúng mật khẩu hiện
+                tại.
+              </div>
+              {overviewAccountLoading ? <div className="mgr-subtle">Đang tải hồ sơ…</div> : null}
+              <div className="mgr-overviewFormGrid" style={{ marginTop: 10 }}>
+                <input
+                  className="mgr-field"
+                  type="email"
+                  placeholder="Email"
+                  value={overviewAccount.email}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, email: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Họ"
+                  value={overviewAccount.surname}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, surname: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Tên đệm"
+                  value={overviewAccount.middle_name}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, middle_name: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Tên"
+                  value={overviewAccount.first_name}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, first_name: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+                <input
+                  className="mgr-field"
+                  placeholder="Quê quán"
+                  value={overviewAccount.hometown}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, hometown: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+                <input
+                  className="mgr-field"
+                  type="number"
+                  min={1}
+                  placeholder="Đời"
+                  value={overviewAccount.generation}
+                  onChange={(e) => setOverviewAccount((p) => ({ ...p, generation: e.target.value }))}
+                  disabled={managerMeta.person_id == null}
+                />
+              </div>
               <div className="mgr-panelActions">
-                <button className="mgr-btnPrimary" type="button" disabled>
-                  Tạo thành viên mới
+                <button
+                  className="mgr-btnPrimary"
+                  type="button"
+                  disabled={overviewAccountSaving || managerMeta.person_id == null}
+                  onClick={saveOverviewAccount}
+                >
+                  {overviewAccountSaving ? "Đang lưu…" : "Lưu hồ sơ"}
                 </button>
-                <button className="mgr-btnGhost" type="button" disabled>
-                  Liên kết quan hệ
+                <button className="mgr-btnGhost" type="button" onClick={loadOverviewProfile} disabled={overviewAccountLoading}>
+                  Tải lại hồ sơ
                 </button>
               </div>
+              <div className="mgr-panelTitle" style={{ marginTop: 18, fontSize: "0.95rem" }}>
+                Đổi mật khẩu
+              </div>
+              <div className="mgr-overviewFormGrid">
+                <input
+                  className="mgr-field"
+                  type="password"
+                  placeholder="Mật khẩu hiện tại"
+                  value={overviewPassword.current}
+                  onChange={(e) => setOverviewPassword((p) => ({ ...p, current: e.target.value }))}
+                  autoComplete="current-password"
+                />
+                <input
+                  className="mgr-field"
+                  type="password"
+                  placeholder="Mật khẩu mới"
+                  value={overviewPassword.next}
+                  onChange={(e) => setOverviewPassword((p) => ({ ...p, next: e.target.value }))}
+                  autoComplete="new-password"
+                />
+                <input
+                  className="mgr-field"
+                  type="password"
+                  placeholder="Nhập lại mật khẩu mới"
+                  value={overviewPassword.confirm}
+                  onChange={(e) => setOverviewPassword((p) => ({ ...p, confirm: e.target.value }))}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="mgr-panelActions">
+                <button
+                  className="mgr-btnPrimary"
+                  type="button"
+                  disabled={overviewPasswordSaving}
+                  onClick={saveOverviewPassword}
+                >
+                  {overviewPasswordSaving ? "Đang đổi…" : "Đổi mật khẩu"}
+                </button>
+              </div>
+              {overviewAccountMsg ? (
+                <div
+                  className={
+                    overviewAccountMsg.includes("thành công") || overviewAccountMsg.includes("Đã ")
+                      ? "mgr-subtle"
+                      : "mgr-alert"
+                  }
+                  style={{ marginTop: 10 }}
+                >
+                  {overviewAccountMsg}
+                </div>
+              ) : null}
             </div>
 
             <div className="mgr-panel">
@@ -372,13 +936,28 @@ const Manager = () => {
               <div className="mgr-listHint">
                 {activeSection === "approvals"
                   ? "Duyệt/từ chối tài khoản (dữ liệu từ backend)."
-                  : "Danh sách thành viên (dữ liệu từ backend)."}
+                  : "Nhấn vào một thẻ để mở form chỉnh sửa toàn bộ hồ sơ, tài khoản và quan hệ."}
               </div>
             </div>
 
             <div className="mgr-cardGrid">
               {filteredMembers.map((user) => (
-                <div className="mgr-card" key={user.account_id}>
+                <div
+                  className={`mgr-card ${activeSection === "members" ? "mgr-card--clickable" : ""}`}
+                  key={user.account_id}
+                  role={activeSection === "members" ? "button" : undefined}
+                  tabIndex={activeSection === "members" ? 0 : undefined}
+                  onClick={() => {
+                    if (activeSection === "members") setMemberEditId(user.account_id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (activeSection !== "members") return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setMemberEditId(user.account_id);
+                    }
+                  }}
+                >
                   <div className="mgr-cardCover">
                     <div className="mgr-dot" aria-hidden="true" />
                     <div className="mgr-chip">Đời {user.generation ?? "—"}</div>
@@ -415,10 +994,24 @@ const Manager = () => {
 
                     {activeSection === "approvals" ? (
                       <div className="mgr-cardActions">
-                        <button className="mgr-btnOk" onClick={() => doApprove(user.account_id)}>
+                        <button
+                          className="mgr-btnOk"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            doApprove(user.account_id);
+                          }}
+                        >
                           Duyệt
                         </button>
-                        <button className="mgr-btnDanger" onClick={() => doReject(user.account_id)}>
+                        <button
+                          className="mgr-btnDanger"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            doReject(user.account_id);
+                          }}
+                        >
                           Từ chối
                         </button>
                       </div>
@@ -721,6 +1314,288 @@ const Manager = () => {
           </section>
         ) : null}
       </main>
+
+      {memberEditId ? (
+        <div
+          className="mgr-modalOverlay"
+          role="presentation"
+          onClick={() => !memberEditSaving && setMemberEditId(null)}
+        >
+          <div
+            className="mgr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mgr-member-edit-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="mgr-modalClose"
+              aria-label="Đóng"
+              disabled={memberEditSaving}
+              onClick={() => setMemberEditId(null)}
+            >
+              ×
+            </button>
+            <h2 className="mgr-modalTitle" id="mgr-member-edit-title">
+              Chỉnh sửa thành viên
+            </h2>
+            <p className="mgr-modalMeta">Tài khoản #{memberEditId}</p>
+
+            {memberEditLoading ? (
+              <div className="mgr-subtle">Đang tải dữ liệu…</div>
+            ) : (
+              <>
+                <div className="mgr-modalSectionTitle">Tài khoản</div>
+                <div className="mgr-overviewFormGrid mgr-modalGrid">
+                  <input
+                    className="mgr-field"
+                    type="email"
+                    placeholder="Email đăng nhập"
+                    value={memberEditForm.email}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, email: e.target.value }))}
+                  />
+                  <select
+                    className="mgr-field"
+                    value={memberEditForm.status}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, status: e.target.value }))}
+                  >
+                    <option value="active">active</option>
+                    <option value="pending">pending</option>
+                    <option value="rejected">rejected</option>
+                  </select>
+                  {sessionRoleId === 1 ? (
+                    <>
+                      <select
+                        className="mgr-field"
+                        value={memberEditForm.role_id}
+                        onChange={(e) => setMemberEditForm((p) => ({ ...p, role_id: e.target.value }))}
+                      >
+                        <option value="3">Member</option>
+                        <option value="2">Manager</option>
+                      </select>
+                      <input
+                        className="mgr-field"
+                        type="number"
+                        placeholder="clan_id (dòng họ)"
+                        value={memberEditForm.clan_id}
+                        onChange={(e) => setMemberEditForm((p) => ({ ...p, clan_id: e.target.value }))}
+                      />
+                    </>
+                  ) : null}
+                  <input
+                    className="mgr-field"
+                    style={{ gridColumn: "1 / -1" }}
+                    type="password"
+                    placeholder="Mật khẩu mới (để trống nếu không đổi)"
+                    value={memberEditForm.new_password}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, new_password: e.target.value }))}
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                <div className="mgr-modalSectionTitle">Hồ sơ người (people)</div>
+                <div className="mgr-overviewFormGrid mgr-modalGrid">
+                  <input
+                    className="mgr-field"
+                    placeholder="Họ"
+                    value={memberEditForm.surname}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, surname: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Tên đệm"
+                    value={memberEditForm.middle_name}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, middle_name: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Tên"
+                    value={memberEditForm.first_name}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, first_name: e.target.value }))}
+                  />
+                  <select
+                    className="mgr-field"
+                    value={memberEditForm.gender}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, gender: e.target.value }))}
+                  >
+                    <option value="1">Nam</option>
+                    <option value="2">Nữ</option>
+                    <option value="">Không khai báo</option>
+                  </select>
+                  <input
+                    className="mgr-field"
+                    type="date"
+                    value={memberEditForm.birth_date}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, birth_date: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    type="date"
+                    placeholder="Ngày mất"
+                    value={memberEditForm.death_date}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, death_date: e.target.value }))}
+                  />
+                  <select
+                    className="mgr-field"
+                    value={memberEditForm.is_living}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, is_living: e.target.value }))}
+                  >
+                    <option value="1">Còn sống</option>
+                    <option value="0">Đã mất</option>
+                  </select>
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    min={1}
+                    placeholder="Đời"
+                    value={memberEditForm.generation}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, generation: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="Chi (branch)"
+                    value={memberEditForm.branch}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, branch: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Quê quán"
+                    value={memberEditForm.hometown}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, hometown: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    style={{ gridColumn: "1 / -1" }}
+                    placeholder="Địa chỉ"
+                    value={memberEditForm.address}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, address: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Điện thoại"
+                    value={memberEditForm.phone}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, phone: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    type="email"
+                    placeholder="Email (trong hồ sơ people)"
+                    value={memberEditForm.people_email}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, people_email: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Zalo"
+                    value={memberEditForm.zalo}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, zalo: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    placeholder="Facebook"
+                    value={memberEditForm.facebook}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, facebook: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    style={{ gridColumn: "1 / -1" }}
+                    placeholder="URL ảnh đại diện"
+                    value={memberEditForm.avatar_url}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, avatar_url: e.target.value }))}
+                  />
+                  <textarea
+                    className="mgr-field mgr-fieldTextarea"
+                    style={{ gridColumn: "1 / -1" }}
+                    placeholder="Giới thiệu (bio)"
+                    rows={2}
+                    value={memberEditForm.bio}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, bio: e.target.value }))}
+                  />
+                  <textarea
+                    className="mgr-field mgr-fieldTextarea"
+                    style={{ gridColumn: "1 / -1" }}
+                    placeholder="Ghi chú nội bộ"
+                    rows={2}
+                    value={memberEditForm.note}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, note: e.target.value }))}
+                  />
+                </div>
+
+                <div className="mgr-modalSectionTitle">Quan hệ huyết thống (cha/mẹ → người này là con)</div>
+                <div className="mgr-overviewFormGrid mgr-modalGrid">
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="ID cha (people.id)"
+                    value={memberEditForm.parent_father_id}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_father_id: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="ID mẹ (people.id)"
+                    value={memberEditForm.parent_mother_id}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_mother_id: e.target.value }))}
+                  />
+                </div>
+
+                <div className="mgr-modalSectionTitle">Quan hệ hôn nhân (vợ/chồng, con)</div>
+                <div className="mgr-overviewFormGrid mgr-modalGrid">
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="ID families (tùy chọn)"
+                    value={memberEditForm.family_id}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, family_id: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    type="number"
+                    placeholder="ID vợ/chồng (people.id)"
+                    value={memberEditForm.spouse_id}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, spouse_id: e.target.value }))}
+                  />
+                  <input
+                    className="mgr-field"
+                    style={{ gridColumn: "1 / -1" }}
+                    placeholder="ID con (people.id, cách nhau dấu phẩy)"
+                    value={memberEditForm.children_ids}
+                    onChange={(e) => setMemberEditForm((p) => ({ ...p, children_ids: e.target.value }))}
+                  />
+                </div>
+
+                {memberEditMsg ? (
+                  <div
+                    className={
+                      memberEditMsg.includes("thành công") || memberEditMsg.includes("Đã lưu")
+                        ? "mgr-subtle"
+                        : "mgr-alert"
+                    }
+                    style={{ marginTop: 12 }}
+                  >
+                    {memberEditMsg}
+                  </div>
+                ) : null}
+
+                <div className="mgr-modalActions">
+                  <button className="mgr-btnPrimary" type="button" disabled={memberEditSaving} onClick={saveMemberEdit}>
+                    {memberEditSaving ? "Đang lưu…" : "Lưu thay đổi"}
+                  </button>
+                  <button
+                    className="mgr-btnGhost"
+                    type="button"
+                    disabled={memberEditSaving}
+                    onClick={() => setMemberEditId(null)}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
