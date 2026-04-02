@@ -16,6 +16,9 @@ import {
   approvePostAPI,
   rejectPostAPI,
   getMediaAPI,
+  getPendingProfileUpdates,
+  approveProfileUpdateAPI,
+  rejectProfileUpdateAPI,
 } from "../../api/managerService";
 import {
   getMemberDashboard,
@@ -105,6 +108,7 @@ const Manager = () => {
   const [members, setMembers] = useState([]);
   const [pending, setPending] = useState([]);
   const [pendingPosts, setPendingPosts] = useState([]);
+  const [pendingProfiles, setPendingProfiles] = useState([]);
   const [mediaList, setMediaList] = useState([]);
   const [search, setSearch] = useState("");
   const [activeSection, setActiveSection] = useState("overview");
@@ -164,17 +168,19 @@ const Manager = () => {
     setError("");
     setLoading(true);
     try {
-      const [statsData, membersData, pendingData, postsData, mediaData] = await Promise.all([
+      const [statsData, membersData, pendingData, postsData, profilesData, mediaData] = await Promise.all([
         getStats(),
         getMembers(),
         getPendingUsers(),
         getPendingPosts(),
+        getPendingProfileUpdates(),
         getMediaAPI()
       ]);
       setStats(statsData);
       setMembers(membersData);
       setPending(pendingData);
       setPendingPosts(postsData);
+      setPendingProfiles(profilesData);
       setMediaList(mediaData);
     } catch (e) {
       setError(e?.message || "Không thể tải dữ liệu manager");
@@ -510,6 +516,18 @@ const Manager = () => {
 
   const doRejectPost = async (id) => {
     await rejectPostAPI(id);
+    await loadAll();
+  };
+
+  const doApproveProfile = async (id) => {
+    await approveProfileUpdateAPI(id);
+    await loadAll();
+  };
+
+  const doRejectProfile = async (id) => {
+    const reason = window.prompt("Nhập lý do từ chối cập nhật hồ sơ:");
+    if (reason === null) return;
+    await rejectProfileUpdateAPI(id, reason || "Không có lý do rõ ràng");
     await loadAll();
   };
 
@@ -1208,47 +1226,88 @@ const Manager = () => {
         ) : null}
 
         {activeSection === "moderation" ? (
-          <section>
-            <div className="mgr-listHeader">
-              <div className="mgr-listTitle">
-                Bài viết chờ duyệt ({pendingPosts.length})
-              </div>
-              <div className="mgr-listHint">
-                Kiểm duyệt hình ảnh và thông tin do thành viên đóng góp.
-              </div>
+          <section className="mgr-panel">
+            <div className="mgr-panelTitle">Kiểm duyệt Nội dung (Content Moderation)</div>
+            <div className="mgr-panelText">
+              Manager có đặc quyền phê duyệt hồ sơ người dùng cập nhật, cũng như các tư liệu/hình ảnh do thành viên đóng góp.
+            </div>
+            
+            {/* DUYỆT CẬP NHẬT GIA PHẢ PROFILE */}
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>1. Cập nhật hồ sơ (Tiểu sử, Ảnh đại diện)</h3>
+            <div className="mgr-list">
+              {pendingProfiles.length === 0 ? (
+                <div className="mgr-empty">Không có yêu cầu duyệt cập nhật hồ sơ.</div>
+              ) : (
+                pendingProfiles.map((p) => (
+                  <div className="mgr-item" key={p.person_id}>
+                    <div className="mgr-itemContent" style={{ flexWrap: 'wrap' }}>
+                      <div className="mgr-itemTitle">
+                        {p.display_name} 
+                        <span className="mgr-itemMeta" style={{ marginLeft: "10px", fontWeight: "normal" }}>
+                           Thành viên đang gửi yêu cầu cập nhật hồ sơ
+                        </span>
+                      </div>
+                      <div className="mgr-itemDesc" style={{ width: '100%', display: 'flex', gap: '20px', marginTop: '10px' }}>
+                          <div style={{ flex: 1, padding: "10px", background: "var(--bg-light)", borderRadius: "var(--radius-sm)" }}>
+                              <strong>Hồ sơ gốc:</strong><br/>
+                              <em style={{fontSize:"0.85rem"}}>Tiểu sử:</em> <span style={{fontSize:"0.85rem"}}>{p.current_bio || 'Chưa có'}</span><br/>
+                              <em style={{fontSize:"0.85rem"}}>Ảnh:</em> <span style={{fontSize:"0.85rem"}}>{p.current_avatar_url || 'Chưa có'}</span>
+                          </div>
+                          <div style={{ flex: 1, padding: "10px", background: "#f0fdf4", borderRadius: "var(--radius-sm)", border: "1px solid #bbf7d0" }}>
+                              <strong>Tài liệu đề xuất:</strong><br/>
+                              <em style={{fontSize:"0.9rem", color: "#166534"}}>Tiểu sử:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_bio || 'Chưa có'}</span><br/>
+                              <em style={{fontSize:"0.9rem", color: "#166534"}}>Ảnh:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_avatar_url || 'Chưa có'}</span>
+                          </div>
+                      </div>
+                    </div>
+                    <div className="mgr-itemActions">
+                      <button className="mgr-btnSuccess" type="button" onClick={() => doApproveProfile(p.person_id)}>
+                        Phê duyệt
+                      </button>
+                      <button className="mgr-btnDanger" type="button" onClick={() => doRejectProfile(p.person_id)}>
+                        Từ chối
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
-            <div className="mgr-cardGrid">
-              {pendingPosts.map((post) => (
-                <div className="mgr-card" key={post.post_id}>
-                  <div className="mgr-cardCover" style={{ height: "120px" }}>
-                    {post.image_url ? (
-                      <img src={post.image_url} alt="Post content" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }} />
-                    ) : (
-                      <div className="mgr-cardMeta" style={{ padding: "10px", color: "white" }}>[Không có hình ảnh đính kèm]</div>
-                    )}
-                  </div>
-                  
-                  <div className="mgr-cardBody">
-                    <div className="mgr-cardName">{post.author_name}</div>
-                    <div className="mgr-cardMeta" style={{ marginBottom: "10px" }}>{post.author_email}</div>
-                    
-                    <div className="mgr-cardRows" style={{ WebkitLineClamp: 3, display: "-webkit-box", WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      "{post.content}"
+            {/* DUYỆT BÀI VIẾT CHUNG */}
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "40px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>2. Tư liệu đóng góp (Posts chung)</h3>
+            <div className="mgr-list">
+              {pendingPosts.length === 0 ? (
+                <div className="mgr-empty">Không có tư liệu chờ duyệt.</div>
+              ) : (
+                pendingPosts.map((post) => (
+                  <div className="mgr-item" key={post.id || post.post_id} style={{ alignItems: "flex-start" }}>
+                    <div className="mgr-itemContent">
+                      <div className="mgr-itemTitle">
+                        Người đăng: {post.author_name}
+                        <span className="mgr-itemMeta" style={{ marginLeft: "10px", fontWeight: "normal" }}>
+                           Đã gửi vào lúc {new Date(post.created_at).toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                      <div className="mgr-itemDesc" style={{ marginTop: '10px', fontSize: '0.95rem' }}>
+                        {post.content || <em style={{color:"#888"}}>(Không có nội dung text)</em>}
+                      </div>
+                      {post.image_url && (
+                          <div style={{ marginTop: '10px' }}>
+                              <img src={post.image_url} alt="Tài liệu" style={{ maxWidth: '150px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                          </div>
+                      )}
                     </div>
-                    <div className="mgr-cardMeta" style={{ fontSize: "0.8rem", marginTop: "10px" }}>Đăng lúc: {new Date(post.created_at).toLocaleString()}</div>
-
-                    <div className="mgr-cardActions" style={{ marginTop: "15px" }}>
-                      <button className="mgr-btnOk" onClick={() => doApprovePost(post.post_id)}>Duyệt hiển thị</button>
-                      <button className="mgr-btnDanger" onClick={() => doRejectPost(post.post_id)}>Từ chối</button>
+                    <div className="mgr-itemActions">
+                      <button className="mgr-btnSuccess" type="button" onClick={() => doApprovePost(post.id || post.post_id)}>
+                        Duyệt tư liệu
+                      </button>
+                      <button className="mgr-btnDanger" type="button" onClick={() => doRejectPost(post.id || post.post_id)}>
+                        Bỏ qua
+                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {!loading && pendingPosts.length === 0 ? (
-                <div className="mgr-empty">Chưa có bài viết nào chờ duyệt</div>
-              ) : null}
+                ))
+              )}
             </div>
           </section>
         ) : null}

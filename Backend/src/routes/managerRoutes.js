@@ -25,6 +25,11 @@ router.get('/pending-posts', verifyToken, checkRole([1, 2]), managerController.g
 router.post('/approve-post/:id', verifyToken, checkRole([1, 2]), managerController.approvePost);
 router.post('/reject-post/:id', verifyToken, checkRole([1, 2]), managerController.rejectPost);
 
+// Routes duyệt yêu cầu cập nhật Profile cá nhân (Bio, Avatar)
+router.get('/pending-profiles', verifyToken, checkRole([1, 2]), managerController.getPendingProfileUpdates);
+router.post('/approve-profile/:id', verifyToken, checkRole([1, 2]), managerController.approveProfileUpdate);
+router.post('/reject-profile/:id', verifyToken, checkRole([1, 2]), managerController.rejectProfileUpdate);
+
 // Route Quản lý Đa phương tiện (Media Management)
 router.get('/media', verifyToken, checkRole([1, 2]), managerController.getMedia);
 

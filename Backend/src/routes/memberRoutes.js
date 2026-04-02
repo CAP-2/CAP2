@@ -13,5 +13,8 @@ router.post("/chat", verifyToken, checkRole([2, 3]), memberController.sendChatMe
 
 router.post("/reminders", verifyToken, checkRole([2, 3]), memberController.createReminder);
 
+router.post("/content/profile", verifyToken, checkRole([1, 2, 3]), memberController.proposeProfileUpdate);
+router.post("/content/post", verifyToken, checkRole([1, 2, 3]), memberController.submitMaterial);
+
 module.exports = router;
 

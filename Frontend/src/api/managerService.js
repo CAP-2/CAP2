@@ -219,3 +219,45 @@ export const getMediaAPI = async () => {
         throw error;
     }
 };
+
+// --- QUẢN LÝ THAY ĐỔI HỒ SƠ ---
+
+export const getPendingProfileUpdates = async () => {
+    try {
+        const res = await fetch(`${BASE_URL}/pending-profiles`, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error("Không thể lấy danh sách cập nhật hồ sơ");
+        return await res.json();
+    } catch (error) {
+        console.error("Lỗi getPendingProfileUpdates:", error);
+        throw error;
+    }
+};
+
+export const approveProfileUpdateAPI = async (id) => {
+    try {
+        const res = await fetch(`${BASE_URL}/approve-profile/${id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        });
+        if (!res.ok) throw new Error("Phê duyệt hồ sơ thất bại");
+        return await res.json();
+    } catch (error) {
+        console.error("Lỗi approveProfileUpdateAPI:", error);
+        throw error;
+    }
+};
+
+export const rejectProfileUpdateAPI = async (id, reason) => {
+    try {
+        const res = await fetch(`${BASE_URL}/reject-profile/${id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            body: JSON.stringify({ reason }),
+        });
+        if (!res.ok) throw new Error("Từ chối hồ sơ thất bại");
+        return await res.json();
+    } catch (error) {
+        console.error("Lỗi rejectProfileUpdateAPI:", error);
+        throw error;
+    }
+};

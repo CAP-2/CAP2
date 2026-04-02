@@ -975,3 +975,92 @@ exports.getMedia = async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách dữ liệu truyền thông (Media)' });
     }
 };
+
+exports.getPendingProfileUpdates = async (req, res) => {
+    try {
+        let sql = `
+            SELECT id as person_id, display_name, surname, first_name, pending_bio, pending_avatar_url, bio as current_bio, avatar_url as current_avatar_url, clan_id
+            FROM people
+            WHERE moderation_status = 'pending'
+        `;
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND clan_id = ?';
+            params.push(clanId);
+        }
+
+        const [results] = await db.query(sql, params);
+        res.json(results);
+    } catch (error) {
+        console.error('getPendingProfileUpdates error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi lấy danh sách profile chờ duyệt' });
+    }
+};
+
+exports.approveProfileUpdate = async (req, res) => {
+    const personId = req.params.id;
+    try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được duyệt hồ sơ cùng dòng họ' });
+            }
+        }
+        
+        await db.query(`
+            UPDATE people 
+            SET 
+                bio = COALESCE(pending_bio, bio), 
+                avatar_url = COALESCE(pending_avatar_url, avatar_url),
+                pending_bio = NULL,
+                pending_avatar_url = NULL,
+                moderation_status = 'none',
+                moderation_reason = NULL
+            WHERE id = ?`, 
+            [personId]
+        );
+        res.json({ success: true, message: 'Đã phê duyệt cập nhật hồ sơ!' });
+    } catch (error) {
+        console.error('approveProfileUpdate error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi phê duyệt hồ sơ' });
+    }
+};
+
+exports.rejectProfileUpdate = async (req, res) => {
+    const personId = req.params.id;
+    const { reason } = req.body;
+    try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được từ chối hồ sơ cùng dòng họ' });
+            }
+        }
+        
+        await db.query(`
+            UPDATE people 
+            SET 
+                moderation_status = 'rejected',
+                moderation_reason = ?
+            WHERE id = ?`, 
+            [reason || 'Không có lý do', personId]
+        );
+        res.json({ success: true, message: 'Đã từ chối cập nhật hồ sơ!' });
+    } catch (error) {
+        console.error('rejectProfileUpdate error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi từ chối hồ sơ' });
+    }
+};

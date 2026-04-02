@@ -8,6 +8,8 @@ import {
   getMemberDashboard,
   sendMemberChat,
   updateMemberProfile,
+  proposeProfileUpdate,
+  submitMaterial,
 } from "../../api/memberService";
 
 function formatMemberDate(value) {
@@ -137,6 +139,11 @@ const Member = () => {
   const [discoverItemsFromDb, setDiscoverItemsFromDb] = useState([]);
   /** Meta chỉ đọc: trạng thái tài khoản & person_id (đồng bộ từ API) */
   const [accountMeta, setAccountMeta] = useState({ status: "", person_id: null, role_id: null });
+  
+  const [profileContentForm, setProfileContentForm] = useState({ bio: "", avatar_url: "" });
+  const [materialForm, setMaterialForm] = useState({ content: "", image_url: "" });
+  const [profileStatus, setProfileStatus] = useState("none");
+  const [profileReason, setProfileReason] = useState("");
 
   const [discoverQuery, setDiscoverQuery] = useState("");
   const discoverResults = useMemo(() => {
@@ -264,6 +271,12 @@ const Member = () => {
         spouse_id: p.spouse_id ?? "",
         children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : "",
       });
+      setProfileContentForm({
+        bio: p.pending_bio !== null ? (p.pending_bio || "") : (p.bio || ""),
+        avatar_url: p.pending_avatar_url !== null ? (p.pending_avatar_url || "") : (p.avatar_url || ""),
+      });
+      setProfileStatus(p.moderation_status || "none");
+      setProfileReason(p.moderation_reason || "");
       const chatRes = await getMemberChat();
       const messages = (chatRes.messages || []).map((m) => ({
         role: m.sender_type === "user" ? "user" : "ai",
@@ -356,6 +369,32 @@ const Member = () => {
     }
   };
 
+  const submitProfileUpdate = async () => {
+    try {
+       setError("");
+       await proposeProfileUpdate(profileContentForm);
+       await loadDashboard({ silent: true }); // reload to update status
+       alert("Gửi yêu cầu cập nhật hồ sơ thành công!");
+    } catch (err) {
+       setError(err?.message || "Lỗi cập nhật hồ sơ");
+    }
+  };
+
+  const submitMaterialPost = async () => {
+     if (!materialForm.content.trim() && !materialForm.image_url.trim()) {
+         setError("Vui lòng nhập nội dung hoặc đường dẫn ảnh");
+         return;
+     }
+     try {
+       setError("");
+       await submitMaterial(materialForm);
+       setMaterialForm({ content: "", image_url: "" });
+       alert("Gửi tư liệu thành công! Vui lòng chờ quản lý duyệt.");
+     } catch (err) {
+       setError(err?.message || "Lỗi gửi tư liệu");
+     }
+  };
+
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -378,6 +417,9 @@ const Member = () => {
         <nav className="usr-nav" aria-label="Điều hướng thành viên">
           <button className={`usr-navItem ${activeSection === "discover" ? "isActive" : ""}`} onClick={() => setActiveSection("discover")}>
             Khám phá di sản
+          </button>
+          <button className={`usr-navItem ${activeSection === "contribute" ? "isActive" : ""}`} onClick={() => setActiveSection("contribute")}>
+            Đóng góp nội dung (Mới)
           </button>
           <button className={`usr-navItem ${activeSection === "chat" ? "isActive" : ""}`} onClick={() => setActiveSection("chat")}>
             Trợ lý AI (Chatbot)
@@ -802,6 +844,70 @@ const Member = () => {
                 placeholder="Text OCR (demo) — khi có backend OCR sẽ tự đổ vào đây."
                 rows={6}
               />
+            </div>
+          </section>
+        ) : null}
+
+        {/* CONTRIBUTE */}
+        {activeSection === "contribute" ? (
+          <section className="usr-panel">
+            <div className="usr-panelTitle">Đóng góp nội dung & Cập nhật hồ sơ</div>
+            <div className="usr-panelText">Bạn có thể gửi yêu cầu chỉnh sửa tiểu sử và ảnh hồ sơ cá nhân để quản lý duyệt, hoặc đóng góp tư liệu chung cho dòng họ.</div>
+            
+            <div style={{ marginTop: '20px' }}>
+                <h3 className="usr-panelTitle" style={{ fontSize: '1rem', color: 'var(--text-color)' }}>1. Đề xuất cập nhật hồ sơ cá nhân</h3>
+                {profileStatus === 'pending' && <div className="usr-panelText" style={{ color: '#d97706', fontWeight: 'bold' }}>Hồ sơ của bạn đang chờ phê duyệt.</div>}
+                {profileStatus === 'rejected' && <div className="usr-panelText" style={{ color: '#dc2626', fontWeight: 'bold' }}>Yêu cầu bị từ chối: {profileReason}</div>}
+                
+                <div className="usr-reminderForm usr-accountGrid" style={{ marginBottom: '30px' }}>
+                    <textarea 
+                      className="usr-textarea" 
+                      placeholder="Tiểu sử bản thân..." 
+                      style={{ gridColumn: '1 / -1' }}
+                      value={profileContentForm.bio}
+                      onChange={e => setProfileContentForm(prev => ({...prev, bio: e.target.value}))}
+                    />
+                    <input 
+                      className="usr-input" 
+                      placeholder="Đường dẫn ảnh hồ sơ (URL)..." 
+                      value={profileContentForm.avatar_url}
+                      style={{ gridColumn: '1 / -1' }}
+                      onChange={e => setProfileContentForm(prev => ({...prev, avatar_url: e.target.value}))}
+                    />
+                    <button 
+                      className="usr-btnPrimary" 
+                      type="button" 
+                      onClick={submitProfileUpdate}
+                      disabled={profileStatus === 'pending'}
+                    >
+                      {profileStatus === 'pending' ? "Đang chờ duyệt" : "Gửi yêu cầu cập nhật"}
+                    </button>
+                </div>
+                
+                <h3 className="usr-panelTitle" style={{ fontSize: '1rem', color: 'var(--text-color)' }}>2. Đóng góp tư liệu</h3>
+                <div className="usr-reminderForm usr-accountGrid">
+                   <textarea 
+                      className="usr-textarea" 
+                      placeholder="Nội dung tư liệu đóng góp (lịch sử, sự kiện, câu chuyện)..." 
+                      style={{ gridColumn: '1 / -1' }}
+                      value={materialForm.content}
+                      onChange={e => setMaterialForm(prev => ({...prev, content: e.target.value}))}
+                    />
+                    <input 
+                      className="usr-input" 
+                      placeholder="Đường dẫn ảnh kèm theo (URL)..." 
+                      value={materialForm.image_url}
+                      style={{ gridColumn: '1 / -1' }}
+                      onChange={e => setMaterialForm(prev => ({...prev, image_url: e.target.value}))}
+                    />
+                    <button 
+                      className="usr-btnPrimary" 
+                      type="button" 
+                      onClick={submitMaterialPost}
+                    >
+                      Gửi tư liệu kiểm duyệt
+                    </button>
+                </div>
             </div>
           </section>
         ) : null}

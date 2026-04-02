@@ -26,6 +26,12 @@ const getAccountContext = async (accountId) => {
       p.birth_date,
       p.generation,
       p.clan_id,
+      p.bio,
+      p.avatar_url,
+      p.pending_bio,
+      p.pending_avatar_url,
+      p.moderation_status,
+      p.moderation_reason,
       c.clan_name,
       c.history AS clan_history
     FROM accounts a
@@ -275,6 +281,12 @@ exports.getDashboard = async (req, res) => {
         gender: context.gender,
         birth_date: context.birth_date,
         generation: context.generation,
+        bio: context.bio,
+        avatar_url: context.avatar_url,
+        pending_bio: context.pending_bio,
+        pending_avatar_url: context.pending_avatar_url,
+        moderation_status: context.moderation_status,
+        moderation_reason: context.moderation_reason,
         family_id: relations.family_id,
         spouse_id: relations.spouse_id,
         children_ids: relations.children_ids,
@@ -594,3 +606,61 @@ exports.createReminder = async (req, res) => {
   }
 };
 
+exports.proposeProfileUpdate = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const { bio, avatar_url } = req.body;
+    
+    const context = await getAccountContext(accountId);
+    if (!context || !context.person_id) {
+       return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ" });
+    }
+
+    const pendingBio = bio !== undefined && bio !== null ? String(bio).trim() : null;
+    const pendingAvatarUrl = avatar_url !== undefined && avatar_url !== null ? String(avatar_url).trim() : null;
+
+    if (pendingBio === null && pendingAvatarUrl === null) {
+        return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật" });
+    }
+
+    await db.query(
+      "UPDATE people SET pending_bio = ?, pending_avatar_url = ?, moderation_status = 'pending', moderation_reason = NULL WHERE id = ?",
+      [pendingBio, pendingAvatarUrl, context.person_id]
+    );
+
+    return res.json({ success: true, message: "Đã gửi yêu cầu cập nhật, vui lòng đợi quản lý phê duyệt." });
+  } catch(error) {
+    console.error("proposeProfileUpdate error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi gửi yêu cầu cập nhật hồ sơ" });
+  }
+};
+
+exports.submitMaterial = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const { content, image_url } = req.body;
+
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id) {
+       return res.status(400).json({ success: false, message: "Tài khoản chưa đủ điều kiện đóng góp tư liệu" });
+    }
+
+    const textContent = content !== undefined && content !== null ? String(content).trim() : "";
+    const imgUrl = image_url !== undefined && image_url !== null ? String(image_url).trim() : null;
+
+    if (!textContent && !imgUrl) {
+        return res.status(400).json({ success: false, message: "Vui lòng nhập nội dung hoặc URL ảnh" });
+    }
+
+    // Insert into posts table (assuming the table has author_id which maps to account_id)
+    await db.query(
+      "INSERT INTO posts (clan_id, author_id, content, image_url, status) VALUES (?, ?, ?, ?, 'pending')",
+      [context.clan_id, accountId, textContent, imgUrl]
+    );
+
+    return res.json({ success: true, message: "Đã gửi tư liệu, vui lòng đợi quản lý phê duyệt." });
+  } catch(error) {
+    console.error("submitMaterial error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi gửi tư liệu" });
+  }
+};

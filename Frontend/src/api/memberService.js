@@ -81,3 +81,26 @@ export const createMemberReminder = async (payload) => {
   return parseResponse(res, "Không thể tạo nhắc nhở");
 };
 
+export const proposeProfileUpdate = async (payload) => {
+  const res = await fetch(`${BASE_URL}/content/profile`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse(res, "Không thể gửi yêu cầu cập nhật hồ sơ");
+};
+
+export const submitMaterial = async (payload) => {
+  const res = await fetch(`${BASE_URL}/content/post`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse(res, "Không thể gửi tư liệu đóng góp");
+};
