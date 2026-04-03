@@ -144,7 +144,6 @@ const getManagedMemberFullContext = async (accountId) => {
     return rows[0] || null;
 };
 
-/** Manager (role 2) chỉ thao tác thành viên cùng clan; Admin (1) không giới hạn clan. */
 const assertCanManageAccount = async (req, targetAccountId) => {
     const ctx = await getTargetAccountContext(targetAccountId);
     if (!ctx || !ctx.person_id) {
@@ -467,21 +466,9 @@ const buildDisplayNameFromPartsMgr = (surname, middleName, firstName) => {
     return [s, m, f].filter(Boolean).join(' ').trim();
 };
 
-/** Manager/Admin tạo tài khoản thành viên (role 3, active) + bản ghi people trong cùng dòng họ. */
 exports.createMember = async (req, res) => {
     try {
-        const {
-            email,
-            password,
-            surname,
-            middle_name,
-            first_name,
-            gender,
-            birth_date,
-            hometown,
-            generation,
-            clan_id: bodyClanId,
-        } = req.body;
+        const { email, password, surname, middle_name, first_name, gender, birth_date, hometown, generation, clan_id: bodyClanId, } = req.body;
 
         const emailTrim = String(email || '').trim().toLowerCase();
         const pwd = String(password || '');
@@ -516,10 +503,7 @@ exports.createMember = async (req, res) => {
             clanId = cid;
         }
 
-        const genRaw =
-            generation === undefined || generation === null || String(generation).trim() === ''
-                ? 1
-                : Number(generation);
+        const genRaw = generation === undefined || generation === null || String(generation).trim() === '' ? 1 : Number(generation);
         const gen = Number.isFinite(genRaw) && genRaw > 0 ? genRaw : 1;
 
         let gVal = null;
@@ -717,8 +701,7 @@ exports.updateMemberByManager = async (req, res) => {
             }
         }
 
-        const nextDisplay =
-            buildDisplayNameFromPartsMgr(nextSurname, nextMiddle, nextFirst) || (full.display_name || '').trim() || '';
+        const nextDisplay = buildDisplayNameFromPartsMgr(nextSurname, nextMiddle, nextFirst) || (full.display_name || '').trim() || '';
 
         await db.query(
             `UPDATE people SET 
@@ -728,27 +711,8 @@ exports.updateMemberByManager = async (req, res) => {
         avatar_url = ?, bio = ?, note = ?
       WHERE id = ?`,
             [
-                nextClanId,
-                nextDisplay,
-                nextFirst,
-                nextMiddle,
-                nextSurname,
-                nextGender,
-                nextBirth,
-                nextDeath,
-                nextLiving,
-                nextGen,
-                nextBranch,
-                nextHometown,
-                nextAddress,
-                nextPhone,
-                nextPeopleEmail,
-                nextZalo,
-                nextFacebook,
-                nextAvatar || null,
-                nextBio,
-                nextNote,
-                full.person_id,
+                nextClanId, nextDisplay, nextFirst, nextMiddle, nextSurname, nextGender, nextBirth, nextDeath, nextLiving, nextGen, nextBranch,
+                nextHometown, nextAddress, nextPhone, nextPeopleEmail, nextZalo, nextFacebook, nextAvatar || null, nextBio, nextNote, full.person_id,
             ]
         );
 
@@ -769,8 +733,7 @@ exports.updateMemberByManager = async (req, res) => {
             }
         }
 
-        const hasMarriage =
-            has('family_id') || has('spouse_id') || has('children_ids');
+        const hasMarriage = has('family_id') || has('spouse_id') || has('children_ids');
         if (hasMarriage) {
             const r = await applyMarriageRelationsForPerson(famCtx, body);
             if (!r.ok) return res.status(400).json({ success: false, message: r.message });
@@ -973,5 +936,200 @@ exports.getMedia = async (req, res) => {
     } catch (error) {
         console.error('getMedia error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách dữ liệu truyền thông (Media)' });
+    }
+};
+
+exports.createPerson = async (req, res) => {
+    const {
+        clan_id, display_name, first_name, middle_name, surname,
+        gender, birth_date, hometown, generation,
+        father_id, mother_id, spouse_id
+    } = req.body;
+
+    if (!first_name || !surname || !clan_id) {
+        return res.status(400).json({ success: false, message: "Thiếu thông tin bắt buộc (Tên, Họ, Clan ID)" });
+    }
+
+    try {
+        const sql = `
+            INSERT INTO people 
+            (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation, father_id, mother_id, spouse_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const [result] = await db.query(sql, [
+            clan_id, display_name, first_name, middle_name, surname,
+            gender, birth_date, hometown, generation || 1, 
+            father_id || null, mother_id || null, spouse_id || null
+        ]);
+
+        res.status(201).json({
+            success: true,
+            message: "Tạo thành viên mới thành công!",
+            person_id: result.insertId
+        });
+    } catch (error) {
+        console.error('createPerson error:', error);
+        res.status(500).json({ success: false, message: "Lỗi hệ thống khi tạo thành viên" });
+    }
+};
+
+exports.updatePerson = async (req, res) => {
+    const personId = req.params.id;
+    const {
+        display_name, first_name, middle_name, surname,
+        gender, birth_date, hometown, generation
+    } = req.body;
+
+    try {
+        const [check] = await db.query("SELECT id FROM people WHERE id = ?", [personId]);
+        if (check.length === 0) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy thành viên" });
+        }
+
+        const sql = `
+            UPDATE people 
+            SET display_name = ?, first_name = ?, middle_name = ?, surname = ?, 
+                gender = ?, birth_date = ?, hometown = ?, generation = ?
+            WHERE id = ?
+        `;
+
+        await db.query(sql, [
+            display_name, first_name, middle_name, surname,
+            gender, birth_date, hometown, generation, personId
+        ]);
+
+        res.json({ success: true, message: "Cập nhật thông tin thành công!" });
+    } catch (error) {
+        console.error('updatePerson error:', error);
+        res.status(500).json({ success: false, message: "Lỗi khi cập nhật thông tin" });
+    }
+};
+
+exports.linkRelations = async (req, res) => {
+    const { person_id, father_id, mother_id, spouse_id } = req.body;
+
+    if (!person_id) {
+        return res.status(400).json({ success: false, message: "Thiếu ID người cần liên kết (person_id)" });
+    }
+
+    try {
+        let newGeneration = null;
+        if (father_id) {
+            const [fatherRows] = await db.query("SELECT generation FROM people WHERE id = ?", [father_id]);
+            if (fatherRows.length > 0 && fatherRows[0].generation) {
+                newGeneration = fatherRows[0].generation + 1;
+            }
+        } else if (mother_id) {
+             const [motherRows] = await db.query("SELECT generation FROM people WHERE id = ?", [mother_id]);
+            if (motherRows.length > 0 && motherRows[0].generation) {
+                newGeneration = motherRows[0].generation + 1;
+            }
+        }
+
+        let sql = "UPDATE people SET father_id = ?, mother_id = ?, spouse_id = ?";
+        let params = [father_id || null, mother_id || null, spouse_id || null];
+
+        if (newGeneration) {
+            sql += ", generation = ?";
+            params.push(newGeneration);
+        }
+
+        sql += " WHERE id = ?";
+        params.push(person_id);
+
+        await db.query(sql, params);
+
+        if (spouse_id) {
+            await db.query("UPDATE people SET spouse_id = ? WHERE id = ?", [person_id, spouse_id]);
+        }
+
+        res.json({ success: true, message: "Liên kết gia phả thành công!", new_generation: newGeneration });
+    } catch (error) {
+        console.error('linkRelations error:', error);
+        res.status(500).json({ success: false, message: "Lỗi khi tạo liên kết gia phả" });
+    }
+};
+
+exports.getPersonWithRelations = async (req, res) => {
+    const personId = req.params.id;
+
+    try {
+        const sql = `
+            SELECT p.*,
+                   CONCAT(f.surname, ' ', f.first_name) as father_name,
+                   CONCAT(m.surname, ' ', m.first_name) as mother_name,
+                   CONCAT(s.surname, ' ', s.first_name) as spouse_name
+            FROM people p
+            LEFT JOIN people f ON p.father_id = f.id
+            LEFT JOIN people m ON p.mother_id = m.id
+            LEFT JOIN people s ON p.spouse_id = s.id
+            WHERE p.id = ?
+        `;
+
+        const [results] = await db.query(sql, [personId]);
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy thành viên" });
+        }
+
+        res.json(results[0]);
+    } catch (error) {
+        console.error('getPersonWithRelations error:', error);
+        res.status(500).json({ success: false, message: "Lỗi lấy thông tin chi tiết" });
+    }
+};
+
+// ==============================================================
+// --- FAKE DATABASE CHO TÍNH NĂNG PHÂN CÔNG CÔNG VIỆC ---
+// ==============================================================
+let fakeTasksDB = [];
+let taskIdCounter = 1;
+
+exports.assignTask = async (req, res) => {
+    const { member_id, title, description, due_date } = req.body;
+    
+    try {
+        const newTask = {
+            id: taskIdCounter++,
+            manager_id: req.user ? req.user.id : 1, 
+            member_id: member_id,
+            title: title,
+            description: description,
+            due_date: due_date,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            surname: "Thành viên",
+            first_name: `(ID: ${member_id})` 
+        };
+
+        fakeTasksDB.push(newTask);
+
+        res.json({ success: true, message: "Đã giao việc thành công (Chế độ Không SQL)!" });
+    } catch (error) {
+        console.error('assignTask error:', error);
+        res.status(500).json({ success: false, message: "Lỗi phân công công việc" });
+    }
+};
+
+exports.getAssignedTasks = async (req, res) => {
+    try {
+        const results = [...fakeTasksDB].reverse();
+        res.json(results);
+    } catch (error) {
+        console.error('getAssignedTasks error:', error);
+        res.status(500).json({ success: false, message: "Lỗi lấy danh sách công việc" });
+    }
+};
+
+exports.completeTask = async (req, res) => {
+    const taskId = parseInt(req.params.id);
+    const taskIndex = fakeTasksDB.findIndex(t => t.id === taskId);
+    
+    if (taskIndex !== -1) {
+        fakeTasksDB[taskIndex].status = 'completed';
+        res.json({ success: true, message: "Đã xác nhận hoàn thành công việc!" });
+    } else {
+        res.status(404).json({ success: false, message: "Không tìm thấy công việc" });
     }
 };

@@ -218,4 +218,62 @@ export const getMediaAPI = async () => {
         console.error("Lỗi getMediaAPI:", error);
         throw error;
     }
+
+
+};
+
+// --- CÁC HÀM MỚI CHO LINEAGE MANAGEMENT ---
+export const createPersonAPI = async (data) => {
+    try {
+        const res = await fetch(`${BASE_URL}/people/create`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(), // Lấy token chuẩn từ hàm phía trên
+            },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error("Tạo thành viên thất bại");
+        return await res.json();
+    } catch (error) {
+        console.error("Lỗi createPersonAPI:", error);
+        throw error;
+    }
+};
+
+export const linkRelationsAPI = async (data) => {
+    try {
+        const res = await fetch(`${BASE_URL}/people/link`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(), // Lấy token chuẩn từ hàm phía trên
+            },
+            body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error("Liên kết thất bại");
+        return await res.json();
+    } catch (error) {
+        console.error("Lỗi linkRelationsAPI:", error);
+        throw error;
+    }
+};
+
+export const assignTaskAPI = async (data) => {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`/api/manager/assign-task`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+    return res.json();
+};
+
+export const getTasksAPI = async () => {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`/api/manager/tasks`, {
+        headers: { "Authorization": `Bearer ${token}` }
+    });
+    return res.json();
+
 };

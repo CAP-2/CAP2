@@ -28,4 +28,14 @@ router.post('/reject-post/:id', verifyToken, checkRole([1, 2]), managerControlle
 // Route Quản lý Đa phương tiện (Media Management)
 router.get('/media', verifyToken, checkRole([1, 2]), managerController.getMedia);
 
+// --- 🌟 CÁC ROUTES MỚI CHO TÍNH NĂNG PHÂN CÔNG & GIA PHẢ 🌟 ---
+// 1. Phân công công việc
+router.post('/assign-task', verifyToken, checkRole([1, 2]), managerController.assignTask);
+router.get('/tasks', verifyToken, checkRole([1, 2]), managerController.getAssignedTasks);
+router.patch('/tasks/:id/complete', verifyToken, checkRole([1, 2]), managerController.completeTask);
+
+// 2. Quản lý Gia phả (Lineage)
+router.post('/people/create', verifyToken, checkRole([1, 2]), managerController.createPerson);
+router.patch('/people/link', verifyToken, checkRole([1, 2]), managerController.linkRelations);
+
 module.exports = router;
