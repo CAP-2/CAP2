@@ -767,6 +767,58 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Đường huyết thống (đen) xuống con; liên hôn tách biệt (.usr-phado-marriageTie) */
+.usr-phado-treeWrap--bloodline {
+  --phado-blood: #0a0a0a;
+}
+
+.usr-phado-coupleRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+}
+
+.usr-phado-singleRow {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.usr-phado-marriageTie {
+  width: min(40px, 10vw);
+  height: 3px;
+  flex-shrink: 0;
+  align-self: center;
+  background: var(--phado-red);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(139, 21, 56, 0.2);
+  position: relative;
+}
+
+.usr-phado-marriageTie::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--phado-red);
+  border-radius: 50%;
+  background: #fff8f5;
+}
+
+.usr-phado-bloodVbar {
+  width: 2px;
+  height: 20px;
+  margin: 0 auto;
+  background: var(--phado-blood);
+  border-radius: 0;
+}
+
 .usr-phado-empty {
   text-align: center;
   color: #5c4030;
@@ -802,6 +854,16 @@
   padding: 18px 10px 8px;
   border-top: 3px solid var(--phado-line);
   position: relative;
+}
+
+.usr-phado-treeWrap--bloodline .usr-phado-treeBranch--blood {
+  border-top-color: var(--phado-blood);
+  border-top-width: 2px;
+}
+
+.usr-phado-treeWrap--bloodline .usr-phado-treeBranch .usr-phado-branchItem::before {
+  background: var(--phado-blood);
+  width: 2px;
 }
 
 .usr-phado-vbar {

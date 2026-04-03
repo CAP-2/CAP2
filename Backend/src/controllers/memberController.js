@@ -143,6 +143,8 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
   }
 
   const childrenByParent = new Map();
+  /** Cha/mẹ “chính” nối con (ưu tiên cha) → id vợ/chồng còn lại trong cùng gia đình, để hiển thị cặp trên một nhánh */
+  const spouseByPrimary = new Map();
   for (const fam of familyRows) {
     const kids = childrenByFamily.get(fam.id) || [];
     const parentId = fam.father_id || fam.mother_id;
@@ -152,13 +154,26 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
     for (const cid of kids) {
       if (!list.includes(cid)) list.push(cid);
     }
+    if (kids.length > 0 && fam.father_id && fam.mother_id) {
+      const spouseId = parentId === fam.father_id ? fam.mother_id : fam.father_id;
+      if (!spouseByPrimary.has(parentId)) spouseByPrimary.set(parentId, spouseId);
+    }
   }
 
-  let roots = peopleRows.filter((p) => Number(p.generation) === 1).sort((a, b) => a.id - b.id);
+  const sortRoots = (arr) =>
+    [...arr].sort((a, b) => {
+      const ak = (childrenByParent.get(a.id) || []).length;
+      const bk = (childrenByParent.get(b.id) || []).length;
+      if (ak > 0 && bk === 0) return -1;
+      if (ak === 0 && bk > 0) return 1;
+      return a.id - b.id;
+    });
+
+  let roots = sortRoots(peopleRows.filter((p) => Number(p.generation) === 1));
   if (roots.length === 0 && peopleRows.length > 0) {
     const gens = peopleRows.map((p) => Number(p.generation)).filter((g) => Number.isFinite(g) && g > 0);
     const minGen = gens.length ? Math.min(...gens) : 1;
-    roots = peopleRows.filter((p) => Number(p.generation) === minGen).sort((a, b) => a.id - b.id);
+    roots = sortRoots(peopleRows.filter((p) => Number(p.generation) === minGen));
   }
 
   const placed = new Set();
@@ -168,17 +183,24 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
     if (!person) return null;
     if (placed.has(personId)) return null;
     placed.add(personId);
+    const spouseId = spouseByPrimary.get(personId);
+    let spouse = null;
+    if (spouseId && peopleMap[spouseId] && !placed.has(spouseId)) {
+      spouse = peopleMap[spouseId];
+      placed.add(spouseId);
+    }
     const rawChildIds = childrenByParent.get(personId) || [];
     const children = [];
     for (const cid of rawChildIds) {
       const childNode = buildNode(cid);
       if (childNode) children.push(childNode);
     }
-    return { person, children };
+    return { person, spouse, children };
   };
 
   const rootNodes = [];
   for (const r of roots) {
+    if (placed.has(r.id)) continue;
     const node = buildNode(r.id);
     if (node) rootNodes.push(node);
   }
