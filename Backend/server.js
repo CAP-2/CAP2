@@ -8,6 +8,7 @@ const cors = require('cors');
 const authRoutes = require('./src/routes/authRoutes');
 const managerRoutes = require('./src/routes/managerRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
+const adminRoutes = require('./src/routes/adminRoutes');
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -40,6 +41,7 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
 app.use('/api/auth', authRoutes); // Các API: /api/auth/login, /api/auth/register
 app.use('/api/manager', managerRoutes); // Các API: /api/manager/pending, /api/manager/approve/:id
 app.use('/api/member', memberRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Xử lý lỗi 404
 app.use((req, res) => {

@@ -13,6 +13,7 @@ import {
   getMySubmissions
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
+import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
 
 function formatMemberDate(value) {
   if (value == null || value === "") return null;
@@ -33,67 +34,6 @@ function readSessionUser() {
   } catch {
     return {};
   }
-}
-
-function personTreeLabel(p) {
-  return (
-    p.display_name ||
-    [p.surname, p.middle_name, p.first_name].filter(Boolean).join(" ").trim() ||
-    "Thành viên"
-  );
-}
-
-/** Node: { person, children: Node[] } — cây từ API member/dashboard (phong cách phả đồ truyền thống) */
-function FamilyTreeNode({ node, onSelectPerson }) {
-  const p = node.person;
-  const hasKids = node.children?.length > 0;
-  const isLeaf = !hasKids;
-  const name = personTreeLabel(p);
-  const hometown = (p.hometown && String(p.hometown).trim()) || "";
-
-  return (
-    <li className={`usr-phado-branchItem ${isLeaf ? "usr-phado-branchItem--leaf" : ""}`}>
-      <div
-        className={`usr-phado-card ${isLeaf ? "usr-phado-card--leaf" : "usr-phado-card--scroll"}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => onSelectPerson(p)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelectPerson(p);
-          }
-        }}
-      >
-        {isLeaf ? (
-          <>
-            <span className="usr-phado-name">{name}</span>
-            {hometown ? <span className="usr-phado-detail">{hometown}</span> : null}
-            <span className="usr-phado-meta">Đời {p.generation ?? "—"}</span>
-          </>
-        ) : (
-          <>
-            <span className="usr-phado-scrollCap" aria-hidden="true" />
-            <div className="usr-phado-cardBody">
-              <span className="usr-phado-name">{name}</span>
-              <span className="usr-phado-meta">Đời {p.generation ?? "—"}</span>
-            </div>
-            <span className="usr-phado-scrollCap usr-phado-scrollCap--right" aria-hidden="true" />
-          </>
-        )}
-      </div>
-      {hasKids ? (
-        <>
-          <div className="usr-phado-vbar" aria-hidden="true" />
-          <ul className="usr-phado-treeBranch" role="group">
-            {node.children.map((ch) => (
-              <FamilyTreeNode key={ch.person.id} node={ch} onSelectPerson={onSelectPerson} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-    </li>
-  );
 }
 
 const Member = () => {
@@ -623,20 +563,45 @@ const Member = () => {
               </div>
             </div>
           </section>
-        )}
+        ) : null}
 
-        {activeSection === "tree" && (
-           <section className="usr-panel usr-panel--phado">
-             <div className="usr-panelTitle">Phả đồ Trực Quan</div>
-             <div className="usr-phado">
-                <div className="usr-phado-frame">
-                   <div className="usr-phado-treeWrap">
-                      {familyTreeRoots.length > 0 ? (
-                        <ul className="usr-phado-treeRoot">
-                          {familyTreeRoots.map(root => <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setTreeMemberDetail} />)}
-                        </ul>
-                      ) : <p className="usr-phado-empty">Không có dữ liệu cây.</p>}
-                   </div>
+        {/* TREE — đệ quy từ đời 1, con theo families/children */}
+        {activeSection === "tree" ? (
+          <section className="usr-panel usr-panel--phado">
+            <div className="usr-panelTitle">Cây gia phả</div>
+            <div className="usr-panelText">
+              Gốc là đời 1 (hoặc đời nhỏ nhất).{" "}
+              <strong>Đường đen</strong> là huyết thống từ người cha/mẹ chính (nối con trong DB) xuống các con;{" "}
+              <strong>đoạn ngang đỏ</strong> giữa hai thẻ là vợ chồng cùng nhánh (cùng bản ghi <code>families</code> có cha và mẹ).
+              Bấm thẻ để xem chi tiết.
+            </div>
+
+            <div className="usr-phado">
+              <div className="usr-phado-frame">
+                <header className="usr-phado-header">
+                  <div className="usr-phado-ornament usr-phado-ornament--left" aria-hidden="true" />
+                  <div className="usr-phado-titleBlock">
+                    <div className="usr-phado-banner">GIA PHẢ</div>
+                    <div className="usr-phado-clan">
+                      {(clanInfo.clan_name && String(clanInfo.clan_name).trim().toUpperCase()) || "DÒNG HỌ"}
+                    </div>
+                  </div>
+                  <div className="usr-phado-ornament usr-phado-ornament--right" aria-hidden="true" />
+                </header>
+
+                <div className="usr-phado-treeWrap usr-phado-treeWrap--bloodline">
+                  {familyTreeRoots.length === 0 ? (
+                    <div className="usr-phado-empty">
+                      Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ, có ít nhất một thành viên đời gốc và quan hệ cha/mẹ–con
+                      trong hệ thống.
+                    </div>
+                  ) : (
+                    <ul className="usr-phado-treeRoot" role="tree" aria-label="Cây gia phả theo đời">
+                      {familyTreeRoots.map((root) => (
+                        <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setTreeMemberDetail} />
+                      ))}
+                    </ul>
+                  )}
                 </div>
              </div>
            </section>

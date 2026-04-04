@@ -149,6 +149,8 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
   }
 
   const childrenByParent = new Map();
+  /** Cha/mẹ “chính” nối con (ưu tiên cha) → id vợ/chồng còn lại trong cùng gia đình, để hiển thị cặp trên một nhánh */
+  const spouseByPrimary = new Map();
   for (const fam of familyRows) {
     const kids = childrenByFamily.get(fam.id) || [];
     const parentId = fam.father_id || fam.mother_id;
@@ -158,13 +160,26 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
     for (const cid of kids) {
       if (!list.includes(cid)) list.push(cid);
     }
+    if (kids.length > 0 && fam.father_id && fam.mother_id) {
+      const spouseId = parentId === fam.father_id ? fam.mother_id : fam.father_id;
+      if (!spouseByPrimary.has(parentId)) spouseByPrimary.set(parentId, spouseId);
+    }
   }
 
-  let roots = peopleRows.filter((p) => Number(p.generation) === 1).sort((a, b) => a.id - b.id);
+  const sortRoots = (arr) =>
+    [...arr].sort((a, b) => {
+      const ak = (childrenByParent.get(a.id) || []).length;
+      const bk = (childrenByParent.get(b.id) || []).length;
+      if (ak > 0 && bk === 0) return -1;
+      if (ak === 0 && bk > 0) return 1;
+      return a.id - b.id;
+    });
+
+  let roots = sortRoots(peopleRows.filter((p) => Number(p.generation) === 1));
   if (roots.length === 0 && peopleRows.length > 0) {
     const gens = peopleRows.map((p) => Number(p.generation)).filter((g) => Number.isFinite(g) && g > 0);
     const minGen = gens.length ? Math.min(...gens) : 1;
-    roots = peopleRows.filter((p) => Number(p.generation) === minGen).sort((a, b) => a.id - b.id);
+    roots = sortRoots(peopleRows.filter((p) => Number(p.generation) === minGen));
   }
 
   const placed = new Set();
@@ -174,22 +189,76 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
     if (!person) return null;
     if (placed.has(personId)) return null;
     placed.add(personId);
+    const spouseId = spouseByPrimary.get(personId);
+    let spouse = null;
+    if (spouseId && peopleMap[spouseId] && !placed.has(spouseId)) {
+      spouse = peopleMap[spouseId];
+      placed.add(spouseId);
+    }
     const rawChildIds = childrenByParent.get(personId) || [];
     const children = [];
     for (const cid of rawChildIds) {
       const childNode = buildNode(cid);
       if (childNode) children.push(childNode);
     }
-    return { person, children };
+    return { person, spouse, children };
   };
 
   const rootNodes = [];
   for (const r of roots) {
+    if (placed.has(r.id)) continue;
     const node = buildNode(r.id);
     if (node) rootNodes.push(node);
   }
 
   return { roots: rootNodes };
+};
+
+/**
+ * Cây gia phả + danh sách người cho một dòng họ (Admin).
+ * Mỗi người có thể có `account_id` nếu đã liên kết tài khoản.
+ */
+exports.loadClanTreeForAdmin = async (clanId) => {
+  const cid = Number(clanId);
+  if (!Number.isFinite(cid)) return { error: "bad_id" };
+  const [crows] = await db.query(
+    "SELECT id, clan_name, history FROM clans WHERE id = ? LIMIT 1",
+    [cid]
+  );
+  if (!crows.length) return { error: "not_found" };
+  const clan = crows[0];
+
+  const [peopleRows] = await db.query(
+    `
+    SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
+           p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
+           p.phone, p.email, p.avatar_url, p.bio,
+           a.id AS account_id
+    FROM people p
+    LEFT JOIN accounts a ON a.person_id = p.id
+    WHERE p.clan_id = ?
+    ORDER BY p.generation, p.surname, p.first_name
+  `,
+    [cid]
+  );
+
+  const [familyRows] = await db.query(
+    `SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC`,
+    [cid]
+  );
+  const [childRows] = await db.query(
+    `
+    SELECT c.family_id, c.person_id, c.sort_order
+    FROM children c
+    INNER JOIN families f ON c.family_id = f.id
+    WHERE f.clan_id = ?
+    ORDER BY c.family_id, c.sort_order, c.id
+  `,
+    [cid]
+  );
+
+  const familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
+  return { clan, treeMembers: peopleRows, familyTree };
 };
 
 exports.getDashboard = async (req, res) => {
