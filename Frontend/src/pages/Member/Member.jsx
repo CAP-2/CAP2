@@ -12,11 +12,8 @@ import {
   submitMaterial,
   getMySubmissions
 } from "../../api/memberService";
-<<<<<<< HEAD
-import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
-=======
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
->>>>>>> hòa
+import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
 
 function formatMemberDate(value) {
   if (value == null || value === "") return null;
@@ -65,6 +62,7 @@ const Member = () => {
     confirm: "",
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [familySaving, setFamilySaving] = useState(false);
 
   useEffect(() => {
     try {
@@ -168,6 +166,45 @@ const Member = () => {
   const user = readSessionUser();
   const userName = user?.name || "Thành viên";
 
+  const clanMembersForRelations = useMemo(() => {
+    const pid = accountMeta.person_id;
+    if (pid == null) return [];
+    return (treeMembers || []).filter((m) => Number(m.id) !== Number(pid));
+  }, [treeMembers, accountMeta.person_id]);
+
+  const childCandidatesForRelations = useMemo(() => {
+    const sid = Number(accountForm.spouse_id);
+    const pid = accountMeta.person_id;
+    return clanMembersForRelations.filter((m) => {
+      if (Number(m.id) === Number(pid)) return false;
+      if (Number.isFinite(sid) && Number(m.id) === sid) return false;
+      return true;
+    });
+  }, [clanMembersForRelations, accountForm.spouse_id, accountMeta.person_id]);
+
+  const personOptionLabel = (m) =>
+    m.display_name ||
+    [m.surname, m.middle_name, m.first_name].filter(Boolean).join(" ").trim() ||
+    `Thành viên #${m.id}`;
+
+  const selectedChildIdSet = useMemo(() => {
+    const nums = String(accountForm.children_ids || "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isFinite(v));
+    return new Set(nums);
+  }, [accountForm.children_ids]);
+
+  const toggleChildInRelations = (childId) => {
+    const next = new Set(selectedChildIdSet);
+    if (next.has(childId)) next.delete(childId);
+    else next.add(childId);
+    setAccountForm((p) => ({
+      ...p,
+      children_ids: [...next].sort((a, b) => a - b).join(", "),
+    }));
+  };
+
   useEffect(() => {
     if (!treeMemberDetail) return;
     const onKey = (e) => { if (e.key === "Escape") setTreeMemberDetail(null); };
@@ -255,11 +292,6 @@ const Member = () => {
         setError("Đời (generation) phải là số hợp lệ hoặc để trống.");
         return;
       }
-      const fidStr = String(accountForm.family_id ?? "").trim();
-      const sidStr = String(accountForm.spouse_id ?? "").trim();
-      const kidsStr = String(accountForm.children_ids ?? "").trim();
-      const kidsNums = kidsStr.split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
-
       const payload = {
         surname: accountForm.surname,
         middle_name: accountForm.middle_name,
@@ -268,9 +300,6 @@ const Member = () => {
         hometown: accountForm.hometown,
         generation: genNum,
       };
-      if (fidStr !== "") payload.family_id = Number(fidStr);
-      if (sidStr !== "") payload.spouse_id = Number(sidStr);
-      if (kidsStr !== "") payload.children_ids = kidsNums;
       
       const res = await updateMemberProfile(payload);
       const p = res.profile || {};
@@ -288,6 +317,48 @@ const Member = () => {
       setShowAccountPanel(false);
     } catch (e) {
       setError(e?.message || "Không thể cập nhật thông tin tài khoản");
+    }
+  };
+
+  const saveFamilyRelations = async () => {
+    if (accountMeta.person_id == null) {
+      setError("Tài khoản chưa liên kết hồ sơ người trong dòng họ.");
+      return;
+    }
+    try {
+      setError("");
+      setFamilySaving(true);
+      const sidStr = String(accountForm.spouse_id ?? "").trim();
+      const kidsStr = String(accountForm.children_ids ?? "").trim();
+      const kidsNums = kidsStr
+        .split(",")
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v));
+
+      const payload = { children_ids: kidsNums };
+      if (sidStr !== "") payload.spouse_id = Number(sidStr);
+
+      const res = await updateMemberProfile(payload);
+      const p = res.profile || {};
+      const prev = readSessionUser();
+      const merged = {
+        ...prev,
+        name: p.display_name ?? prev.name ?? "Thành viên",
+        status: p.status ?? prev.status,
+        role_id: p.role_id ?? prev.role_id,
+      };
+      localStorage.setItem("user", JSON.stringify(merged));
+      setAccountForm((prev) => ({
+        ...prev,
+        family_id: p.family_id ?? prev.family_id ?? "",
+        spouse_id: p.spouse_id ?? prev.spouse_id ?? "",
+        children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : prev.children_ids,
+      }));
+      await loadDashboard({ silent: true });
+    } catch (e) {
+      setError(e?.message || "Không thể lưu quan hệ gia đình");
+    } finally {
+      setFamilySaving(false);
     }
   };
 
@@ -411,6 +482,9 @@ const Member = () => {
             <button className={`usr-pill usr-pillBtn ${viewMode === "modern" ? "isActive" : ""}`} type="button" onClick={() => setViewMode("modern")}>Hiện đại</button>
             <button className={`usr-pill usr-pillBtn ${viewMode === "classic" ? "isActive" : ""}`} type="button" onClick={() => setViewMode("classic")}>Cổ điển</button>
             <button className="usr-pill usr-pillBtn" type="button" onClick={() => setShowAccountPanel(true)}>Tài khoản</button>
+            <button className="usr-pill usr-pillBtn usr-pillLogout" type="button" onClick={logout} title="Đăng xuất khỏi tài khoản">
+              Đăng xuất
+            </button>
           </div>
         </div>
 
@@ -596,9 +670,10 @@ const Member = () => {
                     </ul>
                   )}
                 </div>
-             </div>
-           </section>
-        )}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {activeSection === "restore" && (
           <section className="usr-panel">
@@ -664,12 +739,97 @@ const Member = () => {
                   <input className="usr-input" style={{ width: '100%' }} value={accountForm.hometown} onChange={(e) => setAccountForm(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" />
                 </div>
                 <div className="usr-accountModal-full">
+                  <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                    Đời (thế hệ)
+                  </label>
+                  <input
+                    className="usr-input"
+                    style={{ width: "100%" }}
+                    type="number"
+                    min={1}
+                    value={accountForm.generation}
+                    onChange={(e) => setAccountForm((p) => ({ ...p, generation: e.target.value }))}
+                    placeholder="Ví dụ: 3"
+                  />
+                </div>
+                <div className="usr-accountModal-full">
                   <textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" />
                 </div>
                 <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                   <button className="usr-btnPrimary" style={{ flex: 1 }} onClick={saveAccountInfo} disabled={loading || accountMeta.person_id == null}>Lưu thông tin cơ bản</button>
                   <button className="usr-btnPrimary" style={{ flex: 1, background: '#4a148c' }} onClick={submitProfileUpdate} disabled={profileStatus === 'pending'}>Gửi yêu cầu duyệt Ảnh & Bio</button>
                 </div>
+              </div>
+
+              <div className="usr-accountModal-sectionTitle">Quan hệ gia đình (cùng dòng họ)</div>
+              <p className="usr-familyHint">
+                Mã gia đình (<code>family_id</code>) do hệ thống tạo hoặc gắn tự động khi bạn lưu vợ/chồng hoặc danh sách con. Chỉ chọn người trong danh sách thành viên dòng họ của bạn.
+              </p>
+              <div className="usr-familyReadonly">
+                <strong>Mã gia đình hiện tại:</strong>{" "}
+                {accountForm.family_id !== "" && accountForm.family_id != null
+                  ? String(accountForm.family_id)
+                  : "— (chưa có — sẽ được tạo khi lưu vợ/chồng hoặc con)"}
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                  Vợ / chồng (trong dòng họ)
+                </label>
+                <select
+                  className="usr-familySelect"
+                  value={accountForm.spouse_id === "" || accountForm.spouse_id == null ? "" : String(accountForm.spouse_id)}
+                  onChange={(e) =>
+                    setAccountForm((p) => ({
+                      ...p,
+                      spouse_id: e.target.value === "" ? "" : e.target.value,
+                    }))
+                  }
+                  disabled={accountMeta.person_id == null || clanMembersForRelations.length === 0}
+                >
+                  <option value="">— Chưa chọn —</option>
+                  {clanMembersForRelations.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {personOptionLabel(m)} (id {m.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                  Con cái (chọn một hoặc nhiều)
+                </label>
+                {childCandidatesForRelations.length === 0 ? (
+                  <p className="usr-familyHint">Chưa có thành viên khác để chọn hoặc chưa tải danh sách dòng họ.</p>
+                ) : (
+                  <div className="usr-childrenGrid" role="group" aria-label="Danh sách con">
+                    {childCandidatesForRelations.map((m) => (
+                      <label key={m.id} className="usr-childRow">
+                        <input
+                          type="checkbox"
+                          checked={selectedChildIdSet.has(Number(m.id))}
+                          onChange={() => toggleChildInRelations(Number(m.id))}
+                        />
+                        <span>
+                          {personOptionLabel(m)} <span style={{ color: "#94a3b8" }}>(id {m.id})</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="usr-familyHint" style={{ marginTop: 8 }}>
+                  ID con (tham chiếu): <code>{accountForm.children_ids || "—"}</code>
+                </p>
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 16 }}>
+                <button
+                  className="usr-btnPrimary"
+                  style={{ width: "100%" }}
+                  type="button"
+                  onClick={saveFamilyRelations}
+                  disabled={familySaving || loading || accountMeta.person_id == null}
+                >
+                  {familySaving ? "Đang lưu quan hệ…" : "Lưu quan hệ vợ/chồng & con (family tự cập nhật trong DB)"}
+                </button>
               </div>
 
               <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
