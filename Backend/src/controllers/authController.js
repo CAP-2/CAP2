@@ -2,7 +2,6 @@ const crypto = require('crypto');
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 
 const GENERIC_FORGOT_MSG =
     'Nếu email đã đăng ký, bạn sẽ nhận mã xác nhận trong vài phút.';
@@ -47,6 +46,17 @@ async function sendResetEmail(to, code) {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
     const from = process.env.SMTP_FROM || user || 'noreply@localhost';
+
+    let nodemailer;
+    try {
+        nodemailer = require('nodemailer');
+    } catch (e) {
+        const err = new Error(
+            'Chưa cài nodemailer. Mở terminal trong thư mục Backend và chạy: npm install'
+        );
+        err.code = 'SMTP_NO_MODULE';
+        throw err;
+    }
 
     const transporter = nodemailer.createTransport({
         host,
@@ -136,12 +146,14 @@ exports.login = async (req, res) => {
         password
     } = req.body;
 
+    const emailTrim = String(email ?? '').trim().toLowerCase();
+
     try {
         const sql = `SELECT a.*, p.display_name FROM accounts a 
                      LEFT JOIN people p ON a.person_id = p.id 
-                     WHERE a.email = ?`;
+                     WHERE LOWER(TRIM(a.email)) = ?`;
 
-        const [results] = await db.query(sql, [email]);
+        const [results] = await db.query(sql, [emailTrim]);
 
         if (results.length === 0) {
             return res.status(404).json({
@@ -173,12 +185,21 @@ exports.login = async (req, res) => {
                 });
             }
 
+            const secret = process.env.JWT_SECRET;
+            if (!secret || String(secret).trim() === '') {
+                console.error('❌ Đăng nhập: thiếu JWT_SECRET trong .env');
+                return res.status(500).json({
+                    success: false,
+                    message: 'Máy chủ chưa cấu hình JWT_SECRET (file .env của Backend).',
+                });
+            }
+
             const token = jwt.sign({
                     id: user.id,
                     role_id: user.role_id,
                     email: user.email
                 },
-                process.env.JWT_SECRET, {
+                secret, {
                     expiresIn: '24h'
                 }
             );

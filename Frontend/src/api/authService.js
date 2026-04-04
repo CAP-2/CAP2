@@ -1,11 +1,26 @@
 const BASE_URL = "/api/auth";
 
 async function postAuth(path, body, fallbackError) {
-    const res = await fetch(`${BASE_URL}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
+    let res;
+    try {
+        res = await fetch(`${BASE_URL}${path}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    } catch (fetchErr) {
+        const msg = String(fetchErr?.message || "");
+        const isNetwork =
+            fetchErr?.name === "TypeError" ||
+            msg.includes("fetch") ||
+            msg.includes("Failed to fetch") ||
+            msg.includes("NetworkError");
+        throw new Error(
+            isNetwork
+                ? "Không kết nối được máy chủ API. Hãy chạy Backend (npm run dev, cổng 3000) và để Vite proxy /api."
+                : msg || fallbackError
+        );
+    }
     const text = await res.text();
     let result = {};
     try {

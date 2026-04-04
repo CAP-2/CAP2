@@ -17,30 +17,43 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const res = await loginAPI({ email, password });
+      const emailTrim = email.trim();
+      if (!emailTrim) {
+        setError("Vui lòng nhập email.");
+        return;
+      }
+      const res = await loginAPI({ email: emailTrim, password });
 
-      if (res && res.success) {
-        localStorage.setItem("user", JSON.stringify(res.user));
-        if (res.token) localStorage.setItem("token", res.token);
+      if (!res?.success) {
+        setError(res?.message || "Đăng nhập không thành công.");
+        return;
+      }
 
-        if (res.user.status === "pending") {
-          navigate("/waiting");
-          return;
-        }
+      if (!res.user) {
+        setError("Phản hồi từ server thiếu thông tin tài khoản.");
+        return;
+      }
 
-        const roleId = res.user.role_id;
-        if (roleId === 1) {
-          navigate("/admin");
-        } else if (roleId === 2) {
-          navigate("/manager");
-        } else if (roleId === 3) {
-          navigate("/member");
-        } else {
-          navigate("/member");
-        }
+      localStorage.setItem("user", JSON.stringify(res.user));
+      if (res.token) localStorage.setItem("token", res.token);
+
+      if (res.user.status === "pending") {
+        navigate("/waiting");
+        return;
+      }
+
+      const roleId = Number(res.user.role_id);
+      if (roleId === 1) {
+        navigate("/admin");
+      } else if (roleId === 2) {
+        navigate("/manager");
+      } else if (roleId === 3) {
+        navigate("/member");
+      } else {
+        navigate("/member");
       }
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -64,6 +77,7 @@ const Login = () => {
               placeholder="Tên đăng nhập"
               value={email}
               required
+              autoComplete="username"
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
@@ -74,6 +88,7 @@ const Login = () => {
               placeholder="Mật khẩu"
               value={password}
               required
+              autoComplete="current-password"
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
