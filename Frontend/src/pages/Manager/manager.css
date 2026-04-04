@@ -479,6 +479,20 @@
     box-shadow: 0 0 0 4px rgba(255, 75, 216, 0.18);
 }
 
+.mgr-pendingBadge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #ff4bd8;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    box-shadow: 0 4px 12px rgba(255, 75, 216, 0.35);
+    z-index: 2;
+}
+
 .mgr-chip {
     position: absolute;
     top: 10px;

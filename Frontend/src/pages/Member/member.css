@@ -427,6 +427,20 @@
   transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
 }
 
+.usr-pendingBadge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--usr-primary);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  box-shadow: 0 4px 10px rgba(27, 155, 113, 0.3);
+  z-index: 2;
+}
+
 .usr-treeMemberCard:hover {
   border-color: rgba(27, 155, 113, 0.35);
   box-shadow: 0 10px 26px rgba(20, 35, 70, 0.12);
