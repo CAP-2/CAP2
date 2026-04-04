@@ -1069,10 +1069,17 @@ const Manager = () => {
                   }}
                 >
                   <div className="mgr-cardCover">
-                    {user.avatar_url && (
-                      <img className="mgr-cardAvatar" src={user.avatar_url} alt="" />
+                    {(user.pending_avatar_url || user.avatar_url) && (
+                      <img 
+                        className="mgr-cardAvatar" 
+                        src={user.pending_avatar_url || user.avatar_url} 
+                        alt="" 
+                      />
                     )}
-                    {!user.avatar_url && <div className="mgr-dot" aria-hidden="true" />}
+                    {user.moderation_status === 'pending' && (
+                      <div className="mgr-pendingBadge">Chờ duyệt</div>
+                    )}
+                    {!(user.pending_avatar_url || user.avatar_url) && <div className="mgr-dot" aria-hidden="true" />}
                     <div className="mgr-chip">Đời {user.generation ?? "—"}</div>
                   </div>
 

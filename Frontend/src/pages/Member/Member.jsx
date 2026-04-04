@@ -493,11 +493,12 @@ const Member = () => {
               {treeMembers.filter(m => `${m.display_name} ${m.hometown}`.toLowerCase().includes(discoverQuery.toLowerCase())).map(m => (
                 <div className="usr-treeMemberCard" key={m.id} onClick={() => setTreeMemberDetail(m)}>
                   <div className="usr-treeMemberCard-cover">
-                    {m.avatar_url ? (
-                      <img className="usr-treeMemberAvatar" src={m.avatar_url} alt="" />
+                    {(m.pending_avatar_url || m.avatar_url) ? (
+                      <img className="usr-treeMemberAvatar" src={m.pending_avatar_url || m.avatar_url} alt="" />
                     ) : (
                       <div className="usr-treeMemberAvatar-placeholder" />
                     )}
+                    {m.moderation_status === 'pending' && <div className="usr-pendingBadge">Đang chờ duyệt</div>}
                   </div>
                   <div className="usr-treeMemberCard-info">
                     <div className="usr-treeMemberName">{m.display_name}</div>

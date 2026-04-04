@@ -433,7 +433,7 @@ exports.getAllMembers = async (req, res) => {
         let sql = `
             SELECT a.id AS account_id, a.email, a.role_id, a.status,
                    p.id AS person_id, p.first_name, p.surname, p.birth_date, p.clan_id, p.gender,
-                   p.generation, p.avatar_url
+                   p.generation, p.avatar_url, p.pending_avatar_url, p.pending_bio, p.moderation_status
             FROM accounts a
             JOIN people p ON a.person_id = p.id
             WHERE a.role_id IN (2,3) AND a.status = 'active'

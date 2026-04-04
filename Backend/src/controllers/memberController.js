@@ -210,7 +210,7 @@ exports.getDashboard = async (req, res) => {
         `
           SELECT id, display_name, first_name, middle_name, surname, generation, branch,
                  hometown, address, birth_date, death_date, is_living, gender,
-                 phone, email, avatar_url, bio
+                 phone, email, avatar_url, bio, pending_avatar_url, pending_bio, moderation_status
           FROM people
           WHERE clan_id = ?
           ORDER BY generation, surname, first_name
