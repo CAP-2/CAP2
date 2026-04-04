@@ -652,7 +652,6 @@ exports.submitMaterial = async (req, res) => {
         return res.status(400).json({ success: false, message: "Vui lòng nhập nội dung hoặc URL ảnh" });
     }
 
-    // Insert into posts table (assuming the table has author_id which maps to account_id)
     await db.query(
       "INSERT INTO posts (clan_id, author_id, content, image_url, status) VALUES (?, ?, ?, ?, 'pending')",
       [context.clan_id, accountId, textContent, imgUrl]
@@ -662,5 +661,56 @@ exports.submitMaterial = async (req, res) => {
   } catch(error) {
     console.error("submitMaterial error:", error);
     return res.status(500).json({ success: false, message: "Lỗi gửi tư liệu" });
+  }
+};
+
+exports.getGeneralPosts = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id) {
+      return res.status(400).json({ success: false, message: "Tài khoản chưa thuộc dòng họ nào." });
+    }
+
+    const [rows] = await db.query(
+      `SELECT p.id, p.content, p.image_url, p.created_at, 
+              COALESCE(author.display_name, a.email, 'Thành viên') as author_name
+       FROM posts p
+       JOIN accounts a ON p.author_id = a.id
+       LEFT JOIN people author ON a.person_id = author.id
+       WHERE p.clan_id = ? AND p.status = 'approved'
+       ORDER BY p.created_at DESC`,
+      [context.clan_id]
+    );
+    return res.json({ success: true, posts: rows });
+  } catch (error) {
+    console.error("getGeneralPosts error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi lấy danh sách bài viết." });
+  }
+};
+
+exports.getMySubmissions = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    
+    // Get user's posts status
+    const [posts] = await db.query(
+      "SELECT content, image_url, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+      [accountId]
+    );
+
+    // Get user's profile update status
+    const profileStatus = {
+      moderation_status: context.moderation_status,
+      moderation_reason: context.moderation_reason,
+      pending_bio: context.pending_bio,
+      pending_avatar_url: context.pending_avatar_url
+    };
+
+    return res.json({ success: true, posts, profile: profileStatus });
+  } catch (error) {
+    console.error("getMySubmissions error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi lấy trạng thái đóng góp." });
   }
 };

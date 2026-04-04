@@ -9,6 +9,7 @@ import ClanRegister from "./pages/ClanRegister/ClanRegister";
 import Admin from "./Admin/Admin";    
 import Manager from "./pages/Manager/Manager";
 import Member from "./pages/Member/Member";
+import GeneralPosts from "./pages/GeneralPosts/GeneralPosts";
 import Waiting from "./pages/Waiting/Waiting";
 
 // Import Chatbot Component
@@ -32,6 +33,7 @@ function App() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/manager" element={<Manager />} />
         <Route path="/member" element={<Member />} />
+        <Route path="/posts/general" element={<GeneralPosts />} />
         <Route path="/waiting" element={<Waiting />} />
 
         {/* Mặc định quay về Home */}

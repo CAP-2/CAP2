@@ -449,126 +449,192 @@
   font-weight: 700;
 }
 
-/* Modal thành viên trong cây */
 .usr-modalOverlay {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(20, 35, 70, 0.45);
-  backdrop-filter: blur(4px);
-  display: grid;
-  place-items: center;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
-  animation: usr-modalFadeIn 0.18s ease;
+  animation: usr-fadeIn 0.3s ease;
 }
 
-@keyframes usr-modalFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+@keyframes usr-fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .usr-modal {
-  position: relative;
-  width: min(420px, 100%);
-  max-height: min(85vh, 640px);
-  overflow: auto;
   background: var(--usr-surface);
-  border-radius: var(--usr-radius);
-  box-shadow: var(--usr-shadow);
-  border: 1px solid var(--usr-border);
-  padding: 22px 22px 20px;
-  animation: usr-modalPop 0.2s ease;
+  width: 100%;
+  max-width: 500px;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  position: relative;
+  overflow: hidden;
+  animation: usr-slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes usr-modalPop {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+@keyframes usr-slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
-.usr-modalClose {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--usr-muted);
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-}
-
-.usr-modalClose:hover {
-  background: var(--usr-bg);
-  color: var(--usr-text);
-}
-
-.usr-modalAvatarWrap {
+.usr-modalHeader {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--usr-border);
   display: flex;
-  justify-content: center;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.usr-modalAvatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid var(--usr-border);
-  box-shadow: var(--usr-shadow-soft);
+.usr-modalBody {
+  padding: 24px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .usr-modalTitle {
-  margin: 0 40px 14px 0;
   font-size: 1.25rem;
-  font-weight: 900;
-  line-height: 1.25;
+  font-weight: 800;
   color: var(--usr-text);
-}
-
-.usr-modalDl {
   margin: 0;
 }
 
-.usr-modalRow {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 10px 14px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--usr-border);
-  font-size: 0.92rem;
+.usr-modalClose {
+  background: #f1f5f9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 1.25rem;
+  transition: all 0.2s;
 }
 
-.usr-modalRow:last-child {
+.usr-modalClose:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+  transform: rotate(90deg);
+}
+
+.usr-accountModal-avatarSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.usr-accountModal-avatarLabel {
+  font-weight: 700;
+  color: var(--usr-muted);
+  font-size: 0.9rem;
+}
+
+.usr-accountModal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.usr-accountModal-full {
+  grid-column: 1 / -1;
+}
+
+.usr-accountModal-sectionTitle {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--usr-text);
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--usr-primary);
+  display: inline-block;
+}
+
+.usr-accountModal-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--usr-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Submission Table Styles */
+.usr-submission-table-wrap {
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid var(--usr-border);
+  border-radius: 12px;
+  background: var(--usr-surface);
+}
+
+.usr-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.usr-table th, .usr-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--usr-border);
+}
+
+.usr-table th {
+  background: #f8fafc;
+  font-weight: 800;
+  color: var(--usr-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.usr-table tr:hover {
+  background: #fbfcfe;
+}
+
+.usr-table tr:last-child td {
   border-bottom: none;
 }
 
-.usr-modalRow dt {
-  margin: 0;
-  color: var(--usr-muted);
+/* Status Pills */
+.status-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
   font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.usr-modalRow dd {
-  margin: 0;
-  color: var(--usr-text);
-  font-weight: 700;
-  line-height: 1.45;
-  word-break: break-word;
+.status-pill.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-pill.approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-pill.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.none {
+  background: #f3f4f6;
+  color: #374151;
 }
 
 .usr-chat {
@@ -1103,3 +1169,65 @@
     radial-gradient(900px 300px at 75% 20%, rgba(241, 196, 15, 0.25), transparent 60%),
     linear-gradient(120deg, rgba(122, 66, 18, 0.85), rgba(122, 66, 18, 0.55));
 }
+
+/* Submission Table Styles */
+.usr-submission-table-wrap {
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid var(--usr-border);
+  border-radius: 12px;
+  background: var(--usr-surface);
+}
+
+.usr-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.usr-table th, .usr-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--usr-border);
+}
+
+.usr-table th {
+  background: #f8fafc;
+  font-weight: 800;
+  color: var(--usr-muted);
+}
+
+.usr-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Status Pills */
+.status-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-pill.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-pill.approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-pill.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.none {
+  background: #f3f4f6;
+  color: #374151;
+}

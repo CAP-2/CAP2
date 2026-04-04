@@ -25,6 +25,7 @@ import {
   updateMemberProfile,
   changeMemberPassword,
 } from "../../api/memberService";
+import ImageUpload from "../../components/ImageUpload/ImageUpload";
 
 function readSessionUser() {
   try {
@@ -149,6 +150,9 @@ const Manager = () => {
   const [overviewAccountLoading, setOverviewAccountLoading] = useState(false);
   const [overviewAccountSaving, setOverviewAccountSaving] = useState(false);
   const [overviewPasswordSaving, setOverviewPasswordSaving] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [profileContentForm, setProfileContentForm] = useState({ bio: "", avatar_url: "" });
+  const [profileStatus, setProfileStatus] = useState("none");
 
   const [memberEditId, setMemberEditId] = useState(null);
   const [memberEditLoading, setMemberEditLoading] = useState(false);
@@ -164,9 +168,10 @@ const Manager = () => {
   const [lineageSaving, setLineageSaving] = useState(false);
   const [lineageMsg, setLineageMsg] = useState("");
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) setLoading(true);
     setError("");
-    setLoading(true);
     try {
       const [statsData, membersData, pendingData, postsData, profilesData, mediaData] = await Promise.all([
         getStats(),
@@ -183,15 +188,23 @@ const Manager = () => {
       setPendingProfiles(profilesData);
       setMediaList(mediaData);
     } catch (e) {
-      setError(e?.message || "Không thể tải dữ liệu manager");
+      if (!silent) setError(e?.message || "Không thể tải dữ liệu manager");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
+
+  // Background Polling every 10 seconds for perceived real-time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadAll({ silent: true });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loadAll]);
 
   useEffect(() => {
     if (!memberEditId) {
@@ -293,6 +306,11 @@ const Manager = () => {
         hometown: p.hometown || "",
         generation: p.generation ?? "",
       });
+      setProfileContentForm({
+        bio: p.pending_bio !== null ? (p.pending_bio || "") : (p.bio || ""),
+        avatar_url: p.pending_avatar_url !== null ? (p.pending_avatar_url || "") : (p.avatar_url || ""),
+      });
+      setProfileStatus(p.moderation_status || "none");
     } catch (e) {
       setOverviewAccountMsg(
         e?.message || "Không tải được hồ sơ (tài khoản có thể chưa gắn người trong phả hệ — chỉ chỉnh được khi có person_id)."
@@ -515,7 +533,9 @@ const Manager = () => {
   };
 
   const doRejectPost = async (id) => {
-    await rejectPostAPI(id);
+    const reason = window.prompt("Lý do từ chối bài viết:");
+    if (reason === null) return;
+    await rejectPostAPI(id, reason || "Không đạt yêu cầu");
     await loadAll();
   };
 
@@ -651,11 +671,8 @@ const Manager = () => {
             />
           </div>
           <div className="mgr-topActions">
-            <button className="mgr-pill" type="button">
-              Trẻ
-            </button>
-            <button className="mgr-pill" type="button">
-              Người già
+            <button className="mgr-pill" type="button" onClick={() => setShowAccountModal(true)}>
+              Tài khoản
             </button>
             <button className="mgr-iconBtn" type="button" onClick={loadAll} title="Tải lại">
               ↻
@@ -665,6 +682,81 @@ const Manager = () => {
             </button>
           </div>
         </div>
+
+        {/* Manager Account Modal (Using the same premium style as member dashboard) */}
+        {showAccountModal && (
+          <div className="usr-modalOverlay" onClick={() => setShowAccountModal(false)}>
+            <div className="usr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+              <div className="usr-modalHeader">
+                <h2 className="usr-modalTitle">Tài khoản Quản lý</h2>
+                <button className="usr-modalClose" onClick={() => setShowAccountModal(false)}>&times;</button>
+              </div>
+              <div className="usr-modalBody">
+                <div className="usr-accountModal-avatarSection">
+                  <div className="usr-accountModal-avatarLabel">Ảnh hồ sơ</div>
+                  <ImageUpload 
+                    onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} 
+                    label="Tải ảnh hoặc dán URL" 
+                  />
+                  {(profileStatus === 'pending') && <span className="status-pill pending">Đang chờ duyệt cập nhật hồ sơ</span>}
+                </div>
+
+                <div className="usr-accountModal-sectionTitle">Thông tin cá nhân</div>
+                <div className="usr-accountModal-grid">
+                  <input className="usr-input" value={overviewAccount.surname} onChange={(e) => setOverviewAccount(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
+                  <input className="usr-input" value={overviewAccount.middle_name} onChange={(e) => setOverviewAccount(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
+                  <input className="usr-input" value={overviewAccount.first_name} onChange={(e) => setOverviewAccount(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
+                  <input className="usr-input" value={overviewAccount.email} onChange={(e) => setOverviewAccount(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
+                  <div className="usr-accountModal-full">
+                    <input className="usr-input" style={{ width: '100%' }} value={overviewAccount.hometown} onChange={(e) => setOverviewAccount(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" />
+                  </div>
+                  <div className="usr-accountModal-full">
+                    <textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" />
+                  </div>
+                  <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button className="usr-btnPrimary" style={{ flex: 1, height: '40px' }} onClick={saveOverviewAccount} disabled={overviewAccountSaving || managerMeta.person_id == null}>Lưu thông tin cơ bản</button>
+                    {/* Quản lý cập nhật avatar cho chính mình (vẫn qua moderation nếu cần) */}
+                    <button className="usr-btnPrimary" style={{ flex: 1, height: '40px', background: '#4a148c' }} 
+                      onClick={async () => {
+                         try {
+                           const { proposeProfileUpdate } = await import("../../api/memberService");
+                           await proposeProfileUpdate(profileContentForm);
+                           alert("Đã gửi yêu cầu cập nhật hồ sơ!");
+                           loadOverviewProfile();
+                         } catch (e) {
+                           setOverviewAccountMsg(e?.message || "Lỗi cập nhật hồ sơ");
+                         }
+                      }} 
+                      disabled={profileStatus === 'pending' || managerMeta.person_id == null}>
+                      Cập nhật Ảnh & Bio
+                    </button>
+                  </div>
+                </div>
+
+                <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
+                <div className="usr-accountModal-grid">
+                  <input className="usr-input" type="password" value={overviewPassword.current} onChange={e => setOverviewPassword(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
+                  <input className="usr-input" type="password" value={overviewPassword.next} onChange={e => setOverviewPassword(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
+                  <div className="usr-accountModal-full">
+                    <input className="usr-input" style={{ width: '100%' }} type="password" value={overviewPassword.confirm} onChange={e => setOverviewPassword(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" />
+                  </div>
+                  <div className="usr-accountModal-full">
+                    <button className="usr-btnPrimary" style={{ width: '100%', height: '40px' }} onClick={saveOverviewPassword} disabled={overviewPasswordSaving}>
+                      {overviewPasswordSaving ? "Đang lưu..." : "Đổi mật khẩu"}
+                    </button>
+                  </div>
+                </div>
+
+                {overviewAccountMsg && <div className={`mgr-alert ${overviewAccountMsg.includes('Lỗi') ? 'mgr-alert--danger' : ''}`}>{overviewAccountMsg}</div>}
+
+                <div className="usr-accountModal-footer">
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Vai trò: <strong>Manager</strong></span>
+                  <button className="usr-btnDanger" onClick={logout}>Đăng xuất tài khoản</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="mgr-hero" aria-label="Banner">
           <div className="mgr-heroOverlay" />
@@ -1556,10 +1648,17 @@ const Manager = () => {
                     value={memberEditForm.facebook}
                     onChange={(e) => setMemberEditForm((p) => ({ ...p, facebook: e.target.value }))}
                   />
+                  <div style={{ gridColumn: "1 / -1", margin: "10px 0" }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#666" }}>Cập nhật ảnh qua kéo thả:</label>
+                    <ImageUpload 
+                      onUploadSuccess={(url) => setMemberEditForm((p) => ({ ...p, avatar_url: url }))} 
+                      label="Kéo thả ảnh vào đây để thay đổi"
+                    />
+                  </div>
                   <input
                     className="mgr-field"
                     style={{ gridColumn: "1 / -1" }}
-                    placeholder="URL ảnh đại diện"
+                    placeholder="Hoặc nhập URL ảnh đại diện trực tiếp"
                     value={memberEditForm.avatar_url}
                     onChange={(e) => setMemberEditForm((p) => ({ ...p, avatar_url: e.target.value }))}
                   />

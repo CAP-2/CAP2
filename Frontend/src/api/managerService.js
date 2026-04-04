@@ -193,11 +193,12 @@ export const approvePostAPI = async (id) => {
     }
 };
 
-export const rejectPostAPI = async (id) => {
+export const rejectPostAPI = async (id, reason) => {
     try {
         const res = await fetch(`${BASE_URL}/reject-post/${id}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            body: JSON.stringify({ reason }),
         });
         if (!res.ok) throw new Error("Từ chối bài viết thất bại");
         return await res.json();

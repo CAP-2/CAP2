@@ -104,3 +104,28 @@ export const submitMaterial = async (payload) => {
   });
   return parseResponse(res, "Không thể gửi tư liệu đóng góp");
 };
+
+export const getGeneralPosts = async () => {
+  const res = await fetch(`${BASE_URL}/posts/general`, {
+    headers: getAuthHeaders(),
+  });
+  return parseResponse(res, "Không thể tải bài viết");
+};
+
+export const getMySubmissions = async () => {
+  const res = await fetch(`${BASE_URL}/submissions`, {
+    headers: getAuthHeaders(),
+  });
+  return parseResponse(res, "Không thể tải danh sách đóng góp");
+};
+
+export const uploadImage = async (file) => {
+  const formData = new FormData();
+  formData.append("image", file);
+  const res = await fetch(`/api/upload`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  return parseResponse(res, "Không thể tải ảnh lên");
+};

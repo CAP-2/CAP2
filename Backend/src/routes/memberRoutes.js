@@ -16,5 +16,9 @@ router.post("/reminders", verifyToken, checkRole([2, 3]), memberController.creat
 router.post("/content/profile", verifyToken, checkRole([1, 2, 3]), memberController.proposeProfileUpdate);
 router.post("/content/post", verifyToken, checkRole([1, 2, 3]), memberController.submitMaterial);
 
+// New Routes for General Posts & Submissions
+router.get("/posts/general", verifyToken, checkRole([1, 2, 3]), memberController.getGeneralPosts);
+router.get("/submissions", verifyToken, checkRole([1, 2, 3]), memberController.getMySubmissions);
+
 module.exports = router;
 

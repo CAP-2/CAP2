@@ -927,6 +927,7 @@ exports.approvePost = async (req, res) => {
 
 exports.rejectPost = async (req, res) => {
     const postId = req.params.id;
+    const { reason } = req.body;
     try {
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
@@ -938,8 +939,8 @@ exports.rejectPost = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối bài viết cùng dòng họ' });
             }
         }
-        const sql = "UPDATE posts SET status = 'rejected' WHERE id = ?";
-        await db.query(sql, [postId]);
+        const sql = "UPDATE posts SET status = 'rejected', rejection_reason = ? WHERE id = ?";
+        await db.query(sql, [reason || 'Không có lý do', postId]);
         res.json({ success: true, message: 'Đã từ chối bài viết!' });
     } catch (error) {
         console.error('rejectPost error:', error);
