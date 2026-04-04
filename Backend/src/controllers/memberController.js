@@ -208,6 +208,53 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
   return { roots: rootNodes };
 };
 
+/**
+ * Cây gia phả + danh sách người cho một dòng họ (Admin).
+ * Mỗi người có thể có `account_id` nếu đã liên kết tài khoản.
+ */
+exports.loadClanTreeForAdmin = async (clanId) => {
+  const cid = Number(clanId);
+  if (!Number.isFinite(cid)) return { error: "bad_id" };
+  const [crows] = await db.query(
+    "SELECT id, clan_name, history FROM clans WHERE id = ? LIMIT 1",
+    [cid]
+  );
+  if (!crows.length) return { error: "not_found" };
+  const clan = crows[0];
+
+  const [peopleRows] = await db.query(
+    `
+    SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
+           p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
+           p.phone, p.email, p.avatar_url, p.bio,
+           a.id AS account_id
+    FROM people p
+    LEFT JOIN accounts a ON a.person_id = p.id
+    WHERE p.clan_id = ?
+    ORDER BY p.generation, p.surname, p.first_name
+  `,
+    [cid]
+  );
+
+  const [familyRows] = await db.query(
+    `SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC`,
+    [cid]
+  );
+  const [childRows] = await db.query(
+    `
+    SELECT c.family_id, c.person_id, c.sort_order
+    FROM children c
+    INNER JOIN families f ON c.family_id = f.id
+    WHERE f.clan_id = ?
+    ORDER BY c.family_id, c.sort_order, c.id
+  `,
+    [cid]
+  );
+
+  const familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
+  return { clan, treeMembers: peopleRows, familyTree };
+};
+
 exports.getDashboard = async (req, res) => {
   try {
     const accountId = req.user.id;

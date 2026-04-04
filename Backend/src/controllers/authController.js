@@ -166,6 +166,13 @@ exports.login = async (req, res) => {
         }
 
         if (match) {
+            if (user.status === 'rejected') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Tài khoản của bạn đã bị từ chối đăng nhập. Vui lòng liên hệ quản trị viên.',
+                });
+            }
+
             const token = jwt.sign({
                     id: user.id,
                     role_id: user.role_id,
