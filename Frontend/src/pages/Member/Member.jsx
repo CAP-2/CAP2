@@ -492,8 +492,17 @@ const Member = () => {
             <div className="usr-treeMemberGrid">
               {treeMembers.filter(m => `${m.display_name} ${m.hometown}`.toLowerCase().includes(discoverQuery.toLowerCase())).map(m => (
                 <div className="usr-treeMemberCard" key={m.id} onClick={() => setTreeMemberDetail(m)}>
-                  <div className="usr-treeMemberName">{m.display_name}</div>
-                  <div className="usr-treeMemberMeta">Đời {m.generation} - {m.hometown}</div>
+                  <div className="usr-treeMemberCard-cover">
+                    {m.avatar_url ? (
+                      <img className="usr-treeMemberAvatar" src={m.avatar_url} alt="" />
+                    ) : (
+                      <div className="usr-treeMemberAvatar-placeholder" />
+                    )}
+                  </div>
+                  <div className="usr-treeMemberCard-info">
+                    <div className="usr-treeMemberName">{m.display_name}</div>
+                    <div className="usr-treeMemberMeta">Đời {m.generation} - {m.hometown}</div>
+                  </div>
                 </div>
               ))}
             </div>

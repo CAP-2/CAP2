@@ -430,7 +430,35 @@
 .usr-treeMemberCard:hover {
   border-color: rgba(27, 155, 113, 0.35);
   box-shadow: 0 10px 26px rgba(20, 35, 70, 0.12);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+.usr-treeMemberCard-cover {
+  height: 140px;
+  background: var(--usr-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.usr-treeMemberAvatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.usr-treeMemberAvatar-placeholder {
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 50% 120%, rgba(27, 155, 113, 0.2), transparent 70%),
+    linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+}
+
+.usr-treeMemberCard-info {
+  display: flex;
+  flex-direction: column;
 }
 
 .usr-treeMemberCard:focus-visible {
