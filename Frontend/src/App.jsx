@@ -9,6 +9,7 @@ import ClanRegister from "./pages/ClanRegister/ClanRegister";
 import Admin from "./Admin/Admin";
 import Manager from "./pages/Manager/Manager";
 import Member from "./pages/Member/Member";
+import GeneralPosts from "./pages/GeneralPosts/GeneralPosts";
 import Waiting from "./pages/Waiting/Waiting";
 import AIChat from "./components/AIChat/AIChat";
 
@@ -26,6 +27,7 @@ function App() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/manager" element={<Manager />} />
         <Route path="/member" element={<Member />} />
+        <Route path="/posts/general" element={<GeneralPosts />} />
         <Route path="/waiting" element={<Waiting />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

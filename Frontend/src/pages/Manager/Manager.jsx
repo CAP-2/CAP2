@@ -16,12 +16,16 @@ import {
   approvePostAPI,
   rejectPostAPI,
   getMediaAPI,
+  getPendingProfileUpdates,
+  approveProfileUpdateAPI,
+  rejectProfileUpdateAPI,
 } from "../../api/managerService";
 import {
   getMemberDashboard,
   updateMemberProfile,
   changeMemberPassword,
 } from "../../api/memberService";
+import ImageUpload from "../../components/ImageUpload/ImageUpload";
 
 function readSessionUser() {
   try {
@@ -105,6 +109,7 @@ const Manager = () => {
   const [members, setMembers] = useState([]);
   const [pending, setPending] = useState([]);
   const [pendingPosts, setPendingPosts] = useState([]);
+  const [pendingProfiles, setPendingProfiles] = useState([]);
   const [mediaList, setMediaList] = useState([]);
   const [search, setSearch] = useState("");
   const [activeSection, setActiveSection] = useState("overview");
@@ -145,6 +150,9 @@ const Manager = () => {
   const [overviewAccountLoading, setOverviewAccountLoading] = useState(false);
   const [overviewAccountSaving, setOverviewAccountSaving] = useState(false);
   const [overviewPasswordSaving, setOverviewPasswordSaving] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [profileContentForm, setProfileContentForm] = useState({ bio: "", avatar_url: "" });
+  const [profileStatus, setProfileStatus] = useState("none");
 
   const [memberEditId, setMemberEditId] = useState(null);
   const [memberEditLoading, setMemberEditLoading] = useState(false);
@@ -160,32 +168,43 @@ const Manager = () => {
   const [lineageSaving, setLineageSaving] = useState(false);
   const [lineageMsg, setLineageMsg] = useState("");
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) setLoading(true);
     setError("");
-    setLoading(true);
     try {
-      const [statsData, membersData, pendingData, postsData, mediaData] = await Promise.all([
+      const [statsData, membersData, pendingData, postsData, profilesData, mediaData] = await Promise.all([
         getStats(),
         getMembers(),
         getPendingUsers(),
         getPendingPosts(),
+        getPendingProfileUpdates(),
         getMediaAPI()
       ]);
       setStats(statsData);
       setMembers(membersData);
       setPending(pendingData);
       setPendingPosts(postsData);
+      setPendingProfiles(profilesData);
       setMediaList(mediaData);
     } catch (e) {
-      setError(e?.message || "Không thể tải dữ liệu manager");
+      if (!silent) setError(e?.message || "Không thể tải dữ liệu manager");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
+
+  // Background Polling every 10 seconds for perceived real-time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadAll({ silent: true });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loadAll]);
 
   useEffect(() => {
     if (!memberEditId) {
@@ -287,6 +306,11 @@ const Manager = () => {
         hometown: p.hometown || "",
         generation: p.generation ?? "",
       });
+      setProfileContentForm({
+        bio: p.pending_bio !== null ? (p.pending_bio || "") : (p.bio || ""),
+        avatar_url: p.pending_avatar_url !== null ? (p.pending_avatar_url || "") : (p.avatar_url || ""),
+      });
+      setProfileStatus(p.moderation_status || "none");
     } catch (e) {
       setOverviewAccountMsg(
         e?.message || "Không tải được hồ sơ (tài khoản có thể chưa gắn người trong phả hệ — chỉ chỉnh được khi có person_id)."
@@ -509,7 +533,21 @@ const Manager = () => {
   };
 
   const doRejectPost = async (id) => {
-    await rejectPostAPI(id);
+    const reason = window.prompt("Lý do từ chối bài viết:");
+    if (reason === null) return;
+    await rejectPostAPI(id, reason || "Không đạt yêu cầu");
+    await loadAll();
+  };
+
+  const doApproveProfile = async (id) => {
+    await approveProfileUpdateAPI(id);
+    await loadAll();
+  };
+
+  const doRejectProfile = async (id) => {
+    const reason = window.prompt("Nhập lý do từ chối cập nhật hồ sơ:");
+    if (reason === null) return;
+    await rejectProfileUpdateAPI(id, reason || "Không có lý do rõ ràng");
     await loadAll();
   };
 
@@ -633,11 +671,8 @@ const Manager = () => {
             />
           </div>
           <div className="mgr-topActions">
-            <button className="mgr-pill" type="button">
-              Trẻ
-            </button>
-            <button className="mgr-pill" type="button">
-              Người già
+            <button className="mgr-pill" type="button" onClick={() => setShowAccountModal(true)}>
+              Tài khoản
             </button>
             <button className="mgr-iconBtn" type="button" onClick={loadAll} title="Tải lại">
               ↻
@@ -647,6 +682,81 @@ const Manager = () => {
             </button>
           </div>
         </div>
+
+        {/* Manager Account Modal (Using the same premium style as member dashboard) */}
+        {showAccountModal && (
+          <div className="usr-modalOverlay" onClick={() => setShowAccountModal(false)}>
+            <div className="usr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+              <div className="usr-modalHeader">
+                <h2 className="usr-modalTitle">Tài khoản Quản lý</h2>
+                <button className="usr-modalClose" onClick={() => setShowAccountModal(false)}>&times;</button>
+              </div>
+              <div className="usr-modalBody">
+                <div className="usr-accountModal-avatarSection">
+                  <div className="usr-accountModal-avatarLabel">Ảnh hồ sơ</div>
+                  <ImageUpload 
+                    onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} 
+                    label="Tải ảnh hoặc dán URL" 
+                  />
+                  {(profileStatus === 'pending') && <span className="status-pill pending">Đang chờ duyệt cập nhật hồ sơ</span>}
+                </div>
+
+                <div className="usr-accountModal-sectionTitle">Thông tin cá nhân</div>
+                <div className="usr-accountModal-grid">
+                  <input className="usr-input" value={overviewAccount.surname} onChange={(e) => setOverviewAccount(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
+                  <input className="usr-input" value={overviewAccount.middle_name} onChange={(e) => setOverviewAccount(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
+                  <input className="usr-input" value={overviewAccount.first_name} onChange={(e) => setOverviewAccount(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
+                  <input className="usr-input" value={overviewAccount.email} onChange={(e) => setOverviewAccount(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
+                  <div className="usr-accountModal-full">
+                    <input className="usr-input" style={{ width: '100%' }} value={overviewAccount.hometown} onChange={(e) => setOverviewAccount(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" />
+                  </div>
+                  <div className="usr-accountModal-full">
+                    <textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" />
+                  </div>
+                  <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button className="usr-btnPrimary" style={{ flex: 1, height: '40px' }} onClick={saveOverviewAccount} disabled={overviewAccountSaving || managerMeta.person_id == null}>Lưu thông tin cơ bản</button>
+                    {/* Quản lý cập nhật avatar cho chính mình (vẫn qua moderation nếu cần) */}
+                    <button className="usr-btnPrimary" style={{ flex: 1, height: '40px', background: '#4a148c' }} 
+                      onClick={async () => {
+                         try {
+                           const { proposeProfileUpdate } = await import("../../api/memberService");
+                           await proposeProfileUpdate(profileContentForm);
+                           alert("Đã gửi yêu cầu cập nhật hồ sơ!");
+                           loadOverviewProfile();
+                         } catch (e) {
+                           setOverviewAccountMsg(e?.message || "Lỗi cập nhật hồ sơ");
+                         }
+                      }} 
+                      disabled={profileStatus === 'pending' || managerMeta.person_id == null}>
+                      Cập nhật Ảnh & Bio
+                    </button>
+                  </div>
+                </div>
+
+                <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
+                <div className="usr-accountModal-grid">
+                  <input className="usr-input" type="password" value={overviewPassword.current} onChange={e => setOverviewPassword(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
+                  <input className="usr-input" type="password" value={overviewPassword.next} onChange={e => setOverviewPassword(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
+                  <div className="usr-accountModal-full">
+                    <input className="usr-input" style={{ width: '100%' }} type="password" value={overviewPassword.confirm} onChange={e => setOverviewPassword(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" />
+                  </div>
+                  <div className="usr-accountModal-full">
+                    <button className="usr-btnPrimary" style={{ width: '100%', height: '40px' }} onClick={saveOverviewPassword} disabled={overviewPasswordSaving}>
+                      {overviewPasswordSaving ? "Đang lưu..." : "Đổi mật khẩu"}
+                    </button>
+                  </div>
+                </div>
+
+                {overviewAccountMsg && <div className={`mgr-alert ${overviewAccountMsg.includes('Lỗi') ? 'mgr-alert--danger' : ''}`}>{overviewAccountMsg}</div>}
+
+                <div className="usr-accountModal-footer">
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Vai trò: <strong>Manager</strong></span>
+                  <button className="usr-btnDanger" onClick={logout}>Đăng xuất tài khoản</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="mgr-hero" aria-label="Banner">
           <div className="mgr-heroOverlay" />
@@ -1208,47 +1318,88 @@ const Manager = () => {
         ) : null}
 
         {activeSection === "moderation" ? (
-          <section>
-            <div className="mgr-listHeader">
-              <div className="mgr-listTitle">
-                Bài viết chờ duyệt ({pendingPosts.length})
-              </div>
-              <div className="mgr-listHint">
-                Kiểm duyệt hình ảnh và thông tin do thành viên đóng góp.
-              </div>
+          <section className="mgr-panel">
+            <div className="mgr-panelTitle">Kiểm duyệt Nội dung (Content Moderation)</div>
+            <div className="mgr-panelText">
+              Manager có đặc quyền phê duyệt hồ sơ người dùng cập nhật, cũng như các tư liệu/hình ảnh do thành viên đóng góp.
+            </div>
+            
+            {/* DUYỆT CẬP NHẬT GIA PHẢ PROFILE */}
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>1. Cập nhật hồ sơ (Tiểu sử, Ảnh đại diện)</h3>
+            <div className="mgr-list">
+              {pendingProfiles.length === 0 ? (
+                <div className="mgr-empty">Không có yêu cầu duyệt cập nhật hồ sơ.</div>
+              ) : (
+                pendingProfiles.map((p) => (
+                  <div className="mgr-item" key={p.person_id}>
+                    <div className="mgr-itemContent" style={{ flexWrap: 'wrap' }}>
+                      <div className="mgr-itemTitle">
+                        {p.display_name} 
+                        <span className="mgr-itemMeta" style={{ marginLeft: "10px", fontWeight: "normal" }}>
+                           Thành viên đang gửi yêu cầu cập nhật hồ sơ
+                        </span>
+                      </div>
+                      <div className="mgr-itemDesc" style={{ width: '100%', display: 'flex', gap: '20px', marginTop: '10px' }}>
+                          <div style={{ flex: 1, padding: "10px", background: "var(--bg-light)", borderRadius: "var(--radius-sm)" }}>
+                              <strong>Hồ sơ gốc:</strong><br/>
+                              <em style={{fontSize:"0.85rem"}}>Tiểu sử:</em> <span style={{fontSize:"0.85rem"}}>{p.current_bio || 'Chưa có'}</span><br/>
+                              <em style={{fontSize:"0.85rem"}}>Ảnh:</em> <span style={{fontSize:"0.85rem"}}>{p.current_avatar_url || 'Chưa có'}</span>
+                          </div>
+                          <div style={{ flex: 1, padding: "10px", background: "#f0fdf4", borderRadius: "var(--radius-sm)", border: "1px solid #bbf7d0" }}>
+                              <strong>Tài liệu đề xuất:</strong><br/>
+                              <em style={{fontSize:"0.9rem", color: "#166534"}}>Tiểu sử:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_bio || 'Chưa có'}</span><br/>
+                              <em style={{fontSize:"0.9rem", color: "#166534"}}>Ảnh:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_avatar_url || 'Chưa có'}</span>
+                          </div>
+                      </div>
+                    </div>
+                    <div className="mgr-itemActions">
+                      <button className="mgr-btnSuccess" type="button" onClick={() => doApproveProfile(p.person_id)}>
+                        Phê duyệt
+                      </button>
+                      <button className="mgr-btnDanger" type="button" onClick={() => doRejectProfile(p.person_id)}>
+                        Từ chối
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
-            <div className="mgr-cardGrid">
-              {pendingPosts.map((post) => (
-                <div className="mgr-card" key={post.post_id}>
-                  <div className="mgr-cardCover" style={{ height: "120px" }}>
-                    {post.image_url ? (
-                      <img src={post.image_url} alt="Post content" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }} />
-                    ) : (
-                      <div className="mgr-cardMeta" style={{ padding: "10px", color: "white" }}>[Không có hình ảnh đính kèm]</div>
-                    )}
-                  </div>
-                  
-                  <div className="mgr-cardBody">
-                    <div className="mgr-cardName">{post.author_name}</div>
-                    <div className="mgr-cardMeta" style={{ marginBottom: "10px" }}>{post.author_email}</div>
-                    
-                    <div className="mgr-cardRows" style={{ WebkitLineClamp: 3, display: "-webkit-box", WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      "{post.content}"
+            {/* DUYỆT BÀI VIẾT CHUNG */}
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "40px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>2. Tư liệu đóng góp (Posts chung)</h3>
+            <div className="mgr-list">
+              {pendingPosts.length === 0 ? (
+                <div className="mgr-empty">Không có tư liệu chờ duyệt.</div>
+              ) : (
+                pendingPosts.map((post) => (
+                  <div className="mgr-item" key={post.id || post.post_id} style={{ alignItems: "flex-start" }}>
+                    <div className="mgr-itemContent">
+                      <div className="mgr-itemTitle">
+                        Người đăng: {post.author_name}
+                        <span className="mgr-itemMeta" style={{ marginLeft: "10px", fontWeight: "normal" }}>
+                           Đã gửi vào lúc {new Date(post.created_at).toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                      <div className="mgr-itemDesc" style={{ marginTop: '10px', fontSize: '0.95rem' }}>
+                        {post.content || <em style={{color:"#888"}}>(Không có nội dung text)</em>}
+                      </div>
+                      {post.image_url && (
+                          <div style={{ marginTop: '10px' }}>
+                              <img src={post.image_url} alt="Tài liệu" style={{ maxWidth: '150px', borderRadius: '4px', border: '1px solid #ccc' }} />
+                          </div>
+                      )}
                     </div>
-                    <div className="mgr-cardMeta" style={{ fontSize: "0.8rem", marginTop: "10px" }}>Đăng lúc: {new Date(post.created_at).toLocaleString()}</div>
-
-                    <div className="mgr-cardActions" style={{ marginTop: "15px" }}>
-                      <button className="mgr-btnOk" onClick={() => doApprovePost(post.post_id)}>Duyệt hiển thị</button>
-                      <button className="mgr-btnDanger" onClick={() => doRejectPost(post.post_id)}>Từ chối</button>
+                    <div className="mgr-itemActions">
+                      <button className="mgr-btnSuccess" type="button" onClick={() => doApprovePost(post.id || post.post_id)}>
+                        Duyệt tư liệu
+                      </button>
+                      <button className="mgr-btnDanger" type="button" onClick={() => doRejectPost(post.id || post.post_id)}>
+                        Bỏ qua
+                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {!loading && pendingPosts.length === 0 ? (
-                <div className="mgr-empty">Chưa có bài viết nào chờ duyệt</div>
-              ) : null}
+                ))
+              )}
             </div>
           </section>
         ) : null}
@@ -1497,10 +1648,17 @@ const Manager = () => {
                     value={memberEditForm.facebook}
                     onChange={(e) => setMemberEditForm((p) => ({ ...p, facebook: e.target.value }))}
                   />
+                  <div style={{ gridColumn: "1 / -1", margin: "10px 0" }}>
+                    <label style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#666" }}>Cập nhật ảnh qua kéo thả:</label>
+                    <ImageUpload 
+                      onUploadSuccess={(url) => setMemberEditForm((p) => ({ ...p, avatar_url: url }))} 
+                      label="Kéo thả ảnh vào đây để thay đổi"
+                    />
+                  </div>
                   <input
                     className="mgr-field"
                     style={{ gridColumn: "1 / -1" }}
-                    placeholder="URL ảnh đại diện"
+                    placeholder="Hoặc nhập URL ảnh đại diện trực tiếp"
                     value={memberEditForm.avatar_url}
                     onChange={(e) => setMemberEditForm((p) => ({ ...p, avatar_url: e.target.value }))}
                   />
