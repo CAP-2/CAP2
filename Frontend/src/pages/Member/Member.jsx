@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./member.css";
+import { socket } from "../../utils/socket"; 
 import {
   changeMemberPassword,
   createMemberReminder,
@@ -44,6 +45,7 @@ const Member = () => {
   const [showAccountPanel, setShowAccountPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [socketNotifications, setSocketNotifications] = useState([]);
   const [clanInfo, setClanInfo] = useState({ clan_name: "", history: "" });
   const [accountForm, setAccountForm] = useState({
     surname: "",
@@ -63,6 +65,33 @@ const Member = () => {
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [familySaving, setFamilySaving] = useState(false);
+
+  useEffect(() => {
+    const u = readSessionUser();
+    const userId = u?.id; 
+
+    if (userId) {
+        socket.emit("register_user", userId);
+        console.log("Member registered to socket ID:", userId);     
+        socket.on("new_notification", (data) => {
+          console.log("Hứng được tin nhắn:", data);
+            alert(`🔔 THÔNG BÁO: ${data.message}`);
+            const newNotif = {
+                id: Date.now(),
+                title: "CÔNG VIỆC MỚI",
+                message: data.message,
+                dueDate: data.dueDate,
+                time: new Date().toLocaleTimeString()
+            };
+            
+            setSocketNotifications(prev => [newNotif, ...prev]);
+            setActiveSection("reminders");
+        });
+    }
+    return () => {
+        socket.off("new_notification");
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -275,7 +304,6 @@ const Member = () => {
     loadDashboard();
   }, [loadDashboard]);
 
-  // Background Polling for dashboard (submission tracking)
   useEffect(() => {
     const interval = setInterval(() => {
        loadDashboard({ silent: true });
@@ -419,7 +447,6 @@ const Member = () => {
     navigate("/login", { replace: true });
   };
 
-  // Logic cho section General Posts trong trang (reusable)
   const [genPosts, setGenPosts] = useState([]);
   const [genPostsLoading, setGenPostsLoading] = useState(false);
   const loadClansFeed = useCallback(async () => {
@@ -439,7 +466,6 @@ const Member = () => {
     if (activeSection === "general_posts") loadClansFeed();
   }, [activeSection, loadClansFeed]);
 
-  // Background Polling for clan feed every 20 seconds when active
   useEffect(() => {
     if (activeSection !== "general_posts") return;
     const interval = setInterval(() => {
@@ -578,7 +604,6 @@ const Member = () => {
           </section>
         )}
 
-        {/* ... remaining sections: general_posts, chat, tree, restore, digitize, reminders ... */}
         {activeSection === "general_posts" && (
           <section className="usr-panel">
             <div className="usr-panelTitle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -632,17 +657,9 @@ const Member = () => {
           </section>
         )}
 
-        {/* TREE — đệ quy từ đời 1, con theo families/children */}
         {activeSection === "tree" ? (
           <section className="usr-panel usr-panel--phado">
             <div className="usr-panelTitle">Cây gia phả</div>
-            <div className="usr-panelText">
-              Gốc là đời 1 (hoặc đời nhỏ nhất).{" "}
-              <strong>Đường đen</strong> là huyết thống từ người cha/mẹ chính (nối con trong DB) xuống các con;{" "}
-              <strong>đoạn ngang đỏ</strong> giữa hai thẻ là vợ chồng cùng nhánh (cùng bản ghi <code>families</code> có cha và mẹ).
-              Bấm thẻ để xem chi tiết.
-            </div>
-
             <div className="usr-phado">
               <div className="usr-phado-frame">
                 <header className="usr-phado-header">
@@ -655,15 +672,13 @@ const Member = () => {
                   </div>
                   <div className="usr-phado-ornament usr-phado-ornament--right" aria-hidden="true" />
                 </header>
-
                 <div className="usr-phado-treeWrap usr-phado-treeWrap--bloodline">
                   {familyTreeRoots.length === 0 ? (
                     <div className="usr-phado-empty">
-                      Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ, có ít nhất một thành viên đời gốc và quan hệ cha/mẹ–con
-                      trong hệ thống.
+                      Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ.
                     </div>
                   ) : (
-                    <ul className="usr-phado-treeRoot" role="tree" aria-label="Cây gia phả theo đời">
+                    <ul className="usr-phado-treeRoot" role="tree">
                       {familyTreeRoots.map((root) => (
                         <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setTreeMemberDetail} />
                       ))}
@@ -697,21 +712,39 @@ const Member = () => {
         )}
 
         {activeSection === "reminders" && (
-          <section className="usr-panel">
-            <div className="usr-panelTitle">Nhắc nhở</div>
-            <div className="usr-reminderForm">
-               <input className="usr-input" value={newReminder.title} onChange={e=>setNewReminder(p=>({...p, title: e.target.value}))} placeholder="Tiêu đề" />
-               <input className="usr-input" type="date" value={newReminder.date} onChange={e=>setNewReminder(p=>({...p, date: e.target.value}))} />
-               <button className="usr-btnPrimary" onClick={addReminder}>Thêm</button>
-            </div>
-            <div className="usr-reminderGrid">
-               {reminders.map(r => <div className="usr-reminderCard" key={r.id}><strong>{r.title}</strong><p>{r.event_date}</p></div>)}
-            </div>
-          </section>
-        )}
+  <section className="usr-panel">
+    <div className="usr-panelTitle">Nhắc nhở & Thông báo mới</div>
+    
+    {/* Phần form thêm nhắc nhở cá nhân giữ nguyên */}
+    <div className="usr-reminderForm">
+       <input className="usr-input" value={newReminder.title} onChange={e=>setNewReminder(p=>({...p, title: e.target.value}))} placeholder="Tiêu đề" />
+       <input className="usr-input" type="date" value={newReminder.date} onChange={e=>setNewReminder(p=>({...p, date: e.target.value}))} />
+       <button className="usr-btnPrimary" onClick={addReminder}>Thêm</button>
+    </div>
+
+    <div className="usr-reminderGrid">
+       {/* 🌟 HIỂN THỊ THÔNG BÁO TỪ SOCKET TRƯỚC */}
+       {socketNotifications.map(sn => (
+          <div className="usr-reminderCard" key={sn.id} style={{ borderLeft: '4px solid #8b5cf6', background: '#f5f3ff' }}>
+             <strong style={{ color: '#8b5cf6' }}>📌 CÔNG VIỆC ĐƯỢC GIAO</strong>
+             <p>{sn.message}</p>
+             <small>Hạn chót: {sn.dueDate} | Nhận lúc: {sn.time}</small>
+          </div>
+       ))}
+
+       {/* HIỂN THỊ NHẮC NHỞ TỪ DATABASE */}
+       {reminders.map(r => (
+          <div className="usr-reminderCard" key={r.id}>
+             <strong>{r.title}</strong>
+             <p>{r.event_date}</p>
+             {r.note && <small>{r.note}</small>}
+          </div>
+       ))}
+    </div>
+  </section>
+)}
       </main>
 
-      {/* Account Modal */}
       {showAccountPanel && (
         <div className="usr-modalOverlay" onClick={() => setShowAccountPanel(false)}>
           <div className="usr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
@@ -722,140 +755,64 @@ const Member = () => {
             <div className="usr-modalBody">
               <div className="usr-accountModal-avatarSection">
                 <div className="usr-accountModal-avatarLabel">Ảnh hồ sơ</div>
-                <ImageUpload 
-                  onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} 
-                  label="Tải ảnh hoặc dán URL" 
-                />
+                <ImageUpload onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} label="Tải ảnh hoặc dán URL" />
                 {(profileStatus === 'pending') && <span className="status-pill pending">Đang chờ duyệt cập nhật hồ sơ</span>}
               </div>
-
               <div className="usr-accountModal-sectionTitle">Thông tin cá nhân</div>
               <div className="usr-accountModal-grid">
                 <input className="usr-input" value={accountForm.surname} onChange={(e) => setAccountForm(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
                 <input className="usr-input" value={accountForm.middle_name} onChange={(e) => setAccountForm(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
                 <input className="usr-input" value={accountForm.first_name} onChange={(e) => setAccountForm(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
                 <input className="usr-input" value={accountForm.email} onChange={(e) => setAccountForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
-                <div className="usr-accountModal-full">
-                  <input className="usr-input" style={{ width: '100%' }} value={accountForm.hometown} onChange={(e) => setAccountForm(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" />
-                </div>
-                <div className="usr-accountModal-full">
-                  <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 4 }}>
-                    Đời (thế hệ)
-                  </label>
-                  <input
-                    className="usr-input"
-                    style={{ width: "100%" }}
-                    type="number"
-                    min={1}
-                    value={accountForm.generation}
-                    onChange={(e) => setAccountForm((p) => ({ ...p, generation: e.target.value }))}
-                    placeholder="Ví dụ: 3"
-                  />
-                </div>
-                <div className="usr-accountModal-full">
-                  <textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" />
-                </div>
+                <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%' }} value={accountForm.hometown} onChange={(e) => setAccountForm(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" /></div>
+                <div className="usr-accountModal-full"><input className="usr-input" style={{ width: "100%" }} type="number" min={1} value={accountForm.generation} onChange={(e) => setAccountForm((p) => ({ ...p, generation: e.target.value }))} placeholder="Đời" /></div>
+                <div className="usr-accountModal-full"><textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" /></div>
                 <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                   <button className="usr-btnPrimary" style={{ flex: 1 }} onClick={saveAccountInfo} disabled={loading || accountMeta.person_id == null}>Lưu thông tin cơ bản</button>
                   <button className="usr-btnPrimary" style={{ flex: 1, background: '#4a148c' }} onClick={submitProfileUpdate} disabled={profileStatus === 'pending'}>Gửi yêu cầu duyệt Ảnh & Bio</button>
                 </div>
               </div>
 
-              <div className="usr-accountModal-sectionTitle">Quan hệ gia đình (cùng dòng họ)</div>
-              <p className="usr-familyHint">
-                Mã gia đình (<code>family_id</code>) do hệ thống tạo hoặc gắn tự động khi bạn lưu vợ/chồng hoặc danh sách con. Chỉ chọn người trong danh sách thành viên dòng họ của bạn.
-              </p>
-              <div className="usr-familyReadonly">
-                <strong>Mã gia đình hiện tại:</strong>{" "}
-                {accountForm.family_id !== "" && accountForm.family_id != null
-                  ? String(accountForm.family_id)
-                  : "— (chưa có — sẽ được tạo khi lưu vợ/chồng hoặc con)"}
-              </div>
+              <div className="usr-accountModal-sectionTitle">Quan hệ gia đình</div>
               <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
-                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
-                  Vợ / chồng (trong dòng họ)
-                </label>
-                <select
-                  className="usr-familySelect"
-                  value={accountForm.spouse_id === "" || accountForm.spouse_id == null ? "" : String(accountForm.spouse_id)}
-                  onChange={(e) =>
-                    setAccountForm((p) => ({
-                      ...p,
-                      spouse_id: e.target.value === "" ? "" : e.target.value,
-                    }))
-                  }
-                  disabled={accountMeta.person_id == null || clanMembersForRelations.length === 0}
-                >
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>Vợ / chồng</label>
+                <select className="usr-familySelect" value={accountForm.spouse_id} onChange={(e) => setAccountForm((p) => ({ ...p, spouse_id: e.target.value }))} disabled={accountMeta.person_id == null}>
                   <option value="">— Chưa chọn —</option>
-                  {clanMembersForRelations.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {personOptionLabel(m)} (id {m.id})
-                    </option>
-                  ))}
+                  {clanMembersForRelations.map((m) => (<option key={m.id} value={m.id}>{personOptionLabel(m)} (id {m.id})</option>))}
                 </select>
               </div>
               <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
-                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
-                  Con cái (chọn một hoặc nhiều)
-                </label>
-                {childCandidatesForRelations.length === 0 ? (
-                  <p className="usr-familyHint">Chưa có thành viên khác để chọn hoặc chưa tải danh sách dòng họ.</p>
-                ) : (
-                  <div className="usr-childrenGrid" role="group" aria-label="Danh sách con">
-                    {childCandidatesForRelations.map((m) => (
-                      <label key={m.id} className="usr-childRow">
-                        <input
-                          type="checkbox"
-                          checked={selectedChildIdSet.has(Number(m.id))}
-                          onChange={() => toggleChildInRelations(Number(m.id))}
-                        />
-                        <span>
-                          {personOptionLabel(m)} <span style={{ color: "#94a3b8" }}>(id {m.id})</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-                <p className="usr-familyHint" style={{ marginTop: 8 }}>
-                  ID con (tham chiếu): <code>{accountForm.children_ids || "—"}</code>
-                </p>
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>Con cái</label>
+                <div className="usr-childrenGrid">
+                  {childCandidatesForRelations.map((m) => (
+                    <label key={m.id} className="usr-childRow">
+                      <input type="checkbox" checked={selectedChildIdSet.has(Number(m.id))} onChange={() => toggleChildInRelations(Number(m.id))} />
+                      <span>{personOptionLabel(m)} (id {m.id})</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="usr-accountModal-full" style={{ marginBottom: 16 }}>
-                <button
-                  className="usr-btnPrimary"
-                  style={{ width: "100%" }}
-                  type="button"
-                  onClick={saveFamilyRelations}
-                  disabled={familySaving || loading || accountMeta.person_id == null}
-                >
-                  {familySaving ? "Đang lưu quan hệ…" : "Lưu quan hệ vợ/chồng & con (family tự cập nhật trong DB)"}
-                </button>
+                <button className="usr-btnPrimary" style={{ width: "100%" }} type="button" onClick={saveFamilyRelations} disabled={familySaving || loading || accountMeta.person_id == null}>Lưu quan hệ</button>
               </div>
 
               <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
               <div className="usr-accountModal-grid">
                 <input className="usr-input" type="password" value={passwordForm.current} onChange={e => setPasswordForm(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
                 <input className="usr-input" type="password" value={passwordForm.next} onChange={e => setPasswordForm(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
-                <div className="usr-accountModal-full">
-                  <input className="usr-input" style={{ width: '100%' }} type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" />
-                </div>
-                <div className="usr-accountModal-full">
-                  <button className="usr-btnPrimary" style={{ width: '100%' }} onClick={savePassword} disabled={passwordSaving}>
-                    {passwordSaving ? "Đang lưu..." : "Đổi mật khẩu"}
-                  </button>
-                </div>
+                <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%' }} type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" /></div>
+                <div className="usr-accountModal-full"><button className="usr-btnPrimary" style={{ width: '100%' }} onClick={savePassword} disabled={passwordSaving}>{passwordSaving ? "Đang lưu..." : "Đổi mật khẩu"}</button></div>
               </div>
 
               <div className="usr-accountModal-footer">
                 <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Trạng thái: <strong>{accountMeta.status === 'active' ? 'Đã kích hoạt' : accountMeta.status}</strong></span>
-                <button className="usr-btnDanger" onClick={logout}>Đăng xuất tài khoản</button>
+                <button className="usr-btnDanger" onClick={logout}>Đăng xuất</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Person Detail Modal */}
       {treeMemberDetail && (
         <div className="usr-modalOverlay" onClick={() => setTreeMemberDetail(null)}>
           <div className="usr-modal" onClick={e => e.stopPropagation()}>
