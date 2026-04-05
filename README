@@ -21,6 +21,7 @@ docker ps
 Bước 2:Chạy Back end
 .env
 
+npm install socket.io
 
 Lệch Chạy
 cd 'D:\Visua Studio Code\CAP2\Backend'
@@ -34,6 +35,7 @@ Bước 3: Chạy Front end
 VITE_API_URL=http://localhost:3000
 
 cd 'D:\Visua Studio Code\CAP2\Frontend'
+npm install socket.io-client
 npm install
 npm run dev
 

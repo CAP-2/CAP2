@@ -837,3 +837,60 @@ select.mgr-search.mgr-selectMulti {
   font-weight: 800;
   cursor: pointer;
 }
+/* Sửa lỗi ẩn chữ cho các ô nhập liệu và label trong Manager */
+
+/* 1. Ép màu cho các ô input/field */
+.mgr-field {
+    color: #1d2b44 !important; /* Màu xanh đen đậm */
+    background-color: #ffffff !important;
+    opacity: 1 !important;
+}
+
+/* 2. Ép màu cho các nhãn (Labels) và tiêu đề */
+.mgr-panelTitle, 
+.mgr-sidebarHeading, 
+.mgr-listTitle, 
+.mgr-sectionHeader h2 {
+    color: #1d2b44 !important;
+}
+
+/* 3. Chữ mô tả phụ */
+.mgr-panelText, 
+.mgr-subtle, 
+.mgr-modalMeta {
+    color: #6f7f98 !important;
+}
+
+/* 4. Placeholder (chữ gợi ý ẩn) */
+.mgr-field::placeholder {
+    color: #a0aec0 !important;
+}
+
+/* 5. Khắc phục lỗi chữ trắng trong Select option (nếu có) */
+.mgr-field option {
+    color: #1d2b44;
+    background-color: #fff;
+}
+/* Ép màu đen cho toàn bộ chữ trong form Manager */
+.mgr-main input, 
+.mgr-main select, 
+.mgr-main textarea,
+.mgr-main label,
+.mgr-main span {
+    color: #1d2b44 !important; /* Màu xanh đen */
+    -webkit-text-fill-color: #1d2b44 !important; /* Dành cho Chrome/Safari */
+}
+
+/* Đảm bảo nền của các ô nhập liệu luôn là màu trắng */
+.mgr-main input, 
+.mgr-main select, 
+.mgr-main textarea {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+}
+
+/* Sửa lỗi chữ trong dropdown (Select option) bị trắng */
+.mgr-main option {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+}

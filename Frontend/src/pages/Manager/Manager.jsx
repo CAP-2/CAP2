@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./manager.css";
+// --- 🌟 SỬA ĐƯỜNG DẪN IMPORT SOCKET CHO ĐÚNG CẤU TRÚC THƯ MỤC 🌟 ---
+import { socket } from "../../utils/socket"; 
 import {
   getStats,
   getMembers,
-  getMemberRelations,
-  updateMemberRelations,
   getMemberDetail,
   updateMemberByManager,
   createMember,
@@ -81,6 +81,15 @@ function mapMemberToForm(m) {
 
 const Manager = () => {
   const navigate = useNavigate();
+  const currentUser = useMemo(() => readSessionUser(), []);
+
+  // --- 🌟 SOCKET REGISTER 🌟 ---
+  useEffect(() => {
+    if (currentUser?.id) {
+      socket.emit("register_user", currentUser.id);
+      console.log("Manager registered to socket with ID:", currentUser.id);
+    }
+  }, [currentUser]);
   
   const [stats, setStats] = useState({ total_members: 0, total_managers: 0, total_pending: 0 });
   const [members, setMembers] = useState([]);
@@ -99,7 +108,7 @@ const Manager = () => {
   const [relDetail, setRelDetail] = useState(null);
   const [relDetailLoading, setRelDetailLoading] = useState(false);
 
-  const sessionRoleId = readSessionUser().role_id;
+  const sessionRoleId = currentUser.role_id;
   const [overviewCreate, setOverviewCreate] = useState({ email: "", password: "", surname: "", middle_name: "", first_name: "", gender: "1", birth_date: "", hometown: "", generation: "1", clan_id: "" });
   const [overviewCreateMsg, setOverviewCreateMsg] = useState("");
   const [overviewCreateSaving, setOverviewCreateSaving] = useState(false);
@@ -264,6 +273,30 @@ const Manager = () => {
     return () => { cancelled = true; };
   }, [memberEditId]);
 
+  // --- 🌟 SOCKET EMIT TRONG ASSIGN TASK 🌟 ---
+  const handleAssignTask = async (e) => {
+    e.preventDefault();
+    if (!taskData.member_id) return alert("Vui lòng chọn thành viên!");
+    try { 
+        await assignTaskAPI(taskData); 
+        
+        // Gửi tín hiệu Socket sau khi lưu DB thành công
+        socket.emit('send_task', {
+            receiverId: Number(taskData.member_id),
+            title: taskData.title,
+            senderName: currentUser.surname + " " + currentUser.first_name || "Manager",
+            dueDate: taskData.due_date
+        });
+
+        alert("Đã giao việc thành công và gửi thông báo real-time!"); 
+        setTaskData({ member_id: "", title: "", description: "", due_date: "" }); 
+        loadAll(); 
+    } 
+    catch (err) { alert("Lỗi phân công: " + err.message); }
+  };
+
+  const logout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); navigate("/login", { replace: true }); };
+
   const saveMemberEdit = async () => {
     if (!memberEditId) return;
     setMemberEditSaving(true); setMemberEditMsg("");
@@ -334,8 +367,6 @@ const Manager = () => {
     } catch (e) { setOverviewAccountMsg(e?.message || "Không thể đổi mật khẩu"); } finally { setOverviewPasswordSaving(false); }
   };
 
-  const logout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); navigate("/login", { replace: true }); };
-
   const doApprove = async (id) => { await approveUserAPI(id); await loadAll(); };
   const doReject = async (id) => { await rejectUserAPI(id); await loadAll(); };
   const doApprovePost = async (id) => { await approvePostAPI(id); await loadAll(); };
@@ -355,7 +386,7 @@ const Manager = () => {
 
   const handleCreatePerson = async (e) => {
     e.preventDefault();
-    try { await createPersonAPI(formData); alert("Đã tạo thành viên mới thành công!"); setFormData({ surname: "", middle_name: "", first_name: "", display_name: "", gender: "Nam", birth_date: "", hometown: "", clan_id: 1, generation: 1 }); loadAll(); } 
+    try { await createPersonAPI(formData); alert("Đã tạo thành viên mới thành công!"); setFormData({ surname: "", middle_name: "", first_name: "", display_name: "", gender: "1", birth_date: "", hometown: "", clan_id: 1, generation: 1 }); loadAll(); } 
     catch (err) { alert("Lỗi: " + err.message); }
   };
 
@@ -403,13 +434,6 @@ const Manager = () => {
     }
   };
 
-  const handleAssignTask = async (e) => {
-    e.preventDefault();
-    if (!taskData.member_id) return alert("Vui lòng chọn thành viên!");
-    try { await assignTaskAPI(taskData); alert("Đã giao việc thành công!"); setTaskData({ member_id: "", title: "", description: "", due_date: "" }); loadAll(); } 
-    catch (err) { alert("Lỗi phân công: " + err.message); }
-  };
-
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
     const source = activeSection === "approvals" ? pending : members;
@@ -427,13 +451,13 @@ const Manager = () => {
   return (
     <div className="mgr-shell">
       <aside className="mgr-sidebar">
-        <div className="mgr-brand"><div className="mgr-logo" aria-hidden="true">G</div><div className="mgr-brandText"><div className="mgr-brandTitle">Gia Phả</div><div className="mgr-brandSub">Quản trị gia phả</div></div></div>
+        <div className="mgr-brand"><div className="mgr-logo" aria-hidden="true">G</div><div className="mgr-brandText"><div className="mgr-brandTitle" style={{color: 'var(--mgr-text)'}}>Gia Phả</div><div className="mgr-brandSub">Quản trị gia phả</div></div></div>
         <div className="mgr-sidebarBlock">
           <div className="mgr-sidebarHeading">Thống kê gia phả</div>
           <div className="mgr-miniStats">
-            <div className="mgr-miniStat"><div className="mgr-miniValue">{stats.total_members}</div><div className="mgr-miniLabel">Thành viên</div></div>
-            <div className="mgr-miniStat"><div className="mgr-miniValue">{stats.total_managers}</div><div className="mgr-miniLabel">Manager</div></div>
-            <div className="mgr-miniStat"><div className="mgr-miniValue">{stats.total_pending}</div><div className="mgr-miniLabel">Chờ duyệt</div></div>
+            <div className="mgr-miniStat"><div className="mgr-miniValue" style={{color: 'var(--mgr-text)'}}>{stats.total_members}</div><div className="mgr-miniLabel">Thành viên</div></div>
+            <div className="mgr-miniStat"><div className="mgr-miniValue" style={{color: 'var(--mgr-text)'}}>{stats.total_managers}</div><div className="mgr-miniLabel">Manager</div></div>
+            <div className="mgr-miniStat"><div className="mgr-miniValue" style={{color: 'var(--mgr-text)'}}>{stats.total_pending}</div><div className="mgr-miniLabel">Chờ duyệt</div></div>
           </div>
         </div>
         <nav className="mgr-nav" aria-label="Điều hướng quản trị">
@@ -451,11 +475,11 @@ const Manager = () => {
 
       <main className="mgr-main">
         <div className="mgr-topbar">
-          <div className="mgr-search"><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm kiếm thành viên…" aria-label="Tìm kiếm thành viên" /></div>
+          <div className="mgr-search"><input style={{color: 'var(--mgr-text)'}} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm kiếm thành viên…" aria-label="Tìm kiếm thành viên" /></div>
           <div className="mgr-topActions">
-            <button className="mgr-pill" type="button" onClick={() => setShowAccountModal(true)}>Tài khoản</button>
-            <button className="mgr-iconBtn" type="button" onClick={() => loadAll()} title="Tải lại">↻</button>
-            <button className="mgr-btnGhost mgr-logoutBtn" type="button" onClick={logout} title="Đăng xuất">Đăng xuất</button>
+            <button className="mgr-pill" type="button" style={{color: 'var(--mgr-text)'}} onClick={() => setShowAccountModal(true)}>Tài khoản</button>
+            <button className="mgr-iconBtn" type="button" style={{color: 'var(--mgr-text)'}} onClick={() => loadAll()} title="Tải lại">↻</button>
+            <button className="mgr-btnGhost mgr-logoutBtn" type="button" style={{color: 'var(--mgr-text)'}} onClick={logout} title="Đăng xuất">Đăng xuất</button>
           </div>
         </div>
 
@@ -463,7 +487,7 @@ const Manager = () => {
           <div className="usr-modalOverlay" onClick={() => setShowAccountModal(false)}>
             <div className="usr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
               <div className="usr-modalHeader">
-                <h2 className="usr-modalTitle">Tài khoản Quản lý</h2>
+                <h2 className="usr-modalTitle" style={{color: 'var(--mgr-text)'}}>Tài khoản Quản lý</h2>
                 <button className="usr-modalClose" onClick={() => setShowAccountModal(false)}>&times;</button>
               </div>
               <div className="usr-modalBody">
@@ -472,14 +496,14 @@ const Manager = () => {
                   <ImageUpload onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} label="Tải ảnh hoặc dán URL" />
                   {(profileStatus === 'pending') && <span className="status-pill pending">Đang chờ duyệt cập nhật hồ sơ</span>}
                 </div>
-                <div className="usr-accountModal-sectionTitle">Thông tin cá nhân</div>
+                <div className="usr-accountModal-sectionTitle" style={{color: 'var(--mgr-text)'}}>Thông tin cá nhân</div>
                 <div className="usr-accountModal-grid">
-                  <input className="usr-input" value={overviewAccount.surname} onChange={(e) => setOverviewAccount(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
-                  <input className="usr-input" value={overviewAccount.middle_name} onChange={(e) => setOverviewAccount(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
-                  <input className="usr-input" value={overviewAccount.first_name} onChange={(e) => setOverviewAccount(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
-                  <input className="usr-input" value={overviewAccount.email} onChange={(e) => setOverviewAccount(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
-                  <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%' }} value={overviewAccount.hometown} onChange={(e) => setOverviewAccount(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" /></div>
-                  <div className="usr-accountModal-full"><textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" /></div>
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} value={overviewAccount.surname} onChange={(e) => setOverviewAccount(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} value={overviewAccount.middle_name} onChange={(e) => setOverviewAccount(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} value={overviewAccount.first_name} onChange={(e) => setOverviewAccount(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} value={overviewAccount.email} onChange={(e) => setOverviewAccount(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
+                  <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%', color: 'var(--mgr-text)' }} value={overviewAccount.hometown} onChange={(e) => setOverviewAccount(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" /></div>
+                  <div className="usr-accountModal-full"><textarea className="usr-textarea" style={{color: 'var(--mgr-text)'}} value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" /></div>
                   <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                     <button className="usr-btnPrimary" style={{ flex: 1, height: '40px' }} onClick={saveOverviewAccount} disabled={overviewAccountSaving || managerMeta.person_id == null}>Lưu thông tin cơ bản</button>
                     <button className="usr-btnPrimary" style={{ flex: 1, height: '40px', background: '#4a148c' }} 
@@ -496,11 +520,11 @@ const Manager = () => {
                     </button>
                   </div>
                 </div>
-                <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
+                <div className="usr-accountModal-sectionTitle" style={{color: 'var(--mgr-text)'}}>Đổi mật khẩu</div>
                 <div className="usr-accountModal-grid">
-                  <input className="usr-input" type="password" value={overviewPassword.current} onChange={e => setOverviewPassword(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
-                  <input className="usr-input" type="password" value={overviewPassword.next} onChange={e => setOverviewPassword(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
-                  <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%' }} type="password" value={overviewPassword.confirm} onChange={e => setOverviewPassword(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" /></div>
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} type="password" value={overviewPassword.current} onChange={e => setOverviewPassword(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
+                  <input className="usr-input" style={{color: 'var(--mgr-text)'}} type="password" value={overviewPassword.next} onChange={e => setOverviewPassword(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
+                  <div className="usr-accountModal-full"><input className="usr-input" style={{ width: '100%', color: 'var(--mgr-text)' }} type="password" value={overviewPassword.confirm} onChange={e => setOverviewPassword(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" /></div>
                   <div className="usr-accountModal-full"><button className="usr-btnPrimary" style={{ width: '100%', height: '40px' }} onClick={saveOverviewPassword} disabled={overviewPasswordSaving}>{overviewPasswordSaving ? "Đang lưu..." : "Đổi mật khẩu"}</button></div>
                 </div>
                 {overviewAccountMsg && <div className={`mgr-alert ${overviewAccountMsg.includes('Lỗi') ? 'mgr-alert--danger' : ''}`}>{overviewAccountMsg}</div>}
@@ -520,7 +544,7 @@ const Manager = () => {
         </section>
 
         <section className="mgr-sectionHeader">
-          <h2>{sectionTitle}</h2>
+          <h2 style={{color: 'var(--mgr-text)'}}>{sectionTitle}</h2>
           {error ? <div className="mgr-alert">{error}</div> : null}
           {loading ? <div className="mgr-subtle">Đang tải dữ liệu…</div> : null}
         </section>
@@ -544,18 +568,18 @@ const Manager = () => {
               <div className="mgr-panelActions" style={{ marginTop: '20px' }}><button className="mgr-btnPrimary" type="button" style={{ background: '#2f9bff' }} onClick={() => setActiveSection("media")}>Mở Thư viện Media</button></div>
             </div>
             <div className="mgr-panel mgr-panel--wide">
-              <div className="mgr-panelTitle">Tạo tài khoản đăng nhập cho thành viên mới</div>
+              <div className="mgr-panelTitle" style={{color: 'var(--mgr-text)'}}>Tạo tài khoản đăng nhập cho thành viên mới</div>
               <div className="mgr-overviewFormGrid" style={{ marginTop: '15px' }}>
-                <input className="mgr-field" type="email" placeholder="Email đăng nhập *" value={overviewCreate.email} onChange={(e) => setOverviewCreate((p) => ({ ...p, email: e.target.value }))} autoComplete="off" />
-                <input className="mgr-field" type="password" placeholder="Mật khẩu *" value={overviewCreate.password} onChange={(e) => setOverviewCreate((p) => ({ ...p, password: e.target.value }))} autoComplete="new-password" />
-                <input className="mgr-field" placeholder="Họ *" value={overviewCreate.surname} onChange={(e) => setOverviewCreate((p) => ({ ...p, surname: e.target.value }))} />
-                <input className="mgr-field" placeholder="Tên đệm" value={overviewCreate.middle_name} onChange={(e) => setOverviewCreate((p) => ({ ...p, middle_name: e.target.value }))} />
-                <input className="mgr-field" placeholder="Tên *" value={overviewCreate.first_name} onChange={(e) => setOverviewCreate((p) => ({ ...p, first_name: e.target.value }))} />
-                <select className="mgr-field" value={overviewCreate.gender} onChange={(e) => setOverviewCreate((p) => ({ ...p, gender: e.target.value }))} ><option value="1">Nam</option><option value="2">Nữ</option></select>
-                <input className="mgr-field" type="date" value={overviewCreate.birth_date} onChange={(e) => setOverviewCreate((p) => ({ ...p, birth_date: e.target.value }))} />
-                <input className="mgr-field" type="number" min={1} placeholder="Đời" value={overviewCreate.generation} onChange={(e) => setOverviewCreate((p) => ({ ...p, generation: e.target.value }))} />
-                <input className="mgr-field" style={{ gridColumn: sessionRoleId === 1 ? "span 1" : "1 / -1" }} placeholder="Quê quán" value={overviewCreate.hometown} onChange={(e) => setOverviewCreate((p) => ({ ...p, hometown: e.target.value }))} />
-                {sessionRoleId === 1 && <input className="mgr-field" type="number" placeholder="Mã dòng họ (clan_id) *" value={overviewCreate.clan_id} onChange={(e) => setOverviewCreate((p) => ({ ...p, clan_id: e.target.value }))} />}
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="email" placeholder="Email đăng nhập *" value={overviewCreate.email} onChange={(e) => setOverviewCreate((p) => ({ ...p, email: e.target.value }))} autoComplete="off" />
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="password" placeholder="Mật khẩu *" value={overviewCreate.password} onChange={(e) => setOverviewCreate((p) => ({ ...p, password: e.target.value }))} autoComplete="new-password" />
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Họ *" value={overviewCreate.surname} onChange={(e) => setOverviewCreate((p) => ({ ...p, surname: e.target.value }))} />
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Tên đệm" value={overviewCreate.middle_name} onChange={(e) => setOverviewCreate((p) => ({ ...p, middle_name: e.target.value }))} />
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Tên *" value={overviewCreate.first_name} onChange={(e) => setOverviewCreate((p) => ({ ...p, first_name: e.target.value }))} />
+                <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={overviewCreate.gender} onChange={(e) => setOverviewCreate((p) => ({ ...p, gender: e.target.value }))} ><option value="1">Nam</option><option value="2">Nữ</option></select>
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="date" value={overviewCreate.birth_date} onChange={(e) => setOverviewCreate((p) => ({ ...p, birth_date: e.target.value }))} />
+                <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" min={1} placeholder="Đời" value={overviewCreate.generation} onChange={(e) => setOverviewCreate((p) => ({ ...p, generation: e.target.value }))} />
+                <input className="mgr-field" style={{ gridColumn: sessionRoleId === 1 ? "span 1" : "1 / -1", color: 'var(--mgr-text)' }} placeholder="Quê quán" value={overviewCreate.hometown} onChange={(e) => setOverviewCreate((p) => ({ ...p, hometown: e.target.value }))} />
+                {sessionRoleId === 1 && <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="Mã dòng họ (clan_id) *" value={overviewCreate.clan_id} onChange={(e) => setOverviewCreate((p) => ({ ...p, clan_id: e.target.value }))} />}
               </div>
               {overviewCreateMsg && <div className={overviewCreateMsg.startsWith("Đã ") ? "mgr-subtle" : "mgr-alert"} style={{ marginTop: 10 }}>{overviewCreateMsg}</div>}
               <div className="mgr-panelActions" style={{ marginTop: 12 }}><button className="mgr-btnPrimary" type="button" disabled={overviewCreateSaving} onClick={submitOverviewCreateMember}>{overviewCreateSaving ? "Đang tạo…" : "Tạo tài khoản"}</button></div>
@@ -563,23 +587,22 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB DANH SÁCH & DUYỆT TÀI KHOẢN --- */}
         {(activeSection === "members" || activeSection === "approvals") && (
           <section>
             <div className="mgr-listHeader">
-              <div className="mgr-listTitle">{activeSection === "approvals" ? `Tài khoản chờ duyệt (${filteredMembers.length})` : `Tất cả thành viên (${filteredMembers.length})`}</div>
+              <div className="mgr-listTitle" style={{color: 'var(--mgr-text)'}}>{activeSection === "approvals" ? `Tài khoản chờ duyệt (${filteredMembers.length})` : `Tất cả thành viên (${filteredMembers.length})`}</div>
             </div>
             <div className="mgr-cardGrid">
               {filteredMembers.map((user) => (
                 <div className={`mgr-card ${activeSection === "members" ? "mgr-card--clickable" : ""}`} key={user.account_id} onClick={() => { if (activeSection === "members") setMemberEditId(user.account_id); }}>
                   <div className="mgr-cardCover"><div className="mgr-dot" /><div className="mgr-chip">Đời {user.generation ?? "—"}</div></div>
                   <div className="mgr-cardBody">
-                    <div className="mgr-cardName">{user.first_name} {user.surname}</div>
+                    <div className="mgr-cardName" style={{color: 'var(--mgr-text)'}}>{user.first_name} {user.surname}</div>
                     <div className="mgr-cardMeta">{user.email}</div>
                     <div className="mgr-cardRows">
-                      <div className="mgr-row"><span className="mgr-rowKey">Năm sinh</span><span className="mgr-rowVal">{user.birth_date ? new Date(user.birth_date).getFullYear() : "—"}</span></div>
-                      <div className="mgr-row"><span className="mgr-rowKey">Vai trò</span><span className="mgr-rowVal">{user.role_id === 2 ? "Manager" : user.role_id === 3 ? "Member" : `Role ${user.role_id}`}</span></div>
-                      <div className="mgr-row"><span className="mgr-rowKey">Trạng thái</span><span className="mgr-rowVal">{user.status || "—"}</span></div>
+                      <div className="mgr-row"><span className="mgr-rowKey">Năm sinh</span><span className="mgr-rowVal" style={{color: 'var(--mgr-text)'}}>{user.birth_date ? new Date(user.birth_date).getFullYear() : "—"}</span></div>
+                      <div className="mgr-row"><span className="mgr-rowKey">Vai trò</span><span className="mgr-rowVal" style={{color: 'var(--mgr-text)'}}>{user.role_id === 2 ? "Manager" : user.role_id === 3 ? "Member" : `Role ${user.role_id}`}</span></div>
+                      <div className="mgr-row"><span className="mgr-rowKey">Trạng thái</span><span className="mgr-rowVal" style={{color: 'var(--mgr-text)'}}>{user.status || "—"}</span></div>
                     </div>
                     {activeSection === "approvals" && (
                       <div className="mgr-cardActions">
@@ -595,7 +618,6 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB LINEAGE MANAGEMENT --- */}
         {activeSection === "lineage" && (
           <section className="mgr-grid2">
             <div className="mgr-panel">
@@ -604,17 +626,17 @@ const Manager = () => {
                 <div>
                   <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>Họ và Tên khai sinh *</label>
                   <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                    <input className="mgr-search" style={{ flex: '1.2', minWidth: '0' }} placeholder="Họ" value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} required />
-                    <input className="mgr-search" style={{ flex: '1', minWidth: '0' }} placeholder="Tên đệm" value={formData.middle_name} onChange={e => setFormData({...formData, middle_name: e.target.value})} />
-                    <input className="mgr-search" style={{ flex: '1.2', minWidth: '0' }} placeholder="Tên" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} required />
+                    <input className="mgr-search" style={{ flex: '1.2', minWidth: '0', color: 'var(--mgr-text)' }} placeholder="Họ" value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} required />
+                    <input className="mgr-search" style={{ flex: '1', minWidth: '0', color: 'var(--mgr-text)' }} placeholder="Tên đệm" value={formData.middle_name} onChange={e => setFormData({...formData, middle_name: e.target.value})} />
+                    <input className="mgr-search" style={{ flex: '1.2', minWidth: '0', color: 'var(--mgr-text)' }} placeholder="Tên" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} required />
                   </div>
                 </div>
-                <div><label className="mgr-miniLabel">Tên hiển thị</label><input className="mgr-search" style={{ width: '100%' }} value={formData.display_name} onChange={e => setFormData({...formData, display_name: e.target.value})} /></div>
+                <div><label className="mgr-miniLabel">Tên hiển thị</label><input className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={formData.display_name} onChange={e => setFormData({...formData, display_name: e.target.value})} /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div><label className="mgr-miniLabel">Giới tính</label><select className="mgr-search" style={{ width: '100%' }} value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}><option value="Nam">Nam</option><option value="Nữ">Nữ</option></select></div>
-                  <div><label className="mgr-miniLabel">Ngày sinh</label><input className="mgr-search" type="date" style={{ width: '100%' }} value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} /></div>
+                  <div><label className="mgr-miniLabel">Giới tính</label><select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}><option value="1">Nam</option><option value="2">Nữ</option></select></div>
+                  <div><label className="mgr-miniLabel">Ngày sinh</label><input className="mgr-search" type="date" style={{ width: '100%', color: 'var(--mgr-text)' }} value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} /></div>
                 </div>
-                <div><label className="mgr-miniLabel">Quê quán</label><input className="mgr-search" style={{ width: '100%' }} value={formData.hometown} onChange={e => setFormData({...formData, hometown: e.target.value})} /></div>
+                <div><label className="mgr-miniLabel">Quê quán</label><input className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={formData.hometown} onChange={e => setFormData({...formData, hometown: e.target.value})} /></div>
                 <button className="mgr-btnPrimary" type="submit" style={{ width: '100%', padding: '12px' }}>+ Lưu thành viên</button>
               </form>
             </div>
@@ -627,19 +649,10 @@ const Manager = () => {
               </p>
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
-                  <label className="mgr-rowKey" style={{ display: 'block', marginBottom: '8px' }}>👉 Chọn hồ sơ (tài khoản):</label>
-                  <select
-                    className="mgr-search"
-                    style={{ width: '100%', border: '2px solid var(--mgr-primary-2)' }}
-                    value={treeBuildAccountId}
-                    onChange={(e) => setTreeBuildAccountId(e.target.value)}
-                  >
-                    <option value="">-- Click để chọn thành viên --</option>
-                    {members.map((m) => (
-                      <option key={m.account_id} value={String(m.account_id)}>
-                        {memberDisplayName(m)} {m.email ? `(${m.email})` : ""}
-                      </option>
-                    ))}
+                  <label className="mgr-rowKey" style={{ display: 'block', marginBottom: '8px' }}>👉 Chọn hồ sơ:</label>
+                  <select className="mgr-search" style={{ width: '100%', border: '2px solid var(--mgr-primary-2)', color: 'var(--mgr-text)' }} value={linkData.person_id} onChange={e => setLinkData({...linkData, person_id: e.target.value})}>
+                    <option value="" style={{color: 'var(--mgr-text)'}}>-- Click để chọn thành viên --</option>
+                    {members.map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.middle_name || ""} {m.first_name}</option>))}
                   </select>
                   {treeBuildLoading ? <div className="mgr-subtle" style={{ marginTop: '10px' }}>Đang tải quan hệ từ máy chủ…</div> : null}
                 </div>
@@ -647,79 +660,32 @@ const Manager = () => {
                   <div className="mgr-miniLabel" style={{ marginBottom: '10px', fontWeight: 700 }}>Huyết thống (cha / mẹ trong DB)</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <div>
-                      <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👤 Người cha</label>
-                      <select
-                        className="mgr-search"
-                        style={{ width: '100%' }}
-                        disabled={!treeBuildAccountId}
-                        value={linkData.father_person_id}
-                        onChange={(e) => setLinkData((p) => ({ ...p, father_person_id: e.target.value }))}
-                      >
-                        <option value="">— Chưa có / chọn người —</option>
-                        {members
-                          .filter((m) => String(m.account_id) !== treeBuildAccountId && isMaleMember(m))
-                          .map((m) => (
-                            <option key={m.person_id} value={String(m.person_id)}>
-                              {memberDisplayName(m)}
-                            </option>
-                          ))}
-                      </select>
+                        <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👤 Người Cha:</label>
+                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.father_id} onChange={e => setLinkData({...linkData, father_id: e.target.value})}>
+                          <option value="" style={{color: 'var(--mgr-text)'}}>-- Khuyết / Chưa rõ --</option>
+                          {members.filter(m => m.gender === 'Nam' || m.gender === '1').map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.first_name}</option>))}
+                        </select>
                     </div>
                     <div>
-                      <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👩 Người mẹ</label>
-                      <select
-                        className="mgr-search"
-                        style={{ width: '100%' }}
-                        disabled={!treeBuildAccountId}
-                        value={linkData.mother_person_id}
-                        onChange={(e) => setLinkData((p) => ({ ...p, mother_person_id: e.target.value }))}
-                      >
-                        <option value="">— Chưa có / chọn người —</option>
-                        {members
-                          .filter((m) => String(m.account_id) !== treeBuildAccountId && isFemaleMember(m))
-                          .map((m) => (
-                            <option key={m.person_id} value={String(m.person_id)}>
-                              {memberDisplayName(m)}
-                            </option>
-                          ))}
-                      </select>
+                        <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👩 Người Mẹ:</label>
+                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.mother_id} onChange={e => setLinkData({...linkData, mother_id: e.target.value})}>
+                          <option value="" style={{color: 'var(--mgr-text)'}}>-- Khuyết / Chưa rõ --</option>
+                          {members.filter(m => m.gender === 'Nữ' || m.gender === '2').map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.first_name}</option>))}
+                        </select>
                     </div>
                   </div>
                 </div>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
-                  <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>💍 Tình trạng hôn nhân (theo DB: có vợ/chồng hay không)</label>
-                  <select
-                    className="mgr-search"
-                    style={{ width: '100%', marginBottom: '10px' }}
-                    disabled={!treeBuildAccountId}
-                    value={maritalStatus}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setMaritalStatus(v);
-                      if (v === "Độc thân") setLinkData((p) => ({ ...p, spouse_person_id: "" }));
-                    }}
-                  >
-                    <option value="Độc thân">Độc thân / chưa khai báo vợ chồng</option>
-                    <option value="Đã kết hôn">Đã kết hôn (có vợ hoặc chồng trong hệ thống)</option>
+                  <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>💍 Tình trạng hôn nhân:</label>
+                  <select className="mgr-search" style={{ width: '100%', marginBottom: '10px', color: 'var(--mgr-text)' }} value={maritalStatus} onChange={e => { setMaritalStatus(e.target.value); if(e.target.value === "Độc thân") setLinkData({...linkData, spouse_id: ""}); }}>
+                    <option value="Độc thân">Độc thân</option><option value="Đã kết hôn">Đã kết hôn</option>
                   </select>
                   {maritalStatus === "Đã kết hôn" && (
                     <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--mgr-border)' }}>
-                      <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px', color: '#e83e8c' }}>Chọn vợ / chồng (hồ sơ người)</label>
-                      <select
-                        className="mgr-search"
-                        style={{ width: '100%' }}
-                        disabled={!treeBuildAccountId}
-                        value={linkData.spouse_person_id}
-                        onChange={(e) => setLinkData((p) => ({ ...p, spouse_person_id: e.target.value }))}
-                      >
-                        <option value="">-- Chọn vợ/chồng --</option>
-                        {members
-                          .filter((m) => String(m.account_id) !== treeBuildAccountId)
-                          .map((m) => (
-                            <option key={m.person_id} value={String(m.person_id)}>
-                              {memberDisplayName(m)}
-                            </option>
-                          ))}
+                      <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px', color: '#e83e8c' }}>Chọn Vợ / Chồng:</label>
+                      <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.spouse_id} onChange={e => setLinkData({...linkData, spouse_id: e.target.value})}>
+                        <option value="">-- Chọn hồ sơ Vợ/Chồng --</option>
+                        {members.map(m => (<option key={m.account_id} value={m.account_id}>{m.surname} {m.first_name}</option>))}
                       </select>
                     </div>
                   )}
@@ -779,7 +745,6 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB PHÂN CÔNG CÔNG VIỆC --- */}
         {activeSection === "tasks" && (
           <section className="mgr-grid2">
               <div className="mgr-panel">
@@ -787,22 +752,22 @@ const Manager = () => {
                   <form style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }} onSubmit={handleAssignTask}>
                       <div>
                         <label className="mgr-miniLabel">Chọn người thực hiện *</label>
-                        <select className="mgr-search" style={{ width: '100%' }} value={taskData.member_id} onChange={e => setTaskData({...taskData, member_id: e.target.value})} required>
+                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={taskData.member_id} onChange={e => setTaskData({...taskData, member_id: e.target.value})} required>
                             <option value="">-- Click để chọn thành viên --</option>
                             {members.map(m => <option key={m.account_id} value={m.account_id}>{m.surname} {m.first_name}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="mgr-miniLabel">Tiêu đề công việc *</label>
-                        <input className="mgr-search" style={{ width: '100%' }} placeholder="VD: Sắm lễ cúng Rằm tháng 7" value={taskData.title} onChange={e => setTaskData({...taskData, title: e.target.value})} required />
+                        <input className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} placeholder="VD: Sắm lễ cúng Rằm tháng 7" value={taskData.title} onChange={e => setTaskData({...taskData, title: e.target.value})} required />
                       </div>
                       <div>
                         <label className="mgr-miniLabel">Mô tả chi tiết</label>
-                        <textarea className="mgr-search" style={{ width: '100%', height: '80px' }} value={taskData.description} onChange={e => setTaskData({...taskData, description: e.target.value})} />
+                        <textarea className="mgr-search" style={{ width: '100%', height: '80px', color: 'var(--mgr-text)' }} value={taskData.description} onChange={e => setTaskData({...taskData, description: e.target.value})} />
                       </div>
                       <div>
                         <label className="mgr-miniLabel">Hạn chót</label>
-                        <input className="mgr-search" type="date" style={{ width: '100%' }} value={taskData.due_date} onChange={e => setTaskData({...taskData, due_date: e.target.value})} />
+                        <input className="mgr-search" type="date" style={{ width: '100%', color: 'var(--mgr-text)' }} value={taskData.due_date} onChange={e => setTaskData({...taskData, due_date: e.target.value})} />
                       </div>
                       <button className="mgr-btnPrimary" type="submit" style={{ padding: '12px', background: '#8b5cf6' }}>🚀 Phân công ngay</button>
                   </form>
@@ -832,7 +797,6 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB DUY TRÌ MỐI QUAN HỆ --- */}
         {activeSection === "relationships" && (
           <section className="mgr-grid2">
             <div className="mgr-panel" style={{ display: 'flex', flexDirection: 'column', height: '650px' }}>
@@ -860,73 +824,21 @@ const Manager = () => {
                     <div style={{ color: 'var(--mgr-muted)', fontSize: '0.9rem' }}>Tài khoản #{selectedRelPerson.account_id} · Hồ sơ người (person_id) #{selectedRelPerson.person_id ?? "—"}</div>
                   </div>
                   <div style={{ marginTop: '20px' }}>
-                    <h4 style={{ color: 'var(--mgr-primary)', marginBottom: '15px', fontSize: '1rem' }}>Mạng lưới gia đình (theo cơ sở dữ liệu):</h4>
-                    {relDetailLoading ? (
-                      <div className="mgr-subtle">Đang tải quan hệ…</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>NGƯỜI CHA</div>
-                            <div style={{ color: '#1d2b44', fontWeight: '600', marginTop: '6px' }}>
-                              {relDetail?.bloodline?.parent_father_name || "—"}
-                            </div>
-                            {relDetail?.bloodline?.parent_father_id != null ? (
-                              <div style={{ fontSize: '0.78rem', color: 'var(--mgr-muted)', marginTop: '4px' }}>people.id = {relDetail.bloodline.parent_father_id}</div>
-                            ) : (
-                              <div style={{ fontSize: '0.85rem', color: 'var(--mgr-muted)', marginTop: '6px' }}>Chưa gắn cha trong bảng gia đình (huyết thống).</div>
-                            )}
-                          </div>
-                          <button type="button" className="mgr-btnGhost" style={{ padding: '6px 12px', flexShrink: 0 }} onClick={() => { setActiveSection("lineage"); setTreeBuildAccountId(String(selectedRelPerson.account_id)); }}>Sửa ở Lineage</button>
-                        </div>
-                        <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>NGƯỜI MẸ</div>
-                            <div style={{ color: '#1d2b44', fontWeight: '600', marginTop: '6px' }}>
-                              {relDetail?.bloodline?.parent_mother_name || "—"}
-                            </div>
-                            {relDetail?.bloodline?.parent_mother_id != null ? (
-                              <div style={{ fontSize: '0.78rem', color: 'var(--mgr-muted)', marginTop: '4px' }}>people.id = {relDetail.bloodline.parent_mother_id}</div>
-                            ) : (
-                              <div style={{ fontSize: '0.85rem', color: 'var(--mgr-muted)', marginTop: '6px' }}>Chưa gắn mẹ trong bảng gia đình (huyết thống).</div>
-                            )}
-                          </div>
-                          <button type="button" className="mgr-btnGhost" style={{ padding: '6px 12px', flexShrink: 0 }} onClick={() => { setActiveSection("lineage"); setTreeBuildAccountId(String(selectedRelPerson.account_id)); }}>Sửa ở Lineage</button>
-                        </div>
-                        <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>HÔN NHÂN</div>
-                            <div style={{ color: '#1d2b44', fontWeight: '600', marginTop: '6px' }}>
-                              {relDetail?.marriage?.is_married ? "Đã kết hôn (có vợ/chồng trong DB)" : "Chưa kết hôn / chưa khai báo vợ chồng"}
-                            </div>
-                            {relDetail?.marriage?.is_married ? (
-                              <>
-                                <div style={{ marginTop: '8px', color: '#1d2b44' }}>Vợ / chồng: <strong>{relDetail.marriage.spouse_name || "—"}</strong></div>
-                                {relDetail.marriage.spouse_id != null ? (
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--mgr-muted)', marginTop: '4px' }}>people.id = {relDetail.marriage.spouse_id}</div>
-                                ) : null}
-                              </>
-                            ) : null}
-                          </div>
-                          <button type="button" className="mgr-btnGhost" style={{ padding: '6px 12px', flexShrink: 0 }} onClick={() => { setActiveSection("lineage"); setTreeBuildAccountId(String(selectedRelPerson.account_id)); }}>Sửa ở Lineage</button>
-                        </div>
-                        <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold', marginBottom: '8px' }}>CON CÁI (trong gia đình của người này)</div>
-                          {Array.isArray(relDetail?.marriage?.children) && relDetail.marriage.children.length > 0 ? (
-                            <ul style={{ margin: 0, paddingLeft: '18px', color: '#1d2b44' }}>
-                              {relDetail.marriage.children.map((c) => (
-                                <li key={c.person_id} style={{ marginBottom: '6px' }}>
-                                  <strong>{c.name}</strong>
-                                  <span style={{ fontSize: '0.78rem', color: 'var(--mgr-muted)', marginLeft: '8px' }}>(people.id {c.person_id})</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <div style={{ color: 'var(--mgr-muted)', fontSize: '0.9rem' }}>Chưa có con nào được gắn trong bản ghi <code>children</code>.</div>
-                          )}
-                        </div>
+                    <h4 style={{ color: 'var(--mgr-primary)', marginBottom: '15px', fontSize: '1rem' }}>Mạng lưới gia đình:</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                        <div><div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>NGƯỜI CHA</div><div style={{ color: '#1d2b44', fontWeight: '500' }}>{selectedRelPerson.parent_father_id ? `ID: ${selectedRelPerson.parent_father_id}` : 'Chưa có liên kết'}</div></div>
+                        <button className="mgr-btnGhost" style={{ padding: '6px 12px', color: 'var(--mgr-text)' }} onClick={() => { setActiveSection("lineage"); setLinkData({...linkData, person_id: selectedRelPerson.account_id}); }}>Sửa</button>
                       </div>
-                    )}
+                      <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                        <div><div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>NGƯỜI MẸ</div><div style={{ color: '#1d2b44', fontWeight: '500' }}>{selectedRelPerson.parent_mother_id ? `ID: ${selectedRelPerson.parent_mother_id}` : 'Chưa có liên kết'}</div></div>
+                        <button className="mgr-btnGhost" style={{ padding: '6px 12px', color: 'var(--mgr-text)' }} onClick={() => { setActiveSection("lineage"); setLinkData({...linkData, person_id: selectedRelPerson.account_id}); }}>Sửa</button>
+                      </div>
+                      <div style={{ background: '#fff', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                        <div><div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', fontWeight: 'bold' }}>VỢ / CHỒNG</div><div style={{ color: '#1d2b44', fontWeight: '500' }}>{selectedRelPerson.spouse_id ? `ID: ${selectedRelPerson.spouse_id}` : 'Độc thân'}</div></div>
+                        <button className="mgr-btnGhost" style={{ padding: '6px 12px', color: '#dc3545' }} onClick={() => { setActiveSection("lineage"); setLinkData({...linkData, person_id: selectedRelPerson.account_id}); }}>Hủy</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -934,12 +846,11 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB CONTENT MODERATION --- */}
         {activeSection === "moderation" && (
           <section>
             <div className="mgr-listHeader"><div><div className="mgr-listTitle" style={{ fontSize: '1.2rem', color: 'var(--mgr-primary)' }}>Kiểm duyệt nội dung</div></div></div>
             
-            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>1. Cập nhật hồ sơ (Tiểu sử, Ảnh đại diện)</h3>
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px", color: 'var(--mgr-text)' }}>1. Cập nhật hồ sơ (Tiểu sử, Ảnh đại diện)</h3>
             <div className="mgr-list" style={{ marginTop: '15px' }}>
               {pendingProfiles.length === 0 ? ( <div className="mgr-empty">Không có yêu cầu cập nhật hồ sơ.</div> ) : (
                 pendingProfiles.map((p) => (
@@ -948,19 +859,19 @@ const Manager = () => {
                       <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#1d2b44' }}>{p.display_name}</div>
                       <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
                           <div style={{ flex: 1, padding: "10px", background: "#f8fafc", borderRadius: "8px" }}>
-                              <strong>Hồ sơ cũ:</strong><br/>
-                              <em style={{fontSize:"0.85rem"}}>Bio:</em> <span style={{fontSize:"0.85rem"}}>{p.current_bio || 'Chưa có'}</span><br/>
-                              <em style={{fontSize:"0.85rem"}}>Ảnh:</em> <span style={{fontSize:"0.85rem"}}>{p.current_avatar_url || 'Chưa có'}</span>
+                              <strong style={{color: 'var(--mgr-text)'}}>Hồ sơ cũ:</strong><br/>
+                              <em style={{fontSize:"0.85rem", color: 'var(--mgr-muted)'}}>Bio:</em> <span style={{fontSize:"0.85rem", color: 'var(--mgr-text)'}}>{p.current_bio || 'Chưa có'}</span><br/>
+                              <em style={{fontSize:"0.85rem", color: 'var(--mgr-muted)'}}>Ảnh:</em> <span style={{fontSize:"0.85rem", color: 'var(--mgr-text)'}}>{p.current_avatar_url || 'Chưa có'}</span>
                           </div>
                           <div style={{ flex: 1, padding: "10px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
-                              <strong>Yêu cầu mới:</strong><br/>
+                              <strong style={{color: 'var(--mgr-text)'}}>Yêu cầu mới:</strong><br/>
                               <em style={{fontSize:"0.9rem", color: "#166534"}}>Bio:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_bio || 'Chưa có'}</span><br/>
                               <em style={{fontSize:"0.9rem", color: "#166534"}}>Ảnh:</em> <span style={{fontSize:"0.9rem", color: "#166534"}}>{p.pending_avatar_url || 'Chưa có'}</span>
                           </div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginLeft: '20px' }}>
-                      <button className="mgr-btnSuccess" onClick={() => doApproveProfile(p.person_id)}>Phê duyệt</button>
+                      <button className="mgr-btnPrimary" style={{background: '#28a745'}} onClick={() => doApproveProfile(p.person_id)}>Phê duyệt</button>
                       <button className="mgr-btnDanger" onClick={() => doRejectProfile(p.person_id)}>Từ chối</button>
                     </div>
                   </div>
@@ -968,19 +879,19 @@ const Manager = () => {
               )}
             </div>
 
-            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px" }}>2. Tư liệu đóng góp (Hình ảnh, Lịch sử)</h3>
+            <h3 className="mgr-panelTitle" style={{ fontSize: "1.1rem", marginTop: "30px", borderBottom: "1px solid var(--border-color)", paddingBottom: "10px", color: 'var(--mgr-text)' }}>2. Tư liệu đóng góp (Hình ảnh, Lịch sử)</h3>
             <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {pendingPosts.map((post) => (
                 <div key={post.post_id || post.id} className="mgr-panel" style={{ padding: '20px', display: 'flex', gap: '20px' }}>
                   <div style={{ width: '160px', height: '160px', borderRadius: '12px', backgroundColor: '#f0f4f8', overflow: 'hidden' }}>
-                    {post.image_url ? ( <img src={post.image_url} alt="Post content" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> ) : ( <div style={{ textAlign: 'center', padding: '10px' }}>📷<br/>Chỉ có văn bản</div> )}
+                    {post.image_url ? ( <img src={post.image_url} alt="Post content" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> ) : ( <div style={{ textAlign: 'center', padding: '10px', color: 'var(--mgr-text)' }}>📷<br/>Chỉ có văn bản</div> )}
                   </div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div style={{ borderBottom: '1px solid var(--mgr-border)', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                      <div><div style={{ fontWeight: 'bold' }}>{post.author_name}</div><div style={{ fontSize: '0.85rem' }}>{post.author_email}</div></div>
-                      <div style={{ fontSize: '0.85rem', textAlign: 'right' }}>🕒 {new Date(post.created_at).toLocaleString('vi-VN')}</div>
+                      <div><div style={{ fontWeight: 'bold', color: 'var(--mgr-text)' }}>{post.author_name}</div><div style={{ fontSize: '0.85rem', color: 'var(--mgr-muted)' }}>{post.author_email}</div></div>
+                      <div style={{ fontSize: '0.85rem', textAlign: 'right', color: 'var(--mgr-text)' }}>🕒 {new Date(post.created_at).toLocaleString('vi-VN')}</div>
                     </div>
-                    <div style={{ flex: 1, marginTop: '10px' }}>{post.content ? `"${post.content}"` : <span>[Không có nội dung]</span>}</div>
+                    <div style={{ flex: 1, marginTop: '10px', color: 'var(--mgr-text)' }}>{post.content ? `"${post.content}"` : <span>[Không có nội dung]</span>}</div>
                     <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
                       <button className="mgr-btnPrimary" style={{ padding: '8px 16px' }} onClick={() => doApprovePost(post.post_id || post.id)}>✅ Phê duyệt hiển thị</button>
                       <button className="mgr-btnGhost" style={{ padding: '8px 16px', color: '#dc3545' }} onClick={() => doRejectPost(post.post_id || post.id)}>❌ Bỏ qua / Xóa</button>
@@ -993,7 +904,6 @@ const Manager = () => {
           </section>
         )}
 
-        {/* --- TAB MEDIA MANAGEMENT --- */}
         {activeSection === "media" && (
           <section>
             <div className="mgr-listHeader">
@@ -1010,9 +920,9 @@ const Manager = () => {
                 <div key={media.post_id} style={{ backgroundColor: "#fff", borderRadius: "16px", overflow: "hidden", border: "1px solid var(--mgr-border)" }}>
                   <div style={{ height: "220px", width: "100%", backgroundColor: '#f1f5f9' }}><img src={media.image_url} alt="Media" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
                   <div style={{ padding: "15px", fontSize: "0.85rem" }}>
-                    <div style={{ fontWeight: "bold", marginBottom: "6px" }}>👤 {media.author_name}</div>
+                    <div style={{ fontWeight: "bold", marginBottom: "6px", color: 'var(--mgr-text)' }}>👤 {media.author_name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
-                      <span>📅 {new Date(media.created_at).toLocaleDateString('vi-VN')}</span>
+                      <span style={{color: 'var(--mgr-text)'}}>📅 {new Date(media.created_at).toLocaleDateString('vi-VN')}</span>
                       <button style={{ background: '#fee2e2', border: 'none', color: '#dc3545', cursor: 'pointer', borderRadius: '6px' }} onClick={() => alert("Chức năng xóa ảnh đang phát triển")}>Xóa</button>
                     </div>
                   </div>
@@ -1024,12 +934,11 @@ const Manager = () => {
         )}
       </main>
 
-      {/* --- MODAL CHỈNH SỬA TÀI KHOẢN THÀNH VIÊN --- */}
       {memberEditId ? (
         <div className="mgr-modalOverlay" role="presentation" onClick={() => !memberEditSaving && setMemberEditId(null)}>
           <div className="mgr-modal" role="dialog" aria-modal="true" aria-labelledby="mgr-member-edit-title" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="mgr-modalClose" disabled={memberEditSaving} onClick={() => setMemberEditId(null)}>×</button>
-            <h2 className="mgr-modalTitle" id="mgr-member-edit-title">Chỉnh sửa thành viên</h2>
+            <h2 className="mgr-modalTitle" id="mgr-member-edit-title" style={{color: 'var(--mgr-text)'}}>Chỉnh sửa thành viên</h2>
             <p className="mgr-modalMeta">Tài khoản #{memberEditId}</p>
 
             {memberEditLoading ? (
@@ -1038,60 +947,60 @@ const Manager = () => {
               <>
                 <div className="mgr-modalSectionTitle">Tài khoản</div>
                 <div className="mgr-overviewFormGrid mgr-modalGrid">
-                  <input className="mgr-field" type="email" placeholder="Email đăng nhập" value={memberEditForm.email} onChange={(e) => setMemberEditForm((p) => ({ ...p, email: e.target.value }))} />
-                  <select className="mgr-field" value={memberEditForm.status} onChange={(e) => setMemberEditForm((p) => ({ ...p, status: e.target.value }))}>
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="email" placeholder="Email đăng nhập" value={memberEditForm.email} onChange={(e) => setMemberEditForm((p) => ({ ...p, email: e.target.value }))} />
+                  <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.status} onChange={(e) => setMemberEditForm((p) => ({ ...p, status: e.target.value }))}>
                     <option value="active">active</option><option value="pending">pending</option><option value="rejected">rejected</option>
                   </select>
                   {sessionRoleId === 1 && (
                     <>
-                      <select className="mgr-field" value={memberEditForm.role_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, role_id: e.target.value }))}><option value="3">Member</option><option value="2">Manager</option></select>
-                      <input className="mgr-field" type="number" placeholder="clan_id (dòng họ)" value={memberEditForm.clan_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, clan_id: e.target.value }))} />
+                      <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.role_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, role_id: e.target.value }))}><option value="3">Member</option><option value="2">Manager</option></select>
+                      <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="clan_id (dòng họ)" value={memberEditForm.clan_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, clan_id: e.target.value }))} />
                     </>
                   )}
-                  <input className="mgr-field" style={{ gridColumn: "1 / -1" }} type="password" placeholder="Mật khẩu mới (để trống nếu không đổi)" value={memberEditForm.new_password} onChange={(e) => setMemberEditForm((p) => ({ ...p, new_password: e.target.value }))} autoComplete="new-password" />
+                  <input className="mgr-field" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} type="password" placeholder="Mật khẩu mới (để trống nếu không đổi)" value={memberEditForm.new_password} onChange={(e) => setMemberEditForm((p) => ({ ...p, new_password: e.target.value }))} autoComplete="new-password" />
                 </div>
 
                 <div className="mgr-modalSectionTitle">Hồ sơ người (people)</div>
                 <div className="mgr-overviewFormGrid mgr-modalGrid">
-                  <input className="mgr-field" placeholder="Họ" value={memberEditForm.surname} onChange={(e) => setMemberEditForm((p) => ({ ...p, surname: e.target.value }))} />
-                  <input className="mgr-field" placeholder="Tên đệm" value={memberEditForm.middle_name} onChange={(e) => setMemberEditForm((p) => ({ ...p, middle_name: e.target.value }))} />
-                  <input className="mgr-field" placeholder="Tên" value={memberEditForm.first_name} onChange={(e) => setMemberEditForm((p) => ({ ...p, first_name: e.target.value }))} />
-                  <select className="mgr-field" value={memberEditForm.gender} onChange={(e) => setMemberEditForm((p) => ({ ...p, gender: e.target.value }))}><option value="1">Nam</option><option value="2">Nữ</option><option value="">Không khai báo</option></select>
-                  <input className="mgr-field" type="date" value={memberEditForm.birth_date} onChange={(e) => setMemberEditForm((p) => ({ ...p, birth_date: e.target.value }))} />
-                  <input className="mgr-field" type="date" placeholder="Ngày mất" value={memberEditForm.death_date} onChange={(e) => setMemberEditForm((p) => ({ ...p, death_date: e.target.value }))} />
-                  <select className="mgr-field" value={memberEditForm.is_living} onChange={(e) => setMemberEditForm((p) => ({ ...p, is_living: e.target.value }))}><option value="1">Còn sống</option><option value="0">Đã mất</option></select>
-                  <input className="mgr-field" type="number" min={1} placeholder="Đời" value={memberEditForm.generation} onChange={(e) => setMemberEditForm((p) => ({ ...p, generation: e.target.value }))} />
-                  <input className="mgr-field" type="number" placeholder="Chi (branch)" value={memberEditForm.branch} onChange={(e) => setMemberEditForm((p) => ({ ...p, branch: e.target.value }))} />
-                  <input className="mgr-field" placeholder="Quê quán" value={memberEditForm.hometown} onChange={(e) => setMemberEditForm((p) => ({ ...p, hometown: e.target.value }))} />
-                  <input className="mgr-field" style={{ gridColumn: "1 / -1" }} placeholder="Địa chỉ" value={memberEditForm.address} onChange={(e) => setMemberEditForm((p) => ({ ...p, address: e.target.value }))} />
-                  <input className="mgr-field" placeholder="Điện thoại" value={memberEditForm.phone} onChange={(e) => setMemberEditForm((p) => ({ ...p, phone: e.target.value }))} />
-                  <input className="mgr-field" type="email" placeholder="Email phụ" value={memberEditForm.people_email} onChange={(e) => setMemberEditForm((p) => ({ ...p, people_email: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Họ" value={memberEditForm.surname} onChange={(e) => setMemberEditForm((p) => ({ ...p, surname: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Tên đệm" value={memberEditForm.middle_name} onChange={(e) => setMemberEditForm((p) => ({ ...p, middle_name: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Tên" value={memberEditForm.first_name} onChange={(e) => setMemberEditForm((p) => ({ ...p, first_name: e.target.value }))} />
+                  <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.gender} onChange={(e) => setMemberEditForm((p) => ({ ...p, gender: e.target.value }))}><option value="1">Nam</option><option value="2">Nữ</option><option value="">Không khai báo</option></select>
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="date" value={memberEditForm.birth_date} onChange={(e) => setMemberEditForm((p) => ({ ...p, birth_date: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="date" placeholder="Ngày mất" value={memberEditForm.death_date} onChange={(e) => setMemberEditForm((p) => ({ ...p, death_date: e.target.value }))} />
+                  <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.is_living} onChange={(e) => setMemberEditForm((p) => ({ ...p, is_living: e.target.value }))}><option value="1">Còn sống</option><option value="0">Đã mất</option></select>
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" min={1} placeholder="Đời" value={memberEditForm.generation} onChange={(e) => setMemberEditForm((p) => ({ ...p, generation: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="Chi (branch)" value={memberEditForm.branch} onChange={(e) => setMemberEditForm((p) => ({ ...p, branch: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Quê quán" value={memberEditForm.hometown} onChange={(e) => setMemberEditForm((p) => ({ ...p, hometown: e.target.value }))} />
+                  <input className="mgr-field" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} placeholder="Địa chỉ" value={memberEditForm.address} onChange={(e) => setMemberEditForm((p) => ({ ...p, address: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} placeholder="Điện thoại" value={memberEditForm.phone} onChange={(e) => setMemberEditForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="email" placeholder="Email phụ" value={memberEditForm.people_email} onChange={(e) => setMemberEditForm((p) => ({ ...p, people_email: e.target.value }))} />
                   <div style={{ gridColumn: "1 / -1", margin: "10px 0" }}>
                     <label style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#666" }}>Cập nhật ảnh qua kéo thả:</label>
                     <ImageUpload onUploadSuccess={(url) => setMemberEditForm((p) => ({ ...p, avatar_url: url }))} label="Kéo thả ảnh vào đây để thay đổi" />
                   </div>
-                  <input className="mgr-field" style={{ gridColumn: "1 / -1" }} placeholder="Hoặc nhập URL ảnh đại diện trực tiếp" value={memberEditForm.avatar_url} onChange={(e) => setMemberEditForm((p) => ({ ...p, avatar_url: e.target.value }))} />
-                  <textarea className="mgr-field mgr-fieldTextarea" style={{ gridColumn: "1 / -1" }} placeholder="Giới thiệu (bio)" rows={2} value={memberEditForm.bio} onChange={(e) => setMemberEditForm((p) => ({ ...p, bio: e.target.value }))} />
+                  <input className="mgr-field" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} placeholder="Hoặc nhập URL ảnh đại diện trực tiếp" value={memberEditForm.avatar_url} onChange={(e) => setMemberEditForm((p) => ({ ...p, avatar_url: e.target.value }))} />
+                  <textarea className="mgr-field mgr-fieldTextarea" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} placeholder="Giới thiệu (bio)" rows={2} value={memberEditForm.bio} onChange={(e) => setMemberEditForm((p) => ({ ...p, bio: e.target.value }))} />
                 </div>
 
                 <div className="mgr-modalSectionTitle">Quan hệ huyết thống</div>
                 <div className="mgr-overviewFormGrid mgr-modalGrid">
-                  <input className="mgr-field" type="number" placeholder="ID cha (people.id)" value={memberEditForm.parent_father_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_father_id: e.target.value }))} />
-                  <input className="mgr-field" type="number" placeholder="ID mẹ (people.id)" value={memberEditForm.parent_mother_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_mother_id: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="ID cha (people.id)" value={memberEditForm.parent_father_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_father_id: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="ID mẹ (people.id)" value={memberEditForm.parent_mother_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, parent_mother_id: e.target.value }))} />
                 </div>
 
                 <div className="mgr-modalSectionTitle">Quan hệ hôn nhân</div>
                 <div className="mgr-overviewFormGrid mgr-modalGrid">
-                  <input className="mgr-field" type="number" placeholder="ID families (tùy chọn)" value={memberEditForm.family_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, family_id: e.target.value }))} />
-                  <input className="mgr-field" type="number" placeholder="ID vợ/chồng (people.id)" value={memberEditForm.spouse_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, spouse_id: e.target.value }))} />
-                  <input className="mgr-field" style={{ gridColumn: "1 / -1" }} placeholder="ID con (people.id, cách nhau dấu phẩy)" value={memberEditForm.children_ids} onChange={(e) => setMemberEditForm((p) => ({ ...p, children_ids: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="ID families (tùy chọn)" value={memberEditForm.family_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, family_id: e.target.value }))} />
+                  <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="ID vợ/chồng (people.id)" value={memberEditForm.spouse_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, spouse_id: e.target.value }))} />
+                  <input className="mgr-field" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} placeholder="ID con (people.id, cách nhau dấu phẩy)" value={memberEditForm.children_ids} onChange={(e) => setMemberEditForm((p) => ({ ...p, children_ids: e.target.value }))} />
                 </div>
 
                 {memberEditMsg && <div className={memberEditMsg.includes("thành công") || memberEditMsg.includes("Đã lưu") ? "mgr-subtle" : "mgr-alert"} style={{ marginTop: 12 }}>{memberEditMsg}</div>}
 
                 <div className="mgr-modalActions" style={{ marginTop: '20px' }}>
                   <button className="mgr-btnPrimary" type="button" disabled={memberEditSaving} onClick={saveMemberEdit}>{memberEditSaving ? "Đang lưu…" : "Lưu thay đổi"}</button>
-                  <button className="mgr-btnGhost" type="button" disabled={memberEditSaving} onClick={() => setMemberEditId(null)}>Đóng</button>
+                  <button className="mgr-btnGhost" style={{color: 'var(--mgr-text)'}} type="button" disabled={memberEditSaving} onClick={() => setMemberEditId(null)}>Đóng</button>
                 </div>
               </>
             )}
