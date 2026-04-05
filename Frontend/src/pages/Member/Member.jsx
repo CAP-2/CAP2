@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import "./member.css";
 import {
   changeMemberPassword,
@@ -8,7 +8,12 @@ import {
   getMemberDashboard,
   sendMemberChat,
   updateMemberProfile,
+  proposeProfileUpdate,
+  submitMaterial,
+  getMySubmissions
 } from "../../api/memberService";
+import ImageUpload from "../../components/ImageUpload/ImageUpload";
+import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
 
 function formatMemberDate(value) {
   if (value == null || value === "") return null;
@@ -29,67 +34,6 @@ function readSessionUser() {
   } catch {
     return {};
   }
-}
-
-function personTreeLabel(p) {
-  return (
-    p.display_name ||
-    [p.surname, p.middle_name, p.first_name].filter(Boolean).join(" ").trim() ||
-    "Thành viên"
-  );
-}
-
-/** Node: { person, children: Node[] } — cây từ API member/dashboard (phong cách phả đồ truyền thống) */
-function FamilyTreeNode({ node, onSelectPerson }) {
-  const p = node.person;
-  const hasKids = node.children?.length > 0;
-  const isLeaf = !hasKids;
-  const name = personTreeLabel(p);
-  const hometown = (p.hometown && String(p.hometown).trim()) || "";
-
-  return (
-    <li className={`usr-phado-branchItem ${isLeaf ? "usr-phado-branchItem--leaf" : ""}`}>
-      <div
-        className={`usr-phado-card ${isLeaf ? "usr-phado-card--leaf" : "usr-phado-card--scroll"}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => onSelectPerson(p)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelectPerson(p);
-          }
-        }}
-      >
-        {isLeaf ? (
-          <>
-            <span className="usr-phado-name">{name}</span>
-            {hometown ? <span className="usr-phado-detail">{hometown}</span> : null}
-            <span className="usr-phado-meta">Đời {p.generation ?? "—"}</span>
-          </>
-        ) : (
-          <>
-            <span className="usr-phado-scrollCap" aria-hidden="true" />
-            <div className="usr-phado-cardBody">
-              <span className="usr-phado-name">{name}</span>
-              <span className="usr-phado-meta">Đời {p.generation ?? "—"}</span>
-            </div>
-            <span className="usr-phado-scrollCap usr-phado-scrollCap--right" aria-hidden="true" />
-          </>
-        )}
-      </div>
-      {hasKids ? (
-        <>
-          <div className="usr-phado-vbar" aria-hidden="true" />
-          <ul className="usr-phado-treeBranch" role="group">
-            {node.children.map((ch) => (
-              <FamilyTreeNode key={ch.person.id} node={ch} onSelectPerson={onSelectPerson} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-    </li>
-  );
 }
 
 const Member = () => {
@@ -118,6 +62,7 @@ const Member = () => {
     confirm: "",
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [familySaving, setFamilySaving] = useState(false);
 
   useEffect(() => {
     try {
@@ -135,8 +80,13 @@ const Member = () => {
   const [familyTreeRoots, setFamilyTreeRoots] = useState([]);
   const [treeMemberDetail, setTreeMemberDetail] = useState(null);
   const [discoverItemsFromDb, setDiscoverItemsFromDb] = useState([]);
-  /** Meta chỉ đọc: trạng thái tài khoản & person_id (đồng bộ từ API) */
   const [accountMeta, setAccountMeta] = useState({ status: "", person_id: null, role_id: null });
+  
+  const [profileContentForm, setProfileContentForm] = useState({ bio: "", avatar_url: "" });
+  const [materialForm, setMaterialForm] = useState({ content: "", image_url: "" });
+  const [profileStatus, setProfileStatus] = useState("none");
+  const [profileReason, setProfileReason] = useState("");
+  const [mySubmissions, setMySubmissions] = useState({ posts: [], profile: {} });
 
   const [discoverQuery, setDiscoverQuery] = useState("");
   const discoverResults = useMemo(() => {
@@ -146,7 +96,6 @@ const Member = () => {
     return all.filter((x) => (x.title + " " + x.desc + " " + x.tag).toLowerCase().includes(q));
   }, [discoverItemsFromDb, discoverQuery]);
 
-  // Chatbot (mock)
   const [chatInput, setChatInput] = useState("");
   const [chat, setChat] = useState([]);
   const chatListRef = useRef(null);
@@ -172,18 +121,15 @@ const Member = () => {
     }
   };
 
-  // Photo restore (frontend-only preview)
   const [photoFile, setPhotoFile] = useState(null);
   const photoUrl = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : ""), [photoFile]);
   const [restoreMode, setRestoreMode] = useState("sharpen");
 
-  // Digitization: Speech-to-text (mock) + OCR (mock)
   const [sttText, setSttText] = useState("");
   const [ocrText, setOcrText] = useState("");
   const [ocrFile, setOcrFile] = useState(null);
   const ocrUrl = useMemo(() => (ocrFile ? URL.createObjectURL(ocrFile) : ""), [ocrFile]);
 
-  // Reminders (frontend-only)
   const [reminders, setReminders] = useState([]);
   const [newReminder, setNewReminder] = useState({ title: "", date: "", note: "" });
 
@@ -205,31 +151,63 @@ const Member = () => {
 
   const sectionTitle = useMemo(() => {
     switch (activeSection) {
-      case "discover":
-        return "Khám phá di sản";
-      case "chat":
-        return "Tương tác với trợ lý AI";
-      case "tree":
-        return "Xem cây gia phả tương tác";
-      case "restore":
-        return "Phục chế hình ảnh cũ";
-      case "digitize":
-        return "Số hóa tư liệu (Speech-to-Text & OCR)";
-      case "reminders":
-        return "Nhận thông báo (Reminders & Alerts)";
-      default:
-        return "Trang thành viên";
+      case "discover": return "Khám phá di sản";
+      case "chat": return "Tương tác với trợ lý AI";
+      case "tree": return "Xem cây gia phả tương tác";
+      case "restore": return "Phục chế hình ảnh cũ";
+      case "digitize": return "Số hóa tư liệu (Speech-to-Text & OCR)";
+      case "reminders": return "Nhận thông báo (Reminders & Alerts)";
+      case "contribute": return "Đóng góp nội dung & Theo dõi";
+      case "general_posts": return "Bảng tin dòng họ";
+      default: return "Trang thành viên";
     }
   }, [activeSection]);
 
   const user = readSessionUser();
   const userName = user?.name || "Thành viên";
 
+  const clanMembersForRelations = useMemo(() => {
+    const pid = accountMeta.person_id;
+    if (pid == null) return [];
+    return (treeMembers || []).filter((m) => Number(m.id) !== Number(pid));
+  }, [treeMembers, accountMeta.person_id]);
+
+  const childCandidatesForRelations = useMemo(() => {
+    const sid = Number(accountForm.spouse_id);
+    const pid = accountMeta.person_id;
+    return clanMembersForRelations.filter((m) => {
+      if (Number(m.id) === Number(pid)) return false;
+      if (Number.isFinite(sid) && Number(m.id) === sid) return false;
+      return true;
+    });
+  }, [clanMembersForRelations, accountForm.spouse_id, accountMeta.person_id]);
+
+  const personOptionLabel = (m) =>
+    m.display_name ||
+    [m.surname, m.middle_name, m.first_name].filter(Boolean).join(" ").trim() ||
+    `Thành viên #${m.id}`;
+
+  const selectedChildIdSet = useMemo(() => {
+    const nums = String(accountForm.children_ids || "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isFinite(v));
+    return new Set(nums);
+  }, [accountForm.children_ids]);
+
+  const toggleChildInRelations = (childId) => {
+    const next = new Set(selectedChildIdSet);
+    if (next.has(childId)) next.delete(childId);
+    else next.add(childId);
+    setAccountForm((p) => ({
+      ...p,
+      children_ids: [...next].sort((a, b) => a - b).join(", "),
+    }));
+  };
+
   useEffect(() => {
     if (!treeMemberDetail) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") setTreeMemberDetail(null);
-    };
+    const onKey = (e) => { if (e.key === "Escape") setTreeMemberDetail(null); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [treeMemberDetail]);
@@ -264,6 +242,18 @@ const Member = () => {
         spouse_id: p.spouse_id ?? "",
         children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : "",
       });
+      setProfileContentForm({
+        bio: p.pending_bio !== null ? (p.pending_bio || "") : (p.bio || ""),
+        avatar_url: p.pending_avatar_url !== null ? (p.pending_avatar_url || "") : (p.avatar_url || ""),
+      });
+      setProfileStatus(p.moderation_status || "none");
+      setProfileReason(p.moderation_reason || "");
+      
+      const subRes = await getMySubmissions();
+      if (subRes.success) {
+        setMySubmissions({ posts: subRes.posts, profile: subRes.profile });
+      }
+
       const chatRes = await getMemberChat();
       const messages = (chatRes.messages || []).map((m) => ({
         role: m.sender_type === "user" ? "user" : "ai",
@@ -285,6 +275,14 @@ const Member = () => {
     loadDashboard();
   }, [loadDashboard]);
 
+  // Background Polling for dashboard (submission tracking)
+  useEffect(() => {
+    const interval = setInterval(() => {
+       loadDashboard({ silent: true });
+    }, 15000); // 15 seconds
+    return () => clearInterval(interval);
+  }, [loadDashboard]);
+
   const saveAccountInfo = async () => {
     try {
       setError("");
@@ -294,14 +292,6 @@ const Member = () => {
         setError("Đời (generation) phải là số hợp lệ hoặc để trống.");
         return;
       }
-      const fidStr = String(accountForm.family_id ?? "").trim();
-      const sidStr = String(accountForm.spouse_id ?? "").trim();
-      const kidsStr = String(accountForm.children_ids ?? "").trim();
-      const kidsNums = kidsStr
-        .split(",")
-        .map((v) => Number(v.trim()))
-        .filter((v) => Number.isFinite(v));
-
       const payload = {
         surname: accountForm.surname,
         middle_name: accountForm.middle_name,
@@ -310,9 +300,7 @@ const Member = () => {
         hometown: accountForm.hometown,
         generation: genNum,
       };
-      if (fidStr !== "") payload.family_id = Number(fidStr);
-      if (sidStr !== "") payload.spouse_id = Number(sidStr);
-      if (kidsStr !== "") payload.children_ids = kidsNums;
+      
       const res = await updateMemberProfile(payload);
       const p = res.profile || {};
       const prev = readSessionUser();
@@ -329,6 +317,48 @@ const Member = () => {
       setShowAccountPanel(false);
     } catch (e) {
       setError(e?.message || "Không thể cập nhật thông tin tài khoản");
+    }
+  };
+
+  const saveFamilyRelations = async () => {
+    if (accountMeta.person_id == null) {
+      setError("Tài khoản chưa liên kết hồ sơ người trong dòng họ.");
+      return;
+    }
+    try {
+      setError("");
+      setFamilySaving(true);
+      const sidStr = String(accountForm.spouse_id ?? "").trim();
+      const kidsStr = String(accountForm.children_ids ?? "").trim();
+      const kidsNums = kidsStr
+        .split(",")
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isFinite(v));
+
+      const payload = { children_ids: kidsNums };
+      if (sidStr !== "") payload.spouse_id = Number(sidStr);
+
+      const res = await updateMemberProfile(payload);
+      const p = res.profile || {};
+      const prev = readSessionUser();
+      const merged = {
+        ...prev,
+        name: p.display_name ?? prev.name ?? "Thành viên",
+        status: p.status ?? prev.status,
+        role_id: p.role_id ?? prev.role_id,
+      };
+      localStorage.setItem("user", JSON.stringify(merged));
+      setAccountForm((prev) => ({
+        ...prev,
+        family_id: p.family_id ?? prev.family_id ?? "",
+        spouse_id: p.spouse_id ?? prev.spouse_id ?? "",
+        children_ids: Array.isArray(p.children_ids) ? p.children_ids.join(", ") : prev.children_ids,
+      }));
+      await loadDashboard({ silent: true });
+    } catch (e) {
+      setError(e?.message || "Không thể lưu quan hệ gia đình");
+    } finally {
+      setFamilySaving(false);
     }
   };
 
@@ -356,19 +386,73 @@ const Member = () => {
     }
   };
 
+  const submitProfileUpdate = async () => {
+    try {
+       setError("");
+       await proposeProfileUpdate(profileContentForm);
+       await loadDashboard({ silent: true });
+       alert("Gửi yêu cầu cập nhật hồ sơ thành công!");
+    } catch (err) {
+       setError(err?.message || "Lỗi cập nhật hồ sơ");
+    }
+  };
+
+  const submitMaterialPost = async () => {
+     if (!materialForm.content.trim() && !materialForm.image_url.trim()) {
+         setError("Vui lòng nhập nội dung hoặc thêm ảnh");
+         return;
+     }
+     try {
+       setError("");
+       await submitMaterial(materialForm);
+       setMaterialForm({ content: "", image_url: "" });
+       await loadDashboard({ silent: true });
+       alert("Gửi tư liệu thành công! Vui lòng chờ quản lý duyệt.");
+     } catch (err) {
+       setError(err?.message || "Lỗi gửi tư liệu");
+     }
+  };
+
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login", { replace: true });
   };
 
+  // Logic cho section General Posts trong trang (reusable)
+  const [genPosts, setGenPosts] = useState([]);
+  const [genPostsLoading, setGenPostsLoading] = useState(false);
+  const loadClansFeed = useCallback(async () => {
+    setGenPostsLoading(true);
+    try {
+      const { getGeneralPosts } = await import("../../api/memberService");
+      const res = await getGeneralPosts();
+      if (res.success) setGenPosts(res.posts);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGenPostsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === "general_posts") loadClansFeed();
+  }, [activeSection, loadClansFeed]);
+
+  // Background Polling for clan feed every 20 seconds when active
+  useEffect(() => {
+    if (activeSection !== "general_posts") return;
+    const interval = setInterval(() => {
+      loadClansFeed();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [activeSection, loadClansFeed]);
+
   return (
     <div className={`usr-shell ${viewMode === "classic" ? "isClassic" : ""}`}>
       <aside className="usr-sidebar">
         <div className="usr-brand">
-          <div className="usr-logo" aria-hidden="true">
-            G
-          </div>
+          <div className="usr-logo" aria-hidden="true">G</div>
           <div className="usr-brandText">
             <div className="usr-brandTitle">Gia Phả</div>
             <div className="usr-brandSub">Xin chào, {userName}</div>
@@ -376,294 +460,162 @@ const Member = () => {
         </div>
 
         <nav className="usr-nav" aria-label="Điều hướng thành viên">
-          <button className={`usr-navItem ${activeSection === "discover" ? "isActive" : ""}`} onClick={() => setActiveSection("discover")}>
-            Khám phá di sản
-          </button>
-          <button className={`usr-navItem ${activeSection === "chat" ? "isActive" : ""}`} onClick={() => setActiveSection("chat")}>
-            Trợ lý AI (Chatbot)
-          </button>
-          <button className={`usr-navItem ${activeSection === "tree" ? "isActive" : ""}`} onClick={() => setActiveSection("tree")}>
-            Cây gia phả (Interactive)
-          </button>
+          <button className={`usr-navItem ${activeSection === "discover" ? "isActive" : ""}`} onClick={() => setActiveSection("discover")}>Khám phá di sản</button>
+          <button className={`usr-navItem ${activeSection === "contribute" ? "isActive" : ""}`} onClick={() => setActiveSection("contribute")}>Đóng góp & Theo dõi</button>
+          <button className={`usr-navItem ${activeSection === "general_posts" ? "isActive" : ""}`} onClick={() => setActiveSection("general_posts")}>Bảng tin dòng họ</button>
+          <button className={`usr-navItem ${activeSection === "chat" ? "isActive" : ""}`} onClick={() => setActiveSection("chat")}>Trợ lý AI (Chatbot)</button>
+          <button className={`usr-navItem ${activeSection === "tree" ? "isActive" : ""}`} onClick={() => setActiveSection("tree")}>Cây gia phả (Interactive)</button>
           <div className="usr-navDivider" />
-          <button className={`usr-navItem ${activeSection === "restore" ? "isActive" : ""}`} onClick={() => setActiveSection("restore")}>
-            Phục chế ảnh cũ
-          </button>
-          <button className={`usr-navItem ${activeSection === "digitize" ? "isActive" : ""}`} onClick={() => setActiveSection("digitize")}>
-            Số hóa tư liệu
-          </button>
-          <button className={`usr-navItem ${activeSection === "reminders" ? "isActive" : ""}`} onClick={() => setActiveSection("reminders")}>
-            Thông báo & nhắc nhở
-          </button>
+          <Link to="/posts/general" className="usr-navItem" style={{ textDecoration: 'none' }}>Bảng tin dòng họ</Link>
+          <button className={`usr-navItem ${activeSection === "restore" ? "isActive" : ""}`} onClick={() => setActiveSection("restore")}>Phục chế ảnh cũ</button>
+          <button className={`usr-navItem ${activeSection === "digitize" ? "isActive" : ""}`} onClick={() => setActiveSection("digitize")}>Số hóa tư liệu</button>
+          <button className={`usr-navItem ${activeSection === "reminders" ? "isActive" : ""}`} onClick={() => setActiveSection("reminders")}>Thông báo & nhắc nhở</button>
         </nav>
       </aside>
 
       <main className="usr-main">
         <div className="usr-topbar">
           <div className="usr-search">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm kiếm nhanh…"
-              aria-label="Tìm kiếm nhanh"
-            />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm kiếm nhanh…" aria-label="Tìm kiếm nhanh" />
           </div>
           <div className="usr-topActions">
-            <button
-              className={`usr-pill usr-pillBtn ${viewMode === "modern" ? "isActive" : ""}`}
-              type="button"
-              onClick={() => setViewMode("modern")}
-            >
-              Hiện đại
-            </button>
-            <button
-              className={`usr-pill usr-pillBtn ${viewMode === "classic" ? "isActive" : ""}`}
-              type="button"
-              onClick={() => setViewMode("classic")}
-            >
-              Cổ điển
-            </button>
-            <button className="usr-pill usr-pillBtn" type="button" onClick={() => setShowAccountPanel((v) => !v)}>
-              Tài khoản
+            <button className={`usr-pill usr-pillBtn ${viewMode === "modern" ? "isActive" : ""}`} type="button" onClick={() => setViewMode("modern")}>Hiện đại</button>
+            <button className={`usr-pill usr-pillBtn ${viewMode === "classic" ? "isActive" : ""}`} type="button" onClick={() => setViewMode("classic")}>Cổ điển</button>
+            <button className="usr-pill usr-pillBtn" type="button" onClick={() => setShowAccountPanel(true)}>Tài khoản</button>
+            <button className="usr-pill usr-pillBtn usr-pillLogout" type="button" onClick={logout} title="Đăng xuất khỏi tài khoản">
+              Đăng xuất
             </button>
           </div>
         </div>
-
-        {showAccountPanel ? (
-          <section className="usr-panel usr-accountPanel">
-            <div className="usr-panelTitle">Thông tin tài khoản</div>
-            <div className="usr-panelText">
-              Chỉnh họ, tên đệm, tên; email, quê quán, đời và quan hệ gia đình (theo mã trong hệ thống). Tên hiển thị trong hệ
-              thống được ghép tự động từ họ và tên. Email đăng nhập phải là duy nhất.
-            </div>
-            <div className="usr-accountReadonly">
-              <div>
-                <span className="usr-accountReadonlyLabel">Trạng thái</span>
-                <span className="usr-accountReadonlyVal">
-                  {accountMeta.status === "active"
-                    ? "Đang hoạt động"
-                    : accountMeta.status === "pending"
-                      ? "Chờ duyệt"
-                      : accountMeta.status === "rejected"
-                        ? "Từ chối"
-                        : accountMeta.status || "—"}
-                </span>
-              </div>
-              <div>
-                <span className="usr-accountReadonlyLabel">Mã người (person_id)</span>
-                <span className="usr-accountReadonlyVal">
-                  {accountMeta.person_id != null ? accountMeta.person_id : "Chưa liên kết — không lưu được quan hệ gia đình"}
-                </span>
-              </div>
-            </div>
-            <div className="usr-reminderForm usr-accountGrid">
-              <input
-                className="usr-input"
-                value={accountForm.surname}
-                onChange={(e) => setAccountForm((p) => ({ ...p, surname: e.target.value }))}
-                placeholder="Họ (vd: Nguyễn)"
-                autoComplete="family-name"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.middle_name}
-                onChange={(e) => setAccountForm((p) => ({ ...p, middle_name: e.target.value }))}
-                placeholder="Tên đệm (có thể để trống)"
-                autoComplete="additional-name"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.first_name}
-                onChange={(e) => setAccountForm((p) => ({ ...p, first_name: e.target.value }))}
-                placeholder="Tên (vd: Văn A)"
-                autoComplete="given-name"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.email}
-                onChange={(e) => setAccountForm((p) => ({ ...p, email: e.target.value }))}
-                placeholder="Email"
-                autoComplete="email"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.hometown}
-                onChange={(e) => setAccountForm((p) => ({ ...p, hometown: e.target.value }))}
-                placeholder="Quê quán"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.generation}
-                onChange={(e) => setAccountForm((p) => ({ ...p, generation: e.target.value }))}
-                placeholder="Đời thứ mấy (generation)"
-                type="number"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.family_id}
-                onChange={(e) => setAccountForm((p) => ({ ...p, family_id: e.target.value }))}
-                placeholder="ID families"
-                type="number"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.spouse_id}
-                onChange={(e) => setAccountForm((p) => ({ ...p, spouse_id: e.target.value }))}
-                placeholder="ID vợ/chồng (people.id)"
-                type="number"
-              />
-              <input
-                className="usr-input"
-                value={accountForm.children_ids}
-                onChange={(e) => setAccountForm((p) => ({ ...p, children_ids: e.target.value }))}
-                placeholder="ID con (cách nhau dấu phẩy, ví dụ: 12, 25)"
-              />
-              <button
-                className="usr-btnPrimary"
-                type="button"
-                onClick={saveAccountInfo}
-                disabled={loading || accountMeta.person_id == null}
-                title={
-                  accountMeta.person_id == null
-                    ? "Tài khoản chưa gắn với hồ sơ người trong phả hệ — không thể lưu."
-                    : undefined
-                }
-              >
-                Lưu hồ sơ
-              </button>
-            </div>
-
-            <div className="usr-panelTitle usr-accountPasswordTitle">Đổi mật khẩu</div>
-            <div className="usr-panelText">Nhập mật khẩu hiện tại và mật khẩu mới (tối thiểu 6 ký tự).</div>
-            <div className="usr-reminderForm usr-accountGrid">
-              <input
-                className="usr-input"
-                type="password"
-                value={passwordForm.current}
-                onChange={(e) => setPasswordForm((p) => ({ ...p, current: e.target.value }))}
-                placeholder="Mật khẩu hiện tại"
-                autoComplete="current-password"
-              />
-              <input
-                className="usr-input"
-                type="password"
-                value={passwordForm.next}
-                onChange={(e) => setPasswordForm((p) => ({ ...p, next: e.target.value }))}
-                placeholder="Mật khẩu mới"
-                autoComplete="new-password"
-              />
-              <input
-                className="usr-input"
-                type="password"
-                value={passwordForm.confirm}
-                onChange={(e) => setPasswordForm((p) => ({ ...p, confirm: e.target.value }))}
-                placeholder="Nhập lại mật khẩu mới"
-                autoComplete="new-password"
-              />
-              <button
-                className="usr-btnPrimary"
-                type="button"
-                onClick={savePassword}
-                disabled={loading || passwordSaving}
-              >
-                {passwordSaving ? "Đang đổi…" : "Đổi mật khẩu"}
-              </button>
-            </div>
-
-            <div className="usr-accountActions">
-              <button className="usr-btnDanger" type="button" onClick={logout}>
-                Đăng xuất
-              </button>
-            </div>
-          </section>
-        ) : null}
 
         <section className="usr-hero" aria-label="Banner">
           <div className="usr-heroOverlay" />
           <div className="usr-heroContent">
             <div className="usr-heroKicker">Gia Phả Việt</div>
             <div className="usr-heroTitle">{sectionTitle}</div>
-            <div className="usr-heroDesc">
-              {clanInfo.clan_name
-                ? `Dòng họ: ${clanInfo.clan_name}. Tìm kiếm thông tin qua nhiều thế hệ, xem cây gia phả trực quan và quản lý kỷ niệm gia đình.`
-                : "Tìm kiếm thông tin qua nhiều thế hệ, xem cây gia phả trực quan, số hóa tư liệu và quản lý kỷ niệm gia đình."}
-            </div>
+            <div className="usr-heroDesc">{clanInfo.clan_name ? `Dòng họ: ${clanInfo.clan_name}.` : "Kết nối cuội nguồn gia đình."}</div>
           </div>
         </section>
 
-        {loading ? <section className="usr-panel"><div className="usr-panelText">Đang tải dữ liệu từ cơ sở dữ liệu...</div></section> : null}
-        {error ? <section className="usr-panel"><div className="usr-panelText">{error}</div></section> : null}
+        {loading && <section className="usr-panel"><div className="usr-panelText">Đang tải dữ liệu...</div></section>}
+        {error && <section className="usr-panel"><div className="usr-panelText" style={{ color: '#dc2626' }}>{error}</div></section>}
 
-        {/* DISCOVER */}
-        {activeSection === "discover" ? (
+        {activeSection === "discover" && (
           <section className="usr-panel">
-            <div className="usr-panelTitle">Tìm kiếm thông tin dòng họ & người thân</div>
-            <div className="usr-panelText">Demo UI tìm kiếm nhanh theo tên, vai trò, hoặc tư liệu.</div>
+            <div className="usr-panelTitle">Tra cứu dòng họ</div>
             <div className="usr-row">
-              <input
-                className="usr-input"
-                value={discoverQuery}
-                onChange={(e) => setDiscoverQuery(e.target.value)}
-                placeholder="Ví dụ: Nguyễn Văn, đời thứ 2, Hà Nội…"
-              />
-              <button className="usr-btnPrimary" type="button" onClick={() => setDiscoverQuery(discoverQuery)}>
-                Tìm
-              </button>
+              <input className="usr-input" value={discoverQuery} onChange={(e) => setDiscoverQuery(e.target.value)} placeholder="Tìm tên, quê quán..." />
             </div>
-
-            <div className="usr-resultGrid">
-              {discoverResults.map((r, idx) => (
-                <div className="usr-resultCard" key={`${r.title}-${idx}`}>
-                  <div className="usr-resultTag">{r.tag}</div>
-                  <div className="usr-resultTitle">{r.title}</div>
-                  <div className="usr-resultDesc">{r.desc}</div>
+            <div className="usr-treeMemberGrid">
+              {treeMembers.filter(m => `${m.display_name} ${m.hometown}`.toLowerCase().includes(discoverQuery.toLowerCase())).map(m => (
+                <div className="usr-treeMemberCard" key={m.id} onClick={() => setTreeMemberDetail(m)}>
+                  <div className="usr-treeMemberName">{m.display_name}</div>
+                  <div className="usr-treeMemberMeta">Đời {m.generation} - {m.hometown}</div>
                 </div>
               ))}
             </div>
+          </section>
+        )}
 
-            <div className="usr-treeMemberHeader">
-              Thành viên trong cây ({treeMembers.length} người)
+        {activeSection === "contribute" && (
+          <section className="usr-panel">
+            <div className="usr-panelTitle" style={{ marginBottom: '20px' }}>Đóng góp nội dung & Theo dõi</div>
+            <div className="usr-grid2">
+               <div>
+                  <h3>Đóng góp bài viết dòng họ</h3>
+                  <p className="usr-panelText" style={{ marginBottom: '15px' }}>Chia sẻ hình ảnh, câu chuyện hoặc tư liệu quý giá về dòng họ để mọi người cùng xem.</p>
+                  <label style={{ fontSize: '0.9rem', color: '#666', fontWeight: '700' }}>Ảnh bài viết:</label>
+                  <ImageUpload onUploadSuccess={(url)=>setMaterialForm(p=>({...p, image_url: url}))} label="Kéo thả ảnh bài viết" />
+                  <textarea className="usr-textarea" value={materialForm.content} onChange={e=>setMaterialForm(prev=>({...prev, content: e.target.value}))} placeholder="Nội dung bài viết..." rows="5" />
+                  <button className="usr-btnPrimary" style={{ marginTop: '15px', width: '100%' }} onClick={submitMaterialPost}>Gửi bài viết đóng góp</button>
+               </div>
+               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                  <h3 style={{ marginTop: 0 }}>Lưu ý</h3>
+                  <ul className="usr-panelText" style={{ paddingLeft: '20px' }}>
+                    <li>Mọi đóng góp sẽ được Quản lý dòng họ kiểm duyệt trước khi hiển thị.</li>
+                    <li>Sử dụng ngôn từ chuẩn mực, tôn trọng tổ tiên.</li>
+                    <li>Ảnh tải lên nên rõ nét để lưu trữ lâu dài.</li>
+                    <li>Cập nhật hồ sơ cá nhân (ảnh/tiểu sử) hiện đã được chuyển vào mục <strong>Tài khoản</strong>.</li>
+                  </ul>
+               </div>
             </div>
-            <div className="usr-treeMemberGrid">
-              {treeMembers
-                .filter((m) => {
-                  const q = discoverQuery.trim().toLowerCase();
-                  if (!q) return true;
-                  return `${m.display_name || ""} ${m.surname || ""} ${m.first_name || ""} ${m.hometown || ""} ${m.generation || ""}`.toLowerCase().includes(q);
-                })
-                .map((m) => (
-                  <div
-                    className="usr-treeMemberCard"
-                    key={m.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setTreeMemberDetail(m)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setTreeMemberDetail(m);
-                      }
-                    }}
-                  >
-                    <div className="usr-treeMemberName">
-                      {m.display_name || `${m.surname || ""} ${m.middle_name || ""} ${m.first_name || ""}`.trim()}
-                    </div>
-                    <div className="usr-treeMemberMeta">
-                      Đời thứ {m.generation || "—"}
-                    </div>
-                    <div className="usr-treeMemberMeta">{m.hometown || "Chưa cập nhật quê quán"}</div>
-                  </div>
-                ))}
+
+            <div style={{ marginTop: '40px' }}>
+              <h3 className="usr-panelTitle" style={{ fontSize: '1.2rem' }}>Lịch sử đóng góp</h3>
+              <div className="usr-submission-table-wrap">
+                <table className="usr-table">
+                   <thead>
+                      <tr><th>Loại</th><th>Nội dung</th><th>Trạng thái</th><th>Ghi chú</th></tr>
+                   </thead>
+                   <tbody>
+                      {mySubmissions.posts.map((p, idx) => (
+                        <tr key={idx}>
+                          <td>Bài viết</td>
+                          <td>{p.content ? p.content.substring(0, 40) + (p.content.length > 40 ? "..." : "") : "Nội dung hình ảnh"}</td>
+                          <td><span className={`status-pill ${p.status}`}>{p.status === 'pending' ? 'Chờ duyệt' : p.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}</span></td>
+                          <td>{p.rejection_reason || '—'}</td>
+                        </tr>
+                      ))}
+                      {(mySubmissions.profile && (mySubmissions.profile.moderation_status !== 'none' || mySubmissions.profile.pending_bio || mySubmissions.profile.pending_avatar_url)) ? (
+                        <tr>
+                          <td>Cập nhật hồ sơ</td>
+                          <td>{mySubmissions.profile.pending_bio ? mySubmissions.profile.pending_bio.substring(0, 40) : "Cập nhật ảnh đại diện"}</td>
+                          <td>
+                            <span className={`status-pill ${mySubmissions.profile.moderation_status || 'pending'}`}>
+                              {mySubmissions.profile.moderation_status === 'pending' ? 'Chờ duyệt' : mySubmissions.profile.moderation_status === 'rejected' ? 'Từ chối' : 'Đang xử lý'}
+                            </span>
+                          </td>
+                          <td>{mySubmissions.profile.moderation_reason || '—'}</td>
+                        </tr>
+                      ) : null}
+                      {mySubmissions.posts.length === 0 && (!mySubmissions.profile || mySubmissions.profile.moderation_status === 'none') && (
+                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>Chưa có lịch sử đóng góp nào.</td></tr>
+                      )}
+                   </tbody>
+                </table>
+              </div>
             </div>
           </section>
-        ) : null}
+        )}
 
-        {/* CHATBOT */}
-        {activeSection === "chat" ? (
+        {/* ... remaining sections: general_posts, chat, tree, restore, digitize, reminders ... */}
+        {activeSection === "general_posts" && (
           <section className="usr-panel">
-            <div className="usr-panelTitle">Chatbot truy vấn gia phả bằng ngôn ngữ tự nhiên</div>
-            <div className="usr-panelText">Hiện là demo frontend (chưa gọi AI thật).</div>
+            <div className="usr-panelTitle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              Bảng tin dòng họ
+              <button className="usr-btnPrimary" style={{ fontSize: '0.8rem' }} onClick={() => setActiveSection("contribute")}>+ Viết bài mới</button>
+            </div>
+            {genPostsLoading ? (
+              <div className="usr-panelText">Đang tải bài viết...</div>
+            ) : (
+              <div style={{ marginTop: '20px', display: 'grid', gap: '20px' }}>
+                {genPosts.length > 0 ? genPosts.map(post => (
+                  <div key={post.id} className="usr-resultCard" style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                      <div className="usr-logo" style={{ borderRadius: '50%', flexShrink: 0 }}>{post.author_name?.[0] || 'T'}</div>
+                      <div>
+                        <div style={{ fontWeight: '800' }}>{post.author_name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#666' }}>{new Date(post.created_at).toLocaleString('vi-VN')}</div>
+                      </div>
+                    </div>
+                    {post.image_url && (
+                      <div style={{ marginBottom: '15px' }}>
+                        <img src={post.image_url} alt="Post" style={{ width: '100%', borderRadius: '12px', maxHeight: '400px', objectFit: 'cover' }} />
+                      </div>
+                    )}
+                    <div style={{ lineHeight: '1.6', color: '#2a3a58', fontSize: '1rem' }}>{post.content}</div>
+                  </div>
+                )) : (
+                  <div className="usr-panelText" style={{ textAlign: 'center', padding: '40px' }}>Chưa có bài viết nào được phê duyệt trong dòng họ.</div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
+        {activeSection === "chat" && (
+          <section className="usr-panel">
+            <div className="usr-panelTitle">Trợ lý Gia Phả AI</div>
             <div className="usr-chat">
               <div className="usr-chatList" ref={chatListRef}>
                 {chat.map((m, i) => (
@@ -673,30 +625,22 @@ const Member = () => {
                 ))}
               </div>
               <div className="usr-chatComposer">
-                <input
-                  className="usr-input"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Hỏi: “Ông nội mình là ai?”, “Đời thứ 3 có những ai?”…"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") sendChat();
-                  }}
-                />
-                <button className="usr-btnPrimary" type="button" onClick={sendChat}>
-                  Gửi
-                </button>
+                 <input className="usr-input" value={chatInput} onChange={e=>setChatInput(e.target.value)} placeholder="Hỏi về tổ tiên, hậu duệ..." onKeyDown={e=>e.key==='Enter' && sendChat()} />
+                 <button className="usr-btnPrimary" onClick={sendChat}>Gửi</button>
               </div>
             </div>
           </section>
-        ) : null}
+        )}
 
         {/* TREE — đệ quy từ đời 1, con theo families/children */}
         {activeSection === "tree" ? (
           <section className="usr-panel usr-panel--phado">
             <div className="usr-panelTitle">Cây gia phả</div>
             <div className="usr-panelText">
-              Gốc là các thành viên đời 1 (hoặc đời nhỏ nhất). Thế hệ sau lấy từ quan hệ trong bảng gia đình. Bấm vào thẻ để
-              xem chi tiết — giao diện phỏng theo phả đồ giấy truyền thống (nền vàng kim, bài họ tên, đường hệ).
+              Gốc là đời 1 (hoặc đời nhỏ nhất).{" "}
+              <strong>Đường đen</strong> là huyết thống từ người cha/mẹ chính (nối con trong DB) xuống các con;{" "}
+              <strong>đoạn ngang đỏ</strong> giữa hai thẻ là vợ chồng cùng nhánh (cùng bản ghi <code>families</code> có cha và mẹ).
+              Bấm thẻ để xem chi tiết.
             </div>
 
             <div className="usr-phado">
@@ -712,7 +656,7 @@ const Member = () => {
                   <div className="usr-phado-ornament usr-phado-ornament--right" aria-hidden="true" />
                 </header>
 
-                <div className="usr-phado-treeWrap">
+                <div className="usr-phado-treeWrap usr-phado-treeWrap--bloodline">
                   {familyTreeRoots.length === 0 ? (
                     <div className="usr-phado-empty">
                       Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ, có ít nhất một thành viên đời gốc và quan hệ cha/mẹ–con
@@ -731,197 +675,209 @@ const Member = () => {
           </section>
         ) : null}
 
-        {/* PHOTO RESTORE */}
-        {activeSection === "restore" ? (
+        {activeSection === "restore" && (
           <section className="usr-panel">
-            <div className="usr-panelTitle">Phục chế hình ảnh cũ (frontend demo)</div>
-            <div className="usr-panelText">Hiện chỉ preview + chọn chế độ (chưa xử lý AI thật).</div>
-
-            <div className="usr-row usr-rowWrap">
-              <label className="usr-file">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                />
-                Chọn ảnh
-              </label>
-
-              <select className="usr-select" value={restoreMode} onChange={(e) => setRestoreMode(e.target.value)}>
-                <option value="sharpen">Làm sắc nét</option>
-                <option value="colorize">Tô màu</option>
-                <option value="repair">Sửa lỗi/khôi phục</option>
-              </select>
-
-              <button className="usr-btnPrimary" type="button" disabled>
-                Chạy AI ({restoreMode})
-              </button>
-            </div>
-
-            <div className="usr-mediaGrid">
-              <div className="usr-mediaCard">
-                <div className="usr-mediaTitle">Ảnh gốc</div>
-                {photoUrl ? <img className="usr-mediaImg" src={photoUrl} alt="Ảnh gốc" /> : <div className="usr-mediaEmpty">Chưa có ảnh</div>}
-              </div>
-              <div className="usr-mediaCard">
-                <div className="usr-mediaTitle">Kết quả (placeholder)</div>
-                <div className="usr-mediaEmpty">Chưa có backend AI để phục chế</div>
-              </div>
-            </div>
+             <div className="usr-panelTitle">Phục chế ảnh</div>
+             <div className="usr-row usr-rowWrap">
+                <label className="usr-file"><input type="file" onChange={e=>setPhotoFile(e.target.files[0])} />Chọn ảnh</label>
+                <select className="usr-select" value={restoreMode} onChange={e=>setRestoreMode(e.target.value)}>
+                   <option value="sharpen">Làm nét</option><option value="colorize">Tô màu</option>
+                </select>
+                <button className="usr-btnPrimary" disabled>Phục chế AI (Demo)</button>
+             </div>
+             {photoUrl && <div style={{ marginTop: '10px' }}><img src={photoUrl} alt="Preview" style={{ maxWidth: '100%', borderRadius: '8px' }} /></div>}
           </section>
-        ) : null}
+        )}
 
-        {/* DIGITIZE */}
-        {activeSection === "digitize" ? (
+        {activeSection === "digitize" && (
           <section className="usr-grid2">
-            <div className="usr-panel">
-              <div className="usr-panelTitle">Speech-to-Text (demo)</div>
-              <div className="usr-panelText">Ghi lại câu chuyện gia đình (hiện demo nhập tay).</div>
-              <textarea
-                className="usr-textarea"
-                value={sttText}
-                onChange={(e) => setSttText(e.target.value)}
-                placeholder="Nhập thử nội dung đã chuyển từ giọng nói sang văn bản…"
-                rows={8}
-              />
-              <div className="usr-panelHint">Khi có backend STT, mình sẽ thêm nút ghi âm + gửi audio lên server để nhận transcript.</div>
-            </div>
-
-            <div className="usr-panel">
-              <div className="usr-panelTitle">OCR nhật ký/tư liệu (demo)</div>
-              <div className="usr-panelText">Upload ảnh tư liệu và nhận text (hiện placeholder).</div>
-              <label className="usr-file">
-                <input type="file" accept="image/*" onChange={(e) => setOcrFile(e.target.files?.[0] || null)} />
-                Chọn ảnh tư liệu
-              </label>
-              {ocrUrl ? <img className="usr-mediaImg usr-mediaImgSmall" src={ocrUrl} alt="Ảnh tư liệu" /> : <div className="usr-mediaEmpty">Chưa có ảnh tư liệu</div>}
-              <textarea
-                className="usr-textarea"
-                value={ocrText}
-                onChange={(e) => setOcrText(e.target.value)}
-                placeholder="Text OCR (demo) — khi có backend OCR sẽ tự đổ vào đây."
-                rows={6}
-              />
-            </div>
+            <div className="usr-panel"><div className="usr-panelTitle">STT (Demo)</div><textarea className="usr-textarea" value={sttText} onChange={e=>setSttText(e.target.value)} rows="5" /></div>
+            <div className="usr-panel"><div className="usr-panelTitle">OCR (Demo)</div><textarea className="usr-textarea" value={ocrText} onChange={e=>setOcrText(e.target.value)} rows="5" /></div>
           </section>
-        ) : null}
+        )}
 
-        {/* REMINDERS */}
-        {activeSection === "reminders" ? (
+        {activeSection === "reminders" && (
           <section className="usr-panel">
-            <div className="usr-panelTitle">Reminders & Alerts (frontend demo)</div>
-            <div className="usr-panelText">Tạo nhắc nhở sự kiện gia đình và xem danh sách nhắc.</div>
-
+            <div className="usr-panelTitle">Nhắc nhở</div>
             <div className="usr-reminderForm">
-              <input
-                className="usr-input"
-                value={newReminder.title}
-                onChange={(e) => setNewReminder((p) => ({ ...p, title: e.target.value }))}
-                placeholder="Tên sự kiện (vd: Giỗ cụ, Kỷ niệm…)"
-              />
-              <input
-                className="usr-input"
-                type="date"
-                value={newReminder.date}
-                onChange={(e) => setNewReminder((p) => ({ ...p, date: e.target.value }))}
-              />
-              <input
-                className="usr-input"
-                value={newReminder.note}
-                onChange={(e) => setNewReminder((p) => ({ ...p, note: e.target.value }))}
-                placeholder="Ghi chú (vd: nhắc trước 3 ngày)"
-              />
-              <button className="usr-btnPrimary" type="button" onClick={addReminder}>
-                Thêm nhắc nhở
-              </button>
+               <input className="usr-input" value={newReminder.title} onChange={e=>setNewReminder(p=>({...p, title: e.target.value}))} placeholder="Tiêu đề" />
+               <input className="usr-input" type="date" value={newReminder.date} onChange={e=>setNewReminder(p=>({...p, date: e.target.value}))} />
+               <button className="usr-btnPrimary" onClick={addReminder}>Thêm</button>
             </div>
-
             <div className="usr-reminderGrid">
-              {reminders
-                .filter((r) => {
-                  const q = search.trim().toLowerCase();
-                  if (!q) return true;
-                  return (r.title + " " + (r.description || "") + " " + (r.event_date || "")).toLowerCase().includes(q);
-                })
-                .map((r) => (
-                  <div className="usr-reminderCard" key={r.id}>
-                    <div className="usr-reminderTitle">{r.title}</div>
-                    <div className="usr-reminderMeta">{r.event_date}</div>
-                    <div className="usr-reminderNote">{r.description || "—"}</div>
-                  </div>
-                ))}
+               {reminders.map(r => <div className="usr-reminderCard" key={r.id}><strong>{r.title}</strong><p>{r.event_date}</p></div>)}
             </div>
           </section>
-        ) : null}
+        )}
       </main>
 
-      {treeMemberDetail ? (
-        <div
-          className="usr-modalOverlay"
-          role="presentation"
-          onClick={() => setTreeMemberDetail(null)}
-        >
-          <div
-            className="usr-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="usr-tree-member-modal-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="usr-modalClose"
-              aria-label="Đóng"
-              onClick={() => setTreeMemberDetail(null)}
-            >
-              ×
-            </button>
-            {(() => {
-              const p = treeMemberDetail;
-              const fullName =
-                p.display_name ||
-                [p.surname, p.middle_name, p.first_name].filter(Boolean).join(" ").trim() ||
-                "Thành viên";
-              const living =
-                p.is_living === undefined || p.is_living === null ? null : Number(p.is_living) === 1;
-              const deathStr = formatMemberDate(p.death_date);
-              const rows = [
-                ["Đời thứ", p.generation != null && p.generation !== "" ? `Đời thứ ${p.generation}` : null],
-                ["Chi", p.branch != null && p.branch !== "" ? `Chi thứ ${p.branch}` : null],
-                ["Giới tính", genderLabel(p.gender)],
-                ["Ngày sinh", formatMemberDate(p.birth_date)],
-                living === true ? ["Tình trạng", "Còn sống"] : null,
-                living === false || deathStr ? ["Ngày mất", deathStr || (living === false ? "—" : null)] : null,
-                ["Quê quán", p.hometown || null],
-                ["Địa chỉ", p.address || null],
-                ["Điện thoại", p.phone || null],
-                ["Email", p.email || null],
-                ["Giới thiệu", p.bio || null],
-              ].filter((row) => row && row[1] != null && row[1] !== "");
-              return (
-                <>
-                  {p.avatar_url ? (
-                    <div className="usr-modalAvatarWrap">
-                      <img className="usr-modalAvatar" src={p.avatar_url} alt="" />
-                    </div>
-                  ) : null}
-                  <h2 className="usr-modalTitle" id="usr-tree-member-modal-title">
-                    {fullName}
-                  </h2>
-                  <dl className="usr-modalDl">
-                    {rows.map(([label, val]) => (
-                      <div className="usr-modalRow" key={label}>
-                        <dt>{label}</dt>
-                        <dd>{val}</dd>
-                      </div>
+      {/* Account Modal */}
+      {showAccountPanel && (
+        <div className="usr-modalOverlay" onClick={() => setShowAccountPanel(false)}>
+          <div className="usr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="usr-modalHeader">
+              <h2 className="usr-modalTitle">Thông tin tài khoản</h2>
+              <button className="usr-modalClose" onClick={() => setShowAccountPanel(false)}>&times;</button>
+            </div>
+            <div className="usr-modalBody">
+              <div className="usr-accountModal-avatarSection">
+                <div className="usr-accountModal-avatarLabel">Ảnh hồ sơ</div>
+                <ImageUpload 
+                  onUploadSuccess={(url) => setProfileContentForm(p => ({ ...p, avatar_url: url }))} 
+                  label="Tải ảnh hoặc dán URL" 
+                />
+                {(profileStatus === 'pending') && <span className="status-pill pending">Đang chờ duyệt cập nhật hồ sơ</span>}
+              </div>
+
+              <div className="usr-accountModal-sectionTitle">Thông tin cá nhân</div>
+              <div className="usr-accountModal-grid">
+                <input className="usr-input" value={accountForm.surname} onChange={(e) => setAccountForm(p => ({ ...p, surname: e.target.value }))} placeholder="Họ" />
+                <input className="usr-input" value={accountForm.middle_name} onChange={(e) => setAccountForm(p => ({ ...p, middle_name: e.target.value }))} placeholder="Tên đệm" />
+                <input className="usr-input" value={accountForm.first_name} onChange={(e) => setAccountForm(p => ({ ...p, first_name: e.target.value }))} placeholder="Tên" />
+                <input className="usr-input" value={accountForm.email} onChange={(e) => setAccountForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" />
+                <div className="usr-accountModal-full">
+                  <input className="usr-input" style={{ width: '100%' }} value={accountForm.hometown} onChange={(e) => setAccountForm(p => ({ ...p, hometown: e.target.value }))} placeholder="Quê quán" />
+                </div>
+                <div className="usr-accountModal-full">
+                  <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                    Đời (thế hệ)
+                  </label>
+                  <input
+                    className="usr-input"
+                    style={{ width: "100%" }}
+                    type="number"
+                    min={1}
+                    value={accountForm.generation}
+                    onChange={(e) => setAccountForm((p) => ({ ...p, generation: e.target.value }))}
+                    placeholder="Ví dụ: 3"
+                  />
+                </div>
+                <div className="usr-accountModal-full">
+                  <textarea className="usr-textarea" value={profileContentForm.bio} onChange={e => setProfileContentForm(prev => ({ ...prev, bio: e.target.value }))} placeholder="Tiểu sử / Giới thiệu..." rows="3" />
+                </div>
+                <div className="usr-accountModal-full" style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button className="usr-btnPrimary" style={{ flex: 1 }} onClick={saveAccountInfo} disabled={loading || accountMeta.person_id == null}>Lưu thông tin cơ bản</button>
+                  <button className="usr-btnPrimary" style={{ flex: 1, background: '#4a148c' }} onClick={submitProfileUpdate} disabled={profileStatus === 'pending'}>Gửi yêu cầu duyệt Ảnh & Bio</button>
+                </div>
+              </div>
+
+              <div className="usr-accountModal-sectionTitle">Quan hệ gia đình (cùng dòng họ)</div>
+              <p className="usr-familyHint">
+                Mã gia đình (<code>family_id</code>) do hệ thống tạo hoặc gắn tự động khi bạn lưu vợ/chồng hoặc danh sách con. Chỉ chọn người trong danh sách thành viên dòng họ của bạn.
+              </p>
+              <div className="usr-familyReadonly">
+                <strong>Mã gia đình hiện tại:</strong>{" "}
+                {accountForm.family_id !== "" && accountForm.family_id != null
+                  ? String(accountForm.family_id)
+                  : "— (chưa có — sẽ được tạo khi lưu vợ/chồng hoặc con)"}
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                  Vợ / chồng (trong dòng họ)
+                </label>
+                <select
+                  className="usr-familySelect"
+                  value={accountForm.spouse_id === "" || accountForm.spouse_id == null ? "" : String(accountForm.spouse_id)}
+                  onChange={(e) =>
+                    setAccountForm((p) => ({
+                      ...p,
+                      spouse_id: e.target.value === "" ? "" : e.target.value,
+                    }))
+                  }
+                  disabled={accountMeta.person_id == null || clanMembersForRelations.length === 0}
+                >
+                  <option value="">— Chưa chọn —</option>
+                  {clanMembersForRelations.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {personOptionLabel(m)} (id {m.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 12 }}>
+                <label className="usr-familyHint" style={{ display: "block", fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                  Con cái (chọn một hoặc nhiều)
+                </label>
+                {childCandidatesForRelations.length === 0 ? (
+                  <p className="usr-familyHint">Chưa có thành viên khác để chọn hoặc chưa tải danh sách dòng họ.</p>
+                ) : (
+                  <div className="usr-childrenGrid" role="group" aria-label="Danh sách con">
+                    {childCandidatesForRelations.map((m) => (
+                      <label key={m.id} className="usr-childRow">
+                        <input
+                          type="checkbox"
+                          checked={selectedChildIdSet.has(Number(m.id))}
+                          onChange={() => toggleChildInRelations(Number(m.id))}
+                        />
+                        <span>
+                          {personOptionLabel(m)} <span style={{ color: "#94a3b8" }}>(id {m.id})</span>
+                        </span>
+                      </label>
                     ))}
-                  </dl>
-                </>
-              );
-            })()}
+                  </div>
+                )}
+                <p className="usr-familyHint" style={{ marginTop: 8 }}>
+                  ID con (tham chiếu): <code>{accountForm.children_ids || "—"}</code>
+                </p>
+              </div>
+              <div className="usr-accountModal-full" style={{ marginBottom: 16 }}>
+                <button
+                  className="usr-btnPrimary"
+                  style={{ width: "100%" }}
+                  type="button"
+                  onClick={saveFamilyRelations}
+                  disabled={familySaving || loading || accountMeta.person_id == null}
+                >
+                  {familySaving ? "Đang lưu quan hệ…" : "Lưu quan hệ vợ/chồng & con (family tự cập nhật trong DB)"}
+                </button>
+              </div>
+
+              <div className="usr-accountModal-sectionTitle">Đổi mật khẩu</div>
+              <div className="usr-accountModal-grid">
+                <input className="usr-input" type="password" value={passwordForm.current} onChange={e => setPasswordForm(p => ({ ...p, current: e.target.value }))} placeholder="Mật khẩu hiện tại" />
+                <input className="usr-input" type="password" value={passwordForm.next} onChange={e => setPasswordForm(p => ({ ...p, next: e.target.value }))} placeholder="Mật khẩu mới" />
+                <div className="usr-accountModal-full">
+                  <input className="usr-input" style={{ width: '100%' }} type="password" value={passwordForm.confirm} onChange={e => setPasswordForm(p => ({ ...p, confirm: e.target.value }))} placeholder="Xác nhận mật khẩu mới" />
+                </div>
+                <div className="usr-accountModal-full">
+                  <button className="usr-btnPrimary" style={{ width: '100%' }} onClick={savePassword} disabled={passwordSaving}>
+                    {passwordSaving ? "Đang lưu..." : "Đổi mật khẩu"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="usr-accountModal-footer">
+                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Trạng thái: <strong>{accountMeta.status === 'active' ? 'Đã kích hoạt' : accountMeta.status}</strong></span>
+                <button className="usr-btnDanger" onClick={logout}>Đăng xuất tài khoản</button>
+              </div>
+            </div>
           </div>
         </div>
-      ) : null}
+      )}
+
+      {/* Person Detail Modal */}
+      {treeMemberDetail && (
+        <div className="usr-modalOverlay" onClick={() => setTreeMemberDetail(null)}>
+          <div className="usr-modal" onClick={e => e.stopPropagation()}>
+             <div className="usr-modalHeader">
+                <h2 className="usr-modalTitle">{personTreeLabel(treeMemberDetail)}</h2>
+                <button className="usr-modalClose" onClick={() => setTreeMemberDetail(null)}>&times;</button>
+             </div>
+             <div className="usr-modalBody">
+                {treeMemberDetail.avatar_url && (
+                  <div className="usr-modalAvatarWrap" style={{ marginBottom: '20px', textAlign: 'center' }}>
+                    <img className="usr-modalAvatar" src={treeMemberDetail.avatar_url} alt="" style={{ width: '120px', height: '120px' }} />
+                  </div>
+                )}
+                <div className="usr-modalDl">
+                    <div className="usr-modalRow"><dt>Đời</dt><dd>{treeMemberDetail.generation}</dd></div>
+                    <div className="usr-modalRow"><dt>Quê quán</dt><dd>{treeMemberDetail.hometown}</dd></div>
+                    <div className="usr-modalRow"><dt>Tiểu sử</dt><dd>{treeMemberDetail.bio || '—'}</dd></div>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

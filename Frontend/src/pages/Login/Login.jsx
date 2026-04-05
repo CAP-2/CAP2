@@ -17,34 +17,43 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const res = await loginAPI({ email, password });
+      const emailTrim = email.trim();
+      if (!emailTrim) {
+        setError("Vui lòng nhập email.");
+        return;
+      }
+      const res = await loginAPI({ email: emailTrim, password });
 
-      // res.success là flag từ API trả về
-      if (res && res.success) {
-        // Lưu thông tin user + token để gọi các API cần xác thực JWT
-        localStorage.setItem("user", JSON.stringify(res.user));
-        if (res.token) localStorage.setItem("token", res.token);
-        
-        // Điều hướng: pending -> phòng chờ; 1 Admin -> /admin; 2 Manager -> /manager; 3 User -> /member
-        if (res.user.status === "pending") {
-          navigate("/waiting");
-          return;
-        }
+      if (!res?.success) {
+        setError(res?.message || "Đăng nhập không thành công.");
+        return;
+      }
 
-        const roleId = res.user.role_id;
-        if (roleId === 1) {
-          navigate("/admin");
-        } else if (roleId === 2) {
-          navigate("/manager");
-        } else if (roleId === 3) {
-          navigate("/member");
-        } else {
-          navigate("/member");
-        }
+      if (!res.user) {
+        setError("Phản hồi từ server thiếu thông tin tài khoản.");
+        return;
+      }
+
+      localStorage.setItem("user", JSON.stringify(res.user));
+      if (res.token) localStorage.setItem("token", res.token);
+
+      if (res.user.status === "pending") {
+        navigate("/waiting");
+        return;
+      }
+
+      const roleId = Number(res.user.role_id);
+      if (roleId === 1) {
+        navigate("/admin");
+      } else if (roleId === 2) {
+        navigate("/manager");
+      } else if (roleId === 3) {
+        navigate("/member");
+      } else {
+        navigate("/member");
       }
     } catch (err) {
-      // Hiển thị lỗi từ backend (ví dụ: "Mật khẩu không đúng")
-      setError(err.message);
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -68,6 +77,7 @@ const Login = () => {
               placeholder="Tên đăng nhập"
               value={email}
               required
+              autoComplete="username"
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
@@ -78,6 +88,7 @@ const Login = () => {
               placeholder="Mật khẩu"
               value={password}
               required
+              autoComplete="current-password"
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
@@ -90,7 +101,11 @@ const Login = () => {
         <div className="login-footer">
           <p>
             <span>Chưa có tài khoản? <Link to="/register">Đăng ký</Link></span>
-            <span><Link to="/forgot">Quên mật khẩu?</Link></span>
+            <span>
+              <Link to="/forgot" title="Nhận mã 6 số qua email đã đăng ký (SMTP Gmail trên server)">
+                Quên mật khẩu?
+              </Link>
+            </span>
           </p>
         </div>
       </div>

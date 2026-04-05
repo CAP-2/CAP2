@@ -890,6 +890,7 @@ exports.approvePost = async (req, res) => {
 
 exports.rejectPost = async (req, res) => {
     const postId = req.params.id;
+    const { reason } = req.body;
     try {
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
@@ -901,8 +902,8 @@ exports.rejectPost = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối bài viết cùng dòng họ' });
             }
         }
-        const sql = "UPDATE posts SET status = 'rejected' WHERE id = ?";
-        await db.query(sql, [postId]);
+        const sql = "UPDATE posts SET status = 'rejected', rejection_reason = ? WHERE id = ?";
+        await db.query(sql, [reason || 'Không có lý do', postId]);
         res.json({ success: true, message: 'Đã từ chối bài viết!' });
     } catch (error) {
         console.error('rejectPost error:', error);
@@ -936,147 +937,6 @@ exports.getMedia = async (req, res) => {
     } catch (error) {
         console.error('getMedia error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách dữ liệu truyền thông (Media)' });
-    }
-};
-
-exports.createPerson = async (req, res) => {
-    const {
-        clan_id, display_name, first_name, middle_name, surname,
-        gender, birth_date, hometown, generation,
-        father_id, mother_id, spouse_id
-    } = req.body;
-
-    if (!first_name || !surname || !clan_id) {
-        return res.status(400).json({ success: false, message: "Thiếu thông tin bắt buộc (Tên, Họ, Clan ID)" });
-    }
-
-    try {
-        const sql = `
-            INSERT INTO people 
-            (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation, father_id, mother_id, spouse_id) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        const [result] = await db.query(sql, [
-            clan_id, display_name, first_name, middle_name, surname,
-            gender, birth_date, hometown, generation || 1, 
-            father_id || null, mother_id || null, spouse_id || null
-        ]);
-
-        res.status(201).json({
-            success: true,
-            message: "Tạo thành viên mới thành công!",
-            person_id: result.insertId
-        });
-    } catch (error) {
-        console.error('createPerson error:', error);
-        res.status(500).json({ success: false, message: "Lỗi hệ thống khi tạo thành viên" });
-    }
-};
-
-exports.updatePerson = async (req, res) => {
-    const personId = req.params.id;
-    const {
-        display_name, first_name, middle_name, surname,
-        gender, birth_date, hometown, generation
-    } = req.body;
-
-    try {
-        const [check] = await db.query("SELECT id FROM people WHERE id = ?", [personId]);
-        if (check.length === 0) {
-            return res.status(404).json({ success: false, message: "Không tìm thấy thành viên" });
-        }
-
-        const sql = `
-            UPDATE people 
-            SET display_name = ?, first_name = ?, middle_name = ?, surname = ?, 
-                gender = ?, birth_date = ?, hometown = ?, generation = ?
-            WHERE id = ?
-        `;
-
-        await db.query(sql, [
-            display_name, first_name, middle_name, surname,
-            gender, birth_date, hometown, generation, personId
-        ]);
-
-        res.json({ success: true, message: "Cập nhật thông tin thành công!" });
-    } catch (error) {
-        console.error('updatePerson error:', error);
-        res.status(500).json({ success: false, message: "Lỗi khi cập nhật thông tin" });
-    }
-};
-
-exports.linkRelations = async (req, res) => {
-    const { person_id, father_id, mother_id, spouse_id } = req.body;
-
-    if (!person_id) {
-        return res.status(400).json({ success: false, message: "Thiếu ID người cần liên kết (person_id)" });
-    }
-
-    try {
-        let newGeneration = null;
-        if (father_id) {
-            const [fatherRows] = await db.query("SELECT generation FROM people WHERE id = ?", [father_id]);
-            if (fatherRows.length > 0 && fatherRows[0].generation) {
-                newGeneration = fatherRows[0].generation + 1;
-            }
-        } else if (mother_id) {
-             const [motherRows] = await db.query("SELECT generation FROM people WHERE id = ?", [mother_id]);
-            if (motherRows.length > 0 && motherRows[0].generation) {
-                newGeneration = motherRows[0].generation + 1;
-            }
-        }
-
-        let sql = "UPDATE people SET father_id = ?, mother_id = ?, spouse_id = ?";
-        let params = [father_id || null, mother_id || null, spouse_id || null];
-
-        if (newGeneration) {
-            sql += ", generation = ?";
-            params.push(newGeneration);
-        }
-
-        sql += " WHERE id = ?";
-        params.push(person_id);
-
-        await db.query(sql, params);
-
-        if (spouse_id) {
-            await db.query("UPDATE people SET spouse_id = ? WHERE id = ?", [person_id, spouse_id]);
-        }
-
-        res.json({ success: true, message: "Liên kết gia phả thành công!", new_generation: newGeneration });
-    } catch (error) {
-        console.error('linkRelations error:', error);
-        res.status(500).json({ success: false, message: "Lỗi khi tạo liên kết gia phả" });
-    }
-};
-
-exports.getPersonWithRelations = async (req, res) => {
-    const personId = req.params.id;
-
-    try {
-        const sql = `
-            SELECT p.*,
-                   CONCAT(f.surname, ' ', f.first_name) as father_name,
-                   CONCAT(m.surname, ' ', m.first_name) as mother_name,
-                   CONCAT(s.surname, ' ', s.first_name) as spouse_name
-            FROM people p
-            LEFT JOIN people f ON p.father_id = f.id
-            LEFT JOIN people m ON p.mother_id = m.id
-            LEFT JOIN people s ON p.spouse_id = s.id
-            WHERE p.id = ?
-        `;
-
-        const [results] = await db.query(sql, [personId]);
-
-        if (results.length === 0) {
-            return res.status(404).json({ success: false, message: "Không tìm thấy thành viên" });
-        }
-
-        res.json(results[0]);
-    } catch (error) {
-        console.error('getPersonWithRelations error:', error);
-        res.status(500).json({ success: false, message: "Lỗi lấy thông tin chi tiết" });
     }
 };
 
@@ -1131,5 +991,97 @@ exports.completeTask = async (req, res) => {
         res.json({ success: true, message: "Đã xác nhận hoàn thành công việc!" });
     } else {
         res.status(404).json({ success: false, message: "Không tìm thấy công việc" });
+    }
+};
+
+// ==============================================================
+// --- QUẢN LÝ CẬP NHẬT HỒ SƠ TỪ NHÁNH MAIN ---
+// ==============================================================
+exports.getPendingProfileUpdates = async (req, res) => {
+    try {
+        let sql = `
+            SELECT id as person_id, display_name, surname, first_name, pending_bio, pending_avatar_url, bio as current_bio, avatar_url as current_avatar_url, clan_id
+            FROM people
+            WHERE moderation_status = 'pending'
+        `;
+        const params = [];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' AND clan_id = ?';
+            params.push(clanId);
+        }
+
+        const [results] = await db.query(sql, params);
+        res.json(results);
+    } catch (error) {
+        console.error('getPendingProfileUpdates error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi lấy danh sách profile chờ duyệt' });
+    }
+};
+
+exports.approveProfileUpdate = async (req, res) => {
+    const personId = req.params.id;
+    try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được duyệt hồ sơ cùng dòng họ' });
+            }
+        }
+        
+        await db.query(`
+            UPDATE people 
+            SET 
+                bio = COALESCE(pending_bio, bio), 
+                avatar_url = COALESCE(pending_avatar_url, avatar_url),
+                pending_bio = NULL,
+                pending_avatar_url = NULL,
+                moderation_status = 'none',
+                moderation_reason = NULL
+            WHERE id = ?`, 
+            [personId]
+        );
+        res.json({ success: true, message: 'Đã phê duyệt cập nhật hồ sơ!' });
+    } catch (error) {
+        console.error('approveProfileUpdate error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi phê duyệt hồ sơ' });
+    }
+};
+
+exports.rejectProfileUpdate = async (req, res) => {
+    const personId = req.params.id;
+    const { reason } = req.body;
+    try {
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
+            if (!rows.length || rows[0].clan_id !== managerClanId) {
+                return res.status(403).json({ success: false, message: 'Chỉ được từ chối hồ sơ cùng dòng họ' });
+            }
+        }
+        
+        await db.query(`
+            UPDATE people 
+            SET 
+                moderation_status = 'rejected',
+                moderation_reason = ?
+            WHERE id = ?`, 
+            [reason || 'Không có lý do', personId]
+        );
+        res.json({ success: true, message: 'Đã từ chối cập nhật hồ sơ!' });
+    } catch (error) {
+        console.error('rejectProfileUpdate error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi từ chối hồ sơ' });
     }
 };

@@ -161,6 +161,71 @@
   border-color: rgba(27, 155, 113, 0.25);
 }
 
+.usr-pillLogout {
+  cursor: pointer;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  background: rgba(254, 242, 242, 0.95);
+  color: #b91c1c;
+}
+
+.usr-pillLogout:hover {
+  background: #fef2f2;
+  border-color: #b91c1c;
+}
+
+.usr-familyHint {
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+
+.usr-familyReadonly {
+  font-size: 0.88rem;
+  padding: 8px 10px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  border: 1px solid var(--usr-border);
+  margin-bottom: 12px;
+}
+
+.usr-familyReadonly strong {
+  color: #0f172a;
+}
+
+.usr-familySelect {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--usr-border);
+  font-size: 0.9rem;
+  background: var(--usr-surface);
+}
+
+.usr-childrenGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--usr-border);
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.usr-childRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.usr-childRow input {
+  flex-shrink: 0;
+}
+
 .usr-hero {
   border-radius: 18px;
   position: relative;
@@ -767,6 +832,58 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Đường huyết thống (đen) xuống con; liên hôn tách biệt (.usr-phado-marriageTie) */
+.usr-phado-treeWrap--bloodline {
+  --phado-blood: #0a0a0a;
+}
+
+.usr-phado-coupleRow {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+}
+
+.usr-phado-singleRow {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.usr-phado-marriageTie {
+  width: min(40px, 10vw);
+  height: 3px;
+  flex-shrink: 0;
+  align-self: center;
+  background: var(--phado-red);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(139, 21, 56, 0.2);
+  position: relative;
+}
+
+.usr-phado-marriageTie::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--phado-red);
+  border-radius: 50%;
+  background: #fff8f5;
+}
+
+.usr-phado-bloodVbar {
+  width: 2px;
+  height: 20px;
+  margin: 0 auto;
+  background: var(--phado-blood);
+  border-radius: 0;
+}
+
 .usr-phado-empty {
   text-align: center;
   color: #5c4030;
@@ -802,6 +919,16 @@
   padding: 18px 10px 8px;
   border-top: 3px solid var(--phado-line);
   position: relative;
+}
+
+.usr-phado-treeWrap--bloodline .usr-phado-treeBranch--blood {
+  border-top-color: var(--phado-blood);
+  border-top-width: 2px;
+}
+
+.usr-phado-treeWrap--bloodline .usr-phado-treeBranch .usr-phado-branchItem::before {
+  background: var(--phado-blood);
+  width: 2px;
 }
 
 .usr-phado-vbar {

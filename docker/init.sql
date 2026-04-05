@@ -1,9 +1,6 @@
 -- 1. Thiết lập môi trường
 SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0; 
--- Ép tăng 1 đơn vị
-SET SESSION auto_increment_increment = 1;
-SET SESSION auto_increment_offset = 1;
+SET FOREIGN_KEY_CHECKS = 0;
 
 -- [NHÓM 1: GIỮ NGUYÊN]
 CREATE TABLE IF NOT EXISTS `roles` (
@@ -62,6 +59,17 @@ CREATE TABLE IF NOT EXISTS `accounts` (
     CONSTRAINT `FK_Account_Person` FOREIGN KEY (`person_id`) REFERENCES `people`(`id`) ON DELETE SET NULL,
     CONSTRAINT `FK_Account_Role` FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `email` VARCHAR(255) NOT NULL,
+    `code_hash` VARCHAR(255) NOT NULL,
+    `expires_at` DATETIME NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `UK_pwd_reset_email` (`email`),
+    INDEX `idx_pwd_reset_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================
 -- NHÓM 3: QUAN HỆ GIA ĐÌNH
 -- ============================================================
