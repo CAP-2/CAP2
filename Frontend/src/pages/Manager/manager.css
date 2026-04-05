@@ -176,6 +176,13 @@
     background: transparent;
 }
 
+select.mgr-search.mgr-selectMulti {
+    max-width: none;
+    width: 100%;
+    min-height: 140px;
+    display: block;
+}
+
 .mgr-topActions {
     display: flex;
     align-items: center;

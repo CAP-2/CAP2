@@ -17,7 +17,6 @@ import {
   rejectPostAPI,
   getMediaAPI,
   createPersonAPI,
-  linkRelationsAPI,
   assignTaskAPI, 
   getTasksAPI,
   getPendingProfileUpdates,
@@ -37,6 +36,23 @@ function readSessionUser() {
   } catch {
     return {};
   }
+}
+
+function memberDisplayName(m) {
+  if (!m) return "";
+  const parts = [m.surname, m.middle_name, m.first_name].filter((x) => x != null && String(x).trim() !== "");
+  if (parts.length) return parts.join(" ");
+  return m.email ? String(m.email) : "";
+}
+
+function isMaleMember(m) {
+  const g = m?.gender;
+  return g === 1 || g === "1" || g === "Nam";
+}
+
+function isFemaleMember(m) {
+  const g = m?.gender;
+  return g === 2 || g === "2" || g === "Nữ";
 }
 
 const emptyMemberEditForm = () => ({
@@ -89,6 +105,8 @@ const Manager = () => {
   const [error, setError] = useState("");
 
   const [selectedRelPerson, setSelectedRelPerson] = useState(null);
+  const [relDetail, setRelDetail] = useState(null);
+  const [relDetailLoading, setRelDetailLoading] = useState(false);
 
   const sessionRoleId = currentUser.role_id;
   const [overviewCreate, setOverviewCreate] = useState({ email: "", password: "", surname: "", middle_name: "", first_name: "", gender: "1", birth_date: "", hometown: "", generation: "1", clan_id: "" });
@@ -112,8 +130,15 @@ const Manager = () => {
   const [memberEditMsg, setMemberEditMsg] = useState("");
   const [memberEditForm, setMemberEditForm] = useState(() => emptyMemberEditForm());
 
-  const [formData, setFormData] = useState({ first_name: "", surname: "", middle_name: "", display_name: "", gender: "1", birth_date: "", hometown: "", clan_id: 1, generation: 1 });
-  const [linkData, setLinkData] = useState({ person_id: "", father_id: "", mother_id: "", spouse_id: "" });
+  const [formData, setFormData] = useState({ first_name: "", surname: "", middle_name: "", display_name: "", gender: "Nam", birth_date: "", hometown: "", clan_id: 1, generation: 1 });
+  const [treeBuildAccountId, setTreeBuildAccountId] = useState("");
+  const [treeBuildLoading, setTreeBuildLoading] = useState(false);
+  const [linkData, setLinkData] = useState({
+    father_person_id: "",
+    mother_person_id: "",
+    spouse_person_id: "",
+    children_person_ids: [],
+  });
   const [maritalStatus, setMaritalStatus] = useState("Độc thân");
 
   const [taskData, setTaskData] = useState({ member_id: "", title: "", description: "", due_date: "" });
@@ -147,6 +172,66 @@ const Manager = () => {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  useEffect(() => {
+    if (!selectedRelPerson?.account_id) {
+      setRelDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setRelDetailLoading(true);
+    getMemberRelations(selectedRelPerson.account_id)
+      .then((data) => {
+        if (!cancelled && data?.success) setRelDetail(data);
+        else if (!cancelled) setRelDetail(null);
+      })
+      .catch(() => {
+        if (!cancelled) setRelDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRelDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRelPerson?.account_id]);
+
+  useEffect(() => {
+    if (!treeBuildAccountId) {
+      setLinkData({
+        father_person_id: "",
+        mother_person_id: "",
+        spouse_person_id: "",
+        children_person_ids: [],
+      });
+      setMaritalStatus("Độc thân");
+      return;
+    }
+    let cancelled = false;
+    setTreeBuildLoading(true);
+    (async () => {
+      try {
+        const data = await getMemberRelations(Number(treeBuildAccountId));
+        if (cancelled || !data?.success) return;
+        const bl = data.bloodline;
+        const mar = data.marriage || {};
+        setLinkData({
+          father_person_id: bl?.parent_father_id != null ? String(bl.parent_father_id) : "",
+          mother_person_id: bl?.parent_mother_id != null ? String(bl.parent_mother_id) : "",
+          spouse_person_id: mar.spouse_id != null ? String(mar.spouse_id) : "",
+          children_person_ids: Array.isArray(mar.children_ids) ? mar.children_ids.map(String) : [],
+        });
+        setMaritalStatus(mar.spouse_id ? "Đã kết hôn" : "Độc thân");
+      } catch (e) {
+        if (!cancelled) alert(e?.message || "Không tải được quan hệ từ máy chủ.");
+      } finally {
+        if (!cancelled) setTreeBuildLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [treeBuildAccountId]);
 
   useEffect(() => {
     const interval = setInterval(() => { loadAll({ silent: true }); }, 10000);
@@ -306,9 +391,47 @@ const Manager = () => {
   };
 
   const handleLinkRelations = async () => {
-    if (!linkData.person_id) return alert("Vui lòng chọn một người cần thiết lập!");
-    try { await linkRelationsAPI(linkData); alert("Liên kết thành công!"); loadAll(); } 
-    catch (err) { alert("Lỗi: " + err.message); }
+    if (!treeBuildAccountId) return alert("Vui lòng chọn một người cần thiết lập!");
+    const accountId = Number(treeBuildAccountId);
+    try {
+      const pf = linkData.father_person_id === "" ? null : Number(linkData.father_person_id);
+      const pm = linkData.mother_person_id === "" ? null : Number(linkData.mother_person_id);
+      if (pf || pm) {
+        await updateMemberRelations(accountId, {
+          mode: "bloodline",
+          parent_father_id: pf,
+          parent_mother_id: pm,
+        });
+      }
+      const spouse =
+        maritalStatus === "Đã kết hôn" && linkData.spouse_person_id
+          ? Number(linkData.spouse_person_id)
+          : null;
+      const children_ids = (linkData.children_person_ids || [])
+        .map((x) => Number(x))
+        .filter((n) => Number.isFinite(n));
+      await updateMemberRelations(accountId, {
+        mode: "marriage",
+        spouse_id: spouse,
+        children_ids,
+      });
+      alert("Đã lưu liên kết gia phả (cha mẹ, hôn nhân, con cái).");
+      await loadAll();
+      const refreshed = await getMemberRelations(accountId);
+      if (refreshed?.success) {
+        const bl = refreshed.bloodline;
+        const mar = refreshed.marriage || {};
+        setLinkData({
+          father_person_id: bl?.parent_father_id != null ? String(bl.parent_father_id) : "",
+          mother_person_id: bl?.parent_mother_id != null ? String(bl.parent_mother_id) : "",
+          spouse_person_id: mar.spouse_id != null ? String(mar.spouse_id) : "",
+          children_person_ids: Array.isArray(mar.children_ids) ? mar.children_ids.map(String) : [],
+        });
+        setMaritalStatus(mar.spouse_id ? "Đã kết hôn" : "Độc thân");
+      }
+    } catch (err) {
+      alert("Lỗi: " + (err?.message || "Không lưu được"));
+    }
   };
 
   const filteredMembers = useMemo(() => {
@@ -520,6 +643,10 @@ const Manager = () => {
 
             <div className="mgr-panel" style={{ backgroundColor: '#fafbfc' }}>
               <div className="mgr-panelTitle" style={{ fontSize: '1.2rem', color: 'var(--mgr-primary-2)' }}>2. Xây dựng cây (Build Tree)</div>
+              <p className="mgr-panelText" style={{ marginTop: '8px', fontSize: '0.9rem' }}>
+                Chọn thành viên (tài khoản) cần gắn vào cây. Hệ thống tải <strong>cha, mẹ, vợ/chồng, con</strong> từ cơ sở dữ liệu; bạn có thể chỉnh và bấm lưu.
+                Giá trị dropdown là <strong>person_id</strong> (hồ sơ người), khớp với bảng <code>people</code> / <code>families</code>.
+              </p>
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
                   <label className="mgr-rowKey" style={{ display: 'block', marginBottom: '8px' }}>👉 Chọn hồ sơ:</label>
@@ -527,8 +654,10 @@ const Manager = () => {
                     <option value="" style={{color: 'var(--mgr-text)'}}>-- Click để chọn thành viên --</option>
                     {members.map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.middle_name || ""} {m.first_name}</option>))}
                   </select>
+                  {treeBuildLoading ? <div className="mgr-subtle" style={{ marginTop: '10px' }}>Đang tải quan hệ từ máy chủ…</div> : null}
                 </div>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
+                  <div className="mgr-miniLabel" style={{ marginBottom: '10px', fontWeight: 700 }}>Huyết thống (cha / mẹ trong DB)</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <div>
                         <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👤 Người Cha:</label>
@@ -561,7 +690,56 @@ const Manager = () => {
                     </div>
                   )}
                 </div>
-                <button className="mgr-btnPrimary" type="button" style={{ padding: '12px', background: 'linear-gradient(135deg, #2f9bff, #007bff)' }} onClick={handleLinkRelations}>🔗 Xác nhận Lưu Liên kết</button>
+                <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
+                  <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👶 Con cái (nhiều tài khoản / hồ sơ)</label>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--mgr-muted)', margin: '0 0 8px' }}>
+                    Giữ <kbd>Ctrl</kbd> (Windows) hoặc <kbd>Cmd</kbd> (Mac) để chọn nhiều người. Danh sách lưu vào bản ghi gia đình (<code>children</code>) của người đang chọn.
+                  </p>
+                  <select
+                    className="mgr-search mgr-selectMulti"
+                    multiple
+                    disabled={!treeBuildAccountId}
+                    value={linkData.children_person_ids}
+                    onChange={(e) =>
+                      setLinkData((p) => ({
+                        ...p,
+                        children_person_ids: Array.from(e.target.selectedOptions, (o) => o.value),
+                      }))
+                    }
+                  >
+                    {(() => {
+                      const listed = new Set(
+                        members.filter((m) => String(m.account_id) !== treeBuildAccountId).map((m) => String(m.person_id))
+                      );
+                      const orphans = linkData.children_person_ids.filter((id) => id && !listed.has(String(id)));
+                      return (
+                        <>
+                          {orphans.map((oid) => (
+                            <option key={`orphan-${oid}`} value={String(oid)}>
+                              Hồ sơ #{oid} (chưa có trong danh sách tài khoản)
+                            </option>
+                          ))}
+                          {members
+                            .filter((m) => String(m.account_id) !== treeBuildAccountId)
+                            .map((m) => (
+                              <option key={m.person_id} value={String(m.person_id)}>
+                                {memberDisplayName(m)}
+                              </option>
+                            ))}
+                        </>
+                      );
+                    })()}
+                  </select>
+                </div>
+                <button
+                  className="mgr-btnPrimary"
+                  type="button"
+                  style={{ padding: '12px', background: 'linear-gradient(135deg, #2f9bff, #007bff)' }}
+                  disabled={!treeBuildAccountId || treeBuildLoading}
+                  onClick={handleLinkRelations}
+                >
+                  🔗 Xác nhận lưu liên kết (DB)
+                </button>
               </div>
             </div>
           </section>
@@ -642,8 +820,8 @@ const Manager = () => {
                 <div>
                   <div style={{ textAlign: 'center', paddingBottom: '20px', borderBottom: '1px solid var(--mgr-border)' }}>
                     <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #e83e8c, #ff758c)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', fontWeight: 'bold', margin: '0 auto 15px' }}>{selectedRelPerson.first_name?.charAt(0) || 'U'}</div>
-                    <h2 style={{ color: '#1d2b44', margin: '0 0 5px 0' }}>{selectedRelPerson.surname} {selectedRelPerson.first_name}</h2>
-                    <div style={{ color: 'var(--mgr-muted)', fontSize: '0.9rem' }}>ID: {selectedRelPerson.account_id}</div>
+                    <h2 style={{ color: '#1d2b44', margin: '0 0 5px 0' }}>{memberDisplayName(selectedRelPerson)}</h2>
+                    <div style={{ color: 'var(--mgr-muted)', fontSize: '0.9rem' }}>Tài khoản #{selectedRelPerson.account_id} · Hồ sơ người (person_id) #{selectedRelPerson.person_id ?? "—"}</div>
                   </div>
                   <div style={{ marginTop: '20px' }}>
                     <h4 style={{ color: 'var(--mgr-primary)', marginBottom: '15px', fontSize: '1rem' }}>Mạng lưới gia đình:</h4>

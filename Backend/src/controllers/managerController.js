@@ -81,6 +81,31 @@ const getChildBloodline = async (personId) => {
     return rows[0] || null;
 };
 
+const buildPersonLabelFromRow = (row) => {
+    if (!row) return null;
+    const d = row.display_name != null ? String(row.display_name).trim() : '';
+    if (d) return d;
+    const s = row.surname == null ? '' : String(row.surname).trim();
+    const m = row.middle_name == null ? '' : String(row.middle_name).trim();
+    const f = row.first_name == null ? '' : String(row.first_name).trim();
+    const name = [s, m, f].filter(Boolean).join(' ').trim();
+    return name || (row.id != null ? `Hồ sơ #${row.id}` : null);
+};
+
+const fetchPeopleLabelsMap = async (ids) => {
+    const unique = [...new Set((ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))];
+    if (!unique.length) return new Map();
+    const [rows] = await db.query(
+        `SELECT id, display_name, surname, middle_name, first_name FROM people WHERE id IN (${unique.map(() => '?').join(',')})`,
+        unique
+    );
+    const m = new Map();
+    for (const r of rows) {
+        m.set(r.id, buildPersonLabelFromRow(r));
+    }
+    return m;
+};
+
 const getTargetAccountContext = async (accountId) => {
     const sql = `
     SELECT 
@@ -314,23 +339,48 @@ exports.getMemberRelations = async (req, res) => {
         const { context } = gate;
         const bloodline = await getChildBloodline(context.person_id);
         const marriage = await getOwnedFamilyRelations(context.person_id);
+
+        const labelIds = [];
+        if (bloodline?.parent_father_id) labelIds.push(bloodline.parent_father_id);
+        if (bloodline?.parent_mother_id) labelIds.push(bloodline.parent_mother_id);
+        if (marriage.spouse_id) labelIds.push(marriage.spouse_id);
+        if (Array.isArray(marriage.children_ids)) labelIds.push(...marriage.children_ids);
+        const labelMap = await fetchPeopleLabelsMap(labelIds);
+
+        const bloodlineOut = bloodline
+            ? {
+                  family_id: bloodline.family_id,
+                  parent_father_id: bloodline.parent_father_id,
+                  parent_mother_id: bloodline.parent_mother_id,
+                  parent_father_name: bloodline.parent_father_id
+                      ? labelMap.get(bloodline.parent_father_id) || null
+                      : null,
+                  parent_mother_name: bloodline.parent_mother_id
+                      ? labelMap.get(bloodline.parent_mother_id) || null
+                      : null,
+              }
+            : null;
+
+        const children_ids = marriage.children_ids || [];
+        const children = children_ids.map((cid) => ({
+            person_id: cid,
+            name: labelMap.get(cid) || `Hồ sơ #${cid}`,
+        }));
+
         return res.json({
             success: true,
             account_id: context.account_id,
             person_id: context.person_id,
             clan_id: context.clan_id,
             gender: context.gender,
-            bloodline: bloodline
-                ? {
-                      family_id: bloodline.family_id,
-                      parent_father_id: bloodline.parent_father_id,
-                      parent_mother_id: bloodline.parent_mother_id,
-                  }
-                : null,
+            bloodline: bloodlineOut,
             marriage: {
                 family_id: marriage.family_id,
                 spouse_id: marriage.spouse_id,
-                children_ids: marriage.children_ids,
+                spouse_name: marriage.spouse_id ? labelMap.get(marriage.spouse_id) || null : null,
+                children_ids,
+                children,
+                is_married: Boolean(marriage.spouse_id),
             },
         });
     } catch (error) {
@@ -431,7 +481,7 @@ exports.getAllMembers = async (req, res) => {
     try {
         let sql = `
             SELECT a.id AS account_id, a.email, a.role_id, a.status,
-                   p.id AS person_id, p.first_name, p.surname, p.birth_date, p.clan_id, p.gender,
+                   p.id AS person_id, p.first_name, p.middle_name, p.surname, p.birth_date, p.clan_id, p.gender,
                    p.generation
             FROM accounts a
             JOIN people p ON a.person_id = p.id
