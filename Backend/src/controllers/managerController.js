@@ -1085,3 +1085,24 @@ exports.rejectProfileUpdate = async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi từ chối hồ sơ' });
     }
 };
+// 1. Hàm tạo người trong gia phả
+exports.createPerson = async (req, res) => {
+    try {
+        // Tạm thời để trống hoặc viết logic xử lý tại đây
+        res.json({ success: true, message: "Hàm createPerson đang được phát triển" });
+    } catch (error) {
+        console.error('createPerson error:', error);
+        res.status(500).json({ success: false, message: "Lỗi tạo người" });
+    }
+};
+
+// 2. Hàm liên kết quan hệ (Lineage)
+exports.linkRelations = async (req, res) => {
+    try {
+        // Tạm thời để trống hoặc viết logic xử lý tại đây
+        res.json({ success: true, message: "Hàm linkRelations đang được phát triển" });
+    } catch (error) {
+        console.error('linkRelations error:', error);
+        res.status(500).json({ success: false, message: "Lỗi liên kết quan hệ" });
+    }
+};
