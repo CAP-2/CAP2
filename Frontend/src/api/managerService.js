@@ -65,6 +65,44 @@ export const updateMemberByManager = async (accountId, body) => {
     return data;
 };
 
+export const archiveMemberAPI = async (accountId, reason) => {
+    const res = await fetch(`${BASE_URL}/members/${accountId}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "Không thể lưu trữ thành viên");
+    return data;
+};
+
+export const getArchivedMembersAPI = async () => {
+    const res = await fetch(`${BASE_URL}/members-archive`, { headers: getAuthHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "Không thể lấy kho lưu trữ thành viên");
+    return data;
+};
+
+export const deleteArchivedMemberAPI = async (archiveId) => {
+    const res = await fetch(`${BASE_URL}/members-archive/${archiveId}`, {
+        method: "DELETE",
+        headers: { ...getAuthHeaders() },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "Không thể xóa vĩnh viễn bản ghi lưu trữ");
+    return data;
+};
+
+export const restoreArchivedMemberAPI = async (archiveId) => {
+    const res = await fetch(`${BASE_URL}/members-archive/${archiveId}/restore`, {
+        method: "POST",
+        headers: { ...getAuthHeaders() },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "Không thể phục hồi thành viên");
+    return data;
+};
+
 // --- QUẢN LÝ NGƯỜI DÙNG CHỜ DUYỆT ---
 export const getPendingUsers = async () => {
     const res = await fetch(`${BASE_URL}/pending`, { headers: getAuthHeaders() });

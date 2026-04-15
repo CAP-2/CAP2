@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Dịch vụ quản lý giao diện Database (Truy cập qua localhost:8081)
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: gen-phpmyadmin-cloud
@@ -12,28 +11,5 @@ services:
       PMA_PORT: ${DB_PORT}
       PMA_USER: ${DB_USER}
       PMA_PASSWORD: ${DB_PASSWORD}
-      # PMA_ARBITRARY: 1 # Mở dòng này nếu bạn muốn tự nhập Host/User tại màn hình login
     ports:
       - "8081:80"
-
-  # Cơ sở dữ liệu Vector cho AI
-  chromadb:
-    image: chromadb/chroma
-    container_name: gen-chromadb
-    restart: always
-    volumes:
-      - ./chroma_data:/chroma/data
-    ports:
-      - "8000:8000"
-
-  # Dịch vụ Backend AI
-  ai_service:
-    build:
-      context: ../Backend/AI
-      dockerfile: Dockerfile
-    container_name: gen-ai-service
-    restart: always
-    env_file: .env
-    ports:
-      - "4000:4000"
-    # Đã gỡ bỏ depends_on vì mysql_init không còn tồn tại

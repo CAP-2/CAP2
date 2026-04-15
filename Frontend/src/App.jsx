@@ -11,7 +11,7 @@ import Manager from "./pages/Manager/Manager";
 import Member from "./pages/Member/Member";
 import GeneralPosts from "./pages/GeneralPosts/GeneralPosts";
 import Waiting from "./pages/Waiting/Waiting";
-import AIChat from "./components/AIChat/AIChat";
+import AIChat from "./components/AIChat/AIChatGateway";
 
 import "./App.css";
 

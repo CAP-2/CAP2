@@ -14,6 +14,10 @@
     router.put('/members/:id/relations', verifyToken, checkRole([1, 2]), managerController.updateMemberRelations);
     router.get('/members/:id', verifyToken, checkRole([1, 2]), managerController.getMemberDetail);
     router.put('/members/:id', verifyToken, checkRole([1, 2]), managerController.updateMemberByManager);
+    router.post('/members/:id/archive', verifyToken, checkRole([1, 2]), managerController.archiveMember);
+    router.get('/members-archive', verifyToken, checkRole([1, 2]), managerController.getArchivedMembers);
+    router.post('/members-archive/:id/restore', verifyToken, checkRole([1, 2]), managerController.restoreArchivedMember);
+    router.delete('/members-archive/:id', verifyToken, checkRole([1, 2]), managerController.deleteArchivedMemberPermanently);
     router.get('/pending', verifyToken, checkRole([1, 2]), managerController.getPendingUsers);
 
     // Admin (1) và Manager (2) đều có thể duyệt/từ chối tài khoản chờ

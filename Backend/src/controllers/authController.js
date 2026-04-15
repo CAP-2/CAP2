@@ -58,6 +58,24 @@ async function sendResetEmail(to, code) {
 }
 
 const passwordResetMemory = new Map();
+let hasEnsuredArchivedMembersTable = false;
+async function ensureArchivedMembersTable() {
+    if (hasEnsuredArchivedMembersTable) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS archived_members (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            account_id INT NOT NULL,
+            archived_by_account_id INT NOT NULL,
+            clan_id INT NULL,
+            archived_reason TEXT NULL,
+            account_json JSON NOT NULL,
+            person_json JSON NULL,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_archived_account (account_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    hasEnsuredArchivedMembersTable = true;
+}
 function setResetMemory(email, codeHash, expiresAt) {
     passwordResetMemory.set(email, { code_hash: codeHash, expires_at: expiresAt });
 }
@@ -107,6 +125,7 @@ exports.login = async (req, res) => {
     const emailTrim = String(email).trim().toLowerCase();
 
     try {
+        await ensureArchivedMembersTable();
         const sql = `SELECT a.*, p.display_name FROM accounts a 
                      LEFT JOIN people p ON a.person_id = p.id 
                      WHERE LOWER(TRIM(a.email)) = ?`;
@@ -117,6 +136,13 @@ exports.login = async (req, res) => {
         }
 
         const user = results[0];
+        const [archivedRows] = await db.query('SELECT id FROM archived_members WHERE account_id = ? LIMIT 1', [user.id]);
+        if (archivedRows.length > 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'Tài khoản của bạn đã bị khóa, vui lòng liên hệ với manager.',
+            });
+        }
         let match = false;
 
         try {

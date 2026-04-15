@@ -1,5 +1,24 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
+let hasEnsuredArchivedMembersTable = false;
+
+const ensureArchivedMembersTable = async () => {
+    if (hasEnsuredArchivedMembersTable) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS archived_members (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            account_id INT NOT NULL,
+            archived_by_account_id INT NOT NULL,
+            clan_id INT NULL,
+            archived_reason TEXT NULL,
+            account_json JSON NOT NULL,
+            person_json JSON NULL,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_archived_account (account_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    hasEnsuredArchivedMembersTable = true;
+};
 
 const parseNullableId = (value) => {
     if (value === undefined || value === null || String(value).trim() === '') return null;
@@ -485,7 +504,9 @@ exports.getAllMembers = async (req, res) => {
                    p.generation
             FROM accounts a
             JOIN people p ON a.person_id = p.id
+            LEFT JOIN archived_members am ON am.account_id = a.id
             WHERE a.role_id IN (2,3) AND a.status = 'active'
+              AND am.id IS NULL
         `;
 
         const params = [];
@@ -506,6 +527,164 @@ exports.getAllMembers = async (req, res) => {
     } catch (error) {
         console.error('getAllMembers error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách thành viên' });
+    }
+};
+
+exports.getArchivedMembers = async (req, res) => {
+    try {
+        await ensureArchivedMembersTable();
+        let sql = `
+            SELECT id, account_id, archived_by_account_id, clan_id, archived_reason, archived_at,
+                   JSON_UNQUOTE(JSON_EXTRACT(account_json, '$.email')) AS email,
+                   JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.surname')) AS surname,
+                   JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.middle_name')) AS middle_name,
+                   JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.first_name')) AS first_name
+            FROM archived_members
+        `;
+        const params = [];
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId === null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            sql += ' WHERE clan_id = ?';
+            params.push(clanId);
+        }
+        sql += ' ORDER BY archived_at DESC, id DESC';
+        const [rows] = await db.query(sql, params);
+        return res.json({ success: true, items: rows });
+    } catch (error) {
+        console.error('getArchivedMembers error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi lấy kho lưu trữ thành viên' });
+    }
+};
+
+exports.archiveMember = async (req, res) => {
+    try {
+        await ensureArchivedMembersTable();
+        const targetAccountId = Number(req.params.id);
+        if (!Number.isFinite(targetAccountId)) {
+            return res.status(400).json({ success: false, message: 'account_id không hợp lệ' });
+        }
+        const gate = await assertCanManageAccount(req, targetAccountId);
+        if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
+        const reason = req.body?.reason ? String(req.body.reason).trim() : null;
+        const { context } = gate;
+
+        const [accRows] = await db.query('SELECT * FROM accounts WHERE id = ? LIMIT 1', [targetAccountId]);
+        if (!accRows.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản thành viên' });
+        }
+        const [personRows] = await db.query('SELECT * FROM people WHERE id = ? LIMIT 1', [context.person_id]);
+
+        await db.query(
+            `INSERT INTO archived_members
+             (account_id, archived_by_account_id, clan_id, archived_reason, account_json, person_json)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                archived_by_account_id = VALUES(archived_by_account_id),
+                clan_id = VALUES(clan_id),
+                archived_reason = VALUES(archived_reason),
+                account_json = VALUES(account_json),
+                person_json = VALUES(person_json),
+                archived_at = CURRENT_TIMESTAMP`,
+            [
+                targetAccountId,
+                req.user.id,
+                context.clan_id ?? null,
+                reason,
+                JSON.stringify(accRows[0]),
+                personRows[0] ? JSON.stringify(personRows[0]) : null,
+            ]
+        );
+
+        return res.json({ success: true, message: 'Đã chuyển thành viên vào kho lưu trữ.' });
+    } catch (error) {
+        console.error('archiveMember error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi lưu trữ thành viên' });
+    }
+};
+
+exports.deleteArchivedMemberPermanently = async (req, res) => {
+    try {
+        await ensureArchivedMembersTable();
+        const archiveId = Number(req.params.id);
+        if (!Number.isFinite(archiveId)) {
+            return res.status(400).json({ success: false, message: 'archive_id không hợp lệ' });
+        }
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            const [rows] = await db.query('SELECT clan_id FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
+            if (!rows.length || Number(rows[0].clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({ success: false, message: 'Chỉ được xóa dữ liệu lưu trữ của cùng dòng họ' });
+            }
+        }
+        const [archivedRows] = await db.query('SELECT account_id FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
+        if (!archivedRows.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
+        }
+        const accountId = Number(archivedRows[0].account_id);
+
+        const [ctxRows] = await db.query('SELECT person_id FROM accounts WHERE id = ? LIMIT 1', [accountId]);
+        const personId = ctxRows[0]?.person_id ?? null;
+        if (personId) {
+            await db.query('UPDATE families SET father_id = NULL WHERE father_id = ?', [personId]);
+            await db.query('UPDATE families SET mother_id = NULL WHERE mother_id = ?', [personId]);
+            await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
+            await db.query('DELETE FROM people WHERE id = ?', [personId]);
+        }
+        await db.query('DELETE FROM accounts WHERE id = ?', [accountId]);
+        const [result] = await db.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
+        }
+        return res.json({ success: true, message: 'Đã xóa vĩnh viễn khỏi kho lưu trữ.' });
+    } catch (error) {
+        console.error('deleteArchivedMemberPermanently error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi xóa vĩnh viễn bản ghi lưu trữ' });
+    }
+};
+
+exports.restoreArchivedMember = async (req, res) => {
+    try {
+        await ensureArchivedMembersTable();
+        const archiveId = Number(req.params.id);
+        if (!Number.isFinite(archiveId)) {
+            return res.status(400).json({ success: false, message: 'archive_id không hợp lệ' });
+        }
+
+        const [rows] = await db.query('SELECT * FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
+        if (!rows.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
+        }
+        const archived = rows[0];
+
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            if (Number(archived.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({ success: false, message: 'Chỉ được phục hồi thành viên cùng dòng họ' });
+            }
+        }
+
+        const accountId = Number(archived.account_id);
+        if (!Number.isFinite(accountId)) {
+            return res.status(400).json({ success: false, message: 'Bản ghi lưu trữ không có account_id hợp lệ' });
+        }
+        await db.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
+        return res.json({
+            success: true,
+            message: 'Phục hồi thành viên thành công.',
+            account_id: accountId,
+        });
+    } catch (error) {
+        console.error('restoreArchivedMember error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi phục hồi thành viên' });
     }
 };
 

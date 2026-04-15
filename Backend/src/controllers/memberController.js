@@ -58,7 +58,9 @@ const getOrCreateConversationId = async (accountId) => {
   return created.insertId;
 };
 
-const buildAiReply = (text) => {
+const AI_SERVER_URL = (process.env.AI_SERVER_URL || "http://localhost:8001").replace(/\/+$/, "");
+
+const buildAiReplyFallback = (text) => {
   const t = String(text || "").toLowerCase();
   if (t.includes("đời") || t.includes("thế hệ")) {
     return "Bạn có thể vào mục Khám phá di sản để lọc thành viên theo đời và quê quán.";
@@ -70,6 +72,44 @@ const buildAiReply = (text) => {
     return "Bạn có thể thêm lịch nhắc trong mục Reminders để lưu vào cơ sở dữ liệu.";
   }
   return "Mình đã nhận câu hỏi. Bạn có thể hỏi theo tên thành viên, đời hoặc sự kiện gia đình.";
+};
+
+const extractAiServerText = (data) => {
+  if (data == null) return "";
+  if (typeof data === "string") return data;
+  if (typeof data.answer === "string") return data.answer;
+  if (typeof data.text === "string") return data.text;
+  if (typeof data.message === "string") return data.message;
+  if (data.data != null) {
+    const d = data.data;
+    if (typeof d === "string") return d;
+    if (typeof d === "object" && d) {
+      if (typeof d.answer === "string") return d.answer;
+      if (typeof d.text === "string") return d.text;
+      if (typeof d.message === "string") return d.message;
+    }
+  }
+  return "";
+};
+
+const fetchAiServerReply = async (text) => {
+  try {
+    const res = await fetch(`${AI_SERVER_URL}/ask-db`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("AI server HTTP:", res.status, data);
+      return buildAiReplyFallback(text);
+    }
+    const reply = extractAiServerText(data).trim();
+    return reply || buildAiReplyFallback(text);
+  } catch (e) {
+    console.error("fetchAiServerReply:", e);
+    return buildAiReplyFallback(text);
+  }
 };
 
 const parseNullableId = (value) => {
@@ -621,7 +661,7 @@ exports.sendChatMessage = async (req, res) => {
       [conversationId, text]
     );
 
-    const aiReply = buildAiReply(text);
+    const aiReply = await fetchAiServerReply(text);
     await db.query(
       "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'ai', ?)",
       [conversationId, aiReply]

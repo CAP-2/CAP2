@@ -8,6 +8,10 @@ import {
   getMembers,
   getMemberDetail,
   updateMemberByManager,
+  archiveMemberAPI,
+  getArchivedMembersAPI,
+  restoreArchivedMemberAPI,
+  deleteArchivedMemberAPI,
   createMember,
   getPendingUsers,
   approveUserAPI,
@@ -97,6 +101,7 @@ const Manager = () => {
   const [pendingPosts, setPendingPosts] = useState([]);
   const [pendingProfiles, setPendingProfiles] = useState([]);
   const [mediaList, setMediaList] = useState([]);
+  const [archivedMembers, setArchivedMembers] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   
   const [search, setSearch] = useState("");
@@ -148,14 +153,15 @@ const Manager = () => {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const [statsData, membersData, pendingData, postsData, profilesData, mediaData, tasksData] = await Promise.all([
+      const [statsData, membersData, pendingData, postsData, profilesData, mediaData, tasksData, archivedData] = await Promise.all([
         getStats(),
         getMembers(),
         getPendingUsers(),
         getPendingPosts(),
         getPendingProfileUpdates(),
         getMediaAPI(),
-        getTasksAPI().catch(() => [])
+        getTasksAPI().catch(() => []),
+        getArchivedMembersAPI().catch(() => ({ success: true, items: [] }))
       ]);
       setStats(statsData);
       setMembers(membersData);
@@ -164,6 +170,7 @@ const Manager = () => {
       setPendingProfiles(profilesData);
       setMediaList(mediaData);
       setAllTasks(Array.isArray(tasksData) ? tasksData : []);
+      setArchivedMembers(Array.isArray(archivedData?.items) ? archivedData.items : []);
     } catch (e) {
       if (!silent) setError(e?.message || "Không thể tải dữ liệu manager");
     } finally {
@@ -383,6 +390,39 @@ const Manager = () => {
     await rejectProfileUpdateAPI(id, reason || "Không có lý do rõ ràng");
     await loadAll();
   };
+  const archiveCurrentMember = async () => {
+    if (!memberEditId) return;
+    const reason = window.prompt("Nhập lý do xóa khỏi cây (sẽ lưu trữ, không xóa vĩnh viễn):");
+    if (reason === null) return;
+    try {
+      await archiveMemberAPI(memberEditId, reason || "");
+      alert("Đã chuyển thành viên vào kho lưu trữ.");
+      setMemberEditId(null);
+      await loadAll();
+    } catch (e) {
+      alert(e?.message || "Không thể lưu trữ thành viên");
+    }
+  };
+  const removeArchivedPermanently = async (archiveId) => {
+    const ok = window.confirm("Xóa vĩnh viễn bản ghi này khỏi kho lưu trữ?");
+    if (!ok) return;
+    try {
+      await deleteArchivedMemberAPI(archiveId);
+      await loadAll();
+    } catch (e) {
+      alert(e?.message || "Không thể xóa vĩnh viễn");
+    }
+  };
+  const restoreArchived = async (archiveId) => {
+    const ok = window.confirm("Phục hồi thành viên này về danh sách đang hoạt động?");
+    if (!ok) return;
+    try {
+      await restoreArchivedMemberAPI(archiveId);
+      await loadAll();
+    } catch (e) {
+      alert(e?.message || "Không thể phục hồi");
+    }
+  };
 
   const handleCreatePerson = async (e) => {
     e.preventDefault();
@@ -444,7 +484,7 @@ const Manager = () => {
     switch (activeSection) {
       case "overview": return "Tổng quan"; case "members": return "Danh sách thành viên"; case "approvals": return "Duyệt tài khoản";
       case "lineage": return "Lineage Management"; case "tasks": return "Phân công công việc"; case "relationships": return "Duy trì mối quan hệ";
-      case "moderation": return "Content Moderation"; case "media": return "Media Management"; default: return "Quản lý";
+      case "moderation": return "Content Moderation"; case "media": return "Media Management"; case "archive": return "Kho lưu trữ thành viên"; default: return "Quản lý";
     }
   }, [activeSection]);
 
@@ -470,6 +510,7 @@ const Manager = () => {
           <button className={`mgr-navItem ${activeSection === "relationships" ? "isActive" : ""}`} onClick={() => setActiveSection("relationships")}>Duy trì mối quan hệ</button>
           <button className={`mgr-navItem ${activeSection === "moderation" ? "isActive" : ""}`} onClick={() => setActiveSection("moderation")}>Content Moderation</button>
           <button className={`mgr-navItem ${activeSection === "media" ? "isActive" : ""}`} onClick={() => setActiveSection("media")}>Media Management</button>
+          <button className={`mgr-navItem ${activeSection === "archive" ? "isActive" : ""}`} onClick={() => setActiveSection("archive")}>Kho lưu trữ</button>
         </nav>
       </aside>
 
@@ -932,6 +973,43 @@ const Manager = () => {
             {!loading && mediaList.length === 0 && <div className="mgr-empty" style={{ padding: '60px' }}>Thư viện hiện đang trống</div>}
           </section>
         )}
+
+        {activeSection === "archive" && (
+          <section>
+            <div className="mgr-listHeader">
+              <div><div className="mgr-listTitle" style={{ fontSize: '1.2rem', color: '#9b1c1c' }}>Kho lưu trữ thành viên đã xóa khỏi cây</div></div>
+            </div>
+            <div className="mgr-list" style={{ marginTop: '15px' }}>
+              {archivedMembers.length === 0 ? (
+                <div className="mgr-empty">Chưa có thành viên trong kho lưu trữ.</div>
+              ) : (
+                archivedMembers.map((item) => (
+                  <div key={item.id} className="mgr-panel" style={{ marginBottom: '12px', padding: '14px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--mgr-text)' }}>
+                        {[item.surname, item.middle_name, item.first_name].filter(Boolean).join(" ") || item.email || `Bản ghi #${item.id}`}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--mgr-muted)' }}>
+                        Account cũ: {item.account_id ?? "—"} | Clan: {item.clan_id ?? "—"} | Lưu lúc: {item.archived_at ? new Date(item.archived_at).toLocaleString('vi-VN') : "—"}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 4 }}>
+                        Lý do: {item.archived_reason || "Không có"}
+                      </div>
+                    </div>
+                    <div>
+                      <button className="mgr-btnPrimary" style={{ marginRight: 8 }} onClick={() => restoreArchived(item.id)}>
+                        Phục hồi
+                      </button>
+                      <button className="mgr-btnDanger" onClick={() => removeArchivedPermanently(item.id)}>
+                        Xóa vĩnh viễn
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
       {memberEditId ? (
@@ -1000,6 +1078,7 @@ const Manager = () => {
 
                 <div className="mgr-modalActions" style={{ marginTop: '20px' }}>
                   <button className="mgr-btnPrimary" type="button" disabled={memberEditSaving} onClick={saveMemberEdit}>{memberEditSaving ? "Đang lưu…" : "Lưu thay đổi"}</button>
+                  <button className="mgr-btnDanger" type="button" disabled={memberEditSaving} onClick={archiveCurrentMember}>Xóa khỏi cây (lưu trữ)</button>
                   <button className="mgr-btnGhost" style={{color: 'var(--mgr-text)'}} type="button" disabled={memberEditSaving} onClick={() => setMemberEditId(null)}>Đóng</button>
                 </div>
               </>
