@@ -92,12 +92,17 @@ const extractAiServerText = (data) => {
   return "";
 };
 
-const fetchAiServerReply = async (text) => {
+const fetchAiServerReply = async (text, scope) => {
   try {
+    const body = { prompt: text };
+    if (scope && typeof scope === "object") {
+      if (scope.user_id != null) body.user_id = scope.user_id;
+      if (scope.clan_id != null) body.clan_id = scope.clan_id;
+    }
     const res = await fetch(`${AI_SERVER_URL}/ask-db`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: text }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -174,6 +179,57 @@ const getOwnedFamilyRelations = async (personId) => {
     spouse_id: spouseId || null,
     children_ids: childrenRows.map((r) => r.person_id),
   };
+};
+
+let hasEnsuredTaskTables = false;
+
+const ensureTaskTables = async () => {
+  if (hasEnsuredTaskTables) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS manager_tasks (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      manager_account_id INT NOT NULL,
+      clan_id INT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NULL,
+      due_date DATE NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_manager_tasks_manager (manager_account_id),
+      KEY idx_manager_tasks_clan (clan_id),
+      CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS manager_task_assignments (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      task_id INT NOT NULL,
+      member_account_id INT NOT NULL,
+      member_person_id INT NOT NULL,
+      status ENUM('assigned', 'in_progress', 'completed') DEFAULT 'assigned',
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP NULL DEFAULT NULL,
+      UNIQUE KEY uk_task_member (task_id, member_account_id),
+      KEY idx_task_assignments_member (member_account_id),
+      KEY idx_task_assignments_person (member_person_id),
+      CONSTRAINT fk_task_assignments_task FOREIGN KEY (task_id) REFERENCES manager_tasks(id) ON DELETE CASCADE,
+      CONSTRAINT fk_task_assignments_account FOREIGN KEY (member_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+      CONSTRAINT fk_task_assignments_person FOREIGN KEY (member_person_id) REFERENCES people(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  hasEnsuredTaskTables = true;
+};
+
+const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
+  const onlineUsers = req.app?.locals?.onlineUsers || {};
+  const io = req.app?.locals?.io;
+  const socketId = onlineUsers[receiverAccountId];
+  if (io && socketId) {
+    io.to(socketId).emit("new_notification", {
+      ...payload,
+      time: new Date().toLocaleTimeString(),
+    });
+  }
 };
 
 /**
@@ -303,6 +359,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
 
 exports.getDashboard = async (req, res) => {
   try {
+    await ensureTaskTables();
     const accountId = req.user.id;
     const context = await getAccountContext(accountId);
     if (!context) {
@@ -312,6 +369,8 @@ exports.getDashboard = async (req, res) => {
     const clanId = context.clan_id;
     let treeMembers = [];
     let reminders = [];
+    let assignedTasks = [];
+    let notifications = [];
     let familyTree = { roots: [] };
 
     if (clanId) {
@@ -355,6 +414,52 @@ exports.getDashboard = async (req, res) => {
         [clanId]
       );
       reminders = eventRows;
+
+      const [taskRows] = await db.query(
+        `
+          SELECT
+            a.id,
+            a.task_id,
+            t.title,
+            t.description,
+            t.due_date,
+            t.created_at,
+            a.status,
+            a.assigned_at,
+            a.completed_at,
+            COALESCE(pm.display_name, am.email, 'Manager') AS manager_name
+          FROM manager_task_assignments a
+          INNER JOIN manager_tasks t ON t.id = a.task_id
+          INNER JOIN accounts am ON am.id = t.manager_account_id
+          LEFT JOIN people pm ON pm.id = am.person_id
+          WHERE a.member_account_id = ?
+          ORDER BY
+            CASE a.status
+              WHEN 'assigned' THEN 0
+              WHEN 'in_progress' THEN 1
+              WHEN 'completed' THEN 2
+              ELSE 3
+            END,
+            t.created_at DESC,
+            a.id DESC
+        `,
+        [accountId]
+      );
+      assignedTasks = taskRows;
+
+      if (context.person_id) {
+        const [notificationRows] = await db.query(
+          `
+            SELECT id, type, title, message, is_read, link_url, created_at
+            FROM notifications
+            WHERE receiver_person_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 50
+          `,
+          [context.person_id]
+        );
+        notifications = notificationRows;
+      }
     }
 
     const discoverItems = [
@@ -409,6 +514,8 @@ exports.getDashboard = async (req, res) => {
       familyTree,
       discoverItems,
       reminders,
+      assignedTasks,
+      notifications,
     });
   } catch (error) {
     console.error("getDashboard error:", error);
@@ -661,7 +768,22 @@ exports.sendChatMessage = async (req, res) => {
       [conversationId, text]
     );
 
-    const aiReply = await fetchAiServerReply(text);
+    const ctx = await getAccountContext(accountId);
+    if (!ctx || !ctx.clan_id) {
+      const aiReply = "Tài khoản của bạn chưa được gắn vào dòng họ (clan). Vui lòng liên hệ quản lý để được cấp quyền truy cập cây gia phả.";
+      await db.query(
+        "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'ai', ?)",
+        [conversationId, aiReply]
+      );
+      return res.json({
+        success: true,
+        conversation_id: conversationId,
+        user_message: text,
+        ai_message: aiReply,
+      });
+    }
+
+    const aiReply = await fetchAiServerReply(text, { user_id: accountId, clan_id: ctx.clan_id });
     await db.query(
       "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'ai', ?)",
       [conversationId, aiReply]
@@ -821,5 +943,126 @@ exports.getMySubmissions = async (req, res) => {
   } catch (error) {
     console.error("getMySubmissions error:", error);
     return res.status(500).json({ success: false, message: "Lỗi lấy trạng thái đóng góp." });
+  }
+};
+
+exports.getAssignedTasks = async (req, res) => {
+  try {
+    await ensureTaskTables();
+    const accountId = req.user.id;
+    const [rows] = await db.query(
+      `
+        SELECT
+          a.id,
+          a.task_id,
+          t.title,
+          t.description,
+          t.due_date,
+          t.created_at,
+          a.status,
+          a.assigned_at,
+          a.completed_at,
+          COALESCE(pm.display_name, am.email, 'Manager') AS manager_name
+        FROM manager_task_assignments a
+        INNER JOIN manager_tasks t ON t.id = a.task_id
+        INNER JOIN accounts am ON am.id = t.manager_account_id
+        LEFT JOIN people pm ON pm.id = am.person_id
+        WHERE a.member_account_id = ?
+        ORDER BY
+          CASE a.status
+            WHEN 'assigned' THEN 0
+            WHEN 'in_progress' THEN 1
+            WHEN 'completed' THEN 2
+            ELSE 3
+          END,
+          t.created_at DESC,
+          a.id DESC
+      `,
+      [accountId]
+    );
+    return res.json({ success: true, tasks: rows });
+  } catch (error) {
+    console.error("getAssignedTasks(member) error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi lấy công việc được giao" });
+  }
+};
+
+exports.updateTaskStatus = async (req, res) => {
+  try {
+    await ensureTaskTables();
+    const assignmentId = Number(req.params.id);
+    const nextStatus = String(req.body.status || "").trim();
+    if (!Number.isFinite(assignmentId)) {
+      return res.status(400).json({ success: false, message: "ID công việc không hợp lệ" });
+    }
+    if (!["in_progress", "completed"].includes(nextStatus)) {
+      return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT
+          a.id,
+          a.status,
+          a.member_account_id,
+          a.member_person_id,
+          t.id AS task_id,
+          t.title,
+          t.manager_account_id
+        FROM manager_task_assignments a
+        INNER JOIN manager_tasks t ON t.id = a.task_id
+        WHERE a.id = ? AND a.member_account_id = ?
+        LIMIT 1
+      `,
+      [assignmentId, req.user.id]
+    );
+    const task = rows[0];
+    if (!task) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy công việc được giao" });
+    }
+    if (task.status === "completed") {
+      return res.json({ success: true, message: "Công việc này đã hoàn thành trước đó" });
+    }
+
+    await db.query(
+      `
+        UPDATE manager_task_assignments
+        SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END
+        WHERE id = ?
+      `,
+      [nextStatus, nextStatus, assignmentId]
+    );
+
+    if (nextStatus === "completed") {
+      const managerContext = await getAccountContext(task.manager_account_id);
+      const memberContext = await getAccountContext(req.user.id);
+      if (managerContext?.person_id) {
+        const memberName =
+          memberContext?.display_name ||
+          [memberContext?.surname, memberContext?.middle_name, memberContext?.first_name].filter(Boolean).join(" ") ||
+          `Thanh vien #${task.member_account_id}`;
+        await db.query(
+          "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+          [
+            managerContext.person_id,
+            "task_completed",
+            `Cong viec da hoan thanh: ${task.title}`,
+            `${memberName} da hoan thanh cong viec "${task.title}".`,
+            `/manager/tasks/${task.task_id}`,
+          ]
+        );
+        await emitNotificationToAccount(req, task.manager_account_id, {
+          type: "task_completed",
+          title: "Cong viec da hoan thanh",
+          message: `${memberName} da hoan thanh cong viec: "${task.title}"`,
+          taskId: task.task_id,
+        });
+      }
+    }
+
+    return res.json({ success: true, message: "Đã cập nhật trạng thái công việc" });
+  } catch (error) {
+    console.error("updateTaskStatus error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật trạng thái công việc" });
   }
 };

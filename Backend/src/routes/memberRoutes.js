@@ -12,6 +12,8 @@ router.get("/chat", verifyToken, checkRole([2, 3]), memberController.getChatMess
 router.post("/chat", verifyToken, checkRole([2, 3]), memberController.sendChatMessage);
 
 router.post("/reminders", verifyToken, checkRole([2, 3]), memberController.createReminder);
+router.get("/tasks", verifyToken, checkRole([2, 3]), memberController.getAssignedTasks);
+router.patch("/tasks/:id/status", verifyToken, checkRole([2, 3]), memberController.updateTaskStatus);
 
 router.post("/content/profile", verifyToken, checkRole([1, 2, 3]), memberController.proposeProfileUpdate);
 router.post("/content/post", verifyToken, checkRole([1, 2, 3]), memberController.submitMaterial);

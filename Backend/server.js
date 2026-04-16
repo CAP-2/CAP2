@@ -26,6 +26,8 @@ const io = new Server(server, {
         credentials: true
     }
 });
+app.locals.io = io;
+app.locals.onlineUsers = {};
 
 // 4. Import Route Controllers
 const authRoutes = require('./src/routes/authRoutes');
@@ -45,19 +47,17 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // 6. Logic Socket.io
-let onlineUsers = {};
-
 io.on('connection', (socket) => {
     socket.on('register_user', (userId) => {
         if (userId) {
-            onlineUsers[userId] = socket.id;
+            app.locals.onlineUsers[userId] = socket.id;
             console.log(`📡 User ${userId} đã kết nối (Socket: ${socket.id})`);
         }
     });
 
     socket.on('send_task', (data) => {
         const { receiverId, title, senderName, dueDate } = data;
-        const receiverSocketId = onlineUsers[receiverId];
+        const receiverSocketId = app.locals.onlineUsers[receiverId];
         if (receiverSocketId) {
             io.to(receiverSocketId).emit('new_notification', {
                 message: `Bạn có việc mới: "${title}" từ ${senderName}`,
@@ -69,9 +69,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        for (let id in onlineUsers) {
-            if (onlineUsers[id] === socket.id) {
-                delete onlineUsers[id];
+        for (let id in app.locals.onlineUsers) {
+            if (app.locals.onlineUsers[id] === socket.id) {
+                delete app.locals.onlineUsers[id];
                 break;
             }
         }

@@ -8,12 +8,23 @@ export function personTreeLabel(p) {
   );
 }
 
-export function PhadoPersonCard({ person, isLeaf, onSelectPerson }) {
-  const name = personTreeLabel(person);
+function personSubLabel(person) {
   const hometown = (person.hometown && String(person.hometown).trim()) || "";
+  if (hometown) return hometown;
+  return `Đời ${person.generation ?? "—"}`;
+}
+
+export function PhadoPersonCard({ person, isLeaf, depth, onSelectPerson }) {
+  const name = personTreeLabel(person);
   return (
     <div
-      className={`usr-phado-card ${isLeaf ? "usr-phado-card--leaf" : "usr-phado-card--scroll"}`}
+      className={[
+        "usr-phado-card",
+        isLeaf ? "usr-phado-card--leaf" : "usr-phado-card--branch",
+        depth === 0 ? "usr-phado-card--root" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       role="button"
       tabIndex={0}
       onClick={() => onSelectPerson(person)}
@@ -24,27 +35,15 @@ export function PhadoPersonCard({ person, isLeaf, onSelectPerson }) {
         }
       }}
     >
-      {isLeaf ? (
-        <>
-          <span className="usr-phado-name">{name}</span>
-          {hometown ? <span className="usr-phado-detail">{hometown}</span> : null}
-          <span className="usr-phado-meta">Đời {person.generation ?? "—"}</span>
-        </>
-      ) : (
-        <>
-          <span className="usr-phado-scrollCap" aria-hidden="true" />
-          <div className="usr-phado-cardBody">
-            <span className="usr-phado-name">{name}</span>
-            <span className="usr-phado-meta">Đời {person.generation ?? "—"}</span>
-          </div>
-          <span className="usr-phado-scrollCap usr-phado-scrollCap--right" aria-hidden="true" />
-        </>
-      )}
+      <div className="usr-phado-cardInner">
+        <span className="usr-phado-name">{name}</span>
+        <span className="usr-phado-detail">{personSubLabel(person)}</span>
+      </div>
     </div>
   );
 }
 
-export function FamilyTreeNode({ node, onSelectPerson }) {
+export function FamilyTreeNode({ node, onSelectPerson, depth = 0 }) {
   const p = node.person;
   const spouse = node.spouse;
   const hasKids = node.children?.length > 0;
@@ -53,11 +52,11 @@ export function FamilyTreeNode({ node, onSelectPerson }) {
   return (
     <li className={`usr-phado-branchItem ${isLeaf ? "usr-phado-branchItem--leaf" : ""}`}>
       <div className={spouse ? "usr-phado-coupleRow" : "usr-phado-singleRow"}>
-        <PhadoPersonCard person={p} isLeaf={isLeaf} onSelectPerson={onSelectPerson} />
+        <PhadoPersonCard person={p} isLeaf={isLeaf} depth={depth} onSelectPerson={onSelectPerson} />
         {spouse ? (
           <>
             <div className="usr-phado-marriageTie" aria-hidden="true" title="Vợ / chồng" />
-            <PhadoPersonCard person={spouse} isLeaf={isLeaf} onSelectPerson={onSelectPerson} />
+            <PhadoPersonCard person={spouse} isLeaf={isLeaf} depth={depth} onSelectPerson={onSelectPerson} />
           </>
         ) : null}
       </div>
@@ -66,7 +65,7 @@ export function FamilyTreeNode({ node, onSelectPerson }) {
           <div className="usr-phado-bloodVbar" aria-hidden="true" />
           <ul className="usr-phado-treeBranch usr-phado-treeBranch--blood" role="group">
             {node.children.map((ch) => (
-              <FamilyTreeNode key={ch.person.id} node={ch} onSelectPerson={onSelectPerson} />
+              <FamilyTreeNode key={ch.person.id} node={ch} onSelectPerson={onSelectPerson} depth={depth + 1} />
             ))}
           </ul>
         </>

@@ -92,7 +92,13 @@ const Manager = () => {
     if (currentUser?.id) {
       socket.emit("register_user", currentUser.id);
       console.log("Manager registered to socket with ID:", currentUser.id);
+      socket.on("new_notification", (data) => {
+        alert(`🔔 THÔNG BÁO: ${data.message}`);
+      });
     }
+    return () => {
+      socket.off("new_notification");
+    };
   }, [currentUser]);
   
   const [stats, setStats] = useState({ total_members: 0, total_managers: 0, total_pending: 0 });
@@ -146,7 +152,7 @@ const Manager = () => {
   });
   const [maritalStatus, setMaritalStatus] = useState("Độc thân");
 
-  const [taskData, setTaskData] = useState({ member_id: "", title: "", description: "", due_date: "" });
+  const [taskData, setTaskData] = useState({ member_ids: [], title: "", description: "", due_date: "" });
 
   const loadAll = useCallback(async (opts = {}) => {
     const silent = opts.silent === true;
@@ -283,20 +289,15 @@ const Manager = () => {
   // --- 🌟 SOCKET EMIT TRONG ASSIGN TASK 🌟 ---
   const handleAssignTask = async (e) => {
     e.preventDefault();
-    if (!taskData.member_id) return alert("Vui lòng chọn thành viên!");
+    if (!Array.isArray(taskData.member_ids) || taskData.member_ids.length === 0) return alert("Vui lòng chọn ít nhất một thành viên!");
     try { 
-        await assignTaskAPI(taskData); 
-        
-        // Gửi tín hiệu Socket sau khi lưu DB thành công
-        socket.emit('send_task', {
-            receiverId: Number(taskData.member_id),
-            title: taskData.title,
-            senderName: currentUser.surname + " " + currentUser.first_name || "Manager",
-            dueDate: taskData.due_date
-        });
-
-        alert("Đã giao việc thành công và gửi thông báo real-time!"); 
-        setTaskData({ member_id: "", title: "", description: "", due_date: "" }); 
+        const payload = {
+          ...taskData,
+          member_ids: taskData.member_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)),
+        };
+        const result = await assignTaskAPI(payload); 
+        alert(`Đã giao việc thành công cho ${result.assigned_count || payload.member_ids.length} thành viên.`); 
+        setTaskData({ member_ids: [], title: "", description: "", due_date: "" }); 
         loadAll(); 
     } 
     catch (err) { alert("Lỗi phân công: " + err.message); }
@@ -793,10 +794,20 @@ const Manager = () => {
                   <form style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }} onSubmit={handleAssignTask}>
                       <div>
                         <label className="mgr-miniLabel">Chọn người thực hiện *</label>
-                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={taskData.member_id} onChange={e => setTaskData({...taskData, member_id: e.target.value})} required>
-                            <option value="">-- Click để chọn thành viên --</option>
-                            {members.map(m => <option key={m.account_id} value={m.account_id}>{m.surname} {m.first_name}</option>)}
+                        <select
+                          multiple
+                          className="mgr-search"
+                          style={{ width: '100%', height: '160px', color: 'var(--mgr-text)' }}
+                          value={taskData.member_ids}
+                          onChange={e => setTaskData({
+                            ...taskData,
+                            member_ids: Array.from(e.target.selectedOptions, (option) => option.value),
+                          })}
+                          required
+                        >
+                            {members.map(m => <option key={m.account_id} value={m.account_id}>{m.surname} {m.middle_name || ''} {m.first_name} (ID {m.account_id})</option>)}
                         </select>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--mgr-muted)', marginTop: '6px' }}>Giữ `Ctrl` hoặc `Cmd` để chọn nhiều thành viên.</div>
                       </div>
                       <div>
                         <label className="mgr-miniLabel">Tiêu đề công việc *</label>
@@ -824,12 +835,14 @@ const Manager = () => {
                             <div key={t.id} style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <div style={{ fontWeight: 'bold', color: '#1d2b44' }}>{t.title}</div>
-                                  <span style={{ padding: '4px 8px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 'bold', background: t.status === 'pending' ? '#fff3cd' : '#d4edda', color: t.status === 'pending' ? '#856404' : '#155724' }}>
-                                    {t.status === 'pending' ? 'Đang chờ' : 'Đã xong'}
+                                  <span style={{ padding: '4px 8px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 'bold', background: t.status === 'completed' ? '#d4edda' : t.status === 'in_progress' ? '#dbeafe' : '#fff3cd', color: t.status === 'completed' ? '#155724' : t.status === 'in_progress' ? '#1d4ed8' : '#856404' }}>
+                                    {t.status === 'completed' ? 'Đã xong' : t.status === 'in_progress' ? 'Đang làm' : 'Đã giao'}
                                   </span>
                                 </div>
-                                <div style={{ fontSize: '0.9rem', color: 'var(--mgr-muted)' }}>👤 Người nhận: <b>{t.surname} {t.first_name}</b></div>
+                                <div style={{ fontSize: '0.9rem', color: 'var(--mgr-muted)' }}>👤 Người nhận: <b>{t.member_name || `${t.surname || ''} ${t.first_name || ''}`}</b></div>
+                                {t.description && <div style={{ fontSize: '0.9rem', color: 'var(--mgr-text)' }}>{t.description}</div>}
                                 {t.due_date && <div style={{ fontSize: '0.85rem', color: '#dc3545' }}>⏰ Hạn chót: {new Date(t.due_date).toLocaleDateString('vi-VN')}</div>}
+                                {t.completed_at && <div style={{ fontSize: '0.85rem', color: '#15803d' }}>✅ Hoàn thành lúc: {new Date(t.completed_at).toLocaleString('vi-VN')}</div>}
                             </div>
                         ))
                       )}

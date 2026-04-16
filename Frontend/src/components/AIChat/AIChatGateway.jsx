@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { askAiServer } from "../../api/aiServerService";
+import { sendMemberChat } from "../../api/memberService";
 import "./AIChat.css";
 
 const AIChatGateway = () => {
@@ -33,12 +33,12 @@ const AIChatGateway = () => {
     setLoading(true);
 
     try {
-      const result = await askAiServer(prompt);
+      const result = await sendMemberChat(prompt);
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
-          text: result.answer || result.message || "Xin loi, toi khong the phan tich cau hoi luc nay.",
+          text: result.ai_message || result.answer || result.message || "Xin loi, toi khong the phan tich cau hoi luc nay.",
         },
       ]);
     } catch (err) {

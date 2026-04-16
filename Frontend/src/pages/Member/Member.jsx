@@ -7,6 +7,8 @@ import {
   createMemberReminder,
   getMemberChat,
   getMemberDashboard,
+  getMemberTasks,
+  updateMemberTaskStatus,
   sendMemberChat,
   updateMemberProfile,
   proposeProfileUpdate,
@@ -14,7 +16,8 @@ import {
   getMySubmissions
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
-import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
+import { personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
+import FamilyTreeFlowLive from "../../components/PhadoFamilyTree/FamilyTreeFlowLive";
 
 function formatMemberDate(value) {
   if (value == null || value === "") return null;
@@ -160,6 +163,8 @@ const Member = () => {
   const ocrUrl = useMemo(() => (ocrFile ? URL.createObjectURL(ocrFile) : ""), [ocrFile]);
 
   const [reminders, setReminders] = useState([]);
+  const [assignedTasks, setAssignedTasks] = useState([]);
+  const [dbNotifications, setDbNotifications] = useState([]);
   const [newReminder, setNewReminder] = useState({ title: "", date: "", note: "" });
 
   const addReminder = async () => {
@@ -175,6 +180,15 @@ const Member = () => {
       setNewReminder({ title: "", date: "", note: "" });
     } catch (e) {
       setError(e?.message || "Không thể tạo nhắc nhở");
+    }
+  };
+
+  const updateTaskStatusLocal = async (taskId, status) => {
+    try {
+      await updateMemberTaskStatus(taskId, status);
+      await loadDashboard({ silent: true });
+    } catch (e) {
+      setError(e?.message || "Khong the cap nhat cong viec");
     }
   };
 
@@ -255,6 +269,8 @@ const Member = () => {
       setFamilyTreeRoots(dash.familyTree?.roots || []);
       setDiscoverItemsFromDb(dash.discoverItems || []);
       setReminders(dash.reminders || []);
+      setAssignedTasks(dash.assignedTasks || []);
+      setDbNotifications(dash.notifications || []);
       setAccountMeta({
         status: p.status || "",
         person_id: p.person_id ?? null,
@@ -281,6 +297,11 @@ const Member = () => {
       const subRes = await getMySubmissions();
       if (subRes.success) {
         setMySubmissions({ posts: subRes.posts, profile: subRes.profile });
+      }
+
+      if (!Array.isArray(dash.assignedTasks)) {
+        const taskRes = await getMemberTasks();
+        setAssignedTasks(taskRes.tasks || []);
       }
 
       const chatRes = await getMemberChat();
@@ -659,34 +680,19 @@ const Member = () => {
 
         {activeSection === "tree" ? (
           <section className="usr-panel usr-panel--phado">
-            <div className="usr-panelTitle">Cây gia phả</div>
-            <div className="usr-phado">
-              <div className="usr-phado-frame">
-                <header className="usr-phado-header">
-                  <div className="usr-phado-ornament usr-phado-ornament--left" aria-hidden="true" />
-                  <div className="usr-phado-titleBlock">
-                    <div className="usr-phado-banner">GIA PHẢ</div>
-                    <div className="usr-phado-clan">
-                      {(clanInfo.clan_name && String(clanInfo.clan_name).trim().toUpperCase()) || "DÒNG HỌ"}
-                    </div>
-                  </div>
-                  <div className="usr-phado-ornament usr-phado-ornament--right" aria-hidden="true" />
-                </header>
-                <div className="usr-phado-treeWrap usr-phado-treeWrap--bloodline">
-                  {familyTreeRoots.length === 0 ? (
-                    <div className="usr-phado-empty">
-                      Chưa vẽ được cây: kiểm tra bạn đã gắn dòng họ.
-                    </div>
-                  ) : (
-                    <ul className="usr-phado-treeRoot" role="tree">
-                      {familyTreeRoots.map((root) => (
-                        <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setTreeMemberDetail} />
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
+            <div className="usr-panelTitle">Cây gia phả React Flow</div>
+            <div className="usr-panelText">
+              Dùng trực tiếp dữ liệu gia phả của bạn từ hệ thống và tự động dàn layout dạng cây.
             </div>
+            {familyTreeRoots.length === 0 ? (
+              <div className="usr-phado-empty">Chưa có dữ liệu cây gia phả để hiển thị.</div>
+            ) : (
+            <FamilyTreeFlowLive
+              roots={familyTreeRoots}
+              clanName={clanInfo.clan_name || "Dữ liệu trích từ ảnh"}
+              onSelectPerson={setTreeMemberDetail}
+            />
+            )}
           </section>
         ) : null}
 
@@ -723,6 +729,35 @@ const Member = () => {
     </div>
 
     <div className="usr-reminderGrid">
+       {assignedTasks.map((task) => (
+          <div className="usr-reminderCard" key={`task-${task.id}`} style={{ borderLeft: '4px solid #2563eb', background: '#eff6ff' }}>
+             <strong style={{ color: '#1d4ed8' }}>📌 Công việc được giao</strong>
+             <div style={{ fontWeight: 700, marginTop: '6px' }}>{task.title}</div>
+             {task.description && <p style={{ margin: '8px 0' }}>{task.description}</p>}
+             <small>Người giao: {task.manager_name || 'Manager'}</small><br />
+             {task.due_date && <small>Hạn chót: {new Date(task.due_date).toLocaleDateString('vi-VN')}</small>}<br />
+             <small>Trạng thái: {task.status === 'completed' ? 'Đã hoàn thành' : task.status === 'in_progress' ? 'Đang làm' : 'Đã giao'}</small>
+             {task.status !== 'completed' && (
+               <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                 <button className="usr-btnPrimary" type="button" style={{ padding: '8px 12px' }} onClick={() => updateTaskStatusLocal(task.id, 'in_progress')} disabled={task.status === 'in_progress'}>
+                   Đang làm
+                 </button>
+                 <button className="usr-btnPrimary" type="button" style={{ padding: '8px 12px', background: '#15803d' }} onClick={() => updateTaskStatusLocal(task.id, 'completed')}>
+                   Đã hoàn thành
+                 </button>
+               </div>
+             )}
+          </div>
+       ))}
+
+       {dbNotifications.map((n) => (
+          <div className="usr-reminderCard" key={`dbn-${n.id}`} style={{ borderLeft: '4px solid #f59e0b', background: '#fffbeb' }}>
+             <strong style={{ color: '#b45309' }}>{n.title || 'Thông báo'}</strong>
+             <p>{n.message}</p>
+             <small>{n.created_at ? new Date(n.created_at).toLocaleString('vi-VN') : ''}</small>
+          </div>
+       ))}
+
        {/* 🌟 HIỂN THỊ THÔNG BÁO TỪ SOCKET TRƯỚC */}
        {socketNotifications.map(sn => (
           <div className="usr-reminderCard" key={sn.id} style={{ borderLeft: '4px solid #8b5cf6', background: '#f5f3ff' }}>

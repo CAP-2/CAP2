@@ -1169,32 +1169,138 @@ exports.getMedia = async (req, res) => {
     }
 };
 
-// ==============================================================
-// --- FAKE DATABASE CHO TÍNH NĂNG PHÂN CÔNG CÔNG VIỆC ---
-// ==============================================================
-let fakeTasksDB = [];
-let taskIdCounter = 1;
+let hasEnsuredTaskTables = false;
+
+const ensureTaskTables = async () => {
+    if (hasEnsuredTaskTables) return;
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS manager_tasks (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            manager_account_id INT NOT NULL,
+            clan_id INT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT NULL,
+            due_date DATE NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_manager_tasks_manager (manager_account_id),
+            KEY idx_manager_tasks_clan (clan_id),
+            CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS manager_task_assignments (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            task_id INT NOT NULL,
+            member_account_id INT NOT NULL,
+            member_person_id INT NOT NULL,
+            status ENUM('assigned', 'in_progress', 'completed') DEFAULT 'assigned',
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP NULL DEFAULT NULL,
+            UNIQUE KEY uk_task_member (task_id, member_account_id),
+            KEY idx_task_assignments_member (member_account_id),
+            KEY idx_task_assignments_person (member_person_id),
+            CONSTRAINT fk_task_assignments_task FOREIGN KEY (task_id) REFERENCES manager_tasks(id) ON DELETE CASCADE,
+            CONSTRAINT fk_task_assignments_account FOREIGN KEY (member_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+            CONSTRAINT fk_task_assignments_person FOREIGN KEY (member_person_id) REFERENCES people(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    hasEnsuredTaskTables = true;
+};
+
+const normalizeTaskMemberIds = (body) => {
+    const raw = Array.isArray(body.member_ids) ? body.member_ids : [body.member_id];
+    return [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
+};
+
+const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
+    const onlineUsers = req.app?.locals?.onlineUsers || {};
+    const io = req.app?.locals?.io;
+    const socketId = onlineUsers[receiverAccountId];
+    if (io && socketId) {
+        io.to(socketId).emit("new_notification", {
+            ...payload,
+            time: new Date().toLocaleTimeString(),
+        });
+    }
+};
 
 exports.assignTask = async (req, res) => {
-    const { member_id, title, description, due_date } = req.body;
-    
+    const title = String(req.body.title || "").trim();
+    const description = String(req.body.description || "").trim();
+    const dueDate = req.body.due_date || null;
+    const memberIds = normalizeTaskMemberIds(req.body);
+
     try {
-        const newTask = {
-            id: taskIdCounter++,
-            manager_id: req.user ? req.user.id : 1, 
-            member_id: member_id,
-            title: title,
-            description: description,
-            due_date: due_date,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            surname: "Thành viên",
-            first_name: `(ID: ${member_id})` 
-        };
+        await ensureTaskTables();
+        if (!title) {
+            return res.status(400).json({ success: false, message: "Tiêu đề công việc không được để trống" });
+        }
+        if (!memberIds.length) {
+            return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một thành viên" });
+        }
 
-        fakeTasksDB.push(newTask);
+        let managerClanId = null;
+        if (req.user.role_id === 2) {
+            managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: "Không xác định được clan của manager" });
+            }
+        }
 
-        res.json({ success: true, message: "Đã giao việc thành công (Chế độ Không SQL)!" });
+        const placeholders = memberIds.map(() => "?").join(",");
+        const [memberRows] = await db.query(
+            `
+            SELECT a.id AS account_id, a.person_id, p.clan_id, p.display_name, p.surname, p.first_name
+            FROM accounts a
+            INNER JOIN people p ON p.id = a.person_id
+            WHERE a.id IN (${placeholders}) AND a.role_id = 3 AND a.status = 'active'
+            `,
+            memberIds
+        );
+        if (memberRows.length !== memberIds.length) {
+            return res.status(400).json({ success: false, message: "Một hoặc nhiều thành viên không hợp lệ hoặc chưa kích hoạt" });
+        }
+        if (managerClanId != null && memberRows.some((m) => m.clan_id !== managerClanId)) {
+            return res.status(403).json({ success: false, message: "Manager chỉ được giao việc cho thành viên cùng dòng họ" });
+        }
+
+        const taskClanId = managerClanId ?? memberRows[0]?.clan_id ?? null;
+        const [taskResult] = await db.query(
+            "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date) VALUES (?, ?, ?, ?, ?)",
+            [req.user.id, taskClanId, title, description || null, dueDate || null]
+        );
+
+        for (const member of memberRows) {
+            await db.query(
+                "INSERT INTO manager_task_assignments (task_id, member_account_id, member_person_id) VALUES (?, ?, ?)",
+                [taskResult.insertId, member.account_id, member.person_id]
+            );
+            await db.query(
+                "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+                [
+                    member.person_id,
+                    "task_assigned",
+                    `Cong viec moi: ${title}`,
+                    `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
+                    `/member/tasks/${taskResult.insertId}`,
+                ]
+            );
+            await emitNotificationToAccount(req, member.account_id, {
+                type: "task_assigned",
+                title: "Cong viec moi",
+                message: `Ban duoc giao cong viec: "${title}"`,
+                dueDate: dueDate,
+                taskId: taskResult.insertId,
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Đã giao việc thành công",
+            task_id: taskResult.insertId,
+            assigned_count: memberRows.length,
+        });
     } catch (error) {
         console.error('assignTask error:', error);
         res.status(500).json({ success: false, message: "Lỗi phân công công việc" });
@@ -1203,7 +1309,43 @@ exports.assignTask = async (req, res) => {
 
 exports.getAssignedTasks = async (req, res) => {
     try {
-        const results = [...fakeTasksDB].reverse();
+        await ensureTaskTables();
+        let sql = `
+            SELECT
+                a.id,
+                a.task_id,
+                t.title,
+                t.description,
+                t.due_date,
+                t.created_at,
+                a.status,
+                a.assigned_at,
+                a.completed_at,
+                m.id AS manager_id,
+                COALESCE(mp.display_name, m.email) AS manager_name,
+                member.id AS member_id,
+                member.display_name AS member_name,
+                member.surname,
+                member.first_name
+            FROM manager_task_assignments a
+            INNER JOIN manager_tasks t ON t.id = a.task_id
+            INNER JOIN accounts m ON m.id = t.manager_account_id
+            LEFT JOIN people mp ON mp.id = m.person_id
+            INNER JOIN people member ON member.id = a.member_person_id
+        `;
+        const params = [];
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId == null) {
+                return res.status(404).json({ success: false, message: "Không xác định được clan của manager" });
+            }
+            sql += " WHERE t.manager_account_id = ? AND t.clan_id = ?";
+            params.push(req.user.id, clanId);
+        } else {
+            sql += " WHERE 1=1";
+        }
+        sql += " ORDER BY t.created_at DESC, a.id DESC";
+        const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
         console.error('getAssignedTasks error:', error);
@@ -1212,14 +1354,35 @@ exports.getAssignedTasks = async (req, res) => {
 };
 
 exports.completeTask = async (req, res) => {
-    const taskId = parseInt(req.params.id);
-    const taskIndex = fakeTasksDB.findIndex(t => t.id === taskId);
-    
-    if (taskIndex !== -1) {
-        fakeTasksDB[taskIndex].status = 'completed';
+    const assignmentId = parseInt(req.params.id);
+    try {
+        await ensureTaskTables();
+        if (!Number.isFinite(assignmentId)) {
+            return res.status(400).json({ success: false, message: "ID công việc không hợp lệ" });
+        }
+        let sql = `
+            SELECT a.id
+            FROM manager_task_assignments a
+            INNER JOIN manager_tasks t ON t.id = a.task_id
+            WHERE a.id = ?
+        `;
+        const params = [assignmentId];
+        if (req.user.role_id === 2) {
+            sql += " AND t.manager_account_id = ?";
+            params.push(req.user.id);
+        }
+        const [rows] = await db.query(sql, params);
+        if (!rows.length) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy công việc" });
+        }
+        await db.query(
+            "UPDATE manager_task_assignments SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [assignmentId]
+        );
         res.json({ success: true, message: "Đã xác nhận hoàn thành công việc!" });
-    } else {
-        res.status(404).json({ success: false, message: "Không tìm thấy công việc" });
+    } catch (error) {
+        console.error('completeTask error:', error);
+        res.status(500).json({ success: false, message: "Lỗi cập nhật công việc" });
     }
 };
 

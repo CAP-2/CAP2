@@ -81,6 +81,25 @@ export const createMemberReminder = async (payload) => {
   return parseResponse(res, "Không thể tạo nhắc nhở");
 };
 
+export const getMemberTasks = async () => {
+  const res = await fetch(`${BASE_URL}/tasks`, {
+    headers: getAuthHeaders(),
+  });
+  return parseResponse(res, "Khong the tai cong viec duoc giao");
+};
+
+export const updateMemberTaskStatus = async (taskId, status) => {
+  const res = await fetch(`${BASE_URL}/tasks/${taskId}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ status }),
+  });
+  return parseResponse(res, "Khong the cap nhat trang thai cong viec");
+};
+
 export const proposeProfileUpdate = async (payload) => {
   const res = await fetch(`${BASE_URL}/content/profile`, {
     method: "POST",

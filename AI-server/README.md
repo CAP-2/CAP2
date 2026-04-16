@@ -27,7 +27,9 @@ Mac dinh server chay tai `http://localhost:8001`.
 
 ```json
 {
-  "prompt": "Cho toi 5 thanh vien moi tao gan day"
+  "prompt": "Cho toi 5 thanh vien moi tao gan day",
+  "user_id": 20,
+  "clan_id": 3
 }
 ```
 

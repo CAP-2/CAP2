@@ -3,19 +3,15 @@ import os
 import re
 from typing import Any
 
-import mysql.connector
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from groq import Groq
-from mysql.connector.connection import MySQLConnection
 from mysql.connector.pooling import MySQLConnectionPool
-
 
 load_dotenv()
 
-
-READ_ONLY_SQL = ("select", "show", "describe", "explain")
-BLOCKED_SQL_PATTERNS = (
+READ_ONLY_SQL = ("select",)
+BLOCKED_SQL = (
     r"\binsert\b",
     r"\bupdate\b",
     r"\bdelete\b",
@@ -23,171 +19,544 @@ BLOCKED_SQL_PATTERNS = (
     r"\balter\b",
     r"\btruncate\b",
     r"\bcreate\b",
-    r"\bgrant\b",
-    r"\brevoke\b",
+    r"\breplace\b",
 )
+MODEL_NAME = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+SCHEMA_HINT = """
+Schema chinh:
+- accounts(id, email, password, person_id, role_id, status, created_at, updated_at)
+- account_clans(id, account_id, clan_id, person_id, status, created_at, updated_at)
+- people(id, clan_id, display_name, first_name, middle_name, surname, gender, generation, branch, birth_date, death_date, is_living, phone, email, zalo, facebook, address, hometown, avatar_url, bio, note, created_at, pending_avatar_url, pending_bio, moderation_status, moderation_reason)
+- clans(id, clan_name, history, hall_address, created_at)
+- families(id, clan_id, father_id, mother_id, marriage_date)
+- children(id, family_id, person_id, sort_order)
+- events(id, clan_id, title, event_date, description)
+- event_costs(id, event_id, item_name, amount, note, created_at)
+- event_contributions(id, event_id, person_id, amount, contribution_date, method, note, created_at)
+- posts(id, clan_id, author_id, content, image_url, created_at, status, rejection_reason)
+- post_comments(id, post_id, person_id, parent_id, content, created_at)
+- post_likes(id, post_id, person_id, created_at)
+- manager_announcements(id, manager_account_id, title, content, priority, created_at)
+- conversations(id, account_id, title, created_at)
+- messages(id, conversation_id, sender_type, content, created_at)
+
+Quy tac:
+- Chi duoc tra ve 1 cau lenh SQL SELECT.
+- "toi" la tai khoan accounts.id = {user_id}.
+- Luon gioi han trong clan_id = {clan_id}.
+- Uu tien cac bang people, families, children, clans de tra loi ve cay gia pha.
+- Neu truy van bai viet thi uu tien posts.status = 'approved'.
+- Khong duoc dung markdown hoac ```sql.
+"""
 
 
-def normalize_sql(sql: str) -> str:
-    return re.sub(r"\s+", " ", sql.strip())
+def normalize_text(text: str) -> str:
+    text = text.lower().strip()
+    replace = {
+        "cha me": "bo me",
+        "ba me": "bo me",
+        "bo me": "bo me",
+        "ong ba": "ong ba",
+        "ong noi": "ong ba",
+        "ba noi": "ong ba",
+        "ong ngoai": "ong ba",
+        "ba ngoai": "ong ba",
+        "vo": "vo",
+        "chong": "chong",
+        "anh chi em": "anh chi em",
+        "gia toc": "gia pha",
+        "dong toc": "gia pha",
+        "nha tho": "tu duong",
+    }
+    for src, dst in replace.items():
+        text = text.replace(src, dst)
+    return text
 
 
-def is_safe_read_only_sql(sql: str) -> bool:
-    normalized = normalize_sql(sql).lower().rstrip(";")
-    if not normalized.startswith(READ_ONLY_SQL):
+def parse_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def extract_sql_candidate(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:sql)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    match = re.search(r"select\b[\s\S]*", cleaned, flags=re.IGNORECASE)
+    if match:
+        cleaned = match.group(0)
+    return cleaned.split(";")[0].strip()
+
+
+def safe_sql(sql: str) -> bool:
+    candidate = extract_sql_candidate(sql).lower()
+    if not candidate.startswith(READ_ONLY_SQL):
         return False
-    return not any(re.search(pattern, normalized) for pattern in BLOCKED_SQL_PATTERNS)
+    return not any(re.search(pattern, candidate) for pattern in BLOCKED_SQL)
 
 
-def format_schema_rows(rows: list[dict[str, Any]]) -> str:
-    grouped: dict[str, list[str]] = {}
-    for row in rows:
-        grouped.setdefault(row["TABLE_NAME"], []).append(
-            f'- {row["COLUMN_NAME"]} ({row["COLUMN_TYPE"]})'
-        )
+def enforce_clan(sql: str, clan_id: int) -> str:
+    lowered = sql.lower()
+    if "clan_id" in lowered:
+        return sql
 
-    parts: list[str] = []
-    for table_name, columns in grouped.items():
-        parts.append(f"Table: {table_name}")
-        parts.extend(columns)
-        parts.append("")
-    return "\n".join(parts).strip()
+    alias_match = re.search(r"\b(from|join)\s+(people|families|events|posts|clans)\s+([a-z_][a-z0-9_]*)", lowered)
+    alias = alias_match.group(3) if alias_match else None
+    clan_expr = f"{alias}.clan_id = {clan_id}" if alias else f"clan_id = {clan_id}"
+
+    if " where " in lowered:
+        return f"{sql} AND {clan_expr}"
+    return f"{sql} WHERE {clan_expr}"
 
 
-def get_db_pool() -> MySQLConnectionPool:
+def add_limit(sql: str, limit: int = 50) -> str:
+    if "limit" in sql.lower():
+        return sql
+    return f"{sql} LIMIT {limit}"
+
+
+def get_db() -> MySQLConnectionPool:
     return MySQLConnectionPool(
-        pool_name=os.getenv("DB_POOL_NAME", "ai_server_pool"),
-        pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+        pool_name="ai_pool",
+        pool_size=5,
         host=os.getenv("DB_HOST"),
-        port=int(os.getenv("DB_PORT", "3306")),
+        port=parse_int(os.getenv("DB_PORT")) or 3306,
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME"),
     )
 
 
-def fetch_schema(conn: MySQLConnection) -> str:
-    query = """
-        SELECT
-            TABLE_NAME,
-            COLUMN_NAME,
-            COLUMN_TYPE
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = %s
-        ORDER BY TABLE_NAME, ORDINAL_POSITION
+def extract_member_name(prompt: str) -> str | None:
+    patterns = [
+        r"ten\s+['\"]?([^'\"]+?)['\"]?$",
+        r"nguoi\s+ten\s+['\"]?([^'\"]+?)['\"]?$",
+        r"thanh vien\s+ten\s+['\"]?([^'\"]+?)['\"]?$",
+        r"ai la\s+['\"]?([^'\"]+?)['\"]?$",
+        r"tim\s+['\"]?([^'\"]+?)['\"]?$",
+    ]
+    raw = prompt.strip()
+    for pattern in patterns:
+        match = re.search(pattern, raw, flags=re.IGNORECASE)
+        if match:
+            name = match.group(1).strip(" .,!?:;")
+            if name:
+                return name
+    return None
+
+
+def member_lookup_query(name: str, clan_id: int) -> str:
+    escaped = name.replace("'", "''")
+    return f"""
+    SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown, bio
+    FROM people
+    WHERE clan_id = {clan_id}
+      AND (
+        display_name LIKE '%{escaped}%'
+        OR CONCAT_WS(' ', surname, middle_name, first_name) LIKE '%{escaped}%'
+      )
+    ORDER BY
+      CASE WHEN display_name = '{escaped}' THEN 0 ELSE 1 END,
+      generation ASC,
+      display_name ASC
     """
-    with conn.cursor(dictionary=True) as cursor:
-        cursor.execute(query, (os.getenv("DB_NAME"),))
-        return format_schema_rows(cursor.fetchall())
 
 
-def generate_sql(client: Groq, model: str, schema_text: str, prompt: str) -> str:
-    system_prompt = (
-        "Ban la tro ly viet SQL cho he thong gia pha. "
-        "Chi duoc tao truy van read-only phuc vu doc du lieu MySQL. "
-        "Chi tra ve mot cau SQL duy nhat, khong markdown, khong giai thich, khong backticks. "
-        "Neu khong the tra loi an toan bang truy van doc du lieu, tra ve: SELECT 'Khong the tra loi an toan' AS message"
-    )
-    user_prompt = (
-        f"Schema database:\n{schema_text}\n\n"
-        f"Yeu cau nguoi dung: {prompt}\n\n"
-        "Hay tao truy van SQL toi uu va an toan de doc du lieu."
-    )
-    completion = client.chat.completions.create(
+def semantic_query(prompt: str, user_id: int, clan_id: int) -> str | None:
+    p = normalize_text(prompt)
+    member_name = extract_member_name(prompt)
+
+    if "toi la ai" in p or "thong tin cua toi" in p:
+        return f"""
+        SELECT p.id, p.display_name, p.gender, p.generation, p.birth_date, p.hometown, c.clan_name
+        FROM accounts a
+        JOIN people p ON p.id = a.person_id
+        LEFT JOIN clans c ON c.id = p.clan_id
+        WHERE a.id = {user_id} AND p.clan_id = {clan_id}
+        """
+
+    if "lich su dong ho" in p or "lich su gia pha" in p or "nguon goc dong ho" in p:
+        return f"""
+        SELECT id, clan_name, history, hall_address, created_at
+        FROM clans
+        WHERE id = {clan_id}
+        LIMIT 1
+        """
+
+    if "tu duong" in p or "nha tho" in p or "dia chi nha tho" in p:
+        return f"""
+        SELECT clan_name, hall_address
+        FROM clans
+        WHERE id = {clan_id}
+        LIMIT 1
+        """
+
+    if "bo me" in p:
+        return f"""
+        SELECT father.display_name AS father, mother.display_name AS mother
+        FROM accounts a
+        JOIN people me ON me.id = a.person_id
+        JOIN children ch ON ch.person_id = me.id
+        JOIN families fam ON fam.id = ch.family_id
+        LEFT JOIN people father ON father.id = fam.father_id
+        LEFT JOIN people mother ON mother.id = fam.mother_id
+        WHERE a.id = {user_id} AND me.clan_id = {clan_id}
+        LIMIT 1
+        """
+
+    if "cay gia pha" in p or "so do gia pha" in p:
+        return f"""
+        SELECT p.id, p.display_name, p.generation, p.branch, p.birth_date, p.death_date, p.is_living
+        FROM people p
+        WHERE p.clan_id = {clan_id}
+        ORDER BY p.generation ASC, p.branch ASC, p.display_name ASC
+        """
+
+    if "con toi" in p or "cac con" in p:
+        return f"""
+        SELECT child.id, child.display_name, child.gender, child.generation, child.birth_date
+        FROM accounts a
+        JOIN people me ON me.id = a.person_id
+        JOIN families fam ON fam.father_id = me.id OR fam.mother_id = me.id
+        JOIN children ch ON ch.family_id = fam.id
+        JOIN people child ON child.id = ch.person_id
+        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND child.clan_id = {clan_id}
+        ORDER BY ch.sort_order, child.id
+        """
+
+    if "vo" in p or "chong" in p:
+        return f"""
+        SELECT spouse.id, spouse.display_name, spouse.gender, spouse.generation, spouse.birth_date
+        FROM accounts a
+        JOIN people me ON me.id = a.person_id
+        JOIN families fam ON fam.father_id = me.id OR fam.mother_id = me.id
+        JOIN people spouse
+          ON (spouse.id = fam.father_id OR spouse.id = fam.mother_id)
+         AND spouse.id <> me.id
+        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND spouse.clan_id = {clan_id}
+        LIMIT 1
+        """
+
+    if "anh chi em" in p or re.search(r"\banh\b|\bchi\b|\bem\b", p):
+        return f"""
+        SELECT sibling.id, sibling.display_name, sibling.gender, sibling.generation, sibling.birth_date
+        FROM accounts a
+        JOIN people me ON me.id = a.person_id
+        JOIN children my_row ON my_row.person_id = me.id
+        JOIN children sibling_row ON sibling_row.family_id = my_row.family_id
+        JOIN people sibling ON sibling.id = sibling_row.person_id
+        WHERE a.id = {user_id}
+          AND me.clan_id = {clan_id}
+          AND sibling.clan_id = {clan_id}
+          AND sibling.id <> me.id
+        ORDER BY sibling_row.sort_order, sibling.id
+        """
+
+    if "vo chong" in p or "hon nhan" in p:
+        return f"""
+        SELECT fam.id, fam.marriage_date, father.display_name AS father_name, mother.display_name AS mother_name
+        FROM families fam
+        LEFT JOIN people father ON father.id = fam.father_id
+        LEFT JOIN people mother ON mother.id = fam.mother_id
+        WHERE fam.clan_id = {clan_id}
+        ORDER BY fam.marriage_date DESC, fam.id DESC
+        """
+
+    if "ong ba" in p:
+        return f"""
+        SELECT DISTINCT gp.display_name AS grandparent_name
+        FROM accounts a
+        JOIN people me ON me.id = a.person_id
+        JOIN children my_row ON my_row.person_id = me.id
+        JOIN families parent_fam ON parent_fam.id = my_row.family_id
+        JOIN people parent_person ON parent_person.id IN (parent_fam.father_id, parent_fam.mother_id)
+        JOIN children parent_row ON parent_row.person_id = parent_person.id
+        JOIN families grand_fam ON grand_fam.id = parent_row.family_id
+        JOIN people gp ON gp.id IN (grand_fam.father_id, grand_fam.mother_id)
+        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND gp.clan_id = {clan_id}
+        """
+
+    if "doi" in p or "the he" in p:
+        return f"""
+        SELECT generation, COUNT(*) AS member_count
+        FROM people
+        WHERE clan_id = {clan_id}
+        GROUP BY generation
+        ORDER BY generation ASC
+        """
+
+    if "chi" in p and "bao nhieu" in p:
+        return f"""
+        SELECT branch, COUNT(*) AS member_count
+        FROM people
+        WHERE clan_id = {clan_id}
+        GROUP BY branch
+        ORDER BY branch ASC
+        """
+
+    if "truong ho" in p or "quan ly" in p or "thong bao" in p:
+        return f"""
+        SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at
+        FROM manager_announcements ma
+        JOIN accounts acc ON acc.id = ma.manager_account_id
+        LEFT JOIN people p ON p.id = acc.person_id
+        WHERE (p.clan_id = {clan_id} OR EXISTS (
+            SELECT 1 FROM account_clans ac
+            WHERE ac.account_id = acc.id AND ac.clan_id = {clan_id} AND ac.status = 'active'
+        ))
+        ORDER BY ma.created_at DESC, ma.id DESC
+        """
+
+    if "su kien" in p or "gio" in p or "nhac" in p:
+        return f"""
+        SELECT id, title, event_date, description
+        FROM events
+        WHERE clan_id = {clan_id}
+        ORDER BY event_date DESC, id DESC
+        """
+
+    if "dong gop" in p or "ung ho" in p:
+        return f"""
+        SELECT ev.title, p.display_name, ec.amount, ec.contribution_date, ec.method
+        FROM event_contributions ec
+        JOIN events ev ON ev.id = ec.event_id
+        JOIN people p ON p.id = ec.person_id
+        WHERE ev.clan_id = {clan_id}
+        ORDER BY ec.contribution_date DESC, ec.id DESC
+        """
+
+    if "chi phi su kien" in p or "kinh phi" in p or "chi tieu" in p:
+        return f"""
+        SELECT ev.title, c.item_name, c.amount, c.note, c.created_at
+        FROM event_costs c
+        JOIN events ev ON ev.id = c.event_id
+        WHERE ev.clan_id = {clan_id}
+        ORDER BY c.created_at DESC, c.id DESC
+        """
+
+    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
+        return f"""
+        SELECT post.id, post.content, post.image_url, post.created_at, COALESCE(pe.display_name, a.email) AS author_name
+        FROM posts post
+        JOIN accounts a ON a.id = post.author_id
+        LEFT JOIN people pe ON pe.id = a.person_id
+        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
+        ORDER BY post.created_at DESC, post.id DESC
+        """
+
+    if "binh luan" in p or "comment" in p:
+        return f"""
+        SELECT pc.id, pc.content, pc.created_at, pe.display_name AS author_name, post.id AS post_id
+        FROM post_comments pc
+        JOIN people pe ON pe.id = pc.person_id
+        JOIN posts post ON post.id = pc.post_id
+        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
+        ORDER BY pc.created_at DESC, pc.id DESC
+        """
+
+    if "luot thich" in p or "like" in p:
+        return f"""
+        SELECT post.id AS post_id, COUNT(pl.id) AS like_count
+        FROM posts post
+        LEFT JOIN post_likes pl ON pl.post_id = post.id
+        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
+        GROUP BY post.id
+        ORDER BY like_count DESC, post.id DESC
+        """
+
+    if "thanh vien moi" in p or "nguoi moi" in p:
+        return f"""
+        SELECT id, display_name, generation, hometown, created_at
+        FROM people
+        WHERE clan_id = {clan_id}
+        ORDER BY created_at DESC, id DESC
+        """
+
+    if "thanh vien da mat" in p or "qua doi" in p:
+        return f"""
+        SELECT id, display_name, generation, death_date, hometown
+        FROM people
+        WHERE clan_id = {clan_id} AND (is_living = 0 OR death_date IS NOT NULL)
+        ORDER BY death_date DESC, generation ASC, display_name ASC
+        """
+
+    if "thanh vien con song" in p or "con song" in p:
+        return f"""
+        SELECT id, display_name, generation, birth_date, hometown
+        FROM people
+        WHERE clan_id = {clan_id} AND (is_living = 1 OR death_date IS NULL)
+        ORDER BY generation ASC, display_name ASC
+        """
+
+    if member_name:
+        return member_lookup_query(member_name, clan_id)
+
+    if "thanh vien" in p or "gia pha" in p or "dong ho" in p:
+        return f"""
+        SELECT id, display_name, generation, branch, hometown, birth_date, is_living
+        FROM people
+        WHERE clan_id = {clan_id}
+        ORDER BY generation ASC, branch ASC, display_name ASC
+        """
+
+    return None
+
+
+def ai_sql(client: Groq | None, model: str, prompt: str, user_id: int, clan_id: int) -> str | None:
+    if client is None:
+        return None
+
+    res = client.chat.completions.create(
         model=model,
         temperature=0,
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+            {"role": "system", "content": SCHEMA_HINT.format(user_id=user_id, clan_id=clan_id)},
+            {"role": "user", "content": prompt},
         ],
     )
-    return completion.choices[0].message.content.strip()
+    return extract_sql_candidate(res.choices[0].message.content or "")
 
 
-def summarize_result(
-    client: Groq,
-    model: str,
-    prompt: str,
-    sql: str,
-    rows: list[dict[str, Any]],
-) -> str:
-    payload = json.dumps(rows, ensure_ascii=False, default=str)
-    system_prompt = (
-        "Ban la tro ly phan tich du lieu gia pha. "
-        "Hay tra loi bang tieng Viet, ngan gon, ro rang, dua dung vao ket qua SQL. "
-        "Neu ket qua rong, noi ro la khong tim thay du lieu phu hop."
-    )
-    user_prompt = (
-        f"Cau hoi: {prompt}\n"
-        f"SQL da chay: {sql}\n"
-        f"Ket qua JSON: {payload}"
-    )
-    completion = client.chat.completions.create(
-        model=model,
-        temperature=0.2,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-    return completion.choices[0].message.content.strip()
+def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "Khong tim thay du lieu phu hop trong gia pha cho cau hoi nay."
+
+    first = rows[0]
+    if len(rows) == 1 and "father" in first and "mother" in first:
+        father = first.get("father") or "chua co du lieu"
+        mother = first.get("mother") or "chua co du lieu"
+        return f"Bo: {father}. Me: {mother}."
+
+    if len(rows) == 1 and "clan_name" in first and ("history" in first or "hall_address" in first):
+        clan_name = first.get("clan_name") or "Dong ho hien tai"
+        history = first.get("history")
+        hall_address = first.get("hall_address")
+        parts = [f"Thong tin cua {clan_name}."]
+        if history:
+            parts.append(f"Lich su: {history}")
+        if hall_address:
+            parts.append(f"Tu duong: {hall_address}")
+        return " ".join(parts)
+
+    if "generation" in first and "member_count" in first:
+        parts = [f"Doi {row['generation']}: {row['member_count']} nguoi" for row in rows]
+        return "Thong ke theo doi: " + "; ".join(parts) + "."
+
+    if "branch" in first and "member_count" in first:
+        parts = [f"Chi {row['branch']}: {row['member_count']} nguoi" for row in rows]
+        return "Thong ke theo chi: " + "; ".join(parts) + "."
+
+    if "like_count" in first and "post_id" in first:
+        parts = [f"Bai viet {row['post_id']}: {row['like_count']} luot thich" for row in rows[:10]]
+        return "Thong ke luot thich: " + "; ".join(parts) + "."
+
+    labels = []
+    for row in rows[:10]:
+        if row.get("display_name"):
+            labels.append(str(row["display_name"]))
+        elif row.get("grandparent_name"):
+            labels.append(str(row["grandparent_name"]))
+        elif row.get("father_name") or row.get("mother_name"):
+            father_name = row.get("father_name") or "chua ro"
+            mother_name = row.get("mother_name") or "chua ro"
+            marriage_date = row.get("marriage_date")
+            suffix = f" ({marriage_date})" if marriage_date else ""
+            labels.append(f"{father_name} - {mother_name}{suffix}")
+        elif row.get("title"):
+            labels.append(str(row["title"]))
+        elif row.get("author_name") and row.get("content"):
+            labels.append(f"{row['author_name']}: {str(row['content'])[:50]}")
+        else:
+            values = [str(v) for v in row.values() if v not in (None, "")]
+            if values:
+                labels.append(", ".join(values[:3]))
+
+    if not labels:
+        return f"Tim thay {len(rows)} ban ghi phu hop."
+    if len(rows) <= 10:
+        return f"Tim thay {len(rows)} ket qua: " + "; ".join(labels) + "."
+    return f"Tim thay {len(rows)} ket qua. Mot vai muc dau: " + "; ".join(labels) + "."
+
+
+def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict[str, Any]]) -> str:
+    fallback = simple_answer(prompt, rows)
+    if client is None or not rows:
+        return fallback
+
+    try:
+        preview = json.dumps(rows[:8], ensure_ascii=False, default=str)
+        res = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Ban la tro ly gia pha. Hay tom tat ket qua truy van thanh tieng Viet "
+                        "ro rang, ngan gon, than thien. Khong duoc bịa them thong tin."
+                    ),
+                },
+                {"role": "user", "content": f"Cau hoi: {prompt}\nDu lieu: {preview}"},
+            ],
+        )
+        text = (res.choices[0].message.content or "").strip()
+        return text or fallback
+    except Exception:
+        return fallback
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
-    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-
-    if not groq_api_key:
-        raise RuntimeError("GROQ_API_KEY is required.")
-
-    groq_client = Groq(api_key=groq_api_key)
-    db_pool = get_db_pool()
+    db = get_db()
+    groq_key = os.getenv("GROQ_API_KEY")
+    groq_client = Groq(api_key=groq_key) if groq_key else None
 
     @app.get("/health")
-    def health() -> Any:
-        return jsonify(
-            {
-                "status": "ok",
-                "service": "groq-mysql-ai-server",
-                "model": groq_model,
-                "database": os.getenv("DB_NAME"),
-            }
-        )
+    def health():
+        return jsonify({"success": True, "service": "ai-server"})
 
     @app.post("/ask-db")
-    def ask_db() -> Any:
+    def ask():
         body = request.get_json(silent=True) or {}
+
         prompt = str(body.get("prompt") or "").strip()
+        user_id = parse_int(body.get("user_id"))
+        clan_id = parse_int(body.get("clan_id"))
 
         if not prompt:
-            return jsonify({"success": False, "message": "prompt is required."}), 400
+            return jsonify({"success": False, "message": "Thieu prompt"}), 400
+        if user_id is None or clan_id is None:
+            return jsonify({"success": False, "message": "Thieu user_id hoac clan_id"}), 400
 
-        conn = None
+        conn = db.get_connection()
+        cur = None
+
         try:
-            conn = db_pool.get_connection()
-            schema_text = fetch_schema(conn)
-            sql = generate_sql(groq_client, groq_model, schema_text, prompt)
-            sql = normalize_sql(sql)
+            sql = semantic_query(prompt, user_id, clan_id)
+            if not sql:
+                sql = ai_sql(groq_client, MODEL_NAME, prompt, user_id, clan_id)
 
-            if not is_safe_read_only_sql(sql):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "Generated SQL was blocked because it is not read-only.",
-                            "sql": sql,
-                        }
-                    ),
-                    400,
-                )
+            sql = extract_sql_candidate(sql or "")
+            if not sql:
+                return jsonify({"success": False, "message": "Khong tao duoc truy van SQL"}), 400
 
-            with conn.cursor(dictionary=True) as cursor:
-                cursor.execute(sql)
-                rows = cursor.fetchall()
+            sql = enforce_clan(sql, clan_id)
+            sql = add_limit(sql)
 
-            answer = summarize_result(groq_client, groq_model, prompt, sql, rows)
+            if not safe_sql(sql):
+                return jsonify({"success": False, "message": "SQL khong an toan"}), 400
+
+            cur = conn.cursor(dictionary=True)
+            cur.execute(sql)
+            rows = cur.fetchall()
+            answer = summarize_rows(groq_client, MODEL_NAME, prompt, rows)
+
             return jsonify(
                 {
                     "success": True,
@@ -198,43 +567,17 @@ def create_app() -> Flask:
                     "answer": answer,
                 }
             )
-        except mysql.connector.Error as exc:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "Database error.",
-                        "details": str(exc),
-                    }
-                ),
-                500,
-            )
         except Exception as exc:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": "Server error.",
-                        "details": str(exc),
-                    }
-                ),
-                500,
-            )
+            return jsonify({"success": False, "message": str(exc)}), 500
         finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+            if cur is not None:
+                cur.close()
+            conn.close()
 
     return app
 
 
 app = create_app()
 
-
 if __name__ == "__main__":
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8001"))
-    debug = os.getenv("DEBUG", "false").lower() == "true"
-    app.run(host=host, port=port, debug=debug)
+    app.run(host="0.0.0.0", port=8001, debug=True)
