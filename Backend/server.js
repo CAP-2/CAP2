@@ -10,8 +10,21 @@ const { Server } = require('socket.io');
 const app = express();
 
 // 2. Cấu hình Middlewares toàn cục (Phải đặt trước Routes)
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+].filter(Boolean);
+
 app.use(cors({
-    origin: "http://localhost:5173", // URL của Vite Frontend
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('CORS không cho phép origin này: ' + origin));
+    },
     credentials: true
 }));
 app.use(express.json());
@@ -21,8 +34,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
-        methods: ["GET", "POST"],
+        origin: allowedOrigins,
+        methods: ['GET', 'POST'],
         credentials: true
     }
 });
@@ -79,6 +92,10 @@ io.on('connection', (socket) => {
 });
 
 // 7. Các Routes API
+
+app.get('/api/health', (req, res) => {
+    res.json({ success: true, message: 'Backend is running' });
+});
 app.post('/api/upload', upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ success: false, message: 'Không có file được chọn!' });

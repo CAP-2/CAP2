@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getRoleName } = require('../config/roles');
 
 const GENERIC_FORGOT_MSG = 'Nếu email đã đăng ký, bạn sẽ nhận mã xác nhận trong vài phút.';
 
@@ -144,14 +145,11 @@ exports.login = async (req, res) => {
             });
         }
         let match = false;
-
         try {
             match = await bcrypt.compare(String(password), user.password);
-        } catch (compareError) {
+        } catch (err) {
             match = false;
         }
-
-        if (!match && user.password === password) { match = true; }
 
         if (match) {
             if (user.status === 'rejected') {
@@ -163,9 +161,10 @@ exports.login = async (req, res) => {
 
             // Dùng khóa dự phòng nếu mất file .env -> Không bao giờ bị lỗi 500 nữa!
             const secret = process.env.JWT_SECRET || 'GiaPhaViet_Secret_Key_2024_Backup';
+            const role_name = getRoleName(user.role_id);
             
             const token = jwt.sign(
-                { id: user.id, role_id: user.role_id, email: user.email },
+                { id: user.id, role_id: user.role_id, role_name, email: user.email },
                 secret, 
                 { expiresIn: '24h' }
             );
@@ -174,7 +173,7 @@ exports.login = async (req, res) => {
                 success: true,
                 message: "Đăng nhập thành công!",
                 token: token,
-                user: { id: user.id, role_id: user.role_id, status: user.status, name: user.display_name }
+                user: { id: user.id, role_id: user.role_id, role_name, status: user.status, name: user.display_name }
             });
         } else {
             res.status(401).json({ success: false, message: "Email hoặc mật khẩu không chính xác!" });

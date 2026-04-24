@@ -7,44 +7,44 @@
     } = require('../middleware/authMiddleware');
 
     // Chỉ Admin (1) và Manager (2) mới được truy cập manager dashboard
-    router.get('/stats', verifyToken, checkRole([1, 2]), managerController.getStats);
-    router.get('/members', verifyToken, checkRole([1, 2]), managerController.getAllMembers);
-    router.post('/members', verifyToken, checkRole([1, 2]), managerController.createMember);
-    router.get('/members/:id/relations', verifyToken, checkRole([1, 2]), managerController.getMemberRelations);
-    router.put('/members/:id/relations', verifyToken, checkRole([1, 2]), managerController.updateMemberRelations);
-    router.get('/members/:id', verifyToken, checkRole([1, 2]), managerController.getMemberDetail);
-    router.put('/members/:id', verifyToken, checkRole([1, 2]), managerController.updateMemberByManager);
-    router.post('/members/:id/archive', verifyToken, checkRole([1, 2]), managerController.archiveMember);
-    router.get('/members-archive', verifyToken, checkRole([1, 2]), managerController.getArchivedMembers);
-    router.post('/members-archive/:id/restore', verifyToken, checkRole([1, 2]), managerController.restoreArchivedMember);
-    router.delete('/members-archive/:id', verifyToken, checkRole([1, 2]), managerController.deleteArchivedMemberPermanently);
-    router.get('/pending', verifyToken, checkRole([1, 2]), managerController.getPendingUsers);
+    router.get('/stats', verifyToken, checkRole(['admin', 'manager']), managerController.getStats);
+    router.get('/members', verifyToken, checkRole(['admin', 'manager']), managerController.getAllMembers);
+    router.post('/members', verifyToken, checkRole(['admin', 'manager']), managerController.createMember);
+    router.get('/members/:id/relations', verifyToken, checkRole(['admin', 'manager']), managerController.getMemberRelations);
+    router.put('/members/:id/relations', verifyToken, checkRole(['admin', 'manager']), managerController.updateMemberRelations);
+    router.get('/members/:id', verifyToken, checkRole(['admin', 'manager']), managerController.getMemberDetail);
+    router.put('/members/:id', verifyToken, checkRole(['admin', 'manager']), managerController.updateMemberByManager);
+    router.post('/members/:id/archive', verifyToken, checkRole(['admin', 'manager']), managerController.archiveMember);
+    router.get('/members-archive', verifyToken, checkRole(['admin', 'manager']), managerController.getArchivedMembers);
+    router.post('/members-archive/:id/restore', verifyToken, checkRole(['admin', 'manager']), managerController.restoreArchivedMember);
+    router.delete('/members-archive/:id', verifyToken, checkRole(['admin', 'manager']), managerController.deleteArchivedMemberPermanently);
+    router.get('/pending', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingUsers);
 
     // Admin (1) và Manager (2) đều có thể duyệt/từ chối tài khoản chờ
-    router.post('/approve/:id', verifyToken, checkRole([1, 2]), managerController.approveUser);
-    router.post('/reject/:id', verifyToken, checkRole([1, 2]), managerController.rejectUser);
+    router.post('/approve/:id', verifyToken, checkRole(['admin', 'manager']), managerController.approveUser);
+    router.post('/reject/:id', verifyToken, checkRole(['admin', 'manager']), managerController.rejectUser);
 
     // Routes duyệt bài viết/media
-    router.get('/pending-posts', verifyToken, checkRole([1, 2]), managerController.getPendingPosts);
-    router.post('/approve-post/:id', verifyToken, checkRole([1, 2]), managerController.approvePost);
-    router.post('/reject-post/:id', verifyToken, checkRole([1, 2]), managerController.rejectPost);
+    router.get('/pending-posts', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingPosts);
+    router.post('/approve-post/:id', verifyToken, checkRole(['admin', 'manager']), managerController.approvePost);
+    router.post('/reject-post/:id', verifyToken, checkRole(['admin', 'manager']), managerController.rejectPost);
 
     // Routes duyệt yêu cầu cập nhật Profile cá nhân (Bio, Avatar)
-    router.get('/pending-profiles', verifyToken, checkRole([1, 2]), managerController.getPendingProfileUpdates);
-    router.post('/approve-profile/:id', verifyToken, checkRole([1, 2]), managerController.approveProfileUpdate);
-    router.post('/reject-profile/:id', verifyToken, checkRole([1, 2]), managerController.rejectProfileUpdate);
+    router.get('/pending-profiles', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingProfileUpdates);
+    router.post('/approve-profile/:id', verifyToken, checkRole(['admin', 'manager']), managerController.approveProfileUpdate);
+    router.post('/reject-profile/:id', verifyToken, checkRole(['admin', 'manager']), managerController.rejectProfileUpdate);
 
     // Route Quản lý Đa phương tiện (Media Management)
-    router.get('/media', verifyToken, checkRole([1, 2]), managerController.getMedia);
+    router.get('/media', verifyToken, checkRole(['admin', 'manager']), managerController.getMedia);
 
     // --- 🌟 CÁC ROUTES MỚI CHO TÍNH NĂNG PHÂN CÔNG & GIA PHẢ 🌟 ---
     // 1. Phân công công việc
-    router.post('/assign-task', verifyToken, checkRole([1, 2]), managerController.assignTask);
-    router.get('/tasks', verifyToken, checkRole([1, 2]), managerController.getAssignedTasks);
-    router.patch('/tasks/:id/complete', verifyToken, checkRole([1, 2]), managerController.completeTask);
+    router.post('/assign-task', verifyToken, checkRole(['admin', 'manager']), managerController.assignTask);
+    router.get('/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.getAssignedTasks);
+    router.patch('/tasks/:id/complete', verifyToken, checkRole(['admin', 'manager']), managerController.completeTask);
 
     // 2. Quản lý Gia phả (Lineage)
-    router.post('/people/create', verifyToken, checkRole([1, 2]), managerController.createPerson);
-    router.patch('/people/link', verifyToken, checkRole([1, 2]), managerController.linkRelations);
+    router.post('/people/create', verifyToken, checkRole(['admin', 'manager']), managerController.createPerson);
+    router.patch('/people/link', verifyToken, checkRole(['admin', 'manager']), managerController.linkRelations);
 
     module.exports = router;

@@ -29,9 +29,9 @@ Lệnh trên dừng/clean (nếu cần), build lại image và chạy container 
 ```bash
 cd Backend
 npm install
-# Chạy ở chế độ phát triển (nodemon):
+
 npm run dev
-# Hoặc chạy production:
+
 npm start
 ```
 
