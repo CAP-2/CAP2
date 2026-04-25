@@ -10,7 +10,7 @@ async function parseResponse(response) {
 }
 
 export async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem("auth_token");
+  const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
   const headers = {
     ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

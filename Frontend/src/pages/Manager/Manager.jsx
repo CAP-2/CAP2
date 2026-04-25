@@ -4,7 +4,7 @@ import "./manager.css";
 // --- 🌟 SỬA ĐƯỜNG DẪN IMPORT SOCKET CHO ĐÚNG CẤU TRÚC THƯ MỤC 🌟 ---
 import { socket } from "../../utils/socket"; 
 import {
-  getStats,
+  getDashboardData,
   getMembers,
   getMemberDetail,
   updateMemberByManager,
@@ -13,20 +13,17 @@ import {
   restoreArchivedMemberAPI,
   deleteArchivedMemberAPI,
   createMember,
-  getPendingUsers,
   approveUserAPI,
   rejectUserAPI,
-  getPendingPosts,
   approvePostAPI,
   rejectPostAPI,
-  getMediaAPI,
+  getMediaLibraryData,
   createPersonAPI,
   assignTaskAPI, 
-  getTasksAPI,
-  getPendingProfileUpdates,
   approveProfileUpdateAPI,
   rejectProfileUpdateAPI,
 } from "../../api/managerService";
+import { fullName } from "./managerData";
 import {
   getMemberDashboard,
   updateMemberProfile,
@@ -43,10 +40,7 @@ function readSessionUser() {
 }
 
 function memberDisplayName(m) {
-  if (!m) return "";
-  const parts = [m.surname, m.middle_name, m.first_name].filter((x) => x != null && String(x).trim() !== "");
-  if (parts.length) return parts.join(" ");
-  return m.email ? String(m.email) : "";
+  return fullName(m, "");
 }
 
 function isMaleMember(m) {
@@ -159,23 +153,19 @@ const Manager = () => {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const [statsData, membersData, pendingData, postsData, profilesData, mediaData, tasksData, archivedData] = await Promise.all([
-        getStats(),
+      const [dashboardData, membersData, mediaData, archivedData] = await Promise.all([
+        getDashboardData(),
         getMembers(),
-        getPendingUsers(),
-        getPendingPosts(),
-        getPendingProfileUpdates(),
-        getMediaAPI(),
-        getTasksAPI().catch(() => []),
+        getMediaLibraryData(),
         getArchivedMembersAPI().catch(() => ({ success: true, items: [] }))
       ]);
-      setStats(statsData);
+      setStats(dashboardData.stats);
       setMembers(membersData);
-      setPending(pendingData);
-      setPendingPosts(postsData);
-      setPendingProfiles(profilesData);
+      setPending(dashboardData.pendingUsers);
+      setPendingPosts(dashboardData.pendingPosts);
+      setPendingProfiles(dashboardData.pendingProfiles);
       setMediaList(mediaData);
-      setAllTasks(Array.isArray(tasksData) ? tasksData : []);
+      setAllTasks(dashboardData.tasks);
       setArchivedMembers(Array.isArray(archivedData?.items) ? archivedData.items : []);
     } catch (e) {
       if (!silent) setError(e?.message || "Không thể tải dữ liệu manager");

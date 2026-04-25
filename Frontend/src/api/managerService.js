@@ -1,225 +1,231 @@
+import { apiRequest } from "../services/api";
+
 const BASE_URL = "/api/manager";
 
-const getAuthHeaders = () => {
-    const token = localStorage.getItem("token");
-    return token ? { Authorization: `Bearer ${token}` } : {};
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
+const request = async (endpoint, options = {}, fallbackError = "Yêu cầu API thất bại") => {
+  try {
+    return await apiRequest(`${BASE_URL}${endpoint}`, options);
+  } catch (error) {
+    throw new Error(error?.message || fallbackError);
+  }
 };
 
-// --- QUẢN LÝ THỐNG KÊ & THÀNH VIÊN ---
-export const getStats = async () => {
-    const res = await fetch(`${BASE_URL}/stats`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy thống kê manager");
-    return await res.json();
+export const getStats = () => request("/stats", {}, "Không thể lấy thống kê manager");
+
+export const getManagerTree = (clanId) => {
+  const query = clanId ? `?clan_id=${encodeURIComponent(clanId)}` : "";
+  return request(`/tree${query}`, {}, "Không thể lấy cây gia phả");
 };
 
-export const getMembers = async () => {
-    const res = await fetch(`${BASE_URL}/members`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy danh sách thành viên");
-    return await res.json();
+export const getMembers = () => request("/members", {}, "Không thể lấy danh sách thành viên");
+
+export const createMember = (payload) =>
+  request(
+    "/members",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Không thể tạo thành viên"
+  );
+
+export const getMemberRelations = (accountId) =>
+  request(`/members/${accountId}/relations`, {}, "Không thể lấy quan hệ thành viên");
+
+export const updateMemberRelations = (accountId, body) =>
+  request(
+    `/members/${accountId}/relations`,
+    {
+      method: "PUT",
+      body: JSON.stringify(body),
+    },
+    "Không thể lưu quan hệ"
+  );
+
+export const getMemberDetail = (accountId) =>
+  request(`/members/${accountId}`, {}, "Không thể lấy chi tiết thành viên");
+
+export const updateMemberByManager = (accountId, body) =>
+  request(
+    `/members/${accountId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(body),
+    },
+    "Không thể cập nhật thành viên"
+  );
+
+export const archiveMemberAPI = (accountId, reason) =>
+  request(
+    `/members/${accountId}/archive`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+    "Không thể lưu trữ thành viên"
+  );
+
+export const getArchivedMembersAPI = () =>
+  request("/members-archive", {}, "Không thể lấy kho lưu trữ thành viên");
+
+export const deleteArchivedMemberAPI = (archiveId) =>
+  request(
+    `/members-archive/${archiveId}`,
+    {
+      method: "DELETE",
+    },
+    "Không thể xóa vĩnh viễn bản ghi lưu trữ"
+  );
+
+export const restoreArchivedMemberAPI = (archiveId) =>
+  request(
+    `/members-archive/${archiveId}/restore`,
+    {
+      method: "POST",
+    },
+    "Không thể phục hồi thành viên"
+  );
+
+export const getPendingUsers = () => request("/pending", {}, "Không thể lấy người dùng chờ duyệt");
+
+export const approveUserAPI = (id) =>
+  request(
+    `/approve/${id}`,
+    {
+      method: "POST",
+    },
+    "Duyệt người dùng thất bại"
+  );
+
+export const rejectUserAPI = (id) =>
+  request(
+    `/reject/${id}`,
+    {
+      method: "POST",
+    },
+    "Từ chối người dùng thất bại"
+  );
+
+export const getPendingPosts = () =>
+  request("/pending-posts", {}, "Không thể lấy bài viết chờ duyệt");
+
+export const approvePostAPI = (id) =>
+  request(
+    `/approve-post/${id}`,
+    {
+      method: "POST",
+    },
+    "Phê duyệt bài viết thất bại"
+  );
+
+export const rejectPostAPI = (id, reason) =>
+  request(
+    `/reject-post/${id}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+    "Từ chối bài viết thất bại"
+  );
+
+export const getMediaAPI = () => request("/media", {}, "Không thể lấy dữ liệu thư viện");
+
+export const getPendingReviewData = async () => {
+  const [users, posts, profiles] = await Promise.all([
+    getPendingUsers(),
+    getPendingPosts(),
+    getPendingProfileUpdates(),
+  ]);
+
+  const pendingUsers = asArray(users);
+  const pendingPosts = asArray(posts);
+  const pendingProfiles = asArray(profiles);
+
+  return {
+    pendingUsers,
+    pendingPosts,
+    pendingProfiles,
+    totalPending: pendingUsers.length + pendingPosts.length + pendingProfiles.length,
+  };
 };
 
-export const createMember = async (payload) => {
-    const res = await fetch(`${BASE_URL}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể tạo thành viên");
-    return data;
+export const getDashboardData = async () => {
+  const [stats, pending, tasks] = await Promise.all([
+    getStats(),
+    getPendingReviewData(),
+    getTasksAPI().catch(() => []),
+  ]);
+
+  return {
+    stats: stats || {},
+    ...pending,
+    tasks: asArray(tasks),
+  };
 };
 
-export const getMemberRelations = async (accountId) => {
-    const res = await fetch(`${BASE_URL}/members/${accountId}/relations`, { headers: getAuthHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể lấy quan hệ thành viên");
-    return data;
-};
+export const getMediaLibraryData = async () => asArray(await getMediaAPI());
 
-export const updateMemberRelations = async (accountId, body) => {
-    const res = await fetch(`${BASE_URL}/members/${accountId}/relations`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể lưu quan hệ");
-    return data;
-};
+export const createPersonAPI = (data) =>
+  request(
+    "/people/create",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Tạo người trong gia phả thất bại"
+  );
 
-export const getMemberDetail = async (accountId) => {
-    const res = await fetch(`${BASE_URL}/members/${accountId}`, { headers: getAuthHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể lấy chi tiết thành viên");
-    return data;
-};
+export const linkRelationsAPI = (data) =>
+  request(
+    "/people/link",
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+    "Liên kết quan hệ thất bại"
+  );
 
-export const updateMemberByManager = async (accountId, body) => {
-    const res = await fetch(`${BASE_URL}/members/${accountId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể cập nhật thành viên");
-    return data;
-};
+export const assignTaskAPI = (data) =>
+  request(
+    "/assign-task",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Giao việc thất bại"
+  );
 
-export const archiveMemberAPI = async (accountId, reason) => {
-    const res = await fetch(`${BASE_URL}/members/${accountId}/archive`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ reason }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể lưu trữ thành viên");
-    return data;
-};
+export const getTasksAPI = () => request("/tasks", {}, "Lấy danh sách việc thất bại");
 
-export const getArchivedMembersAPI = async () => {
-    const res = await fetch(`${BASE_URL}/members-archive`, { headers: getAuthHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể lấy kho lưu trữ thành viên");
-    return data;
-};
+export const completeTaskAPI = (assignmentId) =>
+  request(
+    `/tasks/${assignmentId}/complete`,
+    {
+      method: "PATCH",
+    },
+    "Cập nhật trạng thái công việc thất bại"
+  );
 
-export const deleteArchivedMemberAPI = async (archiveId) => {
-    const res = await fetch(`${BASE_URL}/members-archive/${archiveId}`, {
-        method: "DELETE",
-        headers: { ...getAuthHeaders() },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể xóa vĩnh viễn bản ghi lưu trữ");
-    return data;
-};
+export const getPendingProfileUpdates = () =>
+  request("/pending-profiles", {}, "Không thể lấy danh sách cập nhật hồ sơ");
 
-export const restoreArchivedMemberAPI = async (archiveId) => {
-    const res = await fetch(`${BASE_URL}/members-archive/${archiveId}/restore`, {
-        method: "POST",
-        headers: { ...getAuthHeaders() },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Không thể phục hồi thành viên");
-    return data;
-};
+export const approveProfileUpdateAPI = (id) =>
+  request(
+    `/approve-profile/${id}`,
+    {
+      method: "POST",
+    },
+    "Phê duyệt hồ sơ thất bại"
+  );
 
-// --- QUẢN LÝ NGƯỜI DÙNG CHỜ DUYỆT ---
-export const getPendingUsers = async () => {
-    const res = await fetch(`${BASE_URL}/pending`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy danh sách người dùng chờ duyệt");
-    return await res.json();
-};
-
-export const approveUserAPI = async (id) => {
-    const res = await fetch(`${BASE_URL}/approve/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    });
-    if (!res.ok) throw new Error("Duyệt người dùng thất bại");
-    return await res.json();
-};
-
-export const rejectUserAPI = async (id) => {
-    const res = await fetch(`${BASE_URL}/reject/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    });
-    if (!res.ok) throw new Error("Từ chối người dùng thất bại");
-    return await res.json();
-};
-
-// --- QUẢN LÝ BÀI VIẾT (PENDING POSTS) ---
-export const getPendingPosts = async () => {
-    const res = await fetch(`${BASE_URL}/pending-posts`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy danh sách bài viết chờ duyệt");
-    return await res.json();
-};
-
-export const approvePostAPI = async (id) => {
-    const res = await fetch(`${BASE_URL}/approve-post/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    });
-    if (!res.ok) throw new Error("Phê duyệt bài viết thất bại");
-    return await res.json();
-};
-
-export const rejectPostAPI = async (id, reason) => {
-    const res = await fetch(`${BASE_URL}/reject-post/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ reason }),
-    });
-    if (!res.ok) throw new Error("Từ chối bài viết thất bại");
-    return await res.json();
-};
-
-// --- QUẢN LÝ TRUYỀN THÔNG (MEDIA) ---
-export const getMediaAPI = async () => {
-    const res = await fetch(`${BASE_URL}/media`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy dữ liệu truyền thông");
-    return await res.json();
-};
-
-// --- CÁC HÀM MỚI CHO LINEAGE MANAGEMENT & TASKS ---
-export const createPersonAPI = async (data) => {
-    const res = await fetch(`${BASE_URL}/people/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Tạo thành viên thất bại");
-    return await res.json();
-};
-
-export const linkRelationsAPI = async (data) => {
-    const res = await fetch(`${BASE_URL}/people/link`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Liên kết thất bại");
-    return await res.json();
-};
-
-export const assignTaskAPI = async (data) => {
-    const res = await fetch(`${BASE_URL}/assign-task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(data)
-    });
-    if (!res.ok) throw new Error("Giao việc thất bại");
-    return await res.json();
-};
-
-export const getTasksAPI = async () => {
-    const res = await fetch(`${BASE_URL}/tasks`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Lấy danh sách việc thất bại");
-    return await res.json();
-};
-
-// --- QUẢN LÝ THAY ĐỔI HỒ SƠ (PROFILE UPDATES) ---
-export const getPendingProfileUpdates = async () => {
-    const res = await fetch(`${BASE_URL}/pending-profiles`, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error("Không thể lấy danh sách cập nhật hồ sơ");
-    return await res.json();
-};
-
-export const approveProfileUpdateAPI = async (id) => {
-    const res = await fetch(`${BASE_URL}/approve-profile/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    });
-    if (!res.ok) throw new Error("Phê duyệt hồ sơ thất bại");
-    return await res.json();
-};
-
-export const rejectProfileUpdateAPI = async (id, reason) => {
-    const res = await fetch(`${BASE_URL}/reject-profile/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ reason }),
-    });
-    if (!res.ok) throw new Error("Từ chối hồ sơ thất bại");
-    return await res.json();
-};
+export const rejectProfileUpdateAPI = (id, reason) =>
+  request(
+    `/reject-profile/${id}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+    "Từ chối hồ sơ thất bại"
+  );

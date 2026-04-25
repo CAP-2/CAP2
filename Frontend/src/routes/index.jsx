@@ -19,14 +19,14 @@ import EventsPage from "../pages/admin/EventsPage";
 import GalleryPage from "../pages/admin/GalleryPage";
 import SettingsPage from "../pages/admin/SettingsPage";
 
-import AccountPage from "../pages/manager/AccountPage";
-import GenealogySection from "../pages/manager/GenealogySection";
-import ManagerDashboard from "../pages/manager/ManagerDashboard";
-import PendingApprovals from "../pages/manager/PendingApprovals";
-import MediaManagement from "../pages/manager/MediaManagement";
+import AccountPage from "../pages/Manager/AccountPage";
+import GenealogySection from "../pages/Manager/GenealogySection";
+import ManagerDashboard from "../pages/Manager/ManagerDashboard";
+import PendingApprovals from "../pages/Manager/PendingApprovals";
+import MediaManagement from "../pages/Manager/MediaManagement";
 
 import FamilyTreePage from "../pages/user/FamilyTreePage";
-import MemberDashboard from "../pages/member/MemberDashboard";
+import MemberDashboard from "../pages/Member/MemberDashboard";
 
 export default function AppRoutes() {
   return (
@@ -53,6 +53,7 @@ export default function AppRoutes() {
       {/* Protected Manager Routes */}
       <Route element={<ProtectedRoute allowedRoles={["manager", "admin"]} />}>
         <Route element={<ManagerLayout />}>
+          <Route path="/manager" element={<Navigate to="/manager/dashboard" replace />} />
           <Route path="/manager/dashboard" element={<ManagerDashboard />} />
           <Route path="/manager/account" element={<AccountPage />} />
           <Route path="/manager/genealogy" element={<GenealogySection />} />

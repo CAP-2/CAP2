@@ -1,6 +1,6 @@
 import HeroBanner from "./HeroBanner";
 import AboutSection from "./AboutSection";
-import GenealogySection from "../manager/GenealogySection";
+import GenealogySection from "../Manager/GenealogySection";
 import FeaturesSection from "./FeaturesSection";
 import StatsSection from "./StatsSection";
 

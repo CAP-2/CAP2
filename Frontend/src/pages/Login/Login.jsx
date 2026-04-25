@@ -35,7 +35,11 @@ const Login = () => {
       }
 
       localStorage.setItem("user", JSON.stringify(res.user));
-      if (res.token) localStorage.setItem("token", res.token);
+      localStorage.setItem("auth_user", JSON.stringify(res.user));
+      if (res.token) {
+        localStorage.setItem("token", res.token);
+        localStorage.setItem("auth_token", res.token);
+      }
 
       if (res.user.status === "pending") {
         navigate("/waiting");
@@ -46,7 +50,7 @@ const Login = () => {
       if (roleId === 1) {
         navigate("/admin");
       } else if (roleId === 2) {
-        navigate("/manager");
+        navigate("/manager/dashboard");
       } else if (roleId === 3) {
         navigate("/member");
       } else {

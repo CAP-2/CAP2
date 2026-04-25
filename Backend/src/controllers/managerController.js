@@ -207,11 +207,106 @@ const assertCanManageAccount = async (req, targetAccountId) => {
 
 const getManagerClanId = async (accountId) => {
     const [accountRows] = await db.query(
-        `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
+        `SELECT p.clan_id FROM accounts a LEFT JOIN people p ON a.person_id = p.id WHERE a.id = ? LIMIT 1`,
         [accountId]
     );
-    if (!accountRows || accountRows.length === 0) return null;
-    return accountRows[0].clan_id;
+    if (accountRows?.[0]?.clan_id != null) return accountRows[0].clan_id;
+
+    try {
+        const [membershipRows] = await db.query(
+            `SELECT clan_id FROM account_clans WHERE account_id = ? AND status = 'active' ORDER BY id ASC LIMIT 1`,
+            [accountId]
+        );
+        if (membershipRows?.[0]?.clan_id != null) return membershipRows[0].clan_id;
+    } catch (error) {
+        if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+    }
+
+    return null;
+};
+
+const assertClanExists = async (clanId) => {
+    const cid = Number(clanId);
+    if (!Number.isFinite(cid)) return false;
+    const [rows] = await db.query('SELECT id FROM clans WHERE id = ? LIMIT 1', [cid]);
+    return rows.length > 0;
+};
+
+const resolveManagedClanId = async (req, source = {}) => {
+    if (req.user.role_id === 2) {
+        return await getManagerClanId(req.user.id);
+    }
+
+    const rawClanId = source.clan_id ?? req.query?.clan_id;
+    const requestedClanId = Number(rawClanId);
+    if (Number.isFinite(requestedClanId)) {
+        return (await assertClanExists(requestedClanId)) ? requestedClanId : null;
+    }
+
+    const [rows] = await db.query('SELECT id FROM clans ORDER BY id ASC LIMIT 1');
+    return rows[0]?.id ?? null;
+};
+
+const buildManagedFamilyTree = (peopleRows, familyRows, childRows) => {
+    const peopleMap = new Map(peopleRows.map((p) => [p.id, p]));
+    const childrenByFamily = new Map();
+    for (const row of childRows) {
+        if (!childrenByFamily.has(row.family_id)) childrenByFamily.set(row.family_id, []);
+        childrenByFamily.get(row.family_id).push(row.person_id);
+    }
+
+    const childrenByParent = new Map();
+    const spouseByPrimary = new Map();
+    for (const fam of familyRows) {
+        const childIds = childrenByFamily.get(fam.id) || [];
+        const parentId = fam.father_id || fam.mother_id;
+        if (!parentId) continue;
+        if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+        const list = childrenByParent.get(parentId);
+        for (const childId of childIds) {
+            if (!list.includes(childId)) list.push(childId);
+        }
+        if (childIds.length > 0 && fam.father_id && fam.mother_id) {
+            spouseByPrimary.set(parentId, parentId === fam.father_id ? fam.mother_id : fam.father_id);
+        }
+    }
+
+    const generations = peopleRows.map((p) => Number(p.generation)).filter((g) => Number.isFinite(g) && g > 0);
+    const rootGeneration = generations.length ? Math.min(...generations) : 1;
+    const rootCandidates = peopleRows.filter((p) => Number(p.generation || rootGeneration) === rootGeneration);
+    const placed = new Set();
+
+    const buildNode = (personId) => {
+        const person = peopleMap.get(personId);
+        if (!person || placed.has(personId)) return null;
+        placed.add(personId);
+
+        const spouseId = spouseByPrimary.get(personId);
+        let spouse = null;
+        if (spouseId && peopleMap.has(spouseId) && !placed.has(spouseId)) {
+            spouse = peopleMap.get(spouseId);
+            placed.add(spouseId);
+        }
+
+        const children = [];
+        for (const childId of childrenByParent.get(personId) || []) {
+            const childNode = buildNode(childId);
+            if (childNode) children.push(childNode);
+        }
+        return { person, spouse, children };
+    };
+
+    const roots = [];
+    for (const root of rootCandidates) {
+        const node = buildNode(root.id);
+        if (node) roots.push(node);
+    }
+    for (const person of peopleRows) {
+        const node = buildNode(person.id);
+        if (node) roots.push(node);
+    }
+
+    return { roots };
 };
 
 async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, parentMotherId) {
@@ -452,6 +547,93 @@ exports.updateMemberRelations = async (req, res) => {
     }
 };
 
+exports.getFamilyTree = async (req, res) => {
+    try {
+        await ensureArchivedMembersTable();
+        const clanId = await resolveManagedClanId(req);
+        if (clanId == null) {
+            return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+        }
+
+        const [clanRows] = await db.query(
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
+            [clanId]
+        );
+        if (!clanRows.length) {
+            return res.status(404).json({ success: false, message: 'Dòng họ không tồn tại' });
+        }
+
+        const [peopleRows] = await db.query(
+            `
+            SELECT
+                p.id,
+                p.clan_id,
+                p.display_name,
+                p.first_name,
+                p.middle_name,
+                p.surname,
+                p.gender,
+                p.generation,
+                p.branch,
+                p.birth_date,
+                p.death_date,
+                p.is_living,
+                p.phone,
+                p.email,
+                p.address,
+                p.hometown,
+                p.avatar_url,
+                p.bio,
+                a.id AS account_id,
+                a.email AS account_email,
+                a.role_id,
+                a.status AS account_status
+            FROM people p
+            LEFT JOIN accounts a ON a.person_id = p.id
+            LEFT JOIN archived_members am ON am.account_id = a.id
+            WHERE p.clan_id = ?
+              AND am.id IS NULL
+            ORDER BY p.generation, p.surname, p.middle_name, p.first_name, p.id
+            `,
+            [clanId]
+        );
+
+        const [familyRows] = await db.query(
+            'SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC',
+            [clanId]
+        );
+        const [childRows] = await db.query(
+            `
+            SELECT c.family_id, c.person_id, c.sort_order
+            FROM children c
+            INNER JOIN families f ON c.family_id = f.id
+            WHERE f.clan_id = ?
+            ORDER BY c.family_id, c.sort_order, c.id
+            `,
+            [clanId]
+        );
+
+        return res.json({
+            success: true,
+            clan: clanRows[0],
+            treeMembers: peopleRows.map((p) => ({
+                ...p,
+                birth_date: fmtSqlDate(p.birth_date),
+                death_date: fmtSqlDate(p.death_date),
+            })),
+            families: familyRows.map((f) => ({
+                ...f,
+                marriage_date: fmtSqlDate(f.marriage_date),
+            })),
+            children: childRows,
+            familyTree: buildManagedFamilyTree(peopleRows, familyRows, childRows),
+        });
+    } catch (error) {
+        console.error('getFamilyTree error:', error);
+        res.status(500).json({ success: false, message: 'Lỗi lấy cây gia phả' });
+    }
+};
+
 exports.getStats = async (req, res) => {
     try {
         let totalMembersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id IN (2,3) AND a.status = 'active'";
@@ -498,10 +680,12 @@ exports.getStats = async (req, res) => {
 
 exports.getAllMembers = async (req, res) => {
     try {
+        await ensureArchivedMembersTable();
         let sql = `
             SELECT a.id AS account_id, a.email, a.role_id, a.status,
-                   p.id AS person_id, p.first_name, p.middle_name, p.surname, p.birth_date, p.clan_id, p.gender,
-                   p.generation
+                   p.id AS person_id, p.display_name, p.first_name, p.middle_name, p.surname,
+                   p.birth_date, p.death_date, p.is_living, p.clan_id, p.gender,
+                   p.generation, p.branch, p.hometown, p.address, p.phone, p.avatar_url, p.bio
             FROM accounts a
             JOIN people p ON a.person_id = p.id
             LEFT JOIN archived_members am ON am.account_id = a.id
@@ -523,7 +707,13 @@ exports.getAllMembers = async (req, res) => {
         sql += ' ORDER BY p.surname, p.first_name';
 
         const [results] = await db.query(sql, params);
-        res.json(results);
+        res.json(
+            results.map((m) => ({
+                ...m,
+                birth_date: fmtSqlDate(m.birth_date),
+                death_date: fmtSqlDate(m.death_date),
+            }))
+        );
     } catch (error) {
         console.error('getAllMembers error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách thành viên' });
@@ -1477,24 +1667,160 @@ exports.rejectProfileUpdate = async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi từ chối hồ sơ' });
     }
 };
-// 1. Hàm tạo người trong gia phả
 exports.createPerson = async (req, res) => {
     try {
-        // Tạm thời để trống hoặc viết logic xử lý tại đây
-        res.json({ success: true, message: "Hàm createPerson đang được phát triển" });
+        const {
+            display_name,
+            surname,
+            middle_name,
+            first_name,
+            gender,
+            birth_date,
+            death_date,
+            is_living,
+            generation,
+            branch,
+            hometown,
+            address,
+            phone,
+            email,
+            avatar_url,
+            bio,
+            note,
+            parent_father_id,
+            parent_mother_id,
+            father_person_id,
+            mother_person_id,
+        } = req.body;
+
+        const clanId = await resolveManagedClanId(req, req.body);
+        if (clanId == null) {
+            return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+        }
+
+        const sn = surname != null ? String(surname).trim() : '';
+        const mid = middle_name != null ? String(middle_name).trim() : '';
+        const fn = first_name != null ? String(first_name).trim() : '';
+        const display = String(display_name || buildDisplayNameFromPartsMgr(sn, mid, fn)).trim();
+        if (!display && !sn && !fn) {
+            return res.status(400).json({ success: false, message: 'Cần nhập họ tên thành viên' });
+        }
+
+        let genderValue = null;
+        if (gender !== undefined && gender !== null && String(gender).trim() !== '') {
+            const g = Number(gender);
+            genderValue = g === 1 || g === 2 ? g : null;
+        }
+
+        const generationValue = Number(generation);
+        const branchValue = branch === undefined || branch === null || branch === '' ? null : Number(branch);
+        const livingValue = is_living === undefined || is_living === null || is_living === '' ? 1 : Number(is_living) ? 1 : 0;
+
+        const [personResult] = await db.query(
+            `INSERT INTO people (
+                clan_id, display_name, first_name, middle_name, surname, gender, generation, branch,
+                birth_date, death_date, is_living, phone, email, address, hometown, avatar_url, bio, note
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                clanId,
+                display || buildDisplayNameFromPartsMgr(sn, mid, fn),
+                fn,
+                mid,
+                sn,
+                genderValue,
+                Number.isFinite(generationValue) && generationValue > 0 ? generationValue : 1,
+                Number.isFinite(branchValue) ? branchValue : null,
+                birth_date ? String(birth_date).trim() : null,
+                death_date ? String(death_date).trim() : null,
+                livingValue,
+                phone != null ? String(phone).trim() : null,
+                email != null ? String(email).trim() : null,
+                address != null ? String(address).trim() : null,
+                hometown != null ? String(hometown).trim() : null,
+                avatar_url != null ? String(avatar_url).trim() || null : null,
+                bio != null ? String(bio).trim() : null,
+                note != null ? String(note).trim() : null,
+            ]
+        );
+
+        const personId = personResult.insertId;
+        const fatherId = parseNullableId(parent_father_id ?? father_person_id);
+        const motherId = parseNullableId(parent_mother_id ?? mother_person_id);
+        if (fatherId || motherId) {
+            const relation = await applyBloodlineForPerson(personId, clanId, fatherId, motherId);
+            if (!relation.ok) {
+                await db.query('DELETE FROM people WHERE id = ?', [personId]);
+                return res.status(400).json({ success: false, message: relation.message });
+            }
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: 'Đã tạo người trong gia phả',
+            person_id: personId,
+        });
     } catch (error) {
         console.error('createPerson error:', error);
-        res.status(500).json({ success: false, message: "Lỗi tạo người" });
+        res.status(500).json({ success: false, message: 'Lỗi tạo người trong gia phả' });
     }
 };
 
-// 2. Hàm liên kết quan hệ (Lineage)
 exports.linkRelations = async (req, res) => {
     try {
-        // Tạm thời để trống hoặc viết logic xử lý tại đây
-        res.json({ success: true, message: "Hàm linkRelations đang được phát triển" });
+        const body = req.body || {};
+        const personId = parseNullableId(body.person_id ?? body.id);
+        if (!personId) {
+            return res.status(400).json({ success: false, message: 'person_id không hợp lệ' });
+        }
+
+        const [personRows] = await db.query('SELECT id, clan_id, gender FROM people WHERE id = ? LIMIT 1', [personId]);
+        if (!personRows.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy người trong gia phả' });
+        }
+
+        const person = personRows[0];
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                return res.status(404).json({ success: false, message: 'Không xác định được dòng họ của manager' });
+            }
+            if (Number(person.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({ success: false, message: 'Chỉ được liên kết người trong cùng dòng họ' });
+            }
+        }
+
+        const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+        const hasBloodline =
+            has('parent_father_id') || has('parent_mother_id') || has('father_person_id') || has('mother_person_id');
+        if (hasBloodline) {
+            const fatherId = parseNullableId(body.parent_father_id ?? body.father_person_id);
+            const motherId = parseNullableId(body.parent_mother_id ?? body.mother_person_id);
+            if (fatherId || motherId) {
+                const relation = await applyBloodlineForPerson(personId, person.clan_id, fatherId, motherId);
+                if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+            } else {
+                await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
+            }
+        }
+
+        const hasMarriage =
+            has('family_id') || has('spouse_id') || has('spouse_person_id') || has('children_ids') || has('children_person_ids');
+        if (hasMarriage) {
+            const relationBody = {};
+            if (has('family_id')) relationBody.family_id = body.family_id;
+            if (has('spouse_id') || has('spouse_person_id')) relationBody.spouse_id = body.spouse_id ?? body.spouse_person_id;
+            if (has('children_ids') || has('children_person_ids')) relationBody.children_ids = body.children_ids ?? body.children_person_ids;
+
+            const relation = await applyMarriageRelationsForPerson(
+                { person_id: personId, clan_id: person.clan_id, gender: person.gender },
+                relationBody
+            );
+            if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+        }
+
+        return res.json({ success: true, message: 'Đã lưu liên kết gia phả' });
     } catch (error) {
         console.error('linkRelations error:', error);
-        res.status(500).json({ success: false, message: "Lỗi liên kết quan hệ" });
+        res.status(500).json({ success: false, message: 'Lỗi liên kết quan hệ' });
     }
 };

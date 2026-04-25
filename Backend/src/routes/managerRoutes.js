@@ -8,6 +8,7 @@
 
     // Chỉ Admin (1) và Manager (2) mới được truy cập manager dashboard
     router.get('/stats', verifyToken, checkRole(['admin', 'manager']), managerController.getStats);
+    router.get('/tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
     router.get('/members', verifyToken, checkRole(['admin', 'manager']), managerController.getAllMembers);
     router.post('/members', verifyToken, checkRole(['admin', 'manager']), managerController.createMember);
     router.get('/members/:id/relations', verifyToken, checkRole(['admin', 'manager']), managerController.getMemberRelations);

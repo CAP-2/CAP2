@@ -1,59 +1,94 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getMediaLibraryData } from "../../api/managerService";
+import { formatDate } from "./managerData";
 import "./MediaManagement.css";
 
 export default function MediaManagement() {
-  const [mediaItems, setMediaItems] = useState([
-    { id: 1, url: "https://images.unsplash.com/photo-1590483736622-39da8af75620?q=80&w=600", author: "Cụ Bảy", date: "24/03/2024" },
-    { id: 2, url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?q=80&w=600", author: "Anh Tuấn", date: "15/04/2024" },
-    { id: 3, url: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=600", author: "Chị Lan", date: "10/04/2024" },
-    { id: 4, url: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=600", author: "Ông Tám", date: "05/04/2024" },
-  ]);
+  const [mediaItems, setMediaItems] = useState([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getMediaLibraryData()
+      .then((items) => {
+        if (!cancelled) setMediaItems(items);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.message || "Không thể tải thư viện");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return mediaItems;
+    return mediaItems.filter((item) =>
+      [item.author_name, item.content, item.image_url]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [mediaItems, query]);
 
   return (
     <div className="media-management animate-fade-in">
       <div className="media-header glass-effect">
         <div className="search-bar">
           <span className="material-symbols-outlined">search</span>
-          <input type="text" placeholder="Tìm kiếm tư liệu, hình ảnh..." />
+          <input
+            type="text"
+            placeholder="Tìm kiếm tư liệu, hình ảnh..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
         <div className="media-filters">
-          <button className="filter-chip active">Tất cả</button>
-          <button className="filter-chip">Hình ảnh</button>
-          <button className="filter-chip">Video</button>
-          <button className="filter-chip">Tài liệu</button>
+          <button className="filter-chip active" type="button">
+            Tất cả ({filteredItems.length})
+          </button>
         </div>
       </div>
 
+      {error && <div className="manager-inline-error">{error}</div>}
+      {loading && <div className="manager-inline-message">Đang tải thư viện từ database...</div>}
+
       <div className="media-grid">
-        {mediaItems.map((item) => (
-          <div key={item.id} className="media-card glass-effect">
+        {filteredItems.map((item) => (
+          <div key={item.post_id} className="media-card glass-effect">
             <div className="media-preview">
-              <img src={item.url} alt="Media" />
+              <img src={item.image_url} alt={item.content || "Tư liệu gia phả"} />
               <div className="media-overlay">
-                <button className="media-action-btn">
+                <a className="media-action-btn" href={item.image_url} target="_blank" rel="noreferrer" title="Xem ảnh">
                   <span className="material-symbols-outlined">visibility</span>
-                </button>
-                <button className="media-action-btn">
+                </a>
+                <a className="media-action-btn" href={item.image_url} download title="Tải xuống">
                   <span className="material-symbols-outlined">download</span>
-                </button>
+                </a>
               </div>
             </div>
             <div className="media-info">
               <div className="author-info">
-                <strong>{item.author}</strong>
-                <span>{item.date}</span>
+                <strong>{item.author_name || "Không rõ người gửi"}</strong>
+                <span>{formatDate(item.created_at)}</span>
+                {item.content && <small>{item.content}</small>}
               </div>
-              <button className="more-btn">
-                <span className="material-symbols-outlined">more_vert</span>
-              </button>
             </div>
           </div>
         ))}
-        
-        <div className="add-media-card glass-effect">
-          <span className="material-symbols-outlined">add_photo_alternate</span>
-          <p>Tải lên tư liệu mới</p>
-        </div>
+
+        {!loading && filteredItems.length === 0 && (
+          <div className="add-media-card glass-effect">
+            <span className="material-symbols-outlined">photo_library</span>
+            <p>Không có tư liệu nào trong database.</p>
+          </div>
+        )}
       </div>
     </div>
   );

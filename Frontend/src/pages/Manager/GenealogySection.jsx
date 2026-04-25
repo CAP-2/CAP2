@@ -1,304 +1,267 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createPersonAPI,
+  getManagerTree,
+  linkRelationsAPI,
+} from "../../api/managerService";
 import FamilyTree from "../../components/common/FamilyTree";
+import { mapTreeNode, personName } from "./managerData";
+import "./manager.css";
 
-const initialTreeData = {
-    id: 1,
-    name: "THỦY TỔ NGUYỄN TRÍ",
-    title: "Tổ Phúc Khánh",
-    generation: "Đời 1",
-    birth: "1800",
-    death: "1875",
-    children: [
-        {
-            id: 2,
-            name: "NGUYỄN TRÍ CƯỜNG",
-            title: "Cụ Ông",
-            generation: "Đời 2",
-            birth: "1830",
-            death: "1908",
-            children: [],
-        },
-        {
-            id: 3,
-            name: "NGUYỄN TRÍ NAM",
-            title: "Cụ Ông",
-            generation: "Đời 2",
-            birth: "1850",
-            death: "1920",
-            children: [],
-        },
-    ],
+const emptyPersonForm = {
+  surname: "",
+  middle_name: "",
+  first_name: "",
+  gender: "1",
+  generation: "1",
+  birth_date: "",
+  death_date: "",
+  hometown: "",
+  parent_id: "",
 };
 
-const defaultForm = {
-    parentId: "1",
-    name: "",
-    title: "",
-    generation: "",
-    birth: "",
-    death: "",
+const emptyRelationForm = {
+  person_id: "",
+  parent_father_id: "",
+  parent_mother_id: "",
+  spouse_id: "",
+  children_ids: "",
 };
 
-function findMaxId(node) {
-    const childMax = (node.children || []).reduce((maxId, child) => Math.max(maxId, findMaxId(child)), 0);
-    return Math.max(node.id, childMax);
-}
+export default function GenealogySection() {
+  const [treeData, setTreeData] = useState(null);
+  const [people, setPeople] = useState([]);
+  const [clan, setClan] = useState(null);
+  const [personForm, setPersonForm] = useState(emptyPersonForm);
+  const [relationForm, setRelationForm] = useState(emptyRelationForm);
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-function addChildToNode(node, parentId, newNode) {
-    if (node.id === parentId) {
-        return { ...node, children: [...(node.children || []), newNode] };
+  const loadTree = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await getManagerTree();
+      const roots = data.familyTree?.roots || [];
+      const mappedRoots = roots.map(mapTreeNode);
+      const nextTree =
+        mappedRoots.length === 1
+          ? mappedRoots[0]
+          : mappedRoots.length > 1
+            ? {
+                id: "clan-root",
+                name: data.clan?.clan_name || "Dòng họ",
+                title: `${mappedRoots.length} nhánh gốc`,
+                generation: `${data.treeMembers?.length || 0} thành viên`,
+                children: mappedRoots,
+              }
+            : null;
+      setTreeData(nextTree);
+      setPeople(Array.isArray(data.treeMembers) ? data.treeMembers : []);
+      setClan(data.clan || null);
+    } catch (err) {
+      setError(err?.message || "Không thể tải cây gia phả từ database");
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    return {
-        ...node,
-        children: (node.children || []).map((child) => addChildToNode(child, parentId, newNode)),
-    };
-}
+  useEffect(() => {
+    loadTree();
+  }, [loadTree]);
 
-function updateNodeById(node, targetId, payload) {
-    if (node.id === targetId) {
-        return { ...node, ...payload };
+  const peopleOptions = useMemo(
+    () =>
+      people.map((person) => ({
+        id: person.id,
+        label: `#${person.id} - ${personName(person)}${person.generation ? ` (Đời ${person.generation})` : ""}`,
+        gender: Number(person.gender),
+      })),
+    [people]
+  );
+
+  const setPersonField = (event) => {
+    const { name, value } = event.target;
+    setPersonForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const setRelationField = (event) => {
+    const { name, value } = event.target;
+    setRelationForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const createPerson = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      const parent = people.find((p) => String(p.id) === String(personForm.parent_id));
+      const parentPayload = {};
+      if (parent) {
+        if (Number(parent.gender) === 2) parentPayload.parent_mother_id = parent.id;
+        else parentPayload.parent_father_id = parent.id;
+      }
+      await createPersonAPI({
+        surname: personForm.surname.trim(),
+        middle_name: personForm.middle_name.trim(),
+        first_name: personForm.first_name.trim(),
+        gender: personForm.gender,
+        generation: personForm.generation,
+        birth_date: personForm.birth_date || null,
+        death_date: personForm.death_date || null,
+        hometown: personForm.hometown.trim(),
+        ...parentPayload,
+      });
+      setPersonForm(emptyPersonForm);
+      setMessage("Đã thêm người vào database.");
+      await loadTree();
+    } catch (err) {
+      setError(err?.message || "Không thể thêm người");
+    } finally {
+      setSaving(false);
     }
+  };
 
-    return {
-        ...node,
-        children: (node.children || []).map((child) => updateNodeById(child, targetId, payload)),
-    };
-}
+  const saveRelations = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      const payload = { person_id: relationForm.person_id };
+      if (relationForm.parent_father_id) payload.parent_father_id = relationForm.parent_father_id;
+      if (relationForm.parent_mother_id) payload.parent_mother_id = relationForm.parent_mother_id;
+      if (relationForm.spouse_id) payload.spouse_id = relationForm.spouse_id;
+      if (relationForm.children_ids.trim()) payload.children_ids = relationForm.children_ids;
+      await linkRelationsAPI(payload);
+      setMessage("Đã lưu quan hệ vào database.");
+      await loadTree();
+    } catch (err) {
+      setError(err?.message || "Không thể lưu quan hệ");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-function deleteNodeById(node, targetId) {
-    return {
-        ...node,
-        children: (node.children || [])
-            .filter((child) => child.id !== targetId)
-            .map((child) => deleteNodeById(child, targetId)),
-    };
-}
+  const beginEditNode = (node) => {
+    if (!node?.person_id) return;
+    const person = people.find((p) => p.id === node.person_id);
+    setSelectedPerson(person || node.raw || null);
+    setRelationForm((prev) => ({ ...prev, person_id: String(node.person_id) }));
+  };
 
-function flattenTree(node, result = []) {
-    result.push({ id: node.id, name: node.name });
-    (node.children || []).forEach((child) => flattenTree(child, result));
-    return result;
-}
+  return (
+    <section className="manager-genealogy-page">
+      <div className="manager-data-header">
+        <div>
+          <h2>{clan?.clan_name || "Cây gia phả"}</h2>
+          <p>Toàn bộ cây, thành viên và quan hệ được lấy từ bảng people, families và children.</p>
+        </div>
+        <button className="mgr-btnGhost" type="button" onClick={loadTree} disabled={loading}>
+          Tải lại
+        </button>
+      </div>
 
-export default function GenealogySection({ isLoggedIn, onRequestLogin, showAdmin = true }) {
-    const [treeData, setTreeData] = useState(initialTreeData);
-    const [createForm, setCreateForm] = useState(defaultForm);
-    const [editNodeId, setEditNodeId] = useState(null);
-    const [editForm, setEditForm] = useState(defaultForm);
+      {message && <div className="manager-inline-message">{message}</div>}
+      {error && <div className="manager-inline-error">{error}</div>}
 
-    const memberOptions = useMemo(() => flattenTree(treeData), [treeData]);
-
-    const handleCreateChange = (event) => {
-        const { name, value } = event.target;
-        setCreateForm((prev) => ({ ...prev, [name]: value }));
-    };
-
-    const handleEditChange = (event) => {
-        const { name, value } = event.target;
-        setEditForm((prev) => ({ ...prev, [name]: value }));
-    };
-
-    const handleAddMember = (event) => {
-        event.preventDefault();
-        if (!isLoggedIn) {
-            onRequestLogin();
-            return;
-        }
-
-        const nextId = findMaxId(treeData) + 1;
-        const parentId = Number(createForm.parentId);
-        const newMember = {
-            id: nextId,
-            name: createForm.name.trim(),
-            title: createForm.title.trim(),
-            generation: createForm.generation.trim(),
-            birth: createForm.birth.trim(),
-            death: createForm.death.trim(),
-            children: [],
-        };
-
-        setTreeData((prev) => addChildToNode(prev, parentId, newMember));
-        setCreateForm(defaultForm);
-    };
-
-    const handleBeginEdit = (node) => {
-        if (!isLoggedIn) {
-            onRequestLogin();
-            return;
-        }
-
-        setEditNodeId(node.id);
-        setEditForm({
-            parentId: String(node.id),
-            name: node.name || "",
-            title: node.title || "",
-            generation: node.generation || "",
-            birth: node.birth || "",
-            death: node.death || "",
-        });
-    };
-
-    const handleSaveEdit = (event) => {
-        event.preventDefault();
-        if (!editNodeId) {
-            return;
-        }
-
-        setTreeData((prev) =>
-            updateNodeById(prev, editNodeId, {
-                name: editForm.name.trim(),
-                title: editForm.title.trim(),
-                generation: editForm.generation.trim(),
-                birth: editForm.birth.trim(),
-                death: editForm.death.trim(),
-            })
-        );
-        setEditNodeId(null);
-        setEditForm(defaultForm);
-    };
-
-    const handleDeleteNode = (nodeId) => {
-        if (!isLoggedIn) {
-            onRequestLogin();
-            return;
-        }
-
-        if (nodeId === treeData.id) {
-            return;
-        }
-
-        setTreeData((prev) => deleteNodeById(prev, nodeId));
-    };
-
-    return (
-        <section className="genealogy-section">
-            <div className="container genealogy-grid">
-                <div>
-                    <h3>Sơ đồ phả hệ thông minh</h3>
-                    <p>
-                        Trực quan hóa cây phả hệ với đa dạng góc nhìn, từ dòng tộc lớn đến các nhánh chi nhỏ.
-                    </p>
-                    <div className="genealogy-actions">
-                        <button type="button">
-                            <span className="material-symbols-outlined">image</span>
-                            Xem dưới dạng hình ảnh
-                        </button>
-                        <button type="button">
-                            <span className="material-symbols-outlined">account_tree</span>
-                            Tạo nhiều thế hệ
-                        </button>
-                      
-                    </div>
-                    <ul>
-                        <li>Tự động cấp xếp thứ tự vai vế</li>
-                        <li>Đính kèm tiểu sử và hình ảnh thực tế</li>
-                    </ul>
-
-                    {showAdmin && (
-                        <div className="genealogy-admin">
-                            <h4>Quản lý thành viên phả hệ</h4>
-                            {!isLoggedIn && (
-                                <p className="genealogy-admin-note">
-                                    Bạn cần đăng nhập để thêm, sửa, xóa thành viên.
-                                    <button type="button" onClick={onRequestLogin}>
-                                        Đăng nhập ngay
-                                    </button>
-                                </p>
-                            )}
-
-                            <form className="tree-form" onSubmit={handleAddMember}>
-                                <h5>Thêm thành viên mới</h5>
-                                <label htmlFor="parentId">Thêm vào nhánh</label>
-                                <select id="parentId" name="parentId" value={createForm.parentId} onChange={handleCreateChange}>
-                                    {memberOptions.map((member) => (
-                                        <option key={member.id} value={String(member.id)}>
-                                            {member.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <input
-                                    name="name"
-                                    value={createForm.name}
-                                    onChange={handleCreateChange}
-                                    placeholder="Họ tên"
-                                    required
-                                />
-                                <input
-                                    name="title"
-                                    value={createForm.title}
-                                    onChange={handleCreateChange}
-                                    placeholder="Vai vế"
-                                    required
-                                />
-                                <input
-                                    name="generation"
-                                    value={createForm.generation}
-                                    onChange={handleCreateChange}
-                                    placeholder="Đời"
-                                />
-                                <div className="tree-form-inline">
-                                    <input
-                                        name="birth"
-                                        value={createForm.birth}
-                                        onChange={handleCreateChange}
-                                        placeholder="Năm sinh"
-                                    />
-                                    <input
-                                        name="death"
-                                        value={createForm.death}
-                                        onChange={handleCreateChange}
-                                        placeholder="Năm mất"
-                                    />
-                                </div>
-                                <button type="submit">Thêm thành viên</button>
-                            </form>
-
-                            {editNodeId && (
-                                <form className="tree-form tree-edit-form" onSubmit={handleSaveEdit}>
-                                    <h5>Chỉnh sửa thành viên</h5>
-                                    <input name="name" value={editForm.name} onChange={handleEditChange} placeholder="Họ tên" required />
-                                    <input name="title" value={editForm.title} onChange={handleEditChange} placeholder="Vai vế" required />
-                                    <input
-                                        name="generation"
-                                        value={editForm.generation}
-                                        onChange={handleEditChange}
-                                        placeholder="Đời"
-                                    />
-                                    <div className="tree-form-inline">
-                                        <input
-                                            name="birth"
-                                            value={editForm.birth}
-                                            onChange={handleEditChange}
-                                            placeholder="Năm sinh"
-                                        />
-                                        <input
-                                            name="death"
-                                            value={editForm.death}
-                                            onChange={handleEditChange}
-                                            placeholder="Năm mất"
-                                        />
-                                    </div>
-                                    <div className="tree-edit-actions">
-                                        <button type="button" onClick={() => setEditNodeId(null)}>
-                                            Hủy
-                                        </button>
-                                        <button type="submit">Lưu cập nhật</button>
-                                    </div>
-                                </form>
-                            )}
-                        </div>
-                    )}
-                </div>
-                <div className="genealogy-card">
-                    <FamilyTree
-                        data={treeData}
-                        isLoggedIn={showAdmin ? isLoggedIn : false}
-                        onEditNode={showAdmin ? handleBeginEdit : undefined}
-                        onDeleteNode={showAdmin ? handleDeleteNode : undefined}
-                    />
-                </div>
+      <div className="management-grid">
+        <div className="panel-card">
+          <h2>Thêm người vào gia phả</h2>
+          <form className="member-form" onSubmit={createPerson}>
+            <div className="form-row">
+              <input className="mgr-field" name="surname" value={personForm.surname} onChange={setPersonField} placeholder="Họ" />
+              <input className="mgr-field" name="middle_name" value={personForm.middle_name} onChange={setPersonField} placeholder="Tên đệm" />
             </div>
-        </section>
-    );
+            <input className="mgr-field" name="first_name" value={personForm.first_name} onChange={setPersonField} placeholder="Tên" required />
+            <select className="mgr-field" name="parent_id" value={personForm.parent_id} onChange={setPersonField}>
+              <option value="">Không chọn cha/mẹ</option>
+              {peopleOptions.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.label}
+                </option>
+              ))}
+            </select>
+            <div className="form-row">
+              <select className="mgr-field" name="gender" value={personForm.gender} onChange={setPersonField}>
+                <option value="1">Nam</option>
+                <option value="2">Nữ</option>
+                <option value="">Không khai báo</option>
+              </select>
+              <input className="mgr-field" name="generation" type="number" min="1" value={personForm.generation} onChange={setPersonField} placeholder="Đời" />
+            </div>
+            <div className="form-row">
+              <input className="mgr-field" name="birth_date" type="date" value={personForm.birth_date} onChange={setPersonField} />
+              <input className="mgr-field" name="death_date" type="date" value={personForm.death_date} onChange={setPersonField} />
+            </div>
+            <input className="mgr-field" name="hometown" value={personForm.hometown} onChange={setPersonField} placeholder="Quê quán" />
+            <button className="mgr-btnPrimary" type="submit" disabled={saving}>
+              {saving ? "Đang lưu..." : "Thêm vào database"}
+            </button>
+          </form>
+
+          <h2 className="manager-panel-subtitle">Liên kết quan hệ</h2>
+          <form className="member-form" onSubmit={saveRelations}>
+            <select className="mgr-field" name="person_id" value={relationForm.person_id} onChange={setRelationField} required>
+              <option value="">Chọn người cần liên kết</option>
+              {peopleOptions.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.label}
+                </option>
+              ))}
+            </select>
+            <select className="mgr-field" name="parent_father_id" value={relationForm.parent_father_id} onChange={setRelationField}>
+              <option value="">Không chọn cha</option>
+              {peopleOptions.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.label}
+                </option>
+              ))}
+            </select>
+            <select className="mgr-field" name="parent_mother_id" value={relationForm.parent_mother_id} onChange={setRelationField}>
+              <option value="">Không chọn mẹ</option>
+              {peopleOptions.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.label}
+                </option>
+              ))}
+            </select>
+            <select className="mgr-field" name="spouse_id" value={relationForm.spouse_id} onChange={setRelationField}>
+              <option value="">Không chọn vợ/chồng</option>
+              {peopleOptions.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.label}
+                </option>
+              ))}
+            </select>
+            <input className="mgr-field" name="children_ids" value={relationForm.children_ids} onChange={setRelationField} placeholder="ID con, cách nhau bằng dấu phẩy" />
+            <button className="mgr-btnPrimary" type="submit" disabled={saving}>
+              Lưu quan hệ
+            </button>
+          </form>
+          {selectedPerson && <p className="mgr-subtle">Đang chọn: #{selectedPerson.id} - {personName(selectedPerson)}</p>}
+        </div>
+
+        <div className="panel-card tree-preview-panel">
+          <div className="panel-header">
+            <h2>Cây gia phả từ database</h2>
+            <span>{people.length} người</span>
+          </div>
+          <div className="tree-container">
+            {loading ? (
+              <div className="mgr-empty">Đang tải cây gia phả...</div>
+            ) : treeData ? (
+              <FamilyTree data={treeData} isLoggedIn onEditNode={beginEditNode} />
+            ) : (
+              <div className="mgr-empty">Database chưa có người nào trong dòng họ này.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }

@@ -2,6 +2,8 @@ import { postJson } from "../services/api";
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
+const LEGACY_TOKEN_KEY = "token";
+const LEGACY_USER_KEY = "user";
 
 export function getDemoAccount() {
   return {
@@ -20,10 +22,12 @@ export async function login(form) {
 
   if (result?.token) {
     localStorage.setItem(TOKEN_KEY, result.token);
+    localStorage.setItem(LEGACY_TOKEN_KEY, result.token);
   }
 
   if (result?.user) {
     localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+    localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(result.user));
   }
 
   return result;
@@ -50,7 +54,7 @@ export async function register(form) {
 }
 
 export function getStoredUser() {
-  const raw = localStorage.getItem(USER_KEY);
+  const raw = localStorage.getItem(USER_KEY) || localStorage.getItem(LEGACY_USER_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -64,7 +68,7 @@ export function getCurrentUser() {
 }
 
 export function getAuthToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
 }
 
 export function isAuthenticated() {
@@ -74,4 +78,6 @@ export function isAuthenticated() {
 export function logout() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_USER_KEY);
 }

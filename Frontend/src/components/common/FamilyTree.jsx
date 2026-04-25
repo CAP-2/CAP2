@@ -49,12 +49,14 @@ export default function FamilyTree({ data, isLoggedIn = false, onEditNode, onDel
                             </p>
                         )}
 
-                        {onEditNode && onDeleteNode && (
+                        {(onEditNode || onDeleteNode) && (
                             <div className="node-actions">
-                                <button type="button" onClick={() => onEditNode(node)}>
-                                    Sửa
-                                </button>
-                                {!isRoot && (
+                                {onEditNode && (
+                                    <button type="button" onClick={() => onEditNode(node)}>
+                                        Sửa
+                                    </button>
+                                )}
+                                {onDeleteNode && !isRoot && (
                                     <button type="button" onClick={() => onDeleteNode(node.id)}>
                                         Xóa
                                     </button>

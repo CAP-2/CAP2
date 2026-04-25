@@ -121,6 +121,7 @@
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(0,0,0,0.3);
   transition: transform 0.3s;
+  text-decoration: none;
 }
 
 .media-action-btn:hover {
@@ -143,6 +144,13 @@
 .author-info span {
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.5);
+}
+
+.author-info small {
+  display: block;
+  margin-top: 0.4rem;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.4;
 }
 
 .more-btn {
