@@ -8,8 +8,8 @@ router.get("/dashboard", verifyToken, checkRole(["admin", "manager", "member"]),
 router.put("/profile", verifyToken, checkRole(["admin", "manager", "member"]), memberController.updateProfile);
 router.put("/password", verifyToken, checkRole(["admin", "manager", "member"]), memberController.changePassword);
 
-router.get("/chat", verifyToken, checkRole(["manager", "member"]), memberController.getChatMessages);
-router.post("/chat", verifyToken, checkRole(["manager", "member"]), memberController.sendChatMessage);
+router.get("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getChatMessages);
+router.post("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memberController.sendChatMessage);
 
 router.post("/reminders", verifyToken, checkRole(["manager", "member"]), memberController.createReminder);
 router.get("/tasks", verifyToken, checkRole(["manager", "member"]), memberController.getAssignedTasks);

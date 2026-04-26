@@ -48,13 +48,13 @@ const Login = () => {
 
       const roleId = Number(res.user.role_id);
       if (roleId === 1) {
-        navigate("/admin");
+        navigate("/dashboard");
       } else if (roleId === 2) {
         navigate("/manager/dashboard");
       } else if (roleId === 3) {
-        navigate("/member");
+        navigate("/user/dashboard");
       } else {
-        navigate("/member");
+        navigate("/user/dashboard");
       }
     } catch (err) {
       setError(err?.message || String(err));

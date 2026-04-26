@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { login, register, getDemoAccount } from "../../utils/auth";
+import "./Login.css";
 
 const initialLoginForm = {
   email: "",
@@ -140,6 +142,20 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                 </button>
               </div>
             </form>
+
+            <div className="auth-switch-text">
+              <p>
+                Chưa có tài khoản?{" "}
+                <button type="button" className="auth-link-btn" onClick={() => setMode("register")}>
+                  Đăng ký
+                </button>
+              </p>
+              <p>
+                <Link className="auth-link-btn" to="/forgot" onClick={onClose}>
+                  Quên mật khẩu?
+                </Link>
+              </p>
+            </div>
           </>
         ) : (
           <>
@@ -230,6 +246,21 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                 </button>
               </div>
             </form>
+
+            <div className="auth-switch-text">
+              <p>
+                Đã có tài khoản?{" "}
+                <button type="button" className="auth-link-btn" onClick={() => setMode("login")}>
+                  Đăng nhập
+                </button>
+              </p>
+              <p>
+                Muốn tạo dòng họ mới?{" "}
+                <Link className="auth-link-btn" to="/clan-register" onClick={onClose}>
+                  Tạo dòng họ
+                </Link>
+              </p>
+            </div>
           </>
         )}
       </div>

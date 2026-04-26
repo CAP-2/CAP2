@@ -1,13 +1,17 @@
-import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
-import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
+import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import "./MemberLayout.css";
 
 const menuItems = [
   { icon: "dashboard", label: "Tổng quan", path: "/user/dashboard" },
   { icon: "account_tree", label: "Cây gia phả", path: "/user/family-tree" },
-  { icon: "history_edu", label: "Bài đóng góp", path: "/user/submissions" },
+  { icon: "history_edu", label: "Bảng tin & đóng góp", path: "/user/submissions" },
   { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
 ];
+
+function getUserName(user) {
+  return user?.name || user?.display_name || user?.email || "Thành viên";
+}
 
 export default function MemberLayout() {
   const location = useLocation();
@@ -18,7 +22,7 @@ export default function MemberLayout() {
   }
 
   const handleLogout = () => {
-    logout();
+    clearAuth();
     window.location.href = "/";
   };
 
@@ -27,23 +31,23 @@ export default function MemberLayout() {
       <aside className="member-sidebar glass-effect">
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src="/logo giaphaviet.png" alt="Gia Phả Việt" />
+            <img src="/logo-giaphaviet.png" alt="Gia Phả Việt" />
             <span>Gia Phả Việt</span>
           </Link>
         </div>
 
         <div className="sidebar-user-profile">
           <div className="profile-img-container">
-            <img src={currentUser?.avatar_url || "/default-avatar.png"} alt="Avatar" className="user-avatar-circle" />
-            <div className="status-indicator online"></div>
+            <img src={currentUser?.avatar_url || "/logo-giaphaviet.png"} alt="" className="user-avatar-circle" />
+            <div className="status-indicator online" />
           </div>
           <div className="user-text">
-            <h4>{currentUser?.name || currentUser?.display_name || "Thành viên"}</h4>
+            <h4>{getUserName(currentUser)}</h4>
             <span className="role-text">Thành viên dòng họ</span>
           </div>
         </div>
 
-        <nav className="member-nav">
+        <nav className="member-nav" aria-label="Điều hướng thành viên">
           {menuItems.map((item) => (
             <Link
               key={item.path}
@@ -68,17 +72,18 @@ export default function MemberLayout() {
         <header className="member-topbar glass-effect">
           <div className="topbar-welcome">
             <span className="material-symbols-outlined">waving_hand</span>
-            <span>Chào mừng, <strong>{currentUser?.name || "Bạn"}</strong></span>
+            <span>
+              Chào mừng, <strong>{getUserName(currentUser)}</strong>
+            </span>
           </div>
           <div className="member-topbar-actions">
-            <button className="top-icon-btn glass-btn">
+            <Link className="top-icon-btn glass-btn" to="/user/dashboard" title="Thông báo và công việc">
               <span className="material-symbols-outlined">notifications</span>
-              <span className="badge">3</span>
-            </button>
-            <div className="divider"></div>
-            <button className="top-icon-btn glass-btn">
+            </Link>
+            <div className="divider" />
+            <Link className="top-icon-btn glass-btn" to="/user/profile" title="Hồ sơ cá nhân">
               <span className="material-symbols-outlined">settings</span>
-            </button>
+            </Link>
           </div>
         </header>
 

@@ -49,6 +49,34 @@ Quy tac:
 - Khong duoc dung markdown hoac ```sql.
 """
 
+GLOBAL_SCHEMA_HINT = """
+Schema chinh:
+- accounts(id, email, password, person_id, role_id, status, created_at, updated_at)
+- account_clans(id, account_id, clan_id, person_id, status, created_at, updated_at)
+- people(id, clan_id, display_name, first_name, middle_name, surname, gender, generation, branch, birth_date, death_date, is_living, phone, email, zalo, facebook, address, hometown, avatar_url, bio, note, created_at, pending_avatar_url, pending_bio, moderation_status, moderation_reason)
+- clans(id, clan_name, history, hall_address, created_at)
+- families(id, clan_id, father_id, mother_id, marriage_date)
+- children(id, family_id, person_id, sort_order)
+- events(id, clan_id, title, event_date, description)
+- posts(id, clan_id, author_id, content, image_url, created_at, status, rejection_reason)
+- conversations(id, account_id, title, created_at)
+- messages(id, conversation_id, sender_type, content, created_at)
+
+Quy tac:
+- Chi duoc tra ve 1 cau lenh SQL SELECT.
+- "toi" la tai khoan accounts.id = {user_id}.
+- Day la pham vi admin/toan he thong, khong bat buoc loc theo clan_id.
+- Neu truy van bai viet thi uu tien posts.status = 'approved'.
+- Khong duoc dung markdown hoac ```sql.
+"""
+
+PUBLIC_SYSTEM_PROMPT = """
+Ban la tro ly AI cua Gia Pha Viet tren trang chu cong khai.
+Tra loi ngan gon bang tieng Viet, huong dan nguoi dung ve dang ky, dang nhap,
+tao dong ho, quan ly cay gia pha, thanh vien, bai viet, su kien va thu vien.
+Khong duoc noi rang ban da truy cap du lieu rieng tu neu nguoi dung chua dang nhap.
+"""
+
 
 def normalize_text(text: str) -> str:
     text = text.lower().strip()
@@ -105,9 +133,18 @@ def enforce_clan(sql: str, clan_id: int) -> str:
     if "clan_id" in lowered:
         return sql
 
-    alias_match = re.search(r"\b(from|join)\s+(people|families|events|posts|clans)\s+([a-z_][a-z0-9_]*)", lowered)
-    alias = alias_match.group(3) if alias_match else None
-    clan_expr = f"{alias}.clan_id = {clan_id}" if alias else f"clan_id = {clan_id}"
+    table_match = re.search(
+        r"\b(from|join)\s+(people|families|events|posts|clans)(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?",
+        lowered,
+    )
+    table = table_match.group(2) if table_match else None
+    alias = table_match.group(3) if table_match else None
+    if alias in {"where", "join", "left", "right", "inner", "outer", "on", "order", "group", "limit"}:
+        alias = None
+
+    qualifier = alias or table
+    column = "id" if table == "clans" else "clan_id"
+    clan_expr = f"{qualifier}.{column} = {clan_id}" if qualifier else f"clan_id = {clan_id}"
 
     if " where " in lowered:
         return f"{sql} AND {clan_expr}"
@@ -215,6 +252,15 @@ def semantic_query(prompt: str, user_id: int, clan_id: int) -> str | None:
         FROM people p
         WHERE p.clan_id = {clan_id}
         ORDER BY p.generation ASC, p.branch ASC, p.display_name ASC
+        """
+
+    if ("bao nhieu" in p or "so luong" in p or "tong cong" in p) and (
+        "nguoi" in p or "thanh vien" in p or "gia pha" in p
+    ):
+        return f"""
+        SELECT COUNT(*) AS member_count
+        FROM people
+        WHERE clan_id = {clan_id}
         """
 
     if "con toi" in p or "cac con" in p:
@@ -407,15 +453,112 @@ def semantic_query(prompt: str, user_id: int, clan_id: int) -> str | None:
     return None
 
 
-def ai_sql(client: Groq | None, model: str, prompt: str, user_id: int, clan_id: int) -> str | None:
+def semantic_query_global(prompt: str, user_id: int | None) -> str | None:
+    p = normalize_text(prompt)
+
+    if "dong ho" in p or "danh sach clan" in p or "danh sach dong" in p or "cac dong" in p:
+        return """
+        SELECT c.id, c.clan_name, c.hall_address, COUNT(p.id) AS member_count
+        FROM clans c
+        LEFT JOIN people p ON p.clan_id = c.id
+        GROUP BY c.id, c.clan_name, c.hall_address
+        ORDER BY c.id ASC
+        """
+
+    if "tong quan" in p or "thong ke" in p or "dashboard" in p:
+        return """
+        SELECT
+          (SELECT COUNT(*) FROM clans) AS clan_count,
+          (SELECT COUNT(*) FROM people) AS member_count,
+          (SELECT COUNT(*) FROM accounts) AS account_count,
+          (SELECT COUNT(*) FROM posts WHERE status = 'pending') AS pending_post_count
+        """
+
+    if "tai khoan" in p or "account" in p or "nguoi dung" in p:
+        return """
+        SELECT a.id, a.email, a.role_id, a.status, p.display_name, p.clan_id
+        FROM accounts a
+        LEFT JOIN people p ON p.id = a.person_id
+        ORDER BY a.created_at DESC, a.id DESC
+        """
+
+    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
+        return """
+        SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
+               COALESCE(pe.display_name, a.email) AS author_name
+        FROM posts post
+        JOIN accounts a ON a.id = post.author_id
+        LEFT JOIN people pe ON pe.id = a.person_id
+        ORDER BY post.created_at DESC, post.id DESC
+        """
+
+    if "su kien" in p or "gio" in p or "nhac" in p:
+        return """
+        SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
+        FROM events ev
+        LEFT JOIN clans c ON c.id = ev.clan_id
+        ORDER BY ev.event_date DESC, ev.id DESC
+        """
+
+    if "thanh vien" in p or "gia pha" in p or "people" in p:
+        return """
+        SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
+        FROM people p
+        LEFT JOIN clans c ON c.id = p.clan_id
+        ORDER BY p.created_at DESC, p.id DESC
+        """
+
+    return None
+
+
+def public_answer(client: Groq | None, model: str, prompt: str) -> str:
+    fallback = (
+        "Toi la tro ly AI cua Gia Pha Viet. Ban co the hoi ve cach dang ky, dang nhap, "
+        "tao dong ho, quan ly cay gia pha, thanh vien, bai viet, su kien va thu vien."
+    )
+    if client is None:
+        p = normalize_text(prompt)
+        if "dang ky" in p:
+            return "Ban co the dang ky tai khoan hoac dang ky dong ho moi tren trang chu, sau do cho quan tri vien xet duyet."
+        if "dang nhap" in p:
+            return "Ban dang nhap bang email va mat khau da duoc cap. He thong se dua ban vao trang phu hop voi vai tro."
+        return fallback
+
+    try:
+        res = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": PUBLIC_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return (res.choices[0].message.content or "").strip() or fallback
+    except Exception:
+        return fallback
+
+
+def ai_sql(
+    client: Groq | None,
+    model: str,
+    prompt: str,
+    user_id: int | None,
+    clan_id: int | None,
+    global_scope: bool = False,
+) -> str | None:
     if client is None:
         return None
 
+    system_prompt = (
+        GLOBAL_SCHEMA_HINT.format(user_id=user_id or 0)
+        if global_scope
+        else SCHEMA_HINT.format(user_id=user_id, clan_id=clan_id)
+    )
     res = client.chat.completions.create(
         model=model,
         temperature=0,
         messages=[
-            {"role": "system", "content": SCHEMA_HINT.format(user_id=user_id, clan_id=clan_id)},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
     )
@@ -446,6 +589,9 @@ def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
     if "generation" in first and "member_count" in first:
         parts = [f"Doi {row['generation']}: {row['member_count']} nguoi" for row in rows]
         return "Thong ke theo doi: " + "; ".join(parts) + "."
+
+    if len(rows) == 1 and "member_count" in first:
+        return f"Gia pha hien co {first.get('member_count') or 0} thanh vien."
 
     if "branch" in first and "member_count" in first:
         parts = [f"Chi {row['branch']}: {row['member_count']} nguoi" for row in rows]
@@ -513,13 +659,26 @@ def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    db = get_db()
     groq_key = os.getenv("GROQ_API_KEY")
     groq_client = Groq(api_key=groq_key) if groq_key else None
+    db_pool = None
+
+    def get_pool():
+        nonlocal db_pool
+        if db_pool is None:
+            db_pool = get_db()
+        return db_pool
 
     @app.get("/health")
     def health():
-        return jsonify({"success": True, "service": "ai-server"})
+        return jsonify(
+            {
+                "success": True,
+                "service": "ai-server",
+                "groq_configured": bool(groq_key),
+                "db_configured": bool(os.getenv("DB_HOST") and os.getenv("DB_USER") and os.getenv("DB_NAME")),
+            }
+        )
 
     @app.post("/ask-db")
     def ask():
@@ -528,25 +687,43 @@ def create_app() -> Flask:
         prompt = str(body.get("prompt") or "").strip()
         user_id = parse_int(body.get("user_id"))
         clan_id = parse_int(body.get("clan_id"))
+        scope = str(body.get("scope") or "").strip().lower()
+        public_scope = scope == "public"
+        global_scope = bool(body.get("global")) or scope in {"admin", "global"}
 
         if not prompt:
             return jsonify({"success": False, "message": "Thieu prompt"}), 400
-        if user_id is None or clan_id is None:
+        if public_scope or (user_id is None and clan_id is None):
+            return jsonify(
+                {
+                    "success": True,
+                    "prompt": prompt,
+                    "scope": "public",
+                    "row_count": 0,
+                    "data": [],
+                    "answer": public_answer(groq_client, MODEL_NAME, prompt),
+                }
+            )
+        if user_id is None:
+            return jsonify({"success": False, "message": "Thieu user_id hoac clan_id"}), 400
+        if clan_id is None and not global_scope:
             return jsonify({"success": False, "message": "Thieu user_id hoac clan_id"}), 400
 
-        conn = db.get_connection()
+        conn = None
         cur = None
 
         try:
-            sql = semantic_query(prompt, user_id, clan_id)
+            conn = get_pool().get_connection()
+            sql = semantic_query_global(prompt, user_id) if global_scope and clan_id is None else semantic_query(prompt, user_id, clan_id)
             if not sql:
-                sql = ai_sql(groq_client, MODEL_NAME, prompt, user_id, clan_id)
+                sql = ai_sql(groq_client, MODEL_NAME, prompt, user_id, clan_id, global_scope=global_scope and clan_id is None)
 
             sql = extract_sql_candidate(sql or "")
             if not sql:
                 return jsonify({"success": False, "message": "Khong tao duoc truy van SQL"}), 400
 
-            sql = enforce_clan(sql, clan_id)
+            if clan_id is not None:
+                sql = enforce_clan(sql, clan_id)
             sql = add_limit(sql)
 
             if not safe_sql(sql):
@@ -568,11 +745,12 @@ def create_app() -> Flask:
                 }
             )
         except Exception as exc:
-            return jsonify({"success": False, "message": str(exc)}), 500
+            return jsonify({"success": False, "message": f"Khong ket noi hoac truy van duoc database: {exc}"}), 503
         finally:
             if cur is not None:
                 cur.close()
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     return app
 
@@ -580,4 +758,10 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8001, debug=True)
+    debug = str(os.getenv("DEBUG", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    app.run(
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=parse_int(os.getenv("PORT")) or 8001,
+        debug=debug,
+        use_reloader=debug,
+    )

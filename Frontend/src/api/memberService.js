@@ -1,7 +1,7 @@
 const BASE_URL = "/api/member";
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
@@ -13,138 +13,185 @@ const parseResponse = async (res, fallbackMessage) => {
   } catch {
     result = {};
   }
+
   if (!res.ok) {
-    throw new Error(result.message || fallbackMessage);
+    const serverMessage = typeof result.message === "string" ? result.message : "";
+    const hasBrokenEncoding = /Ã|Ä|Æ|áº|á»|â€|â€œ|â€|â€¦/.test(serverMessage);
+    const error = new Error(!hasBrokenEncoding && serverMessage ? serverMessage : fallbackMessage);
+    error.status = res.status;
+    error.data = result;
+    throw error;
   }
+
   return result;
 };
 
-export const getMemberDashboard = async () => {
-  const res = await fetch(`${BASE_URL}/dashboard`, {
-    headers: getAuthHeaders(),
-  });
-  return parseResponse(res, "Không thể tải dữ liệu thành viên");
+const requestJson = async (path, options, fallbackMessage) => {
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, options);
+    return parseResponse(res, fallbackMessage);
+  } catch (error) {
+    if (error.status) throw error;
+    throw new Error(error?.message || fallbackMessage);
+  }
 };
 
-export const updateMemberProfile = async (payload) => {
-  const res = await fetch(`${BASE_URL}/profile`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const getMemberDashboard = async () =>
+  requestJson(
+    "/dashboard",
+    {
+      headers: getAuthHeaders(),
     },
-    body: JSON.stringify(payload),
-  });
-  return parseResponse(res, "Không thể cập nhật thông tin");
-};
+    "Không thể tải dữ liệu thành viên",
+  );
 
-export const changeMemberPassword = async (payload) => {
-  const res = await fetch(`${BASE_URL}/password`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const updateMemberProfile = async (payload) =>
+  requestJson(
+    "/profile",
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  return parseResponse(res, "Không thể đổi mật khẩu");
-};
+    "Không thể cập nhật thông tin",
+  );
 
-export const getMemberChat = async () => {
-  const res = await fetch(`${BASE_URL}/chat`, {
-    headers: getAuthHeaders(),
-  });
-  return parseResponse(res, "Không thể tải lịch sử chat");
-};
-
-export const sendMemberChat = async (message) => {
-  const res = await fetch(`${BASE_URL}/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const changeMemberPassword = async (payload) =>
+  requestJson(
+    "/password",
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify({ message }),
-  });
-  return parseResponse(res, "Không thể gửi tin nhắn");
-};
+    "Không thể đổi mật khẩu",
+  );
 
-export const createMemberReminder = async (payload) => {
-  const res = await fetch(`${BASE_URL}/reminders`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const getMemberChat = async () =>
+  requestJson(
+    "/chat",
+    {
+      headers: getAuthHeaders(),
     },
-    body: JSON.stringify(payload),
-  });
-  return parseResponse(res, "Không thể tạo nhắc nhở");
-};
+    "Không thể tải lịch sử chat",
+  );
 
-export const getMemberTasks = async () => {
-  const res = await fetch(`${BASE_URL}/tasks`, {
-    headers: getAuthHeaders(),
-  });
-  return parseResponse(res, "Khong the tai cong viec duoc giao");
-};
-
-export const updateMemberTaskStatus = async (taskId, status) => {
-  const res = await fetch(`${BASE_URL}/tasks/${taskId}/status`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const sendMemberChat = async (message) =>
+  requestJson(
+    "/chat",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ message }),
     },
-    body: JSON.stringify({ status }),
-  });
-  return parseResponse(res, "Khong the cap nhat trang thai cong viec");
-};
+    "Không thể gửi tin nhắn",
+  );
 
-export const proposeProfileUpdate = async (payload) => {
-  const res = await fetch(`${BASE_URL}/content/profile`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const createMemberReminder = async (payload) =>
+  requestJson(
+    "/reminders",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  return parseResponse(res, "Không thể gửi yêu cầu cập nhật hồ sơ");
-};
+    "Không thể tạo nhắc việc",
+  );
 
-export const submitMaterial = async (payload) => {
-  const res = await fetch(`${BASE_URL}/content/post`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
+export const getMemberTasks = async () =>
+  requestJson(
+    "/tasks",
+    {
+      headers: getAuthHeaders(),
     },
-    body: JSON.stringify(payload),
-  });
-  return parseResponse(res, "Không thể gửi tư liệu đóng góp");
-};
+    "Không thể tải công việc được giao",
+  );
 
-export const getGeneralPosts = async () => {
-  const res = await fetch(`${BASE_URL}/posts/general`, {
-    headers: getAuthHeaders(),
-  });
-  return parseResponse(res, "Không thể tải bài viết");
-};
+export const updateMemberTaskStatus = async (taskId, status) =>
+  requestJson(
+    `/tasks/${taskId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ status }),
+    },
+    "Không thể cập nhật trạng thái công việc",
+  );
 
-export const getMySubmissions = async () => {
-  const res = await fetch(`${BASE_URL}/submissions`, {
-    headers: getAuthHeaders(),
-  });
-  return parseResponse(res, "Không thể tải danh sách đóng góp");
-};
+export const proposeProfileUpdate = async (payload) =>
+  requestJson(
+    "/content/profile",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    },
+    "Không thể gửi yêu cầu cập nhật hồ sơ",
+  );
+
+export const submitMaterial = async (payload) =>
+  requestJson(
+    "/content/post",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    },
+    "Không thể gửi tư liệu đóng góp",
+  );
+
+export const getGeneralPosts = async () =>
+  requestJson(
+    "/posts/general",
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải bài viết",
+  );
+
+export const getMySubmissions = async () =>
+  requestJson(
+    "/submissions",
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải danh sách đóng góp",
+  );
 
 export const uploadImage = async (file) => {
   const formData = new FormData();
   formData.append("image", file);
-  const res = await fetch(`/api/upload`, {
+
+  const res = await fetch("/api/upload", {
     method: "POST",
     headers: getAuthHeaders(),
     body: formData,
   });
-  return parseResponse(res, "Không thể tải ảnh lên");
+  const result = await parseResponse(res, "Không thể tải ảnh lên");
+
+  return {
+    ...result,
+    url: result.url || result.imageUrl || "",
+  };
 };

@@ -2,11 +2,11 @@
     text-align: center;
     margin-top: 12px;
     font-size: 14px;
-    color: #555;
+    color: #f6deb0;
 }
 
 .auth-switch-text p {
-    margin: 0;
+    margin: 6px 0 0;
 }
 
 .auth-link-btn {
@@ -14,7 +14,9 @@
     border: none;
     padding: 0;
     margin: 0;
-    color: #007bff;
+    color: #f3c63f;
+    display: inline;
+    font-family: inherit;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -22,5 +24,5 @@
 }
 
 .auth-link-btn:hover {
-    color: #0056b3;
+    color: #ffe58a;
 }

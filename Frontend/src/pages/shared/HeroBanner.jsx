@@ -1,6 +1,9 @@
+import { useNavigate } from "react-router-dom";
 import FamilyTree from "../../components/common/FamilyTree";
 
 export default function HeroBanner() {
+    const navigate = useNavigate();
+
     return (
         <section className="hero-banner">
             <div className="hero-overlay" />
@@ -16,7 +19,7 @@ export default function HeroBanner() {
                     </p>
                     <div className="hero-cta" data-aos="slide-up" data-aos-delay="340" data-aos-duration="1500">
                         <button type="button">Khám phá ngay</button>
-                        <button type="button">Tạo Dòng Họ</button>
+                        <button type="button" onClick={() => navigate("/clan-register")}>Tạo Dòng Họ</button>
                     </div>
                 </div>
                 <div className="hero-right">

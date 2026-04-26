@@ -25,7 +25,7 @@ const getAccountContext = async (accountId) => {
       p.gender,
       p.birth_date,
       p.generation,
-      p.clan_id,
+      COALESCE(p.clan_id, ac.clan_id) AS clan_id,
       p.bio,
       p.avatar_url,
       p.pending_bio,
@@ -36,8 +36,10 @@ const getAccountContext = async (accountId) => {
       c.history AS clan_history
     FROM accounts a
     LEFT JOIN people p ON a.person_id = p.id
-    LEFT JOIN clans c ON p.clan_id = c.id
+    LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+    LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
     WHERE a.id = ?
+    ORDER BY ac.id ASC
     LIMIT 1
   `;
   const [rows] = await db.query(sql, [accountId]);
@@ -56,6 +58,17 @@ const getOrCreateConversationId = async (accountId) => {
     [accountId, "Hội thoại gia phả"]
   );
   return created.insertId;
+};
+
+const saveChatMessage = async (conversationId, senderType, content) => {
+  try {
+    await db.query(
+      "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, ?, ?)",
+      [conversationId, senderType, content]
+    );
+  } catch (error) {
+    console.error("saveChatMessage error:", error);
+  }
 };
 
 const AI_SERVER_URL = (process.env.AI_SERVER_URL || "http://localhost:8001").replace(/\/+$/, "");
@@ -98,6 +111,8 @@ const fetchAiServerReply = async (text, scope) => {
     if (scope && typeof scope === "object") {
       if (scope.user_id != null) body.user_id = scope.user_id;
       if (scope.clan_id != null) body.clan_id = scope.clan_id;
+      if (scope.global === true) body.global = true;
+      if (scope.scope) body.scope = scope.scope;
     }
     const res = await fetch(`${AI_SERVER_URL}/ask-db`, {
       method: "POST",
@@ -762,19 +777,27 @@ exports.sendChatMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: "Tin nhắn không được để trống" });
     }
 
-    const conversationId = await getOrCreateConversationId(accountId);
-    await db.query(
-      "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'user', ?)",
-      [conversationId, text]
-    );
-
     const ctx = await getAccountContext(accountId);
-    if (!ctx || !ctx.clan_id) {
+    if (!ctx) {
+      return res.status(401).json({ success: false, message: "Phien dang nhap khong hop le. Vui long dang nhap lai." });
+    }
+
+    const conversationId = await getOrCreateConversationId(accountId);
+    await saveChatMessage(conversationId, "user", text);
+    if (ctx.role_id === 1 || req.user?.role_name === "admin") {
+      const aiReply = await fetchAiServerReply(text, { user_id: accountId, global: true, scope: "admin" });
+      await saveChatMessage(conversationId, "ai", aiReply);
+      return res.json({
+        success: true,
+        conversation_id: conversationId,
+        user_message: text,
+        ai_message: aiReply,
+      });
+    }
+
+    if (!ctx.clan_id) {
       const aiReply = "Tài khoản của bạn chưa được gắn vào dòng họ (clan). Vui lòng liên hệ quản lý để được cấp quyền truy cập cây gia phả.";
-      await db.query(
-        "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'ai', ?)",
-        [conversationId, aiReply]
-      );
+      await saveChatMessage(conversationId, "ai", aiReply);
       return res.json({
         success: true,
         conversation_id: conversationId,
@@ -784,10 +807,7 @@ exports.sendChatMessage = async (req, res) => {
     }
 
     const aiReply = await fetchAiServerReply(text, { user_id: accountId, clan_id: ctx.clan_id });
-    await db.query(
-      "INSERT INTO messages (conversation_id, sender_type, content) VALUES (?, 'ai', ?)",
-      [conversationId, aiReply]
-    );
+    await saveChatMessage(conversationId, "ai", aiReply);
 
     return res.json({
       success: true,

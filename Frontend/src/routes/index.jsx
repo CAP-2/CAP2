@@ -11,6 +11,11 @@ import FeatureDetailPage from "../pages/shared/FeatureDetailPage";
 import BenefitsDetailPage from "../pages/shared/BenefitsDetailPage";
 import NewsDetailPage from "../pages/shared/NewsDetailPage";
 import GuideDetailPage from "../pages/shared/GuideDetailPage";
+import Login from "../pages/Login/Login";
+import Register from "../pages/Register/Register";
+import ClanRegister from "../pages/ClanRegister/ClanRegister";
+import ForgotPassword from "../pages/ForgotPassword/ForgotPassword";
+import Waiting from "../pages/Waiting/Waiting";
 
 import DashboardHome from "../pages/admin/DashboardHome";
 import GenealogyManagement from "../pages/admin/GenealogyManagement";
@@ -27,10 +32,19 @@ import MediaManagement from "../pages/Manager/MediaManagement";
 
 import FamilyTreePage from "../pages/user/FamilyTreePage";
 import MemberDashboard from "../pages/Member/MemberDashboard";
+import MemberProfile from "../pages/Member/MemberProfile";
+import MemberSubmissions from "../pages/Member/MemberSubmissions";
 
 export default function AppRoutes() {
   return (
     <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/clan-register" element={<ClanRegister />} />
+      <Route path="/forgot" element={<ForgotPassword />} />
+      <Route path="/forgot-password" element={<Navigate to="/forgot" replace />} />
+      <Route path="/waiting" element={<Waiting />} />
+
       {/* Public Routes under UserLayout */}
       <Route element={<UserLayout />}>
         <Route path="/" element={<Home />} />
@@ -45,8 +59,8 @@ export default function AppRoutes() {
         <Route element={<MemberLayout />}>
           <Route path="/user/dashboard" element={<MemberDashboard />} />
           <Route path="/user/family-tree" element={<FamilyTreePage />} />
-          <Route path="/user/submissions" element={<div>Bài đóng góp (Coming Soon)</div>} />
-          <Route path="/user/profile" element={<div>Hồ sơ cá nhân (Coming Soon)</div>} />
+          <Route path="/user/submissions" element={<MemberSubmissions />} />
+          <Route path="/user/profile" element={<MemberProfile />} />
         </Route>
       </Route>
 
@@ -76,6 +90,8 @@ export default function AppRoutes() {
 
       {/* Redirects & 404 */}
       <Route path="/account" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/member" element={<Navigate to="/user/dashboard" replace />} />
       <Route path="/root/user" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

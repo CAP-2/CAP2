@@ -5,8 +5,10 @@ import {
   deleteArchivedMemberAPI,
   getArchivedMembersAPI,
   getMemberDetail,
+  getMemberRelations,
   getMembers,
   restoreArchivedMemberAPI,
+  updateMemberRelations,
   updateMemberByManager,
 } from "../../api/managerService";
 import { getStoredUser } from "../../utils/auth";
@@ -49,6 +51,13 @@ const emptyEditForm = {
   new_password: "",
 };
 
+const emptyRelationForm = {
+  parent_father_id: "",
+  parent_mother_id: "",
+  spouse_id: "",
+  children_ids: "",
+};
+
 const toEditForm = (member) => ({
   ...emptyEditForm,
   email: member.email || "",
@@ -72,16 +81,26 @@ const toEditForm = (member) => ({
   note: member.note || "",
 });
 
+const idText = (value) => (value == null || value === "" ? "" : String(value));
+
 export default function AccountPage() {
   const currentUser = getStoredUser();
   const [members, setMembers] = useState([]);
   const [archivedMembers, setArchivedMembers] = useState([]);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [createOpen, setCreateOpen] = useState(true);
+  const [relationOpen, setRelationOpen] = useState(true);
+  const [relationAccountId, setRelationAccountId] = useState("");
+  const [relationForm, setRelationForm] = useState(emptyRelationForm);
+  const [relationDetails, setRelationDetails] = useState(null);
   const [editAccountId, setEditAccountId] = useState(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [relationLoading, setRelationLoading] = useState(false);
+  const [relationSaving, setRelationSaving] = useState(false);
+  const [relationMessage, setRelationMessage] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -118,14 +137,82 @@ export default function AccountPage() {
     );
   }, [members, search]);
 
+  const memberOptions = useMemo(
+    () =>
+      members
+        .filter((member) => member.person_id != null)
+        .map((member) => ({
+          accountId: String(member.account_id),
+          personId: String(member.person_id),
+          label: `#${member.person_id} - ${fullName(member)}${member.generation ? ` (Đời ${member.generation})` : ""}`,
+        })),
+    [members]
+  );
+
+  const selectedRelationMember = useMemo(
+    () => members.find((member) => String(member.account_id) === String(relationAccountId)) || null,
+    [members, relationAccountId]
+  );
+
+  const relationPersonOptions = useMemo(() => {
+    const selectedPersonId = selectedRelationMember?.person_id == null ? "" : String(selectedRelationMember.person_id);
+    return memberOptions.filter((member) => member.personId !== selectedPersonId);
+  }, [memberOptions, selectedRelationMember]);
+
   const updateCreateField = (event) => {
     const { name, value } = event.target;
     setCreateForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const updateRelationField = (event) => {
+    const { name, value } = event.target;
+    setRelationForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const updateChildrenSelection = (event) => {
+    const values = Array.from(event.target.selectedOptions, (option) => option.value);
+    setRelationForm((prev) => ({ ...prev, children_ids: values.join(", ") }));
+  };
+
   const updateEditField = (event) => {
     const { name, value } = event.target;
     setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const loadRelationDetails = useCallback(async (accountId, nextMessage = "Đã tải quan hệ hiện có của thành viên.") => {
+    if (!accountId) {
+      setRelationForm(emptyRelationForm);
+      setRelationDetails(null);
+      setRelationMessage("");
+      return;
+    }
+
+    setRelationLoading(true);
+    setRelationMessage("");
+    setError("");
+    try {
+      const data = await getMemberRelations(accountId);
+      setRelationDetails(data);
+      setRelationForm({
+        parent_father_id: idText(data?.bloodline?.parent_father_id),
+        parent_mother_id: idText(data?.bloodline?.parent_mother_id),
+        spouse_id: idText(data?.marriage?.spouse_id),
+        children_ids: Array.isArray(data?.marriage?.children_ids) ? data.marriage.children_ids.join(", ") : "",
+      });
+      setRelationMessage(nextMessage);
+    } catch (err) {
+      setRelationForm(emptyRelationForm);
+      setRelationDetails(null);
+      setError(err?.message || "Không thể tải quan hệ thành viên");
+    } finally {
+      setRelationLoading(false);
+    }
+  }, []);
+
+  const selectRelationMember = (event) => {
+    const accountId = event.target.value;
+    setRelationAccountId(accountId);
+    loadRelationDetails(accountId);
   };
 
   const submitCreate = async (event) => {
@@ -144,6 +231,54 @@ export default function AccountPage() {
       setError(err?.message || "Không thể tạo thành viên");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveRelations = async (event) => {
+    event.preventDefault();
+    if (!relationAccountId) {
+      setRelationMessage("Vui lòng chọn thành viên cần liên kết.");
+      return;
+    }
+
+    const hasBloodline = relationForm.parent_father_id || relationForm.parent_mother_id;
+    const shouldSaveMarriage =
+      relationForm.spouse_id ||
+      relationForm.children_ids.trim() ||
+      relationDetails?.marriage?.family_id ||
+      relationDetails?.marriage?.spouse_id ||
+      (Array.isArray(relationDetails?.marriage?.children_ids) && relationDetails.marriage.children_ids.length > 0);
+
+    if (!hasBloodline && !shouldSaveMarriage) {
+      setRelationMessage("Chưa có thông tin quan hệ để lưu.");
+      return;
+    }
+
+    setRelationSaving(true);
+    setRelationMessage("");
+    setError("");
+    try {
+      if (hasBloodline) {
+        await updateMemberRelations(relationAccountId, {
+          mode: "bloodline",
+          parent_father_id: relationForm.parent_father_id || null,
+          parent_mother_id: relationForm.parent_mother_id || null,
+        });
+      }
+
+      if (shouldSaveMarriage) {
+        await updateMemberRelations(relationAccountId, {
+          mode: "marriage",
+          spouse_id: relationForm.spouse_id || null,
+          children_ids: relationForm.children_ids,
+        });
+      }
+
+      await loadRelationDetails(relationAccountId, "Đã lưu liên kết quan hệ.");
+    } catch (err) {
+      setError(err?.message || "Không thể lưu liên kết quan hệ");
+    } finally {
+      setRelationSaving(false);
     }
   };
 
@@ -240,30 +375,141 @@ export default function AccountPage() {
       {error && <div className="manager-inline-error">{error}</div>}
 
       <div className="manager-data-grid">
-        <form className="panel-card member-form" onSubmit={submitCreate}>
-          <h2>Tạo thành viên</h2>
-          <input className="mgr-field" name="email" type="email" value={createForm.email} onChange={updateCreateField} placeholder="Email đăng nhập" required />
-          <input className="mgr-field" name="password" type="password" value={createForm.password} onChange={updateCreateField} placeholder="Mật khẩu" required />
-          <div className="form-row">
-            <input className="mgr-field" name="surname" value={createForm.surname} onChange={updateCreateField} placeholder="Họ" />
-            <input className="mgr-field" name="middle_name" value={createForm.middle_name} onChange={updateCreateField} placeholder="Tên đệm" />
+        <div className="panel-card member-stack">
+          <div className="collapsible-section">
+            <button className="collapsible-toggle" type="button" onClick={() => setCreateOpen((value) => !value)}>
+              <span>Tạo thành viên</span>
+              <span className="material-symbols-outlined">{createOpen ? "expand_less" : "expand_more"}</span>
+            </button>
+
+            {createOpen && (
+              <form className="member-form" onSubmit={submitCreate}>
+                <input className="mgr-field" name="email" type="email" value={createForm.email} onChange={updateCreateField} placeholder="Email đăng nhập" required />
+                <input className="mgr-field" name="password" type="password" value={createForm.password} onChange={updateCreateField} placeholder="Mật khẩu" required />
+                <div className="form-row">
+                  <input className="mgr-field" name="surname" value={createForm.surname} onChange={updateCreateField} placeholder="Họ" />
+                  <input className="mgr-field" name="middle_name" value={createForm.middle_name} onChange={updateCreateField} placeholder="Tên đệm" />
+                </div>
+                <input className="mgr-field" name="first_name" value={createForm.first_name} onChange={updateCreateField} placeholder="Tên" required />
+                <div className="form-row">
+                  <select className="mgr-field" name="gender" value={createForm.gender} onChange={updateCreateField}>
+                    <option value="1">Nam</option>
+                    <option value="2">Nữ</option>
+                    <option value="">Không khai báo</option>
+                  </select>
+                  <input className="mgr-field" name="generation" type="number" min="1" value={createForm.generation} onChange={updateCreateField} placeholder="Đời" />
+                </div>
+                <input className="mgr-field" name="birth_date" type="date" value={createForm.birth_date} onChange={updateCreateField} />
+                <input className="mgr-field" name="hometown" value={createForm.hometown} onChange={updateCreateField} placeholder="Quê quán" />
+                {isAdmin && <input className="mgr-field" name="clan_id" type="number" value={createForm.clan_id} onChange={updateCreateField} placeholder="clan_id" />}
+                <button className="mgr-btnPrimary" type="submit" disabled={saving}>
+                  {saving ? "Đang lưu..." : "Tạo thành viên"}
+                </button>
+              </form>
+            )}
           </div>
-          <input className="mgr-field" name="first_name" value={createForm.first_name} onChange={updateCreateField} placeholder="Tên" required />
-          <div className="form-row">
-            <select className="mgr-field" name="gender" value={createForm.gender} onChange={updateCreateField}>
-              <option value="1">Nam</option>
-              <option value="2">Nữ</option>
-              <option value="">Không khai báo</option>
-            </select>
-            <input className="mgr-field" name="generation" type="number" min="1" value={createForm.generation} onChange={updateCreateField} placeholder="Đời" />
+
+          <div className="collapsible-section relation-form">
+            <button className="collapsible-toggle" type="button" onClick={() => setRelationOpen((value) => !value)}>
+              <span>Liên kết quan hệ</span>
+              <span className="material-symbols-outlined">{relationOpen ? "expand_less" : "expand_more"}</span>
+            </button>
+
+            {relationOpen && (
+              <form className="member-form" onSubmit={saveRelations}>
+                <p className="relation-note">Chọn một thành viên để xem và cập nhật cha, mẹ, vợ/chồng, con cái.</p>
+
+                <label className="relation-field">
+                  <span>Thành viên cần liên kết</span>
+                  <select className="mgr-field" value={relationAccountId} onChange={selectRelationMember}>
+                    <option value="">Chọn thành viên</option>
+                    {memberOptions.map((member) => (
+                      <option key={member.accountId} value={member.accountId}>
+                        {member.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {relationAccountId && (
+                  <>
+                    <label className="relation-field">
+                      <span>Cha</span>
+                      <select className="mgr-field" name="parent_father_id" value={relationForm.parent_father_id} onChange={updateRelationField} disabled={relationLoading}>
+                        <option value="">Chưa chọn cha</option>
+                        {relationPersonOptions.map((member) => (
+                          <option key={member.personId} value={member.personId}>
+                            {member.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="relation-field">
+                      <span>Mẹ</span>
+                      <select className="mgr-field" name="parent_mother_id" value={relationForm.parent_mother_id} onChange={updateRelationField} disabled={relationLoading}>
+                        <option value="">Chưa chọn mẹ</option>
+                        {relationPersonOptions.map((member) => (
+                          <option key={member.personId} value={member.personId}>
+                            {member.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="relation-field">
+                      <span>Vợ/chồng</span>
+                      <select className="mgr-field" name="spouse_id" value={relationForm.spouse_id} onChange={updateRelationField} disabled={relationLoading}>
+                        <option value="">Chưa chọn vợ/chồng</option>
+                        {relationPersonOptions.map((member) => (
+                          <option key={member.personId} value={member.personId}>
+                            {member.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="relation-field">
+                      <span>Con cái</span>
+                      <select
+                        className="mgr-field relation-children-select"
+                        multiple
+                        value={relationForm.children_ids ? relationForm.children_ids.split(",").map((item) => item.trim()).filter(Boolean) : []}
+                        onChange={updateChildrenSelection}
+                        disabled={relationLoading}
+                      >
+                        {relationPersonOptions.map((member) => (
+                          <option key={member.personId} value={member.personId}>
+                            {member.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="relation-summary">
+                      <strong>Quan hệ hiện tại</strong>
+                      <span>Cha: {relationDetails?.bloodline?.parent_father_name || "Chưa có"}</span>
+                      <span>Mẹ: {relationDetails?.bloodline?.parent_mother_name || "Chưa có"}</span>
+                      <span>Vợ/chồng: {relationDetails?.marriage?.spouse_name || "Chưa có"}</span>
+                      <span>
+                        Con cái:{" "}
+                        {relationDetails?.marriage?.children?.length
+                          ? relationDetails.marriage.children.map((child) => child.name).join(", ")
+                          : "Chưa có"}
+                      </span>
+                    </div>
+
+                    {relationMessage && <div className="mgr-subtle">{relationMessage}</div>}
+
+                    <button className="mgr-btnPrimary" type="submit" disabled={relationLoading || relationSaving}>
+                      {relationSaving ? "Đang lưu..." : "Lưu quan hệ"}
+                    </button>
+                  </>
+                )}
+              </form>
+            )}
           </div>
-          <input className="mgr-field" name="birth_date" type="date" value={createForm.birth_date} onChange={updateCreateField} />
-          <input className="mgr-field" name="hometown" value={createForm.hometown} onChange={updateCreateField} placeholder="Quê quán" />
-          {isAdmin && <input className="mgr-field" name="clan_id" type="number" value={createForm.clan_id} onChange={updateCreateField} placeholder="clan_id" />}
-          <button className="mgr-btnPrimary" type="submit" disabled={saving}>
-            {saving ? "Đang lưu..." : "Tạo thành viên"}
-          </button>
-        </form>
+        </div>
 
         <div className="panel-card">
           <div className="manager-list-toolbar">

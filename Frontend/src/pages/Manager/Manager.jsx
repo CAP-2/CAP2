@@ -293,7 +293,13 @@ const Manager = () => {
     catch (err) { alert("Lỗi phân công: " + err.message); }
   };
 
-  const logout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); navigate("/login", { replace: true }); };
+  const logout = () => {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
+  };
 
   const saveMemberEdit = async () => {
     if (!memberEditId) return;

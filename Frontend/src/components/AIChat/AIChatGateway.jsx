@@ -1,27 +1,50 @@
 import React, { useEffect, useRef, useState } from "react";
-import { sendMemberChat } from "../../api/memberService";
+import { getMemberChat, sendMemberChat } from "../../api/memberService";
+import { sendPublicAiChat } from "../../api/aiServerService";
+import { getStoredUser } from "../../utils/auth";
 import "./AIChat.css";
+
+const initialMessages = [
+  {
+    sender: "bot",
+    text: "Chao ban! Toi la tro ly AI. Ban can tra cuu thong tin gia pha, thanh vien, bang tin hay su kien?",
+  },
+];
 
 const AIChatGateway = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      sender: "bot",
-      text: "Chao ban! Toi la tro ly AI. Ban can tra cuu thong tin gia pha, thanh vien, bang tin hay su kien?",
-    },
-  ]);
+  const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
 
-  const userStr = localStorage.getItem("user");
-  const user = userStr ? JSON.parse(userStr) : null;
+  const user = getStoredUser();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen, loading]);
 
-  if (!user) return null;
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let alive = true;
+    getMemberChat()
+      .then((result) => {
+        if (!alive) return;
+        const history = (result.messages || []).map((message) => ({
+          sender: message.sender_type === "user" ? "user" : "bot",
+          text: message.content,
+        }));
+        setMessages(history.length > 0 ? history : initialMessages);
+      })
+      .catch(() => {
+        if (alive) setMessages(initialMessages);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -33,7 +56,7 @@ const AIChatGateway = () => {
     setLoading(true);
 
     try {
-      const result = await sendMemberChat(prompt);
+      const result = user ? await sendMemberChat(prompt) : await sendPublicAiChat(prompt);
       setMessages((prev) => [
         ...prev,
         {
@@ -42,6 +65,21 @@ const AIChatGateway = () => {
         },
       ]);
     } catch (err) {
+      if (user && (err?.status === 401 || err?.status === 403)) {
+        try {
+          const result = await sendPublicAiChat(prompt);
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: "bot",
+              text: result.ai_message || result.answer || "Phien dang nhap da het han. Toi dang tra loi o che do cong khai.",
+            },
+          ]);
+          return;
+        } catch {
+          // Fall through to the normal error message.
+        }
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -82,7 +120,13 @@ const AIChatGateway = () => {
           </form>
         </div>
       )}
-      <button className="ai-chat-btn" onClick={() => setIsOpen(!isOpen)} title="Chat voi AI">
+      <button
+        type="button"
+        className="ai-chat-btn"
+        onClick={() => setIsOpen(!isOpen)}
+        title="Chat voi AI"
+        aria-label="Chat voi AI"
+      >
         AI
       </button>
     </div>

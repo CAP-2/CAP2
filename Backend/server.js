@@ -47,6 +47,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const managerRoutes = require('./src/routes/managerRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
+const aiRoutes = require('./src/routes/aiRoutes');
 
 // 5. Cấu hình lưu trữ ảnh (Multer) - Chỉ cần 1 lần
 const storage = multer.diskStorage({
@@ -108,6 +109,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/manager', managerRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 8. Xử lý lỗi 404
 app.use((req, res) => {

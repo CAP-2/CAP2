@@ -463,6 +463,8 @@ const Member = () => {
   };
 
   const logout = () => {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_user");
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login", { replace: true });

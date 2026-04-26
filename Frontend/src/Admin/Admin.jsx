@@ -214,6 +214,8 @@ const Admin = () => {
             type="button"
             className="adm-btn adm-btn--ghost"
             onClick={() => {
+              localStorage.removeItem("auth_token");
+              localStorage.removeItem("auth_user");
               localStorage.removeItem("token");
               localStorage.removeItem("user");
               navigate("/login", { replace: true });
