@@ -166,6 +166,7 @@ const ClanRegister = () => {
                   name="birth_date"
                   value={managerForm.birth_date}
                   type="date"
+                  max={new Date().toISOString().split("T")[0]}
                   onChange={handleManagerChange}
                   required
                 />

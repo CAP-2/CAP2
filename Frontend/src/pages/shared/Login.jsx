@@ -13,7 +13,7 @@ const initialRegisterForm = {
   email: "",
   password: "",
   confirmPassword: "",
-  gender: "other",
+  gender: "1",
   birth_date: "",
   hometown: "",
 };
@@ -213,9 +213,9 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                 value={registerForm.gender}
                 onChange={handleRegisterChange}
               >
-                <option value="other">Khác</option>
-                <option value="male">Nam</option>
-                <option value="female">Nữ</option>
+                <option value="1">Nam</option>
+                <option value="2">Nữ</option>
+                <option value="1">Khác</option>
               </select>
 
               <label htmlFor="register-birth-date">Ngày sinh</label>
@@ -223,6 +223,7 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                 id="register-birth-date"
                 name="birth_date"
                 type="date"
+                max={new Date().toISOString().split("T")[0]}
                 value={registerForm.birth_date}
                 onChange={handleRegisterChange}
               />
