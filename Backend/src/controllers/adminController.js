@@ -224,3 +224,198 @@ exports.createManagerAccount = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi tạo manager" });
   }
 };
+
+/** Quản lý Thành viên (People + Accounts) */
+exports.getMembers = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT p.*, a.id AS account_id, a.email AS account_email, a.role_id, a.status AS account_status, c.clan_name
+      FROM people p
+      LEFT JOIN accounts a ON p.id = a.person_id
+      LEFT JOIN clans c ON p.clan_id = c.id
+      ORDER BY p.id DESC
+    `);
+    return res.json({ success: true, members: rows });
+  } catch (e) {
+    console.error("getMembers:", e);
+    return res.status(500).json({ success: false, message: "Lỗi danh sách thành viên" });
+  }
+};
+
+exports.updateMember = async (req, res) => {
+  const personId = Number(req.params.id);
+  const data = req.body;
+  try {
+    const sql = `
+      UPDATE people 
+      SET display_name = ?, first_name = ?, middle_name = ?, surname = ?, 
+          gender = ?, birth_date = ?, hometown = ?, clan_id = ?, generation = ?
+      WHERE id = ?
+    `;
+    await db.query(sql, [
+      data.display_name, data.first_name, data.middle_name, data.surname,
+      data.gender, data.birth_date, data.hometown, data.clan_id, data.generation,
+      personId
+    ]);
+    return res.json({ success: true, message: "Đã cập nhật thông tin thành viên" });
+  } catch (e) {
+    console.error("updateMember:", e);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật thành viên" });
+  }
+};
+
+exports.deleteMember = async (req, res) => {
+  const personId = Number(req.params.id);
+  try {
+    // Xóa account liên quan trước (nếu có)
+    await db.query("DELETE FROM accounts WHERE person_id = ?", [personId]);
+    await db.query("DELETE FROM people WHERE id = ?", [personId]);
+    return res.json({ success: true, message: "Đã xóa thành viên" });
+  } catch (e) {
+    console.error("deleteMember:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa thành viên" });
+  }
+};
+
+/** Quản lý Cấu hình hệ thống */
+exports.getSettings = async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM system_settings");
+    const settings = {};
+    rows.forEach(r => { settings[r.setting_key] = r.setting_value; });
+    return res.json({ success: true, settings });
+  } catch (e) {
+    console.error("getSettings:", e);
+    return res.status(500).json({ success: false, message: "Lỗi tải cài đặt" });
+  }
+};
+
+exports.updateSettings = async (req, res) => {
+  const settings = req.body; // { key1: value1, key2: value2 }
+  try {
+    for (const key in settings) {
+      await db.query(
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
+        [key, settings[key]]
+      );
+    }
+    return res.json({ success: true, message: "Đã lưu cài đặt" });
+  } catch (e) {
+    console.error("updateSettings:", e);
+    return res.status(500).json({ success: false, message: "Lỗi lưu cài đặt" });
+  }
+};
+
+/** Quản lý Sự kiện */
+exports.getEvents = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT e.*, c.clan_name 
+      FROM events e 
+      JOIN clans c ON e.clan_id = c.id 
+      ORDER BY e.event_date DESC
+    `);
+    return res.json({ success: true, events: rows });
+  } catch (e) {
+    console.error("getEvents:", e);
+    return res.status(500).json({ success: false, message: "Lỗi tải sự kiện" });
+  }
+};
+
+exports.createEvent = async (req, res) => {
+  const { clan_id, title, event_date, description } = req.body;
+  try {
+    const [result] = await db.query(
+      "INSERT INTO events (clan_id, title, event_date, description) VALUES (?, ?, ?, ?)",
+      [clan_id, title, event_date, description]
+    );
+    return res.status(201).json({ success: true, message: "Đã tạo sự kiện", event_id: result.insertId });
+  } catch (e) {
+    console.error("createEvent:", e);
+    return res.status(500).json({ success: false, message: "Lỗi tạo sự kiện" });
+  }
+};
+
+exports.updateEvent = async (req, res) => {
+  const eventId = Number(req.params.id);
+  const { title, event_date, description } = req.body;
+  try {
+    await db.query(
+      "UPDATE events SET title = ?, event_date = ?, description = ? WHERE id = ?",
+      [title, event_date, description, eventId]
+    );
+    return res.json({ success: true, message: "Đã cập nhật sự kiện" });
+  } catch (e) {
+    console.error("updateEvent:", e);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật sự kiện" });
+  }
+};
+
+exports.deleteEvent = async (req, res) => {
+  const eventId = Number(req.params.id);
+  try {
+    await db.query("DELETE FROM events WHERE id = ?", [eventId]);
+    return res.json({ success: true, message: "Đã xóa sự kiện" });
+  } catch (e) {
+    console.error("deleteEvent:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa sự kiện" });
+  }
+};
+
+/** Quản lý Thư viện / Gallery */
+exports.getGallery = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT p.*, c.clan_name, author.display_name AS author_name 
+      FROM posts p 
+      LEFT JOIN clans c ON p.clan_id = c.id 
+      LEFT JOIN accounts a ON p.author_id = a.id
+      LEFT JOIN people author ON a.person_id = author.id
+      WHERE p.image_url IS NOT NULL AND p.image_url != ''
+      ORDER BY p.created_at DESC
+    `);
+    return res.json({ success: true, gallery: rows });
+  } catch (e) {
+    console.error("getGallery:", e);
+    return res.status(500).json({ success: false, message: "Lỗi tải thư viện" });
+  }
+};
+
+exports.deleteGalleryItem = async (req, res) => {
+  const postId = Number(req.params.id);
+  try {
+    await db.query("DELETE FROM posts WHERE id = ?", [postId]);
+    return res.json({ success: true, message: "Đã xóa ảnh" });
+  } catch (e) {
+    console.error("deleteGalleryItem:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa ảnh" });
+  }
+};
+
+/** Lấy thống kê cho Dashboard */
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const [[{ total_members }]] = await db.query("SELECT COUNT(*) AS total_members FROM people");
+    const [[{ total_clans }]] = await db.query("SELECT COUNT(*) AS total_clans FROM clans");
+    const [[{ total_events }]] = await db.query("SELECT COUNT(*) AS total_events FROM events");
+    const [[{ total_photos }]] = await db.query("SELECT COUNT(*) AS total_photos FROM posts WHERE image_url IS NOT NULL AND image_url != ''");
+    
+    const [recent_activities] = await db.query(`
+      SELECT 'member' as type, display_name as content, created_at as time FROM people ORDER BY created_at DESC LIMIT 5
+    `);
+
+    return res.json({
+      success: true,
+      stats: {
+        total_members,
+        total_clans,
+        total_events,
+        total_photos
+      },
+      recent_activities
+    });
+  } catch (e) {
+    console.error("getDashboardStats:", e);
+    return res.status(500).json({ success: false, message: "Lỗi thống kê" });
+  }
+};
