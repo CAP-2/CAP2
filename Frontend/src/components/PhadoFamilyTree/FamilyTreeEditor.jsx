@@ -22,6 +22,16 @@ const CANVAS_PADDING = 180;
 const SNAP_SIZE = 20;
 const EXPORT_BACKGROUND = "#f8edb2";
 const EXPORT_MAX_CANVAS_EDGE = 14000;
+const SOURCE_BRANCH_STEP = 10;
+const BLOOD_LINE_COLORS = [
+  "#1E3A8A",
+  "#047857",
+  "#7C3AED",
+  "#991B1B",
+  "#BE185D",
+  "#374151",
+  "#78350F",
+];
 const TRANSPARENT_IMAGE_DATA_URL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
@@ -38,6 +48,13 @@ const dateInput = (value) => {
   if (!value) return "";
   const text = String(value);
   return text.length >= 10 ? text.slice(0, 10) : text;
+};
+
+const birthTime = (person) => {
+  const text = dateInput(person?.birth_date);
+  if (!text) return null;
+  const time = Date.parse(text);
+  return Number.isFinite(time) ? time : null;
 };
 
 const fullName = (person, fallback = "Chưa có tên") =>
@@ -145,9 +162,23 @@ function remapChildrenByPeople(childRows, idMap, familyIdMap, families, people) 
 }
 
 function personSort(a, b) {
+  const aBirth = birthTime(a);
+  const bBirth = birthTime(b);
+  if (aBirth != null && bBirth != null && aBirth !== bBirth) return aBirth - bBirth;
   const orderDiff = toInt(a?.display_order, 0) - toInt(b?.display_order, 0);
   if (orderDiff) return orderDiff;
   return toInt(a?.tree_x, 0) - toInt(b?.tree_x, 0) || Number(a?.id || 0) - Number(b?.id || 0);
+}
+
+function siblingSort(a, b) {
+  const aBirth = birthTime(a?.person);
+  const bBirth = birthTime(b?.person);
+  if (aBirth != null && bBirth != null && aBirth !== bBirth) return aBirth - bBirth;
+
+  const orderDiff = toInt(a?.sort_order, 0) - toInt(b?.sort_order, 0);
+  if (orderDiff) return orderDiff;
+
+  return personSort(a?.person || {}, b?.person || {});
 }
 
 function generationY(generation) {
@@ -211,7 +242,10 @@ function autoLayoutPeople(sourcePeople, families = [], childRows = []) {
     const childId = Number(row.person_id);
     if (!peopleMap.has(childId) || !Number.isFinite(familyId)) return;
     if (!childrenByFamily.has(familyId)) childrenByFamily.set(familyId, []);
-    childrenByFamily.get(familyId).push(childId);
+    childrenByFamily.get(familyId).push({
+      person_id: childId,
+      sort_order: toInt(row.sort_order, 0),
+    });
     childIds.add(childId);
   });
 
@@ -250,9 +284,13 @@ function autoLayoutPeople(sourcePeople, families = [], childRows = []) {
       .filter(Boolean)
       .sort((a, b) => toInt(a.gender, 0) - toInt(b.gender, 0) || personSort(a, b));
     const children = asArray(childrenByFamily.get(familyId))
-      .map((id) => peopleMap.get(id))
-      .filter(Boolean)
-      .sort(personSort);
+      .map((row) => ({
+        ...row,
+        person: peopleMap.get(Number(row.person_id)),
+      }))
+      .filter((row) => row.person)
+      .sort(siblingSort)
+      .map((row) => row.person);
 
     const childUnits = children.map((child) => {
       const childFamily = familyByParentId.get(Number(child.id));
@@ -447,20 +485,71 @@ function buildTreeLines(people, families, childRows) {
 
   asArray(childRows).forEach((row) => {
     const familyId = Number(row.family_id);
+    const childId = Number(row.person_id);
     if (!childrenByFamily.has(familyId)) childrenByFamily.set(familyId, []);
-    childrenByFamily.get(familyId).push(Number(row.person_id));
+    childrenByFamily.get(familyId).push({
+      person_id: childId,
+      sort_order: toInt(row.sort_order, 0),
+    });
   });
 
   const lines = [];
+  const branchFamilyKeys = new Map();
+  const familyRows = asArray(families);
 
-  asArray(families).forEach((family) => {
+  familyRows.forEach((family) => {
+    const familyId = Number(family.id);
+    const parents = [peopleMap.get(Number(family.father_id)), peopleMap.get(Number(family.mother_id))].filter(Boolean);
+    const children = asArray(childrenByFamily.get(familyId)).filter((row) => peopleMap.has(Number(row.person_id)));
+    if (!parents.length || !children.length) return;
+
+    const lineParent = peopleMap.get(Number(family.father_id)) || parents[0];
+    const parentGeneration = toInt(lineParent?.generation, 1);
+    const groupKey = `${parentGeneration}:${familyId}`;
+    const parentX = Math.min(...parents.map((parent) => toInt(parent.tree_x, 0)));
+
+    if (!branchFamilyKeys.has(groupKey)) {
+      branchFamilyKeys.set(groupKey, {
+        generation: parentGeneration,
+        minX: parentX,
+      });
+      return;
+    }
+
+    const current = branchFamilyKeys.get(groupKey);
+    current.minX = Math.min(current.minX, parentX);
+  });
+
+  const branchTierByFamily = new Map();
+  const colorIndexByFamily = new Map();
+  const familyGroupsByGeneration = new Map();
+  branchFamilyKeys.forEach((value, key) => {
+    if (!familyGroupsByGeneration.has(value.generation)) familyGroupsByGeneration.set(value.generation, []);
+    familyGroupsByGeneration.get(value.generation).push({ key, ...value });
+  });
+  familyGroupsByGeneration.forEach((groups) => {
+    groups
+      .slice()
+      .sort((a, b) => a.minX - b.minX || String(a.key).localeCompare(String(b.key)))
+      .forEach((group, index) => {
+        branchTierByFamily.set(group.key, index);
+        colorIndexByFamily.set(group.key, index);
+      });
+  });
+
+  familyRows.forEach((family) => {
     const father = peopleMap.get(Number(family.father_id));
     const mother = peopleMap.get(Number(family.mother_id));
     const parents = [father, mother].filter(Boolean);
     const children = asArray(childrenByFamily.get(Number(family.id)))
-      .map((id) => peopleMap.get(id))
-      .filter(Boolean)
-      .sort((a, b) => a.tree_x - b.tree_x || a.id - b.id);
+      .map((row) => ({
+        ...row,
+        person: peopleMap.get(Number(row.person_id)),
+      }))
+      .filter((row) => row.person)
+      .sort(siblingSort)
+      .map((row) => row.person)
+      .sort((a, b) => a.tree_x - b.tree_x || personSort(a, b));
 
     if (father && mother) {
       const left = toInt(father.tree_x, 0) <= toInt(mother.tree_x, 0) ? father : mother;
@@ -486,12 +575,18 @@ function buildTreeLines(people, families, childRows) {
     const busMinX = Math.min(parentX, ...childCenters.map((item) => item.x));
     const busMaxX = Math.max(parentX, ...childCenters.map((item) => item.x));
     const firstChildY = Math.min(...childCenters.map((item) => item.y));
-    const middleY = Math.round(Math.max(parentBottomY + 40, firstChildY - 54));
+    const familyKey = `${toInt(lineParent.generation, 1)}:${Number(family.id)}`;
+    const sourceTier = branchTierByFamily.get(familyKey) || 0;
+    const minBranchY = parentBottomY + 38;
+    const maxBranchY = Math.max(minBranchY, firstChildY - 32);
+    const baseY = Math.round(Math.min(Math.max(minBranchY, firstChildY - 72) + sourceTier * SOURCE_BRANCH_STEP, maxBranchY));
+    const colorIndex = colorIndexByFamily.get(familyKey) || 0;
+    const color = BLOOD_LINE_COLORS[colorIndex % BLOOD_LINE_COLORS.length];
 
-    lines.push({ type: "blood", d: `M ${parentX} ${parentBottomY} V ${middleY}` });
-    lines.push({ type: "blood", d: `M ${busMinX} ${middleY} H ${busMaxX}` });
+    lines.push({ type: "blood", color, d: `M ${parentX} ${parentBottomY} V ${baseY}` });
+    lines.push({ type: "blood", color, d: `M ${busMinX} ${baseY} H ${busMaxX}` });
     childCenters.forEach((child) => {
-      lines.push({ type: "blood", d: `M ${child.x} ${middleY} V ${child.y}` });
+      lines.push({ type: "blood", color, d: `M ${child.x} ${baseY} V ${child.y}` });
     });
   });
 
@@ -1463,7 +1558,12 @@ export default function FamilyTreeEditor({
                       </div>
                       <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden="true">
                         {lines.map((line, index) => (
-                          <path key={`${line.type}-${index}`} className={`fte-line is-${line.type}`} d={line.d} />
+                          <path
+                            key={`${line.type}-${index}`}
+                            className={`fte-line is-${line.type}`}
+                            d={line.d}
+                            style={line.color ? { "--line-color": line.color } : undefined}
+                          />
                         ))}
                       </svg>
                       {people.map((person) => (

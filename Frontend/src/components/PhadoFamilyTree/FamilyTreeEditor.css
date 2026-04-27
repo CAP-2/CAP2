@@ -183,7 +183,7 @@
 }
 
 .fte-line.is-blood {
-  stroke: #8b3a12;
+  stroke: var(--line-color, #78350F);
   stroke-width: 4.5;
 }
 
