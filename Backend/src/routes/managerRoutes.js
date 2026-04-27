@@ -45,7 +45,16 @@
     router.patch('/tasks/:id/complete', verifyToken, checkRole(['admin', 'manager']), managerController.completeTask);
 
     // 2. Quản lý Gia phả (Lineage)
+    router.get('/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
+    router.patch('/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
+    router.post('/people', verifyToken, checkRole(['admin', 'manager']), managerController.createPerson);
     router.post('/people/create', verifyToken, checkRole(['admin', 'manager']), managerController.createPerson);
     router.patch('/people/link', verifyToken, checkRole(['admin', 'manager']), managerController.linkRelations);
+    router.patch('/people/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
+    router.patch('/people/:id/position', verifyToken, checkRole(['admin', 'manager']), managerController.updatePersonPosition);
+    router.patch('/people/:id', verifyToken, checkRole(['admin', 'manager']), managerController.updateTreePerson);
+    router.post('/families', verifyToken, checkRole(['admin', 'manager']), managerController.createFamily);
+    router.post('/families/:familyId/children', verifyToken, checkRole(['admin', 'manager']), managerController.addFamilyChild);
+    router.delete('/people/:id', verifyToken, checkRole(['admin', 'manager']), managerController.deleteTreePerson);
 
     module.exports = router;

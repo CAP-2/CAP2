@@ -1,8 +1,8 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: gen-mysql-cloud
-    restart: always
+    container_name: cap2-mysql
+    restart: unless-stopped
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -15,7 +15,7 @@ services:
       - "${MYSQL_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ../defaultdb.sql:/docker-entrypoint-initdb.d/01-defaultdb.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
@@ -23,9 +23,9 @@ services:
       retries: 10
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: gen-phpmyadmin-cloud
-    restart: always
+    image: phpmyadmin/phpmyadmin:5.2
+    container_name: cap2-phpmyadmin
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
@@ -34,6 +34,7 @@ services:
       PMA_PORT: 3306
       PMA_USER: ${MYSQL_USER:-cap2_user}
       PMA_PASSWORD: ${MYSQL_PASSWORD:-cap2_password}
+      PMA_ABSOLUTE_URI: http://localhost:8081/
       UPLOAD_LIMIT: 256M
     ports:
       - "${PHPMYADMIN_PORT:-8081}:80"

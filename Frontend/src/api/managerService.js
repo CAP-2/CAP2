@@ -169,7 +169,7 @@ export const getMediaLibraryData = async () => asArray(await getMediaAPI());
 
 export const createPersonAPI = (data) =>
   request(
-    "/people/create",
+    "/people",
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -185,6 +185,65 @@ export const linkRelationsAPI = (data) =>
       body: JSON.stringify(data),
     },
     "Liên kết quan hệ thất bại"
+  );
+
+export const updatePersonAPI = (personId, data) =>
+  request(
+    `/people/${personId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+    "Khong the cap nhat nguoi trong gia pha"
+  );
+
+export const updatePersonPositionAPI = (personId, data) =>
+  request(
+    `/people/${personId}/position`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+    "Khong the luu vi tri"
+  );
+
+export const saveTreeLayoutAPI = (people, clanId) =>
+  request(
+    clanId ? `/clans/${clanId}/family-tree/layout` : "/people/layout",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ people, positions: people }),
+    },
+    "Khong the luu bo cuc cay"
+  );
+
+export const deletePersonAPI = (personId) =>
+  request(
+    `/people/${personId}`,
+    {
+      method: "DELETE",
+    },
+    "Khong the xoa nguoi khoi gia pha"
+  );
+
+export const createFamilyAPI = (data) =>
+  request(
+    "/families",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Khong the tao family"
+  );
+
+export const addFamilyChildAPI = (familyId, data) =>
+  request(
+    `/families/${familyId}/children`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Khong the them con vao family"
   );
 
 export const assignTaskAPI = (data) =>

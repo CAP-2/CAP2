@@ -52,6 +52,8 @@ const managerRoutes = require('./src/routes/managerRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
+const managerController = require('./src/controllers/managerController');
+const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
 // 5. Cấu hình lưu trữ ảnh (Multer) - Chỉ cần 1 lần
 const storage = multer.diskStorage({
@@ -110,6 +112,16 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.get('/api/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
+app.patch('/api/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
+app.post('/api/people', verifyToken, checkRole(['admin', 'manager']), managerController.createPerson);
+app.patch('/api/people/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
+app.patch('/api/people/link', verifyToken, checkRole(['admin', 'manager']), managerController.linkRelations);
+app.patch('/api/people/:id/position', verifyToken, checkRole(['admin', 'manager']), managerController.updatePersonPosition);
+app.patch('/api/people/:id', verifyToken, checkRole(['admin', 'manager']), managerController.updateTreePerson);
+app.delete('/api/people/:id', verifyToken, checkRole(['admin', 'manager']), managerController.deleteTreePerson);
+app.post('/api/families', verifyToken, checkRole(['admin', 'manager']), managerController.createFamily);
+app.post('/api/families/:familyId/children', verifyToken, checkRole(['admin', 'manager']), managerController.addFamilyChild);
 app.use('/api/manager', managerRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/admin', adminRoutes);

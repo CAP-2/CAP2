@@ -4,7 +4,10 @@ const mysql = require('mysql2');
 require('dotenv').config();
 
 const dbHost = process.env.DB_HOST;
-const dbPort = Number(process.env.DB_PORT || 16931);
+const dbPort = Number(process.env.DB_PORT || 3306);
+const usePublicDns = String(process.env.DB_USE_PUBLIC_DNS || '').toLowerCase() === 'true';
+const useSsl = String(process.env.DB_SSL || '').toLowerCase() === 'true';
+const rejectUnauthorized = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'false').toLowerCase() !== 'false';
 
 const resolver = new dns.Resolver();
 resolver.setServers(
@@ -34,24 +37,32 @@ const lookupWithPublicDns = (hostname, options, callback) => {
     });
 };
 
-const pool = mysql.createPool({
+const poolConfig = {
     host: dbHost,
     port: dbPort,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    stream: () => net.connect({
-        host: dbHost,
-        port: dbPort,
-        lookup: lookupWithPublicDns,
-    }),
-    ssl: {
-        rejectUnauthorized: false
-    },
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
-});
+};
+
+if (usePublicDns) {
+    poolConfig.stream = () => net.connect({
+        host: dbHost,
+        port: dbPort,
+        lookup: lookupWithPublicDns,
+    });
+}
+
+if (useSsl) {
+    poolConfig.ssl = {
+        rejectUnauthorized
+    };
+}
+
+const pool = mysql.createPool(poolConfig);
 
 const db = pool.promise();
 

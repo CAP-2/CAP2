@@ -1,0 +1,660 @@
+.fte-shell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #1f2933;
+  font-size: 1.08rem;
+}
+
+.fte-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid #dcc17a;
+  background: #fffaf0;
+  border-radius: 8px;
+}
+
+.fte-toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fte-toolbar button,
+.fte-inspectorActions button,
+.fte-primaryButton,
+.fte-ghostButton,
+.fte-dangerButton,
+.fte-iconButton {
+  border: 1px solid #cba756;
+  background: #fff;
+  color: #54320d;
+  border-radius: 8px;
+  min-height: 46px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.fte-toolbar button:hover:not(:disabled),
+.fte-inspectorActions button:hover:not(:disabled),
+.fte-primaryButton:hover:not(:disabled),
+.fte-ghostButton:hover:not(:disabled),
+.fte-dangerButton:hover:not(:disabled),
+.fte-iconButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(92, 54, 16, 0.14);
+}
+
+.fte-toolbar button:disabled,
+.fte-inspectorActions button:disabled,
+.fte-primaryButton:disabled,
+.fte-ghostButton:disabled,
+.fte-dangerButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fte-toolbar .material-symbols-outlined,
+.fte-inspector .material-symbols-outlined,
+.fte-modal .material-symbols-outlined {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.fte-toolbarGroup--icons button,
+.fte-iconButton {
+  width: 46px;
+  padding: 0;
+}
+
+.fte-status {
+  border: 1px solid #b6d9c1;
+  background: #eef9f1;
+  color: #1f6a3b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.fte-status--dirty {
+  border-color: #e4b75c;
+  background: #fff7db;
+  color: #8a4b0f;
+}
+
+.fte-workspace {
+  min-height: 720px;
+  display: block;
+}
+
+.fte-viewport {
+  min-width: 0;
+  min-height: 720px;
+  border: 1px solid #d1b46b;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.52), transparent 26%),
+    linear-gradient(135deg, #fff5bc 0%, #f3d477 46%, #d99a38 100%);
+  overflow: hidden;
+  position: relative;
+}
+
+.fte-transformWrapper {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.fte-transformContent {
+  width: max-content !important;
+  height: max-content !important;
+}
+
+.fte-loading {
+  height: 100%;
+  min-height: 720px;
+  display: grid;
+  place-items: center;
+  color: #fff7d6;
+  font-weight: 800;
+}
+
+.fte-canvas {
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.fte-canvasTitle {
+  position: absolute;
+  left: 60px;
+  top: 42px;
+  z-index: 3;
+  display: grid;
+  gap: 4px;
+  color: #7d1f13;
+  pointer-events: none;
+}
+
+.fte-canvasTitle span {
+  font-size: 1.12rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.fte-canvasTitle strong {
+  font-size: 2.65rem;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.fte-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fte-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.fte-line.is-spouse {
+  stroke: #7f1d12;
+  stroke-width: 4;
+}
+
+.fte-line.is-blood {
+  stroke: #8b3a12;
+  stroke-width: 4.5;
+}
+
+.fte-personCard {
+  width: 180px;
+  height: 210px;
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 12px;
+  border: 3px solid #a82718;
+  border-radius: 8px;
+  background: linear-gradient(#fffef0, #ffd966);
+  box-shadow: 0 10px 22px rgba(69, 38, 8, 0.26);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.fte-cardBadges {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.fte-genderBadge,
+.fte-lifeBadge {
+  max-width: 78px;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+  color: #fff;
+  background: #8b1e13;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fte-lifeBadge {
+  background: #5f6368;
+}
+
+.fte-personCard.is-female {
+  border-color: #9b2162;
+  background: linear-gradient(#fff8fb, #ffd1e1);
+}
+
+.fte-personCard.is-female .fte-genderBadge {
+  background: #9b2162;
+}
+
+.fte-personCard.is-unknown {
+  border-color: #4f6475;
+  background: linear-gradient(#f7fbff, #cce6ef);
+}
+
+.fte-personCard.is-unknown .fte-genderBadge {
+  background: #4f6475;
+}
+
+.fte-personCard.is-deceased {
+  opacity: 0.78;
+}
+
+.fte-personCard.is-selected {
+  outline: 4px solid rgba(30, 111, 160, 0.35);
+  box-shadow: 0 0 0 2px #1e6fa0, 0 14px 28px rgba(30, 75, 90, 0.28);
+}
+
+.fte-personCard.is-dragging {
+  cursor: grabbing;
+  z-index: 4;
+}
+
+.fte-avatar {
+  width: 82px;
+  height: 86px;
+  flex: 0 0 auto;
+  margin-top: 10px;
+  border-radius: 6px;
+  border: 1px solid #7f1d12;
+  background: #fffaf0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #9a3412;
+  font-weight: 900;
+  font-size: 2rem;
+}
+
+.fte-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fte-cardName {
+  width: 100%;
+  min-height: 44px;
+  color: #ad1f18;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fte-cardMeta,
+.fte-cardGeneration {
+  width: 100%;
+  color: #2c241a;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fte-cardGeneration {
+  color: #6b3e0f;
+  font-weight: 800;
+}
+
+.fte-inspector {
+  min-width: 0;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  overflow-y: auto;
+  border: 1px solid #d7bd75;
+  border-radius: 8px;
+  background: #fffdfa;
+  padding: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.fte-inspectorOverlay {
+  align-items: center;
+  justify-items: end;
+  padding-right: 42px;
+}
+
+.fte-inspectorHeader,
+.fte-modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ead9a6;
+}
+
+.fte-inspectorHeader span,
+.fte-modalHeader span {
+  color: #9a4e13;
+  font-size: 0.92rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fte-inspectorHeader h3,
+.fte-modalHeader h3 {
+  margin: 3px 0;
+  color: #311b08;
+  font-size: 1.32rem;
+  line-height: 1.25;
+}
+
+.fte-inspectorHeader p {
+  margin: 0;
+  color: #69707a;
+  font-size: 1rem;
+}
+
+.fte-inspectorActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.fte-inspectorActions button {
+  justify-content: flex-start;
+  min-width: 0;
+  font-size: 1rem;
+}
+
+.fte-formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fte-formGrid label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: #5f4730;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.fte-formGrid label.is-wide {
+  grid-column: 1 / -1;
+}
+
+.fte-formGrid input,
+.fte-formGrid select,
+.fte-formGrid textarea {
+  width: 100%;
+  border: 1px solid #d6bf84;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2933;
+  min-height: 46px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 600;
+  resize: vertical;
+}
+
+.fte-formGrid textarea {
+  line-height: 1.35;
+}
+
+.fte-inspectorFooter,
+.fte-modalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #ead9a6;
+}
+
+.fte-primaryButton {
+  background: #8b1e13;
+  border-color: #8b1e13;
+  color: #fff;
+}
+
+.fte-dangerButton {
+  background: #fff1f2;
+  border-color: #ef9a9a;
+  color: #b42318;
+}
+
+.fte-ghostButton {
+  background: #fff;
+  color: #594023;
+}
+
+.fte-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4200;
+  background: rgba(31, 41, 55, 0.58);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.fte-modal {
+  width: min(620px, 100%);
+  max-height: min(760px, 94vh);
+  overflow-y: auto;
+  background: #fffdfa;
+  border: 1px solid #d7bd75;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  padding: 18px;
+}
+
+.fte-formGrid--modal {
+  margin-top: 14px;
+}
+
+.fte-relationModal {
+  width: min(700px, 100%);
+}
+
+.fte-relationPicker {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.fte-relationPicker label {
+  display: grid;
+  gap: 6px;
+  color: #5f4730;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.fte-relationPicker input {
+  width: 100%;
+  border: 1px solid #d6bf84;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2933;
+  min-height: 40px;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 600;
+}
+
+.fte-relationList {
+  max-height: 360px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.fte-relationOption {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #e0c684;
+  border-radius: 8px;
+  background: #fff;
+  color: #2b1b0b;
+  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fte-relationOption:hover,
+.fte-relationOption.is-selected {
+  border-color: #8b1e13;
+  background: #fff7db;
+}
+
+.fte-relationOption.is-linked {
+  border-color: #b45309;
+}
+
+.fte-relationOption em {
+  align-self: center;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #8a4b0f;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.fte-relationAvatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid #d6bf84;
+  background: #fff7db;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #8b1e13;
+  font-weight: 900;
+}
+
+.fte-relationAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fte-relationOption strong,
+.fte-relationOption small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fte-relationOption strong {
+  font-size: 0.92rem;
+}
+
+.fte-relationOption small {
+  margin-top: 3px;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.fte-relationEmpty {
+  border: 1px dashed #d6bf84;
+  border-radius: 8px;
+  color: #6b7280;
+  padding: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .fte-inspector {
+    max-height: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  .fte-inspector {
+    width: min(560px, calc(100vw - 64px));
+  }
+}
+
+@media (max-width: 680px) {
+  .fte-toolbar {
+    align-items: stretch;
+  }
+
+  .fte-toolbarGroup,
+  .fte-toolbarGroup button {
+    width: 100%;
+  }
+
+  .fte-toolbarGroup--icons {
+    width: auto;
+  }
+
+  .fte-toolbarGroup--icons button {
+    width: 38px;
+  }
+
+  .fte-viewport,
+  .fte-loading {
+    min-height: 620px;
+  }
+
+  .fte-formGrid,
+  .fte-inspectorActions {
+    grid-template-columns: 1fr;
+  }
+
+  .fte-inspectorOverlay {
+    justify-items: center;
+    padding: 12px;
+  }
+
+  .fte-relationOption {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .fte-relationOption em {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
