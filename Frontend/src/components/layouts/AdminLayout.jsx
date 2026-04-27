@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 
@@ -12,6 +13,12 @@ const menuItems = [
 
 export default function AdminLayout() {
   const location = useLocation();
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const currentUser = getStoredUser();
 
   if (!isAuthenticated()) {
@@ -66,8 +73,12 @@ export default function AdminLayout() {
 
       <main className="dashboard-main">
         <div className="dashboard-topbar">
-          <h1>Quản lý gia phả</h1>
+          <div className="topbar-left">
+            <h1>Quản trị hệ thống</h1>
+            <span className="live-clock">{currentTime.toLocaleTimeString('vi-VN')}</span>
+          </div>
           <div className="topbar-actions">
+            <div className="admin-badge">Admin Mode</div>
             <button type="button" className="icon-btn">
               <span className="material-symbols-outlined">notifications</span>
             </button>

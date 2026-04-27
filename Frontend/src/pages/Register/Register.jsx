@@ -95,7 +95,7 @@ const Register = () => {
               <option value="1">Nam</option>
               <option value="2">Nữ</option>
             </select>
-            <input name="birth_date" value={form.birth_date} type="date" onChange={handleChange} required />
+            <input name="birth_date" value={form.birth_date} type="date" max={new Date().toISOString().split("T")[0]} onChange={handleChange} required />
           </div>
 
           <input name="email" value={form.email} placeholder="Email đăng nhập" type="email" onChange={handleChange} required />
