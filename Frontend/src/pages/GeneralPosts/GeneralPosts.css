@@ -31,17 +31,16 @@
 
 .general-post-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
 }
 
 .general-post-card {
   display: flex;
-  min-height: 246px;
   padding: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #dce5ee;
+  border: 1px solid rgba(220, 229, 238, 0.95);
   border-radius: 8px;
   background: #fff;
   color: inherit;
@@ -53,17 +52,19 @@
 
 .general-post-card:hover,
 .general-post-card:focus-visible {
-  transform: translateY(-2px);
-  border-color: #1b9b71;
-  box-shadow: 0 16px 32px rgba(30, 45, 70, 0.12);
+  transform: translateY(-8px);
+  border-color: #c99a2c;
+  box-shadow: 0 18px 36px rgba(30, 45, 70, 0.14);
   outline: none;
 }
 
 .general-post-thumb {
+  position: relative;
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 4 / 3;
   background: #eef3f7;
+  overflow: hidden;
 }
 
 .general-post-thumb img {
@@ -71,11 +72,78 @@
   height: 100%;
   display: block;
   object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.general-post-card:hover .general-post-thumb img,
+.general-post-card:focus-visible .general-post-thumb img {
+  transform: scale(1.1);
+}
+
+.general-post-thumb-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f7f4ec, #eef6f2);
+  color: #c99a2c;
+}
+
+.general-post-thumb-empty .material-symbols-outlined {
+  font-size: 3.5rem;
+}
+
+.general-post-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.general-post-card:hover .general-post-overlay,
+.general-post-card:focus-visible .general-post-overlay {
+  opacity: 1;
+}
+
+.general-post-action {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.general-post-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-height: 132px;
+  padding: 1.2rem;
+}
+
+.general-post-author {
+  color: #182235;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.general-post-date {
+  color: #7a8798;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .general-post-desc {
   display: -webkit-box;
-  padding: 16px;
+  margin-top: 0.2rem;
   color: #24344d;
   font-size: 0.98rem;
   font-weight: 700;

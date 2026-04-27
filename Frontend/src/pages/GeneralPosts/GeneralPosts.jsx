@@ -35,12 +35,25 @@ function buildPostDescription(post) {
 function PostCard({ post, onOpen }) {
   return (
     <button type="button" className="general-post-card" onClick={() => onOpen(post)}>
-      {post.image_url && (
-        <span className="general-post-thumb">
+      <span className="general-post-thumb">
+        {post.image_url ? (
           <img src={post.image_url} alt="" />
+        ) : (
+          <span className="general-post-thumb-empty">
+            <span className="material-symbols-outlined">article</span>
+          </span>
+        )}
+        <span className="general-post-overlay">
+          <span className="general-post-action" title="Xem bài viết">
+            <span className="material-symbols-outlined">visibility</span>
+          </span>
         </span>
-      )}
-      <span className="general-post-desc">{buildPostDescription(post)}</span>
+      </span>
+      <span className="general-post-info">
+        <span className="general-post-author">{post.author_name || "Thành viên"}</span>
+        <span className="general-post-date">{formatDate(post.created_at)}</span>
+        <span className="general-post-desc">{buildPostDescription(post)}</span>
+      </span>
     </button>
   );
 }

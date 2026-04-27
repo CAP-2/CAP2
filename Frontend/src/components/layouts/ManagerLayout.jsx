@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
@@ -10,7 +10,6 @@ const menuItems = [
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/manager/genealogy" },
   { icon: "group", label: "Thành viên", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
-  { icon: "photo_library", label: "Thư viện", path: "/manager/media" },
 ];
 
 export default function ManagerLayout() {
@@ -40,6 +39,37 @@ export default function ManagerLayout() {
     confirm_password: "",
   });
 
+  useEffect(() => {
+    if (!isAuthenticated()) return undefined;
+
+    let cancelled = false;
+
+    apiRequest("/api/member/dashboard")
+      .then((data) => {
+        if (cancelled) return;
+        const profile = data.profile || {};
+        const storedUser = getStoredUser() || {};
+        const profileName = profile.display_name || [profile.surname, profile.middle_name, profile.first_name].filter(Boolean).join(" ").trim();
+        const nextUser = {
+          ...storedUser,
+          name: profileName || storedUser.name,
+          display_name: profile.display_name || storedUser.display_name,
+          email: profile.email || storedUser.email,
+          role_id: profile.role_id || storedUser.role_id,
+          status: profile.status || storedUser.status,
+          avatar_url: profile.avatar_url || storedUser.avatar_url || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(nextUser));
+        localStorage.setItem("user", JSON.stringify(nextUser));
+        setCurrentUser(nextUser);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (!isAuthenticated()) {
     return <Navigate to="/" replace />;
   }
@@ -51,13 +81,16 @@ export default function ManagerLayout() {
 
   const syncStoredUser = (profile) => {
     if (!profile) return;
+    const storedUser = getStoredUser() || {};
+    const profileName = profile.display_name || [profile.surname, profile.middle_name, profile.first_name].filter(Boolean).join(" ").trim();
     const nextUser = {
-      ...(getStoredUser() || {}),
-      email: profile.email,
-      display_name: profile.display_name,
-      name: profile.display_name,
-      role_id: profile.role_id,
-      status: profile.status,
+      ...storedUser,
+      email: profile.email || storedUser.email,
+      display_name: profile.display_name || storedUser.display_name,
+      name: profileName || storedUser.name,
+      role_id: profile.role_id || storedUser.role_id,
+      status: profile.status || storedUser.status,
+      avatar_url: profile.avatar_url || storedUser.avatar_url || currentUser?.avatar_url || "",
     };
     localStorage.setItem("auth_user", JSON.stringify(nextUser));
     localStorage.setItem("user", JSON.stringify(nextUser));
@@ -211,13 +244,17 @@ export default function ManagerLayout() {
 
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src="/logo giaphaviet.png" alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/logo giaphaviet.png" : "/logo.png"} alt="Gia Phả Việt" />
           </Link>
         </div>
 
         <button type="button" className="sidebar-user-section" onClick={openAccountModal} title="Sửa tài khoản">
           <div className="manager-avatar-wrapper">
-            <span className="material-symbols-outlined">manage_accounts</span>
+            {currentUser?.avatar_url ? (
+              <img src={currentUser.avatar_url} alt="" className="manager-avatar-img" />
+            ) : (
+              <span className="material-symbols-outlined">manage_accounts</span>
+            )}
           </div>
           <div className="user-details">
             <strong>{currentUser?.name || currentUser?.display_name || "Manager"}</strong>

@@ -28,7 +28,6 @@ import AccountPage from "../pages/Manager/AccountPage";
 import GenealogySection from "../pages/Manager/GenealogySection";
 import ManagerDashboard from "../pages/Manager/ManagerDashboard";
 import PendingApprovals from "../pages/Manager/PendingApprovals";
-import MediaManagement from "../pages/Manager/MediaManagement";
 
 import FamilyTreePage from "../pages/user/FamilyTreePage";
 import MemberDashboard from "../pages/Member/MemberDashboard";
@@ -76,7 +75,7 @@ export default function AppRoutes() {
           <Route path="/manager/genealogy" element={<GenealogySection />} />
           <Route path="/manager/posts" element={<GeneralPosts />} />
           <Route path="/manager/pending" element={<PendingApprovals />} />
-          <Route path="/manager/media" element={<MediaManagement />} />
+          <Route path="/manager/media" element={<Navigate to="/manager/posts" replace />} />
         </Route>
       </Route>
 

@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
+import { apiRequest } from "../../services/api";
 import "./MemberLayout.css";
 
 const menuItems = [
@@ -15,7 +17,41 @@ function getUserName(user) {
 
 export default function MemberLayout() {
   const location = useLocation();
-  const currentUser = getStoredUser();
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser() || {});
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    if (!isAuthenticated()) return undefined;
+
+    let cancelled = false;
+
+    apiRequest("/api/member/dashboard")
+      .then((data) => {
+        if (cancelled) return;
+        const profile = data.profile || {};
+        const storedUser = getStoredUser() || {};
+        const profileName = profile.display_name || [profile.surname, profile.middle_name, profile.first_name].filter(Boolean).join(" ").trim();
+        const nextUser = {
+          ...storedUser,
+          name: profileName || storedUser.name,
+          display_name: profile.display_name || storedUser.display_name,
+          email: profile.email || storedUser.email,
+          role_id: profile.role_id || storedUser.role_id,
+          status: profile.status || storedUser.status,
+          avatar_url: profile.avatar_url || storedUser.avatar_url || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(nextUser));
+        localStorage.setItem("user", JSON.stringify(nextUser));
+        setCurrentUser(nextUser);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUser(getStoredUser() || {});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -27,11 +63,21 @@ export default function MemberLayout() {
   };
 
   return (
-    <div className="member-portal-container">
-      <aside className="member-sidebar glass-effect">
+    <div className={`member-portal-container ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+      <aside className="member-sidebar glass-effect" aria-label="Menu thành viên">
+        <button
+          type="button"
+          className="member-sidebar-toggle"
+          onClick={() => setSidebarOpen((value) => !value)}
+          title={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
+          aria-label={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
+          aria-expanded={sidebarOpen}
+        >
+          <span className="material-symbols-outlined">{sidebarOpen ? "chevron_left" : "chevron_right"}</span>
+        </button>
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src="/logo-giaphaviet.png" alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/logo giaphaviet.png" : "/logo.png"} alt="Gia Phả Việt" />
             <span>Gia Phả Việt</span>
           </Link>
         </div>

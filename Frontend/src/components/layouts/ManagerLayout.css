@@ -68,22 +68,29 @@
 
 .sidebar-header .sidebar-brand img {
   width: min(210px, 100%);
+  max-height: 58px;
   height: auto;
   object-fit: contain;
   display: block;
-  transition: width 0.25s ease;
+  transition: width 0.25s ease, max-height 0.25s ease;
 }
 
 .sidebar-collapsed .sidebar-header .sidebar-brand {
+  width: 56px;
+  height: 56px;
   min-height: 50px;
+  margin-left: auto;
+  margin-right: auto;
   margin-bottom: 1.25rem;
+  border-radius: 14px;
 }
 
 .sidebar-collapsed .sidebar-header .sidebar-brand img {
-  width: 48px;
-  max-width: none;
-  object-fit: cover;
-  object-position: left center;
+  width: 56px;
+  max-width: 100%;
+  height: 56px;
+  max-height: none;
+  object-fit: contain;
 }
 
 .sidebar-user-section {
@@ -128,6 +135,14 @@
 .manager-avatar-wrapper .material-symbols-outlined {
   font-size: 1.8rem;
   color: #fff;
+}
+
+.manager-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
 }
 
 .user-details strong {
