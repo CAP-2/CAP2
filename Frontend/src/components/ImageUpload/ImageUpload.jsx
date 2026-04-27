@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadImage } from "../../api/memberService";
 import "./ImageUpload.css";
 
-const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
+const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disabled = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -10,10 +10,16 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
   const [urlInput, setUrlInput] = useState("");
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    const nextValue = String(value || "").trim();
+    setUrlInput(nextValue);
+    setPreview(nextValue || null);
+  }, [value]);
+
   const handleFile = async (file) => {
-    if (!file) return;
+    if (!file || disabled) return;
     if (!file.type.startsWith("image/")) {
-      setError("Vui lòng chọn tệp hình ảnh (.jpg, .png, ...)");
+      setError("Vui long chon tep hinh anh (.jpg, .png, ...)");
       return;
     }
 
@@ -26,27 +32,36 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
     try {
       const result = await uploadImage(file);
       if (result.success) {
-        onUploadSuccess(result.url || result.imageUrl || "");
+        onUploadSuccess?.(result.url || result.imageUrl || "");
       } else {
-        setError(result.message || "Tải ảnh thất bại");
+        setError(result.message || "Tai anh that bai");
       }
     } catch (err) {
-      setError(err.message || "Lỗi khi tải ảnh lên");
+      setError(err.message || "Loi khi tai anh len");
     } finally {
       setLoading(false);
     }
   };
 
   const handleUrlChange = (event) => {
-    const value = event.target.value;
-    setUrlInput(value);
-    if (value.trim()) {
-      setPreview(value.trim());
-      onUploadSuccess(value.trim());
+    const nextValue = event.target.value;
+    setUrlInput(nextValue);
+    if (nextValue.trim()) {
+      setPreview(nextValue.trim());
+      onUploadSuccess?.(nextValue.trim());
     } else {
       setPreview(null);
-      onUploadSuccess("");
+      onUploadSuccess?.("");
     }
+  };
+
+  const clearImage = (event) => {
+    event.stopPropagation();
+    setPreview(null);
+    setUrlInput("");
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    onUploadSuccess?.("");
   };
 
   return (
@@ -56,7 +71,7 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
           className={`upload-dropzone ${isDragging ? "dragging" : ""} ${preview ? "has-preview" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
-            setIsDragging(true);
+            if (!disabled) setIsDragging(true);
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(event) => {
@@ -64,7 +79,7 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
             setIsDragging(false);
             handleFile(event.dataTransfer.files[0]);
           }}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !disabled && fileInputRef.current?.click()}
         >
           <input
             type="file"
@@ -72,14 +87,18 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
             ref={fileInputRef}
             onChange={(event) => handleFile(event.target.files[0])}
             accept="image/*"
+            disabled={disabled || loading}
           />
 
           {preview ? (
             <div className="preview-container">
-              <img src={preview} alt="" className="image-preview" onError={() => setError("URL ảnh không hợp lệ")} />
+              <img src={preview} alt="" className="image-preview" onError={() => setError("URL anh khong hop le")} />
               <div className="preview-overlay">
-                <span>Thay đổi ảnh</span>
+                <span>Thay doi anh</span>
               </div>
+              <button className="preview-clear" type="button" onClick={clearImage} disabled={disabled || loading}>
+                Xoa
+              </button>
             </div>
           ) : (
             <div className="upload-placeholder">
@@ -89,21 +108,22 @@ const ImageUpload = ({ onUploadSuccess, label = "Tải ảnh lên" }) => {
                 </svg>
               </div>
               <p>{label}</p>
-              <span className="upload-hint">Kéo thả hoặc nhấp để chọn</span>
+              <span className="upload-hint">Keo tha hoac nhap de chon file</span>
             </div>
           )}
 
-          {loading && <div className="upload-loader">Đang tải...</div>}
+          {loading && <div className="upload-loader">Dang tai...</div>}
         </div>
 
         <div className="url-input-wrapper">
-          <span className="url-sep">hoặc dán URL:</span>
+          <span className="url-sep">hoac dan URL:</span>
           <input
             type="text"
             className="url-field"
             placeholder="https://example.com/image.jpg"
             value={urlInput}
             onChange={handleUrlChange}
+            disabled={disabled || loading}
           />
         </div>
       </div>

@@ -546,6 +546,7 @@ CREATE TABLE `posts` (
   `id` int NOT NULL,
   `clan_id` int NOT NULL,
   `author_id` int NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
   `content` text NOT NULL,
   `image_url` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,

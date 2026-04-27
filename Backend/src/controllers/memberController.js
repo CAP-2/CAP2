@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
+const { getRoleName } = require("../config/roles");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -43,6 +44,24 @@ const getAccountContext = async (accountId) => {
     LIMIT 1
   `;
   const [rows] = await db.query(sql, [accountId]);
+  return rows[0] || null;
+};
+
+const normalizePostStats = (post) => ({
+  ...post,
+  like_count: Number(post.like_count || 0),
+  comment_count: Number(post.comment_count || 0),
+  liked_by_me: post.liked_by_me === true || post.liked_by_me === 1 || post.liked_by_me === "1",
+});
+
+const getApprovedClanPost = async (postId, clanId) => {
+  const numericPostId = Number(postId);
+  if (!Number.isInteger(numericPostId) || numericPostId <= 0 || !clanId) return null;
+
+  const [rows] = await db.query(
+    "SELECT id, clan_id FROM posts WHERE id = ? AND clan_id = ? AND status = 'approved' LIMIT 1",
+    [numericPostId, clanId]
+  );
   return rows[0] || null;
 };
 
@@ -105,15 +124,37 @@ const extractAiServerText = (data) => {
   return "";
 };
 
-const fetchAiServerReply = async (text, scope) => {
+const buildAiResultFallback = (text, overrides = {}) => {
+  const answer = typeof overrides.answer === "string" && overrides.answer.trim()
+    ? overrides.answer
+    : buildAiReplyFallback(text);
+  return {
+    success: true,
+    intent: overrides.intent || "FALLBACK",
+    confidence: overrides.confidence ?? 0,
+    user: overrides.user || null,
+    data: overrides.data ?? null,
+    answer,
+    ai_message: answer,
+  };
+};
+
+const buildAiContextPayload = (ctx, reqUser) => {
+  const role = reqUser?.role_name || reqUser?.role || getRoleName(ctx.role_id);
+  return {
+    account_id: ctx.account_id,
+    person_id: ctx.person_id,
+    clan_id: ctx.clan_id,
+    role,
+    role_id: ctx.role_id,
+    display_name: ctx.display_name,
+    scope: role === "admin" ? "admin" : "clan",
+  };
+};
+
+const fetchAiServerReply = async (text, context) => {
   try {
-    const body = { prompt: text };
-    if (scope && typeof scope === "object") {
-      if (scope.user_id != null) body.user_id = scope.user_id;
-      if (scope.clan_id != null) body.clan_id = scope.clan_id;
-      if (scope.global === true) body.global = true;
-      if (scope.scope) body.scope = scope.scope;
-    }
+    const body = { prompt: text, ...(context || {}) };
     const res = await fetch(`${AI_SERVER_URL}/ask-db`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -122,13 +163,26 @@ const fetchAiServerReply = async (text, scope) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("AI server HTTP:", res.status, data);
-      return buildAiReplyFallback(text);
+      return buildAiResultFallback(text, {
+        intent: data.intent || "ERROR",
+        answer: data.answer || data.message,
+        user: data.user || null,
+        data: data.data ?? null,
+      });
     }
     const reply = extractAiServerText(data).trim();
-    return reply || buildAiReplyFallback(text);
+    const answer = reply || buildAiReplyFallback(text);
+    return {
+      ...data,
+      success: data.success !== false,
+      intent: data.intent || "UNKNOWN",
+      confidence: data.confidence ?? 0,
+      answer,
+      ai_message: answer,
+    };
   } catch (e) {
     console.error("fetchAiServerReply:", e);
-    return buildAiReplyFallback(text);
+    return buildAiResultFallback(text);
   }
 };
 
@@ -785,13 +839,19 @@ exports.sendChatMessage = async (req, res) => {
     const conversationId = await getOrCreateConversationId(accountId);
     await saveChatMessage(conversationId, "user", text);
     if (ctx.role_id === 1 || req.user?.role_name === "admin") {
-      const aiReply = await fetchAiServerReply(text, { user_id: accountId, global: true, scope: "admin" });
+      const aiResult = await fetchAiServerReply(text, buildAiContextPayload(ctx, req.user));
+      const aiReply = aiResult.answer || aiResult.ai_message || buildAiReplyFallback(text);
       await saveChatMessage(conversationId, "ai", aiReply);
       return res.json({
         success: true,
         conversation_id: conversationId,
         user_message: text,
         ai_message: aiReply,
+        answer: aiReply,
+        intent: aiResult.intent,
+        confidence: aiResult.confidence,
+        user: aiResult.user,
+        data: aiResult.data,
       });
     }
 
@@ -803,10 +863,22 @@ exports.sendChatMessage = async (req, res) => {
         conversation_id: conversationId,
         user_message: text,
         ai_message: aiReply,
+        answer: aiReply,
+        intent: "NO_CLAN",
+        confidence: 1,
+        user: {
+          account_id: ctx.account_id,
+          person_id: ctx.person_id,
+          clan_id: null,
+          display_name: ctx.display_name,
+          role: req.user?.role_name || getRoleName(ctx.role_id),
+        },
+        data: null,
       });
     }
 
-    const aiReply = await fetchAiServerReply(text, { user_id: accountId, clan_id: ctx.clan_id });
+    const aiResult = await fetchAiServerReply(text, buildAiContextPayload(ctx, req.user));
+    const aiReply = aiResult.answer || aiResult.ai_message || buildAiReplyFallback(text);
     await saveChatMessage(conversationId, "ai", aiReply);
 
     return res.json({
@@ -814,6 +886,11 @@ exports.sendChatMessage = async (req, res) => {
       conversation_id: conversationId,
       user_message: text,
       ai_message: aiReply,
+      answer: aiReply,
+      intent: aiResult.intent,
+      confidence: aiResult.confidence,
+      user: aiResult.user,
+      data: aiResult.data,
     });
   } catch (error) {
     console.error("sendChatMessage error:", error);
@@ -889,26 +966,38 @@ exports.proposeProfileUpdate = async (req, res) => {
 exports.submitMaterial = async (req, res) => {
   try {
     const accountId = req.user.id;
-    const { content, image_url } = req.body;
+    const { description, content, image_url } = req.body;
 
     const context = await getAccountContext(accountId);
     if (!context || !context.clan_id) {
        return res.status(400).json({ success: false, message: "Tài khoản chưa đủ điều kiện đóng góp tư liệu" });
     }
 
+    const postDescription = description !== undefined && description !== null ? String(description).trim() : "";
     const textContent = content !== undefined && content !== null ? String(content).trim() : "";
     const imgUrl = image_url !== undefined && image_url !== null ? String(image_url).trim() : null;
 
-    if (!textContent && !imgUrl) {
-        return res.status(400).json({ success: false, message: "Vui lòng nhập nội dung hoặc URL ảnh" });
+    if (!postDescription && !textContent && !imgUrl) {
+        return res.status(400).json({ success: false, message: "Vui lòng nhập mô tả, nội dung hoặc URL ảnh" });
     }
 
-    await db.query(
-      "INSERT INTO posts (clan_id, author_id, content, image_url, status) VALUES (?, ?, ?, ?, 'pending')",
-      [context.clan_id, accountId, textContent, imgUrl]
+    const roleId = Number(req.user?.role_id || context.role_id);
+    const postStatus = roleId === 1 || roleId === 2 ? "approved" : "pending";
+
+    const [created] = await db.query(
+      "INSERT INTO posts (clan_id, author_id, description, content, image_url, status) VALUES (?, ?, ?, ?, ?, ?)",
+      [context.clan_id, accountId, postDescription, textContent, imgUrl, postStatus]
     );
 
-    return res.json({ success: true, message: "Đã gửi tư liệu, vui lòng đợi quản lý phê duyệt." });
+    return res.json({
+      success: true,
+      post_id: created.insertId,
+      status: postStatus,
+      message:
+        postStatus === "approved"
+          ? "Đã đăng bài viết thành công."
+          : "Đã gửi tư liệu, vui lòng đợi quản lý phê duyệt.",
+    });
   } catch(error) {
     console.error("submitMaterial error:", error);
     return res.status(500).json({ success: false, message: "Lỗi gửi tư liệu" });
@@ -924,19 +1013,137 @@ exports.getGeneralPosts = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      `SELECT p.id, p.content, p.image_url, p.created_at, 
-              COALESCE(author.display_name, a.email, 'Thành viên') as author_name
+      `SELECT p.id, p.description, p.content, p.image_url, p.created_at, 
+              COALESCE(author.display_name, a.email, 'Thành viên') as author_name,
+              (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
+              (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
+              EXISTS(
+                SELECT 1
+                FROM post_likes mine
+                WHERE mine.post_id = p.id AND mine.person_id = ?
+              ) AS liked_by_me
        FROM posts p
        JOIN accounts a ON p.author_id = a.id
        LEFT JOIN people author ON a.person_id = author.id
        WHERE p.clan_id = ? AND p.status = 'approved'
        ORDER BY p.created_at DESC`,
-      [context.clan_id]
+      [context.person_id || 0, context.clan_id]
     );
-    return res.json({ success: true, posts: rows });
+    return res.json({ success: true, posts: rows.map(normalizePostStats) });
   } catch (error) {
     console.error("getGeneralPosts error:", error);
     return res.status(500).json({ success: false, message: "Lỗi lấy danh sách bài viết." });
+  }
+};
+
+exports.getPostComments = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id) {
+      return res.status(400).json({ success: false, message: "Tài khoản chưa thuộc dòng họ nào." });
+    }
+
+    const post = await getApprovedClanPost(req.params.id, context.clan_id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+    }
+
+    const [comments] = await db.query(
+      `SELECT pc.id, pc.post_id, pc.person_id, pc.parent_id, pc.content, pc.created_at,
+              COALESCE(author.display_name, 'Thành viên') AS author_name
+       FROM post_comments pc
+       JOIN people author ON pc.person_id = author.id
+       WHERE pc.post_id = ?
+       ORDER BY COALESCE(pc.parent_id, pc.id), pc.created_at ASC`,
+      [post.id]
+    );
+
+    return res.json({ success: true, comments });
+  } catch (error) {
+    console.error("getPostComments error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi lấy bình luận bài viết." });
+  }
+};
+
+exports.addPostComment = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id || !context.person_id) {
+      return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ thành viên." });
+    }
+
+    const post = await getApprovedClanPost(req.params.id, context.clan_id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+    }
+
+    const commentContent = req.body?.content !== undefined && req.body?.content !== null ? String(req.body.content).trim() : "";
+    const parentId = req.body?.parent_id ? Number(req.body.parent_id) : null;
+    if (!commentContent) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập bình luận." });
+    }
+
+    if (parentId) {
+      const [parentRows] = await db.query("SELECT id FROM post_comments WHERE id = ? AND post_id = ? LIMIT 1", [parentId, post.id]);
+      if (!parentRows.length) {
+        return res.status(400).json({ success: false, message: "Bình luận gốc không hợp lệ." });
+      }
+    }
+
+    const [created] = await db.query(
+      "INSERT INTO post_comments (post_id, person_id, parent_id, content) VALUES (?, ?, ?, ?)",
+      [post.id, context.person_id, parentId || null, commentContent]
+    );
+
+    const [rows] = await db.query(
+      `SELECT pc.id, pc.post_id, pc.person_id, pc.parent_id, pc.content, pc.created_at,
+              COALESCE(author.display_name, 'Thành viên') AS author_name
+       FROM post_comments pc
+       JOIN people author ON pc.person_id = author.id
+       WHERE pc.id = ?`,
+      [created.insertId]
+    );
+
+    return res.status(201).json({ success: true, comment: rows[0] });
+  } catch (error) {
+    console.error("addPostComment error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi thêm bình luận." });
+  }
+};
+
+exports.togglePostLike = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id || !context.person_id) {
+      return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ thành viên." });
+    }
+
+    const post = await getApprovedClanPost(req.params.id, context.clan_id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+    }
+
+    const [existing] = await db.query(
+      "SELECT id FROM post_likes WHERE post_id = ? AND person_id = ? LIMIT 1",
+      [post.id, context.person_id]
+    );
+
+    let liked = false;
+    if (existing.length) {
+      await db.query("DELETE FROM post_likes WHERE id = ?", [existing[0].id]);
+    } else {
+      await db.query("INSERT INTO post_likes (post_id, person_id) VALUES (?, ?)", [post.id, context.person_id]);
+      liked = true;
+    }
+
+    const [countRows] = await db.query("SELECT COUNT(*) AS like_count FROM post_likes WHERE post_id = ?", [post.id]);
+    return res.json({ success: true, liked, like_count: Number(countRows[0]?.like_count || 0) });
+  } catch (error) {
+    console.error("togglePostLike error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật lượt thích." });
   }
 };
 
@@ -947,7 +1154,7 @@ exports.getMySubmissions = async (req, res) => {
     
     // Get user's posts status
     const [posts] = await db.query(
-      "SELECT content, image_url, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+      "SELECT description, content, image_url, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
       [accountId]
     );
 

@@ -378,8 +378,8 @@ export default function MemberDashboard() {
               <h2>Bảng tin dòng họ</h2>
               <p>Các bài viết đã được quản lý phê duyệt.</p>
             </div>
-            <Link to="/user/submissions" className="member-btn member-btn-ghost">
-              Đóng góp
+            <Link to="/user/posts?compose=1" className="member-btn member-btn-ghost">
+              Thêm bài đăng
             </Link>
           </div>
 
@@ -390,7 +390,7 @@ export default function MemberDashboard() {
                 <div>
                   <strong>{post.author_name || "Thành viên"}</strong>
                   <span>{formatDate(post.created_at, true)}</span>
-                  <p>{post.content || "Bài viết hình ảnh"}</p>
+                  <p>{post.description || post.content || "Bài viết hình ảnh"}</p>
                 </div>
               </article>
             ))}

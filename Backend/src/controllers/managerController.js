@@ -1032,9 +1032,20 @@ exports.updateMemberByManager = async (req, res) => {
             }
         }
 
-        if (req.user.role_id === 1 && has('role_id')) {
+        if ((Number(req.user.role_id) === 1 || Number(req.user.role_id) === 2) && has('role_id')) {
             const rid = Number(body.role_id);
-            if (rid === 2 || rid === 3) {
+            if (rid !== 2 && rid !== 3) {
+                return res.status(400).json({ success: false, message: 'Vai trÃ² chá»‰ há»— trá»£ Manager hoáº·c Member' });
+            }
+            if (Number(req.user.role_id) === 2) {
+                if (targetAccountId === Number(req.user.id) && rid !== Number(full.role_id)) {
+                    return res.status(400).json({ success: false, message: 'Manager khÃ´ng thá»ƒ tá»± Ä‘á»•i vai trÃ² cá»§a chÃ­nh mÃ¬nh' });
+                }
+                if (rid === 3 && Number(full.role_id) !== 3) {
+                    return res.status(403).json({ success: false, message: 'Manager chá»‰ Ä‘Æ°á»£c chá»‰ Ä‘á»‹nh thÃ nh viÃªn lÃªn Manager, khÃ´ng Ä‘Æ°á»£c háº¡ vai trÃ² Manager khÃ¡c' });
+                }
+            }
+            if (rid !== Number(full.role_id)) {
                 await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [rid, targetAccountId]);
             }
         }
@@ -1259,7 +1270,7 @@ exports.rejectUser = async (req, res) => {
 exports.getPendingPosts = async (req, res) => {
     try {
         let sql = `
-            SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name, author.email as author_email
+            SELECT p.id as post_id, p.description, p.content, p.image_url, p.created_at, author.display_name as author_name, author.email as author_email
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id
@@ -1333,7 +1344,7 @@ exports.rejectPost = async (req, res) => {
 exports.getMedia = async (req, res) => {
     try {
         let sql = `
-            SELECT p.id as post_id, p.content, p.image_url, p.created_at, author.display_name as author_name
+            SELECT p.id as post_id, p.description, p.content, p.image_url, p.created_at, author.display_name as author_name
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id

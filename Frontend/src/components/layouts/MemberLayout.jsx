@@ -5,7 +5,7 @@ import "./MemberLayout.css";
 const menuItems = [
   { icon: "dashboard", label: "Tổng quan", path: "/user/dashboard" },
   { icon: "account_tree", label: "Cây gia phả", path: "/user/family-tree" },
-  { icon: "history_edu", label: "Bảng tin & đóng góp", path: "/user/submissions" },
+  { icon: "history_edu", label: "Bảng tin", path: "/user/posts" },
   { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
 ];
 

@@ -1,6 +1,9 @@
 import json
 import os
 import re
+import unicodedata
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from dotenv import load_dotenv
@@ -9,6 +12,7 @@ from groq import Groq
 from mysql.connector.pooling import MySQLConnectionPool
 
 load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 READ_ONLY_SQL = ("select",)
 BLOCKED_SQL = (
@@ -656,6 +660,749 @@ def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict
         return fallback
 
 
+ROLE_NAMES = {1: "admin", 2: "manager", 3: "member"}
+
+RELATION_INTENTS = {
+    "PARENTS",
+    "CHILDREN",
+    "SPOUSE",
+    "SIBLINGS",
+    "GRANDPARENTS",
+}
+
+CLAN_INTENTS = {
+    "PROFILE",
+    "CLAN_INFO",
+    "MEMBER_SEARCH",
+    "TREE",
+    "MEMBER_COUNT",
+    "GENERATION_STATS",
+    "BRANCH_STATS",
+    "EVENTS",
+    "POSTS",
+    "ANNOUNCEMENTS",
+    "LIVING_MEMBERS",
+    "DECEASED_MEMBERS",
+    "RECENT_MEMBERS",
+}
+
+MANAGER_INTENTS = CLAN_INTENTS | RELATION_INTENTS | {"CONTRIBUTIONS", "EVENT_COSTS"}
+MEMBER_INTENTS = CLAN_INTENTS | RELATION_INTENTS
+ADMIN_INTENTS = MANAGER_INTENTS | {
+    "ADMIN_OVERVIEW",
+    "ADMIN_CLANS",
+    "ADMIN_ACCOUNTS",
+    "ADMIN_POSTS",
+    "ADMIN_EVENTS",
+    "ADMIN_MEMBERS",
+}
+
+SENSITIVE_PATTERNS = (
+    "mat khau",
+    "password",
+    "pass",
+    "hash",
+    "token",
+    "jwt",
+    "secret",
+    "otp",
+    "reset",
+    "database url",
+    "connection string",
+)
+
+
+def strip_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFD", text or "")
+    without_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return without_marks.replace("đ", "d").replace("Đ", "D")
+
+
+def normalize_vietnamese(text: str) -> str:
+    normalized = strip_accents(text).lower().strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    replacements = (
+        ("cha me", "bo me"),
+        ("ba me", "bo me"),
+        ("me cha", "bo me"),
+        ("phu mau", "bo me"),
+        ("ong noi", "ong ba"),
+        ("ba noi", "ong ba"),
+        ("ong ngoai", "ong ba"),
+        ("ba ngoai", "ong ba"),
+        ("nha tho", "tu duong"),
+        ("gia toc", "gia pha"),
+        ("dong toc", "dong ho"),
+    )
+    for src, dst in replacements:
+        normalized = normalized.replace(src, dst)
+    return normalized
+
+
+def normalize_role(role: Any, role_id: Any = None) -> str:
+    raw = str(role or "").strip().lower()
+    if raw in {"admin", "manager", "member"}:
+        return raw
+    parsed_role_id = parse_int(role_id)
+    return ROLE_NAMES.get(parsed_role_id or 3, "member")
+
+
+def build_request_context(body: dict[str, Any]) -> dict[str, Any]:
+    role = normalize_role(body.get("role") or body.get("role_name"), body.get("role_id"))
+    account_id = parse_int(body.get("account_id")) or parse_int(body.get("user_id"))
+    return {
+        "account_id": account_id,
+        "person_id": parse_int(body.get("person_id")),
+        "clan_id": parse_int(body.get("clan_id")),
+        "role": role,
+        "display_name": str(body.get("display_name") or "").strip() or None,
+    }
+
+
+def context_user_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "account_id": ctx.get("account_id"),
+        "person_id": ctx.get("person_id"),
+        "clan_id": ctx.get("clan_id"),
+        "role": ctx.get("role"),
+        "display_name": ctx.get("display_name"),
+    }
+
+
+def extract_member_name_vn(prompt: str) -> str | None:
+    raw = str(prompt or "").strip()
+    patterns = (
+        r"^(?:tim|tìm)\s+(?:nguoi|người|thanh vien|thành viên)?\s*(?:ten|tên)?\s+(.+)$",
+        r"(?:nguoi|người|thanh vien|thành viên)\s+(?:ten|tên)\s+(.+)$",
+        r"(?:ai la|ai là)\s+(.+)$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, raw, flags=re.IGNORECASE)
+        if match:
+            name = match.group(1).strip(" .,!?:;\"'")
+            if name:
+                return name
+    return extract_member_name(strip_accents(raw))
+
+
+def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
+    p = normalize_vietnamese(prompt)
+    slots: dict[str, Any] = {}
+
+    member_name = extract_member_name_vn(prompt)
+    if member_name and ("tim" in p or "ten" in p or "ai la" in p):
+        slots["name"] = member_name
+        return "MEMBER_SEARCH", 0.92, slots
+
+    if "mat khau" in p or "password" in p or "token" in p or "secret" in p:
+        return "SENSITIVE_DATA", 0.99, slots
+    if "bo me" in p or "bo toi" in p or "me toi" in p or "cha toi" in p:
+        return "PARENTS", 0.95, slots
+    if "con toi" in p or "cac con cua toi" in p or "con cua toi" in p:
+        return "CHILDREN", 0.92, slots
+    if "vo toi" in p or "chong toi" in p or "vo chong cua toi" in p:
+        return "SPOUSE", 0.9, slots
+    if "anh chi em" in p or "anh em toi" in p or "chi em toi" in p or "anh chi em toi" in p:
+        return "SIBLINGS", 0.9, slots
+    if "ong ba" in p:
+        return "GRANDPARENTS", 0.9, slots
+    if "tai khoan cua toi" in p or "thong tin tai khoan" in p or "toi la ai" in p or "thong tin cua toi" in p:
+        return "PROFILE", 0.95, slots
+    if "lich su dong ho" in p or "lich su gia pha" in p or "nguon goc dong ho" in p or "tu duong" in p:
+        return "CLAN_INFO", 0.9, slots
+    if "tong quan" in p or "dashboard" in p or ("thong ke" in p and "he thong" in p):
+        return "ADMIN_OVERVIEW", 0.88, slots
+    if "danh sach clan" in p or "cac dong ho" in p or "tat ca dong ho" in p:
+        return "ADMIN_CLANS", 0.9, slots
+    if "tai khoan" in p or "account" in p or "nguoi dung" in p:
+        return "ADMIN_ACCOUNTS", 0.85, slots
+    if "bai viet toan he thong" in p:
+        return "ADMIN_POSTS", 0.85, slots
+    if "su kien toan he thong" in p:
+        return "ADMIN_EVENTS", 0.85, slots
+    if "thanh vien toan he thong" in p:
+        return "ADMIN_MEMBERS", 0.85, slots
+    if "cay gia pha" in p or "so do gia pha" in p:
+        return "TREE", 0.86, slots
+    if ("bao nhieu" in p or "so luong" in p or "tong cong" in p) and (
+        "nguoi" in p or "thanh vien" in p or "gia pha" in p
+    ):
+        return "MEMBER_COUNT", 0.88, slots
+    if "the he" in p or re.search(r"\bdoi\b", p):
+        return "GENERATION_STATS", 0.82, slots
+    if "chi" in p and ("bao nhieu" in p or "thong ke" in p):
+        return "BRANCH_STATS", 0.82, slots
+    if "thong bao" in p or "truong ho" in p or "quan ly" in p:
+        return "ANNOUNCEMENTS", 0.8, slots
+    if "su kien" in p or "gio" in p or "nhac" in p:
+        return "EVENTS", 0.82, slots
+    if "dong gop" in p or "ung ho" in p:
+        return "CONTRIBUTIONS", 0.82, slots
+    if "chi phi su kien" in p or "kinh phi" in p or "chi tieu" in p:
+        return "EVENT_COSTS", 0.82, slots
+    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
+        return "POSTS", 0.82, slots
+    if "thanh vien moi" in p or "nguoi moi" in p:
+        return "RECENT_MEMBERS", 0.82, slots
+    if "da mat" in p or "qua doi" in p:
+        return "DECEASED_MEMBERS", 0.82, slots
+    if "con song" in p:
+        return "LIVING_MEMBERS", 0.82, slots
+    if "thanh vien" in p or "gia pha" in p or "dong ho" in p:
+        return "TREE", 0.65, slots
+    return "UNKNOWN", 0.0, slots
+
+
+def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | None:
+    p = normalize_vietnamese(prompt)
+    role = ctx.get("role") or "member"
+
+    if intent == "SENSITIVE_DATA" or any(pattern in p for pattern in SENSITIVE_PATTERNS):
+        return "Tôi không thể cung cấp mật khẩu, token, khóa bí mật hoặc dữ liệu nhạy cảm."
+
+    allowed = ADMIN_INTENTS if role == "admin" else MANAGER_INTENTS if role == "manager" else MEMBER_INTENTS
+    if intent not in allowed:
+        if role == "admin" and intent == "UNKNOWN":
+            return None
+        return "Bạn không có quyền hỏi loại dữ liệu này hoặc câu hỏi chưa nằm trong danh sách intent được hỗ trợ."
+
+    if role != "admin" and not ctx.get("clan_id"):
+        return "Tài khoản của bạn chưa được gắn với dòng họ nên chưa thể tra cứu dữ liệu gia phả."
+
+    if intent in RELATION_INTENTS and not ctx.get("person_id"):
+        return "Tài khoản của bạn chưa được liên kết với hồ sơ thành viên nên chưa thể tra cứu quan hệ gia đình."
+
+    return None
+
+
+def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tuple[str, list[Any]] | None:
+    account_id = ctx.get("account_id")
+    person_id = ctx.get("person_id")
+    clan_id = ctx.get("clan_id")
+    role = ctx.get("role")
+
+    if role == "admin" and not clan_id:
+        if intent == "MEMBER_SEARCH":
+            name = str(slots.get("name") or "").strip()
+            like_name = f"%{name}%"
+            return (
+                """
+                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.gender, p.generation,
+                       p.branch, p.birth_date, p.death_date, p.is_living, p.hometown, p.bio
+                FROM people p
+                LEFT JOIN clans c ON c.id = p.clan_id
+                WHERE p.display_name LIKE %s
+                   OR CONCAT_WS(' ', p.surname, p.middle_name, p.first_name) LIKE %s
+                ORDER BY
+                  CASE WHEN p.display_name = %s THEN 0 ELSE 1 END,
+                  p.clan_id ASC,
+                  p.generation ASC,
+                  p.display_name ASC
+                """,
+                [like_name, like_name, name],
+            )
+        if intent == "TREE":
+            return (
+                """
+                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
+                FROM people p
+                LEFT JOIN clans c ON c.id = p.clan_id
+                ORDER BY p.created_at DESC, p.id DESC
+                """,
+                [],
+            )
+        if intent == "MEMBER_COUNT":
+            return ("SELECT COUNT(*) AS member_count FROM people", [])
+        if intent == "GENERATION_STATS":
+            return (
+                """
+                SELECT generation, COUNT(*) AS member_count
+                FROM people
+                GROUP BY generation
+                ORDER BY generation ASC
+                """,
+                [],
+            )
+        if intent == "BRANCH_STATS":
+            return (
+                """
+                SELECT branch, COUNT(*) AS member_count
+                FROM people
+                GROUP BY branch
+                ORDER BY branch ASC
+                """,
+                [],
+            )
+        if intent == "EVENTS":
+            return (
+                """
+                SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
+                FROM events ev
+                LEFT JOIN clans c ON c.id = ev.clan_id
+                ORDER BY ev.event_date DESC, ev.id DESC
+                """,
+                [],
+            )
+        if intent == "POSTS":
+            return (
+                """
+                SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
+                       COALESCE(pe.display_name, a.email) AS author_name
+                FROM posts post
+                JOIN accounts a ON a.id = post.author_id
+                LEFT JOIN people pe ON pe.id = a.person_id
+                ORDER BY post.created_at DESC, post.id DESC
+                """,
+                [],
+            )
+
+    if intent == "PROFILE":
+        if role == "admin":
+            return (
+                """
+                SELECT a.id AS account_id, a.email, a.role_id, a.status, p.id AS person_id,
+                       p.display_name, p.gender, p.generation, p.birth_date, p.hometown,
+                       c.id AS clan_id, c.clan_name
+                FROM accounts a
+                LEFT JOIN people p ON p.id = a.person_id
+                LEFT JOIN clans c ON c.id = p.clan_id
+                WHERE a.id = %s
+                LIMIT 1
+                """,
+                [account_id],
+            )
+        return (
+            """
+            SELECT a.id AS account_id, a.email, a.role_id, a.status, p.id AS person_id,
+                   p.display_name, p.gender, p.generation, p.birth_date, p.hometown,
+                   COALESCE(p.clan_id, ac.clan_id) AS clan_id, c.clan_name
+            FROM accounts a
+            LEFT JOIN people p ON p.id = a.person_id
+            LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+            LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
+            WHERE a.id = %s AND COALESCE(p.clan_id, ac.clan_id) = %s
+            LIMIT 1
+            """,
+            [account_id, clan_id],
+        )
+
+    if intent == "PARENTS":
+        return (
+            """
+            SELECT father.display_name AS father, mother.display_name AS mother
+            FROM people me
+            JOIN children ch ON ch.person_id = me.id
+            JOIN families fam ON fam.id = ch.family_id AND fam.clan_id = %s
+            LEFT JOIN people father ON father.id = fam.father_id
+            LEFT JOIN people mother ON mother.id = fam.mother_id
+            WHERE me.id = %s AND me.clan_id = %s
+            LIMIT 1
+            """,
+            [clan_id, person_id, clan_id],
+        )
+
+    if intent == "CHILDREN":
+        return (
+            """
+            SELECT child.id, child.display_name, child.gender, child.generation, child.birth_date
+            FROM people me
+            JOIN families fam ON (fam.father_id = me.id OR fam.mother_id = me.id) AND fam.clan_id = %s
+            JOIN children ch ON ch.family_id = fam.id
+            JOIN people child ON child.id = ch.person_id
+            WHERE me.id = %s AND me.clan_id = %s AND child.clan_id = %s
+            ORDER BY ch.sort_order, child.id
+            """,
+            [clan_id, person_id, clan_id, clan_id],
+        )
+
+    if intent == "SPOUSE":
+        return (
+            """
+            SELECT spouse.id, spouse.display_name, spouse.gender, spouse.generation, spouse.birth_date
+            FROM people me
+            JOIN families fam ON (fam.father_id = me.id OR fam.mother_id = me.id) AND fam.clan_id = %s
+            JOIN people spouse
+              ON (spouse.id = fam.father_id OR spouse.id = fam.mother_id)
+             AND spouse.id <> me.id
+            WHERE me.id = %s AND me.clan_id = %s AND spouse.clan_id = %s
+            LIMIT 1
+            """,
+            [clan_id, person_id, clan_id, clan_id],
+        )
+
+    if intent == "SIBLINGS":
+        return (
+            """
+            SELECT sibling.id, sibling.display_name, sibling.gender, sibling.generation, sibling.birth_date
+            FROM people me
+            JOIN children my_row ON my_row.person_id = me.id
+            JOIN children sibling_row ON sibling_row.family_id = my_row.family_id
+            JOIN people sibling ON sibling.id = sibling_row.person_id
+            WHERE me.id = %s
+              AND me.clan_id = %s
+              AND sibling.clan_id = %s
+              AND sibling.id <> me.id
+            ORDER BY sibling_row.sort_order, sibling.id
+            """,
+            [person_id, clan_id, clan_id],
+        )
+
+    if intent == "GRANDPARENTS":
+        return (
+            """
+            SELECT DISTINCT gp.display_name AS grandparent_name
+            FROM people me
+            JOIN children my_row ON my_row.person_id = me.id
+            JOIN families parent_fam ON parent_fam.id = my_row.family_id AND parent_fam.clan_id = %s
+            JOIN people parent_person ON parent_person.id IN (parent_fam.father_id, parent_fam.mother_id)
+            JOIN children parent_row ON parent_row.person_id = parent_person.id
+            JOIN families grand_fam ON grand_fam.id = parent_row.family_id AND grand_fam.clan_id = %s
+            JOIN people gp ON gp.id IN (grand_fam.father_id, grand_fam.mother_id)
+            WHERE me.id = %s AND me.clan_id = %s AND gp.clan_id = %s
+            """,
+            [clan_id, clan_id, person_id, clan_id, clan_id],
+        )
+
+    if intent == "CLAN_INFO":
+        return (
+            """
+            SELECT id, clan_name, history, hall_address, created_at
+            FROM clans
+            WHERE id = %s
+            LIMIT 1
+            """,
+            [clan_id],
+        )
+
+    if intent == "MEMBER_SEARCH":
+        name = str(slots.get("name") or "").strip()
+        like_name = f"%{name}%"
+        return (
+            """
+            SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown, bio
+            FROM people
+            WHERE clan_id = %s
+              AND (
+                display_name LIKE %s
+                OR CONCAT_WS(' ', surname, middle_name, first_name) LIKE %s
+              )
+            ORDER BY
+              CASE WHEN display_name = %s THEN 0 ELSE 1 END,
+              generation ASC,
+              display_name ASC
+            """,
+            [clan_id, like_name, like_name, name],
+        )
+
+    if intent == "TREE":
+        return (
+            """
+            SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown
+            FROM people
+            WHERE clan_id = %s
+            ORDER BY generation ASC, branch ASC, display_name ASC
+            """,
+            [clan_id],
+        )
+
+    if intent == "MEMBER_COUNT":
+        return ("SELECT COUNT(*) AS member_count FROM people WHERE clan_id = %s", [clan_id])
+
+    if intent == "GENERATION_STATS":
+        return (
+            """
+            SELECT generation, COUNT(*) AS member_count
+            FROM people
+            WHERE clan_id = %s
+            GROUP BY generation
+            ORDER BY generation ASC
+            """,
+            [clan_id],
+        )
+
+    if intent == "BRANCH_STATS":
+        return (
+            """
+            SELECT branch, COUNT(*) AS member_count
+            FROM people
+            WHERE clan_id = %s
+            GROUP BY branch
+            ORDER BY branch ASC
+            """,
+            [clan_id],
+        )
+
+    if intent == "ANNOUNCEMENTS":
+        return (
+            """
+            SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at
+            FROM manager_announcements ma
+            JOIN accounts acc ON acc.id = ma.manager_account_id
+            LEFT JOIN people p ON p.id = acc.person_id
+            WHERE (p.clan_id = %s OR EXISTS (
+                SELECT 1 FROM account_clans ac
+                WHERE ac.account_id = acc.id AND ac.clan_id = %s AND ac.status = 'active'
+            ))
+            ORDER BY ma.created_at DESC, ma.id DESC
+            """,
+            [clan_id, clan_id],
+        )
+
+    if intent == "EVENTS":
+        return (
+            """
+            SELECT id, title, event_date, description
+            FROM events
+            WHERE clan_id = %s
+            ORDER BY event_date DESC, id DESC
+            """,
+            [clan_id],
+        )
+
+    if intent == "CONTRIBUTIONS":
+        return (
+            """
+            SELECT ev.title, p.display_name, ec.amount, ec.contribution_date, ec.method
+            FROM event_contributions ec
+            JOIN events ev ON ev.id = ec.event_id
+            JOIN people p ON p.id = ec.person_id
+            WHERE ev.clan_id = %s
+            ORDER BY ec.contribution_date DESC, ec.id DESC
+            """,
+            [clan_id],
+        )
+
+    if intent == "EVENT_COSTS":
+        return (
+            """
+            SELECT ev.title, c.item_name, c.amount, c.note, c.created_at
+            FROM event_costs c
+            JOIN events ev ON ev.id = c.event_id
+            WHERE ev.clan_id = %s
+            ORDER BY c.created_at DESC, c.id DESC
+            """,
+            [clan_id],
+        )
+
+    if intent == "POSTS":
+        return (
+            """
+            SELECT post.id, post.content, post.image_url, post.created_at,
+                   COALESCE(pe.display_name, a.email) AS author_name
+            FROM posts post
+            JOIN accounts a ON a.id = post.author_id
+            LEFT JOIN people pe ON pe.id = a.person_id
+            WHERE post.clan_id = %s AND post.status = 'approved'
+            ORDER BY post.created_at DESC, post.id DESC
+            """,
+            [clan_id],
+        )
+
+    if intent == "RECENT_MEMBERS":
+        return (
+            """
+            SELECT id, display_name, generation, hometown, created_at
+            FROM people
+            WHERE clan_id = %s
+            ORDER BY created_at DESC, id DESC
+            """,
+            [clan_id],
+        )
+
+    if intent == "DECEASED_MEMBERS":
+        return (
+            """
+            SELECT id, display_name, generation, death_date, hometown
+            FROM people
+            WHERE clan_id = %s AND (is_living = 0 OR death_date IS NOT NULL)
+            ORDER BY death_date DESC, generation ASC, display_name ASC
+            """,
+            [clan_id],
+        )
+
+    if intent == "LIVING_MEMBERS":
+        return (
+            """
+            SELECT id, display_name, generation, birth_date, hometown
+            FROM people
+            WHERE clan_id = %s AND (is_living = 1 OR death_date IS NULL)
+            ORDER BY generation ASC, display_name ASC
+            """,
+            [clan_id],
+        )
+
+    if intent == "ADMIN_OVERVIEW":
+        return (
+            """
+            SELECT
+              (SELECT COUNT(*) FROM clans) AS clan_count,
+              (SELECT COUNT(*) FROM people) AS member_count,
+              (SELECT COUNT(*) FROM accounts) AS account_count,
+              (SELECT COUNT(*) FROM posts WHERE status = 'pending') AS pending_post_count
+            """,
+            [],
+        )
+
+    if intent == "ADMIN_CLANS":
+        return (
+            """
+            SELECT c.id, c.clan_name, c.hall_address, COUNT(p.id) AS member_count
+            FROM clans c
+            LEFT JOIN people p ON p.clan_id = c.id
+            GROUP BY c.id, c.clan_name, c.hall_address
+            ORDER BY c.id ASC
+            """,
+            [],
+        )
+
+    if intent == "ADMIN_ACCOUNTS":
+        return (
+            """
+            SELECT a.id, a.email, a.role_id, a.status, p.display_name, p.clan_id
+            FROM accounts a
+            LEFT JOIN people p ON p.id = a.person_id
+            ORDER BY a.created_at DESC, a.id DESC
+            """,
+            [],
+        )
+
+    if intent == "ADMIN_POSTS":
+        return (
+            """
+            SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
+                   COALESCE(pe.display_name, a.email) AS author_name
+            FROM posts post
+            JOIN accounts a ON a.id = post.author_id
+            LEFT JOIN people pe ON pe.id = a.person_id
+            ORDER BY post.created_at DESC, post.id DESC
+            """,
+            [],
+        )
+
+    if intent == "ADMIN_EVENTS":
+        return (
+            """
+            SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
+            FROM events ev
+            LEFT JOIN clans c ON c.id = ev.clan_id
+            ORDER BY ev.event_date DESC, ev.id DESC
+            """,
+            [],
+        )
+
+    if intent == "ADMIN_MEMBERS":
+        return (
+            """
+            SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
+            FROM people p
+            LEFT JOIN clans c ON c.id = p.clan_id
+            ORDER BY p.created_at DESC, p.id DESC
+            """,
+            [],
+        )
+
+    return None
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    return value
+
+
+def shape_data(intent: str, rows: list[dict[str, Any]]) -> Any:
+    safe_rows = json_safe(rows)
+    first = safe_rows[0] if safe_rows else {}
+    if intent == "PARENTS":
+        return {"father": first.get("father"), "mother": first.get("mother")}
+    if intent in {"PROFILE", "CLAN_INFO", "MEMBER_COUNT", "ADMIN_OVERVIEW"}:
+        return first or {}
+    return safe_rows
+
+
+def missing_data_answer(intent: str) -> str:
+    messages = {
+        "PARENTS": (
+            "Không tìm thấy dữ liệu bố mẹ của bạn trong gia phả hiện tại. "
+            "Nguyên nhân có thể là bạn chưa được gán vào bảng children hoặc gia đình chưa có father_id/mother_id."
+        ),
+        "CHILDREN": "Không tìm thấy dữ liệu con của bạn trong gia phả hiện tại.",
+        "SPOUSE": "Không tìm thấy dữ liệu vợ/chồng của bạn trong gia phả hiện tại.",
+        "SIBLINGS": "Không tìm thấy dữ liệu anh chị em của bạn trong gia phả hiện tại.",
+        "GRANDPARENTS": "Không tìm thấy dữ liệu ông bà của bạn trong gia phả hiện tại.",
+        "PROFILE": "Không tìm thấy hồ sơ thành viên liên kết với tài khoản của bạn.",
+        "CLAN_INFO": "Không tìm thấy thông tin dòng họ hiện tại.",
+    }
+    return messages.get(intent, "Không tìm thấy dữ liệu phù hợp trong phạm vi bạn được phép truy cập.")
+
+
+def deterministic_answer(intent: str, data: Any, rows: list[dict[str, Any]], prompt: str) -> str:
+    if not rows:
+        return missing_data_answer(intent)
+
+    if intent == "PARENTS":
+        father = data.get("father")
+        mother = data.get("mother")
+        if not father and not mother:
+            return missing_data_answer(intent)
+        parts = []
+        parts.append(f"Bố của bạn là {father}." if father else "Chưa có dữ liệu bố của bạn.")
+        parts.append(f"Mẹ của bạn là {mother}." if mother else "Chưa có dữ liệu mẹ của bạn.")
+        return " ".join(parts)
+
+    if intent == "PROFILE":
+        name = data.get("display_name") or "chưa có tên"
+        clan = data.get("clan_name") or "chưa gắn dòng họ"
+        generation = data.get("generation")
+        suffix = f", đời {generation}" if generation else ""
+        return f"Bạn là {name}, thuộc dòng họ {clan}{suffix}."
+
+    if intent == "CLAN_INFO":
+        clan_name = data.get("clan_name") or "dòng họ hiện tại"
+        history = data.get("history")
+        hall = data.get("hall_address")
+        parts = [f"Thông tin {clan_name}."]
+        if history:
+            parts.append(f"Lịch sử: {history}")
+        if hall:
+            parts.append(f"Từ đường/nhà thờ: {hall}")
+        if len(parts) == 1:
+            parts.append("Hiện chưa có lịch sử hoặc địa chỉ từ đường trong dữ liệu.")
+        return " ".join(parts)
+
+    if intent == "MEMBER_COUNT":
+        return f"Dòng họ hiện có {data.get('member_count') or 0} thành viên."
+
+    if intent == "SPOUSE":
+        first = rows[0]
+        return f"Vợ/chồng của bạn là {first.get('display_name')}." if first.get("display_name") else missing_data_answer(intent)
+
+    if intent in {"CHILDREN", "SIBLINGS", "GRANDPARENTS", "MEMBER_SEARCH", "TREE", "LIVING_MEMBERS", "DECEASED_MEMBERS", "RECENT_MEMBERS"}:
+        key = "grandparent_name" if intent == "GRANDPARENTS" else "display_name"
+        names = [str(row.get(key)) for row in rows[:10] if row.get(key)]
+        if names:
+            prefix = {
+                "CHILDREN": "Các con của bạn",
+                "SIBLINGS": "Anh chị em của bạn",
+                "GRANDPARENTS": "Ông bà của bạn",
+                "MEMBER_SEARCH": "Kết quả tìm thành viên",
+                "TREE": "Một số thành viên trong gia phả",
+                "LIVING_MEMBERS": "Thành viên còn sống",
+                "DECEASED_MEMBERS": "Thành viên đã mất",
+                "RECENT_MEMBERS": "Thành viên mới",
+            }[intent]
+            more = "" if len(rows) <= 10 else f" và {len(rows) - 10} người khác"
+            return f"{prefix}: {', '.join(names)}{more}."
+
+    return simple_answer(prompt, rows)
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
 
@@ -685,67 +1432,122 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
 
         prompt = str(body.get("prompt") or "").strip()
-        user_id = parse_int(body.get("user_id"))
-        clan_id = parse_int(body.get("clan_id"))
+        ctx = build_request_context(body)
         scope = str(body.get("scope") or "").strip().lower()
         public_scope = scope == "public"
-        global_scope = bool(body.get("global")) or scope in {"admin", "global"}
 
         if not prompt:
             return jsonify({"success": False, "message": "Thieu prompt"}), 400
-        if public_scope or (user_id is None and clan_id is None):
+        if public_scope or (ctx.get("account_id") is None and ctx.get("clan_id") is None):
             return jsonify(
                 {
                     "success": True,
+                    "intent": "PUBLIC",
+                    "confidence": 1,
                     "prompt": prompt,
                     "scope": "public",
                     "row_count": 0,
-                    "data": [],
+                    "user": None,
+                    "data": {},
                     "answer": public_answer(groq_client, MODEL_NAME, prompt),
                 }
             )
-        if user_id is None:
-            return jsonify({"success": False, "message": "Thieu user_id hoac clan_id"}), 400
-        if clan_id is None and not global_scope:
-            return jsonify({"success": False, "message": "Thieu user_id hoac clan_id"}), 400
+
+        if ctx.get("account_id") is None:
+            return jsonify({"success": False, "message": "Thieu account_id"}), 400
+
+        intent, confidence, slots = detect_intent(prompt)
+        user_payload = context_user_payload(ctx)
+        denial = permission_denial(intent, ctx, prompt)
+        if denial:
+            return jsonify(
+                {
+                    "success": True,
+                    "intent": intent,
+                    "confidence": confidence,
+                    "prompt": prompt,
+                    "user": user_payload,
+                    "row_count": 0,
+                    "data": {},
+                    "answer": denial,
+                }
+            )
+
+        if intent == "UNKNOWN":
+            return jsonify(
+                {
+                    "success": True,
+                    "intent": intent,
+                    "confidence": confidence,
+                    "prompt": prompt,
+                    "user": user_payload,
+                    "row_count": 0,
+                    "data": {},
+                    "answer": (
+                        "Tôi chưa hỗ trợ câu hỏi này bằng intent/query cố định. "
+                        "Bạn có thể hỏi về bố mẹ, con, vợ/chồng, anh chị em, ông bà, hồ sơ cá nhân, "
+                        "thành viên, lịch sử dòng họ, bài viết hoặc sự kiện."
+                    ),
+                }
+            )
+
+        query = fixed_query(intent, ctx, slots)
+        if not query:
+            return jsonify(
+                {
+                    "success": True,
+                    "intent": intent,
+                    "confidence": confidence,
+                    "prompt": prompt,
+                    "user": user_payload,
+                    "row_count": 0,
+                    "data": {},
+                    "answer": "Intent này đã được nhận diện nhưng chưa có query whitelist tương ứng.",
+                }
+            )
 
         conn = None
         cur = None
 
         try:
             conn = get_pool().get_connection()
-            sql = semantic_query_global(prompt, user_id) if global_scope and clan_id is None else semantic_query(prompt, user_id, clan_id)
-            if not sql:
-                sql = ai_sql(groq_client, MODEL_NAME, prompt, user_id, clan_id, global_scope=global_scope and clan_id is None)
-
-            sql = extract_sql_candidate(sql or "")
-            if not sql:
-                return jsonify({"success": False, "message": "Khong tao duoc truy van SQL"}), 400
-
-            if clan_id is not None:
-                sql = enforce_clan(sql, clan_id)
+            sql, params = query
             sql = add_limit(sql)
 
             if not safe_sql(sql):
                 return jsonify({"success": False, "message": "SQL khong an toan"}), 400
 
             cur = conn.cursor(dictionary=True)
-            cur.execute(sql)
+            cur.execute(sql, params)
             rows = cur.fetchall()
-            answer = summarize_rows(groq_client, MODEL_NAME, prompt, rows)
+            data = shape_data(intent, rows)
+            answer = deterministic_answer(intent, data, rows, prompt)
 
             return jsonify(
                 {
                     "success": True,
+                    "intent": intent,
+                    "confidence": confidence,
                     "prompt": prompt,
+                    "user": user_payload,
                     "sql": sql,
+                    "params": params,
                     "row_count": len(rows),
-                    "data": rows,
+                    "data": data,
                     "answer": answer,
                 }
             )
         except Exception as exc:
-            return jsonify({"success": False, "message": f"Khong ket noi hoac truy van duoc database: {exc}"}), 503
+            return jsonify(
+                {
+                    "success": False,
+                    "intent": intent,
+                    "confidence": confidence,
+                    "user": user_payload,
+                    "data": {},
+                    "message": f"Khong ket noi hoac truy van duoc database: {exc}",
+                }
+            ), 503
         finally:
             if cur is not None:
                 cur.close()

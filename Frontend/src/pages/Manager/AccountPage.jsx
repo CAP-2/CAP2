@@ -105,6 +105,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
 
   const isAdmin = Number(currentUser?.role_id) === 1;
+  const canAssignManager = isAdmin || Number(currentUser?.role_id) === 2;
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -568,7 +569,7 @@ export default function AccountPage() {
                 <option value="pending">pending</option>
                 <option value="rejected">rejected</option>
               </select>
-              {isAdmin && (
+              {canAssignManager && (
                 <select className="mgr-field" name="role_id" value={editForm.role_id} onChange={updateEditField}>
                   <option value="3">Member</option>
                   <option value="2">Manager</option>

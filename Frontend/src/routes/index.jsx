@@ -34,6 +34,7 @@ import FamilyTreePage from "../pages/user/FamilyTreePage";
 import MemberDashboard from "../pages/Member/MemberDashboard";
 import MemberProfile from "../pages/Member/MemberProfile";
 import MemberSubmissions from "../pages/Member/MemberSubmissions";
+import GeneralPosts from "../pages/GeneralPosts/GeneralPosts";
 
 export default function AppRoutes() {
   return (
@@ -59,6 +60,8 @@ export default function AppRoutes() {
         <Route element={<MemberLayout />}>
           <Route path="/user/dashboard" element={<MemberDashboard />} />
           <Route path="/user/family-tree" element={<FamilyTreePage />} />
+          <Route path="/user/posts" element={<GeneralPosts />} />
+          <Route path="/posts/general" element={<GeneralPosts />} />
           <Route path="/user/submissions" element={<MemberSubmissions />} />
           <Route path="/user/profile" element={<MemberProfile />} />
         </Route>
@@ -71,6 +74,7 @@ export default function AppRoutes() {
           <Route path="/manager/dashboard" element={<ManagerDashboard />} />
           <Route path="/manager/account" element={<AccountPage />} />
           <Route path="/manager/genealogy" element={<GenealogySection />} />
+          <Route path="/manager/posts" element={<GeneralPosts />} />
           <Route path="/manager/pending" element={<PendingApprovals />} />
           <Route path="/manager/media" element={<MediaManagement />} />
         </Route>

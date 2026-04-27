@@ -164,7 +164,15 @@ exports.login = async (req, res) => {
             const role_name = getRoleName(user.role_id);
             
             const token = jwt.sign(
-                { id: user.id, role_id: user.role_id, role_name, email: user.email },
+                {
+                    id: user.id,
+                    account_id: user.id,
+                    person_id: user.person_id,
+                    role_id: user.role_id,
+                    role_name,
+                    role: role_name,
+                    email: user.email
+                },
                 secret, 
                 { expiresIn: '24h' }
             );
@@ -173,7 +181,16 @@ exports.login = async (req, res) => {
                 success: true,
                 message: "Đăng nhập thành công!",
                 token: token,
-                user: { id: user.id, role_id: user.role_id, role_name, status: user.status, name: user.display_name }
+                user: {
+                    id: user.id,
+                    account_id: user.id,
+                    person_id: user.person_id,
+                    role_id: user.role_id,
+                    role_name,
+                    role: role_name,
+                    status: user.status,
+                    name: user.display_name
+                }
             });
         } else {
             res.status(401).json({ success: false, message: "Email hoặc mật khẩu không chính xác!" });

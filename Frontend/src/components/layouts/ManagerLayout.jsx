@@ -5,6 +5,7 @@ import { apiRequest } from "../../services/api";
 import "./ManagerLayout.css";
 
 const menuItems = [
+  { icon: "post_add", label: "Bảng tin", path: "/manager/posts" },
   { icon: "dashboard", label: "Tổng quan", path: "/manager/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/manager/genealogy" },
   { icon: "group", label: "Thành viên", path: "/manager/account" },

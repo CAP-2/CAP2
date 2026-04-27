@@ -68,7 +68,7 @@ export default function ManagerDashboard() {
       id: `post-${post.post_id}`,
       icon: "article",
       title: "Tư liệu đóng góp",
-      text: post.content || post.image_url || "Bài viết không có nội dung",
+      text: post.description || post.content || post.image_url || "Bài viết không có nội dung",
       time: formatDateTime(post.created_at),
     })),
   ].slice(0, 5);

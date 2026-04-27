@@ -119,10 +119,19 @@ export default function PendingApprovals() {
             {pendingPosts.map((post) => (
               <div key={post.post_id} className="pending-item glass-effect">
                 <div className="item-main">
-                  {post.image_url && <img className="pending-thumb" src={post.image_url} alt="" />}
+                  {post.image_url && (
+                    <a className="pending-thumb-link" href={post.image_url} target="_blank" rel="noreferrer" title="Mo anh bai viet">
+                      <img className="pending-thumb" src={post.image_url} alt="" />
+                    </a>
+                  )}
                   <div className="item-info">
                     <h4>{post.author_name || post.author_email || "Người gửi"}</h4>
-                    <p className="post-preview">{post.content || "[Không có nội dung chữ]"}</p>
+                    <p className="post-preview">{post.description || post.content || "[Không có nội dung chữ]"}</p>
+                    {post.image_url && (
+                      <a className="post-image-url" href={post.image_url} target="_blank" rel="noreferrer">
+                        {post.image_url}
+                      </a>
+                    )}
                     <span className="item-date">{formatDate(post.created_at)}</span>
                   </div>
                 </div>

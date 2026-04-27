@@ -315,7 +315,8 @@ const Manager = () => {
         children_ids: f.children_ids.trim() === "" ? [] : f.children_ids.split(",").map((s) => Number(s.trim())).filter((n) => Number.isFinite(n)),
       };
       if (f.new_password.trim()) payload.new_password = f.new_password.trim();
-      if (sessionRoleId === 1) { payload.role_id = Number(f.role_id); if (f.clan_id.trim() !== "") payload.clan_id = Number(f.clan_id); }
+      if (sessionRoleId === 1 || sessionRoleId === 2) payload.role_id = Number(f.role_id);
+      if (sessionRoleId === 1 && f.clan_id.trim() !== "") payload.clan_id = Number(f.clan_id);
       const fid = f.family_id.trim(); const sid = f.spouse_id.trim();
       if (fid !== "") payload.family_id = Number(fid); if (sid !== "") payload.spouse_id = Number(sid);
       const pf = f.parent_father_id.trim(); const pm = f.parent_mother_id.trim();
@@ -941,7 +942,7 @@ const Manager = () => {
                       <div><div style={{ fontWeight: 'bold', color: 'var(--mgr-text)' }}>{post.author_name}</div><div style={{ fontSize: '0.85rem', color: 'var(--mgr-muted)' }}>{post.author_email}</div></div>
                       <div style={{ fontSize: '0.85rem', textAlign: 'right', color: 'var(--mgr-text)' }}>🕒 {new Date(post.created_at).toLocaleString('vi-VN')}</div>
                     </div>
-                    <div style={{ flex: 1, marginTop: '10px', color: 'var(--mgr-text)' }}>{post.content ? `"${post.content}"` : <span>[Không có nội dung]</span>}</div>
+                    <div style={{ flex: 1, marginTop: '10px', color: 'var(--mgr-text)' }}>{post.description || post.content ? `"${post.description || post.content}"` : <span>[Không có nội dung]</span>}</div>
                     <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
                       <button className="mgr-btnPrimary" style={{ padding: '8px 16px' }} onClick={() => doApprovePost(post.post_id || post.id)}>✅ Phê duyệt hiển thị</button>
                       <button className="mgr-btnGhost" style={{ padding: '8px 16px', color: '#dc3545' }} onClick={() => doRejectPost(post.post_id || post.id)}>❌ Bỏ qua / Xóa</button>
@@ -1038,12 +1039,12 @@ const Manager = () => {
                   <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.status} onChange={(e) => setMemberEditForm((p) => ({ ...p, status: e.target.value }))}>
                     <option value="active">active</option><option value="pending">pending</option><option value="rejected">rejected</option>
                   </select>
-                  {sessionRoleId === 1 && (
-                    <>
+                    {(sessionRoleId === 1 || sessionRoleId === 2) && (
                       <select className="mgr-field" style={{color: 'var(--mgr-text)'}} value={memberEditForm.role_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, role_id: e.target.value }))}><option value="3">Member</option><option value="2">Manager</option></select>
+                    )}
+                    {sessionRoleId === 1 && (
                       <input className="mgr-field" style={{color: 'var(--mgr-text)'}} type="number" placeholder="clan_id (dòng họ)" value={memberEditForm.clan_id} onChange={(e) => setMemberEditForm((p) => ({ ...p, clan_id: e.target.value }))} />
-                    </>
-                  )}
+                    )}
                   <input className="mgr-field" style={{ gridColumn: "1 / -1", color: 'var(--mgr-text)' }} type="password" placeholder="Mật khẩu mới (để trống nếu không đổi)" value={memberEditForm.new_password} onChange={(e) => setMemberEditForm((p) => ({ ...p, new_password: e.target.value }))} autoComplete="new-password" />
                 </div>
 

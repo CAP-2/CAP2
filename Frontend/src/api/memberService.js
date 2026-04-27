@@ -170,6 +170,42 @@ export const getGeneralPosts = async () =>
     "Không thể tải bài viết",
   );
 
+export const getPostComments = async (postId) =>
+  requestJson(
+    `/posts/${postId}/comments`,
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải bình luận bài viết",
+  );
+
+export const addPostComment = async (postId, payload) =>
+  requestJson(
+    `/posts/${postId}/comments`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    },
+    "Không thể thêm bình luận",
+  );
+
+export const togglePostLike = async (postId) =>
+  requestJson(
+    `/posts/${postId}/like`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+    },
+    "Không thể cập nhật lượt thích",
+  );
+
 export const getMySubmissions = async () =>
   requestJson(
     "/submissions",

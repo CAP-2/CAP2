@@ -31,7 +31,7 @@ export default function MediaManagement() {
     const q = query.trim().toLowerCase();
     if (!q) return mediaItems;
     return mediaItems.filter((item) =>
-      [item.author_name, item.content, item.image_url]
+      [item.author_name, item.description, item.content, item.image_url]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q))
     );
@@ -63,7 +63,7 @@ export default function MediaManagement() {
         {filteredItems.map((item) => (
           <div key={item.post_id} className="media-card glass-effect">
             <div className="media-preview">
-              <img src={item.image_url} alt={item.content || "Tư liệu gia phả"} />
+              <img src={item.image_url} alt={item.description || item.content || "Tư liệu gia phả"} />
               <div className="media-overlay">
                 <a className="media-action-btn" href={item.image_url} target="_blank" rel="noreferrer" title="Xem ảnh">
                   <span className="material-symbols-outlined">visibility</span>
@@ -77,7 +77,7 @@ export default function MediaManagement() {
               <div className="author-info">
                 <strong>{item.author_name || "Không rõ người gửi"}</strong>
                 <span>{formatDate(item.created_at)}</span>
-                {item.content && <small>{item.content}</small>}
+                {(item.description || item.content) && <small>{item.description || item.content}</small>}
               </div>
             </div>
           </div>

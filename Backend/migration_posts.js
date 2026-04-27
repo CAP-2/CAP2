@@ -1,20 +1,37 @@
-require('dotenv').config();
-const db = require('./src/config/db');
+require("dotenv").config();
+const db = require("./src/config/db");
+
+const migrations = [
+  {
+    label: "posts.status",
+    sql: "ALTER TABLE posts ADD COLUMN status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending'",
+  },
+  {
+    label: "posts.description",
+    sql: "ALTER TABLE posts ADD COLUMN description varchar(255) DEFAULT NULL AFTER author_id",
+  },
+];
 
 async function runMigration() {
-    try {
-        console.log("Bắt đầu thay đổi cấu trúc bảng posts...");
-        await db.query("ALTER TABLE posts ADD COLUMN status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending'");
-        console.log("Migration thêm cột status thành công!");
-    } catch (e) {
-        if (e.code === 'ER_DUP_FIELDNAME') {
-            console.log("Cột status đã tồn tại trong bảng posts. Bỏ qua Migration.");
+  try {
+    console.log("Starting posts table migration...");
+    for (const migration of migrations) {
+      try {
+        await db.query(migration.sql);
+        console.log(`Added ${migration.label}`);
+      } catch (error) {
+        if (error.code === "ER_DUP_FIELDNAME") {
+          console.log(`${migration.label} already exists, skipping.`);
         } else {
-            console.error("Lỗi khi chạy Migration:", e);
+          throw error;
         }
-    } finally {
-        process.exit(0);
+      }
     }
+  } catch (error) {
+    console.error("Posts migration failed:", error);
+  } finally {
+    process.exit(0);
+  }
 }
 
 runMigration();

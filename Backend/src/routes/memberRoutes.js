@@ -20,6 +20,9 @@ router.post("/content/post", verifyToken, checkRole(["admin", "manager", "member
 
 // New Routes for General Posts & Submissions
 router.get("/posts/general", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getGeneralPosts);
+router.get("/posts/:id/comments", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getPostComments);
+router.post("/posts/:id/comments", verifyToken, checkRole(["admin", "manager", "member"]), memberController.addPostComment);
+router.post("/posts/:id/like", verifyToken, checkRole(["admin", "manager", "member"]), memberController.togglePostLike);
 router.get("/submissions", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getMySubmissions);
 
 module.exports = router;

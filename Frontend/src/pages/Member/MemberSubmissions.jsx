@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { getGeneralPosts, getMySubmissions, submitMaterial } from "../../api/memberService";
-import ImageUpload from "../../components/ImageUpload/ImageUpload";
+import { Link } from "react-router-dom";
+import { getGeneralPosts, getMySubmissions } from "../../api/memberService";
 import "./MemberDashboard.css";
 
 function formatDate(value) {
@@ -17,22 +17,22 @@ function statusText(status) {
   return "Đang xử lý";
 }
 
+function postSummary(post) {
+  return post?.description || post?.content || post?.image_url || "Bài viết hình ảnh";
+}
+
 export default function MemberSubmissions() {
   const [posts, setPosts] = useState([]);
   const [submissions, setSubmissions] = useState({ posts: [], profile: {} });
-  const [form, setForm] = useState({ content: "", image_url: "" });
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const [postResult, submissionResult] = await Promise.allSettled([getGeneralPosts(), getMySubmissions()]);
-      if (postResult.status === "fulfilled") setPosts(postResult.value.posts || []);
-      else setPosts([]);
+      setPosts(postResult.status === "fulfilled" ? postResult.value.posts || [] : []);
 
       if (submissionResult.status === "rejected") throw submissionResult.reason;
       setSubmissions({
@@ -49,31 +49,6 @@ export default function MemberSubmissions() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!form.content.trim() && !form.image_url.trim()) {
-      setError("Vui lòng nhập nội dung hoặc thêm ảnh.");
-      return;
-    }
-
-    setSubmitting(true);
-    setError("");
-    setNotice("");
-    try {
-      await submitMaterial({
-        content: form.content.trim(),
-        image_url: form.image_url.trim(),
-      });
-      setForm({ content: "", image_url: "" });
-      setNotice("Đã gửi bài viết, vui lòng chờ quản lý phê duyệt.");
-      await loadData();
-    } catch (err) {
-      setError(err?.message || "Không thể gửi bài đóng góp.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const profileStatus = submissions.profile?.moderation_status;
   const profileSubmissionVisible = Boolean(
@@ -94,13 +69,22 @@ export default function MemberSubmissions() {
 
   return (
     <div className="member-portal-page">
-      {(error || notice) && <div className={`member-alert ${error ? "is-error" : "is-success"}`}>{error || notice}</div>}
+      {error && <div className="member-alert is-error">{error}</div>}
 
       <section className="member-hero-panel">
         <div>
           <span className="member-kicker">Đóng góp dòng họ</span>
-          <h1>Bảng tin và lịch sử đóng góp</h1>
-          <p>Gửi tư liệu mới, xem bài đã duyệt và theo dõi trạng thái các nội dung bạn đã gửi.</p>
+          <h1>Lịch sử đóng góp</h1>
+          <p>Theo dõi trạng thái bài đã gửi. Việc thêm bài mới, thích và bình luận nằm trong trang bảng tin.</p>
+        </div>
+        <div className="member-hero-actions">
+          <Link to="/user/posts?compose=1" className="member-btn member-btn-primary">
+            <span className="material-symbols-outlined">add</span>
+            Thêm bài đăng
+          </Link>
+          <Link to="/user/posts" className="member-btn member-btn-ghost">
+            Xem bảng tin
+          </Link>
         </div>
       </section>
 
@@ -108,27 +92,13 @@ export default function MemberSubmissions() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Gửi bài viết mới</h2>
-              <p>Nội dung sẽ được hiển thị sau khi quản lý phê duyệt.</p>
+              <h2>Đăng bài trên bảng tin</h2>
+              <p>Sử dụng nút thêm bài ở bảng tin để tạo bài đăng có mô tả, ảnh và nội dung đầy đủ.</p>
             </div>
           </div>
-          <form className="member-form" onSubmit={handleSubmit}>
-            <ImageUpload
-              label="Tải ảnh bài viết"
-              onUploadSuccess={(url) => setForm((current) => ({ ...current, image_url: url }))}
-            />
-            <label className="member-label">
-              URL ảnh
-              <input value={form.image_url} onChange={(event) => setForm((current) => ({ ...current, image_url: event.target.value }))} />
-            </label>
-            <label className="member-label">
-              Nội dung
-              <textarea rows={7} value={form.content} onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))} />
-            </label>
-            <button className="member-btn member-btn-primary" type="submit" disabled={submitting}>
-              Gửi đóng góp
-            </button>
-          </form>
+          <Link to="/user/posts?compose=1" className="member-btn member-btn-primary">
+            Mở form thêm bài
+          </Link>
         </section>
 
         <section className="member-panel">
@@ -137,6 +107,9 @@ export default function MemberSubmissions() {
               <h2>Bài đã duyệt</h2>
               <p>Các bài viết đang hiển thị trong bảng tin dòng họ.</p>
             </div>
+            <Link to="/user/posts" className="member-btn member-btn-ghost">
+              Mở bảng tin
+            </Link>
           </div>
           <div className="member-feed">
             {posts.length === 0 ? (
@@ -148,7 +121,7 @@ export default function MemberSubmissions() {
                   <div>
                     <strong>{post.author_name || "Thành viên"}</strong>
                     <span>{formatDate(post.created_at)}</span>
-                    <p>{post.content || "Bài viết hình ảnh"}</p>
+                    <p>{postSummary(post)}</p>
                   </div>
                 </article>
               ))
@@ -179,7 +152,7 @@ export default function MemberSubmissions() {
               {submissions.posts.map((item, index) => (
                 <tr key={`${item.created_at || "post"}-${index}`}>
                   <td>Bài viết</td>
-                  <td>{item.content || item.image_url || "Bài viết hình ảnh"}</td>
+                  <td>{postSummary(item)}</td>
                   <td>
                     <span className={`member-status status-${item.status || "pending"}`}>{statusText(item.status)}</span>
                   </td>

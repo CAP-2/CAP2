@@ -128,6 +128,23 @@
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
+.pending-thumb-link {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.post-image-url {
+  display: block;
+  max-width: 300px;
+  margin-bottom: 0.35rem;
+  color: #8fd7ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pending-empty {
   padding: 1.5rem;
   border-radius: 20px;
