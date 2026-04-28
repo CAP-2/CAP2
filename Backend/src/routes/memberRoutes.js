@@ -13,6 +13,9 @@ router.get("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memb
 router.post("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memberController.sendChatMessage);
 
 router.post("/reminders", verifyToken, checkRole(["manager", "member"]), memberController.createReminder);
+router.get("/notifications", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getNotifications);
+router.patch("/notifications/read-all", verifyToken, checkRole(["admin", "manager", "member"]), memberController.markAllNotificationsRead);
+router.patch("/notifications/:id/read", verifyToken, checkRole(["admin", "manager", "member"]), memberController.markNotificationRead);
 router.get("/tasks", verifyToken, checkRole(["manager", "member"]), memberController.getAssignedTasks);
 router.patch("/tasks/:id/status", verifyToken, checkRole(["manager", "member"]), memberController.updateTaskStatus);
 
