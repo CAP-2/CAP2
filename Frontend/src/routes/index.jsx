@@ -19,6 +19,7 @@ import Waiting from "../pages/Waiting/Waiting";
 
 import DashboardHome from "../pages/admin/DashboardHome";
 import GenealogyManagement from "../pages/admin/GenealogyManagement";
+import PostsPage from "../pages/admin/PostsPage";
 import MembersPage from "../pages/admin/MembersPage";
 import EventsPage from "../pages/admin/EventsPage";
 import GalleryPage from "../pages/admin/GalleryPage";
@@ -84,6 +85,8 @@ export default function AppRoutes() {
         <Route element={<AdminLayout />}>
           <Route path="/dashboard" element={<DashboardHome />} />
           <Route path="/dashboard/genealogy" element={<GenealogyManagement />} />
+          <Route path="/dashboard/posts" element={<PostsPage />} />
+          <Route path="/dashboard/posts/clan/:clanId" element={<PostsPage />} />
           <Route path="/dashboard/members" element={<MembersPage />} />
           <Route path="/dashboard/events" element={<EventsPage />} />
           <Route path="/dashboard/gallery" element={<GalleryPage />} />

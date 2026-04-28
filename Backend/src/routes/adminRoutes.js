@@ -28,7 +28,8 @@ router.delete("/events/:id", verifyToken, checkRole(["admin"]), adminController.
 router.get("/gallery", verifyToken, checkRole(["admin"]), adminController.getGallery);
 router.delete("/gallery/:id", verifyToken, checkRole(["admin"]), adminController.deleteGalleryItem);
 
-// Thống kê Dashboard
+// Thống kê & Bài viết
 router.get("/dashboard-stats", verifyToken, checkRole(["admin"]), adminController.getDashboardStats);
+router.get("/posts/clan/:clanId", verifyToken, checkRole(["admin"]), adminController.getPostsByClan);
 
 module.exports = router;
