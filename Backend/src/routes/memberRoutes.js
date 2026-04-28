@@ -7,6 +7,7 @@ const { verifyToken, checkRole } = require("../middleware/authMiddleware");
 router.get("/dashboard", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getDashboard);
 router.put("/profile", verifyToken, checkRole(["admin", "manager", "member"]), memberController.updateProfile);
 router.put("/password", verifyToken, checkRole(["admin", "manager", "member"]), memberController.changePassword);
+router.post("/tree-edit-session", verifyToken, checkRole(["admin", "manager", "member"]), memberController.verifyTreeEditSession);
 
 router.get("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getChatMessages);
 router.post("/chat", verifyToken, checkRole(["admin", "manager", "member"]), memberController.sendChatMessage);

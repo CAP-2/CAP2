@@ -1,21 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getMemberDashboard } from "../../api/memberService";
-import { FamilyTreeNode, personTreeLabel } from "../../components/PhadoFamilyTree/PhadoFamilyTree";
+import { useCallback, useEffect, useState } from "react";
+import { getMemberDashboard, verifyTreeEditSession } from "../../api/memberService";
+import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
+import { clearTreeEditSession, readTreeEditSession, saveTreeEditSession } from "../../services/treeEditSession";
 import "../Member/MemberDashboard.css";
-
-function formatDate(value) {
-  if (!value) return "Chưa cập nhật";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("vi-VN");
-}
 
 export default function FamilyTreePage() {
   const [dashboard, setDashboard] = useState(null);
-  const [selectedPerson, setSelectedPerson] = useState(null);
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const [keySaving, setKeySaving] = useState(false);
+  const [keyStatus, setKeyStatus] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [permission, setPermission] = useState({
+    canEdit: false,
+    editScope: "none",
+    allowedNodeIds: [],
+  });
+  const [permissionExpiry, setPermissionExpiry] = useState("");
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -34,28 +37,140 @@ export default function FamilyTreePage() {
     loadTree();
   }, [loadTree]);
 
-  const treeMembers = dashboard?.treeMembers || [];
-  const roots = dashboard?.familyTree?.roots || [];
-  const clanName = dashboard?.clan?.clan_name || "Gia phả";
-
-  const filteredMembers = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    if (!text) return treeMembers;
-    return treeMembers.filter((member) => {
-      const haystack = [
-        member.display_name,
-        member.surname,
-        member.middle_name,
-        member.first_name,
-        member.hometown,
-        member.generation,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(text);
+  const resetTemporaryPermission = useCallback((message = "") => {
+    clearTreeEditSession();
+    setPermission({
+      canEdit: false,
+      editScope: "none",
+      allowedNodeIds: [],
     });
-  }, [query, treeMembers]);
+    setPermissionExpiry("");
+    if (message) setKeyStatus(message);
+  }, []);
+
+  const activateTemporaryPermission = useCallback(
+    async (rawKey, options = {}) => {
+      const key = String(rawKey || "").trim();
+      const silent = options.silent === true;
+      if (!key) {
+        setKeyError("Vui lòng nhập temporary edit key.");
+        return;
+      }
+
+      setKeySaving(true);
+      if (!silent) {
+        setKeyError("");
+        setKeyStatus("");
+      }
+
+      try {
+        const response = await verifyTreeEditSession(key);
+        saveTreeEditSession({ key, expiresAt: response.expires_at });
+        setPermission({
+          canEdit: true,
+          editScope: "limited",
+          allowedNodeIds: Array.isArray(response.allowed_node_ids) ? response.allowed_node_ids : [],
+        });
+        setPermissionExpiry(response.expires_at || "");
+        setKeyInput(key);
+        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời. Chỉ được chỉnh sửa bản thân, cha/mẹ trực tiếp và con trực tiếp.");
+        setKeyError("");
+      } catch (err) {
+        resetTemporaryPermission("");
+        setKeyError(err?.message || "Temporary edit key không hợp lệ hoặc đã hết hạn.");
+      } finally {
+        setKeySaving(false);
+      }
+    },
+    [resetTemporaryPermission],
+  );
+
+  useEffect(() => {
+    const session = readTreeEditSession();
+    if (!session?.key) return;
+    setKeyInput(session.key);
+    activateTemporaryPermission(session.key, { silent: true });
+  }, [activateTemporaryPermission]);
+
+  useEffect(() => {
+    if (!permissionExpiry) return undefined;
+
+    const syncExpiry = () => {
+      if (Date.parse(permissionExpiry) <= Date.now()) {
+        resetTemporaryPermission("Temporary edit key đã hết hạn. Cây gia phả đã quay về chế độ chỉ xem.");
+      }
+    };
+
+    syncExpiry();
+    const timer = window.setInterval(syncExpiry, 1000);
+    return () => window.clearInterval(timer);
+  }, [permissionExpiry, resetTemporaryPermission]);
+
+  const treeMembers = Array.isArray(dashboard?.treeMembers) ? dashboard.treeMembers : [];
+  const families = Array.isArray(dashboard?.families) ? dashboard.families : [];
+  const children = Array.isArray(dashboard?.children) ? dashboard.children : [];
+  const clan = dashboard?.clan || {};
+  const clanName = clan?.clan_name || "Gia phả";
+
+  const remainingMs = permissionExpiry ? Math.max(0, Date.parse(permissionExpiry) - Date.now()) : 0;
+  const remainingText = permissionExpiry
+    ? `${Math.floor(remainingMs / 60000)}:${String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0")}`
+    : "";
+
+  const renderTreeInfoPanel = () => (
+    <aside className="member-panel member-tree-side member-tree-side--compact">
+      <div className="member-panel-header">
+        <div>
+          <h2>Thông tin cây</h2>
+          <p>Member được xem đầy đủ và chỉ sửa khi có temporary edit key.</p>
+        </div>
+      </div>
+      <div className="member-tree-keyCard">
+        <label className="member-label">
+          Temporary edit key
+          <input value={keyInput} onChange={(event) => setKeyInput(event.target.value)} placeholder="Nhập key do manager cấp" />
+        </label>
+        <div className="member-tree-keyActions">
+          <button className="member-btn member-btn-primary" type="button" onClick={() => activateTemporaryPermission(keyInput)} disabled={keySaving || !keyInput.trim()}>
+            {keySaving ? "Đang xác thực..." : "Xác thực key"}
+          </button>
+          {permission.canEdit ? (
+            <button className="member-btn member-btn-ghost" type="button" onClick={() => resetTemporaryPermission("Đã tắt quyền chỉnh sửa tạm thời.")}>
+              Tắt quyền tạm thời
+            </button>
+          ) : null}
+        </div>
+        {permission.canEdit ? (
+          <div className="member-tree-keyMeta">
+            <strong>Đang bật editable mode</strong>
+            <span>Phạm vi: bản thân, cha/mẹ trực tiếp, con trực tiếp</span>
+            <span>Còn lại: {remainingText}</span>
+          </div>
+        ) : (
+          <div className="member-tree-keyMeta">
+            <span>Không lưu key vĩnh viễn. Quyền sẽ tự hết hạn sau 1 giờ kể từ lúc manager tạo key.</span>
+          </div>
+        )}
+      </div>
+      <div className="member-tree-summary">
+        <div>
+          <strong>{treeMembers.length}</strong>
+          <span>Thành viên</span>
+        </div>
+        <div>
+          <strong>{families.length}</strong>
+          <span>Gia đình</span>
+        </div>
+        <div>
+          <strong>{children.length}</strong>
+          <span>Liên kết con</span>
+        </div>
+      </div>
+      <div className="member-tree-note">
+        Chọn một người trên cây để mở thông tin chi tiết. Các thao tác thêm, sửa, xóa và kéo thả bị khóa nếu chưa có temporary edit key hợp lệ.
+      </div>
+    </aside>
+  );
 
   if (loading) {
     return (
@@ -70,96 +185,51 @@ export default function FamilyTreePage() {
   return (
     <div className="member-portal-page">
       {error && <div className="member-alert is-error">{error}</div>}
+      {keyError && <div className="member-alert is-error">{keyError}</div>}
+      {keyStatus && !keyError ? <div className="member-alert is-success">{keyStatus}</div> : null}
 
       <section className="member-hero-panel">
         <div>
           <span className="member-kicker">Cây gia phả</span>
           <h1>{clanName}</h1>
-          <p>Xem sơ đồ gia phả tương tác, phóng to thu nhỏ và chọn từng thành viên để xem chi tiết.</p>
+          <p>Xem toàn bộ cây gia phả của dòng họ. Thành viên chỉ có quyền xem, phóng to thu nhỏ và xem chi tiết từng người.</p>
         </div>
       </section>
 
-      <div className="member-tree-layout">
-        <section className="member-panel">
-          {roots.length === 0 ? (
+      <div className="member-tree-toolbar">
+        <button className="member-btn member-btn-ghost" type="button" onClick={loadTree} disabled={loading}>
+          Tải lại
+        </button>
+        <div className="member-tree-info-popover">
+          <button
+            className={`member-btn member-btn-ghost ${isInfoPanelOpen ? "is-active" : ""}`}
+            type="button"
+            onClick={() => setIsInfoPanelOpen((value) => !value)}
+          >
+            Thông tin cây
+          </button>
+          {isInfoPanelOpen ? renderTreeInfoPanel() : null}
+        </div>
+      </div>
+
+      <div className="member-tree-layout member-tree-layout--viewer">
+        <section className="member-panel member-tree-main">
+          {treeMembers.length === 0 ? (
             <div className="member-empty">Chưa có dữ liệu cây gia phả để hiển thị.</div>
           ) : (
-            <div className="usr-phado">
-              <div className="usr-phado-frame">
-                <header className="usr-phado-header">
-                  <div className="usr-phado-ornament usr-phado-ornament--left" aria-hidden="true" />
-                  <div className="usr-phado-titleBlock">
-                    <div className="usr-phado-banner">GIA PHẢ</div>
-                    <div className="usr-phado-clan">{String(clanName).trim().toUpperCase()}</div>
-                  </div>
-                  <div className="usr-phado-ornament usr-phado-ornament--right" aria-hidden="true" />
-                </header>
-                <div className="usr-phado-treeWrap usr-phado-treeWrap--bloodline">
-                  <ul className="usr-phado-treeRoot">
-                    {roots.map((root) => (
-                      <FamilyTreeNode key={root.person.id} node={root} onSelectPerson={setSelectedPerson} />
-                    ))}
-                  </ul>
-                </div>
-              </div>
+            <div className="member-tree-editorWrap">
+              <FamilyTreeEditor
+                clan={clan}
+                people={treeMembers}
+                families={families}
+                children={children}
+                loading={loading}
+                permission={permission}
+              />
             </div>
           )}
         </section>
-
-        <aside className="member-panel member-tree-side">
-          <div className="member-panel-header">
-            <div>
-              <h2>Tra cứu thành viên</h2>
-              <p>{treeMembers.length} hồ sơ trong dòng họ.</p>
-            </div>
-          </div>
-          <div className="member-form">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên, quê quán, đời..." />
-          </div>
-          {filteredMembers.slice(0, 40).map((member) => (
-            <button className="member-tree-person" type="button" key={member.id} onClick={() => setSelectedPerson(member)}>
-              <strong>{personTreeLabel(member)}</strong>
-              <span>Đời {member.generation || "chưa rõ"} · {member.hometown || "chưa cập nhật"}</span>
-            </button>
-          ))}
-          {filteredMembers.length === 0 && <div className="member-empty">Không tìm thấy thành viên phù hợp.</div>}
-        </aside>
       </div>
-
-      {selectedPerson && (
-        <div className="member-modal-backdrop" onClick={() => setSelectedPerson(null)}>
-          <div className="member-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="member-modal-header">
-              <h2>{personTreeLabel(selectedPerson)}</h2>
-              <button className="member-modal-close" type="button" onClick={() => setSelectedPerson(null)}>
-                ×
-              </button>
-            </div>
-            <dl className="member-detail-list">
-              <div>
-                <dt>Đời</dt>
-                <dd>{selectedPerson.generation || "Chưa cập nhật"}</dd>
-              </div>
-              <div>
-                <dt>Quê quán</dt>
-                <dd>{selectedPerson.hometown || "Chưa cập nhật"}</dd>
-              </div>
-              <div>
-                <dt>Ngày sinh</dt>
-                <dd>{formatDate(selectedPerson.birth_date)}</dd>
-              </div>
-              <div>
-                <dt>Ngày mất</dt>
-                <dd>{formatDate(selectedPerson.death_date)}</dd>
-              </div>
-              <div>
-                <dt>Tiểu sử</dt>
-                <dd>{selectedPerson.bio || "Chưa cập nhật"}</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -126,6 +126,11 @@
   color: #fff;
 }
 
+.member-btn-ghost.is-active {
+  background: rgba(27, 155, 113, 0.28);
+  border-color: rgba(27, 155, 113, 0.55);
+}
+
 .member-stats-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -510,10 +515,106 @@
   gap: 18px;
 }
 
+.member-tree-layout--viewer {
+  align-items: start;
+  grid-template-columns: 1fr;
+}
+
+.member-tree-main {
+  overflow: hidden;
+}
+
+.member-tree-editorWrap {
+  padding: 8px;
+}
+
 .member-tree-side {
   display: grid;
   align-content: start;
   gap: 10px;
+}
+
+.member-tree-toolbar {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.member-tree-info-popover {
+  position: relative;
+}
+
+.member-tree-side--compact {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 80;
+  width: min(380px, calc(100vw - 40px));
+  max-height: min(78vh, 720px);
+  overflow: auto;
+}
+
+.member-tree-keyCard {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 14px;
+}
+
+.member-tree-keyActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.member-tree-keyMeta {
+  display: grid;
+  gap: 4px;
+  color: rgba(248, 250, 252, 0.76);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.member-tree-keyMeta strong {
+  color: #fff;
+}
+
+.member-tree-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.member-tree-summary div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 12px 14px;
+}
+
+.member-tree-summary strong {
+  color: #fff;
+  font-size: 1.25rem;
+}
+
+.member-tree-summary span,
+.member-tree-note {
+  color: rgba(248, 250, 252, 0.72);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.member-tree-note {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px 14px;
 }
 
 .member-tree-person {
@@ -642,5 +743,18 @@
 
   .member-chat-composer {
     grid-template-columns: 1fr;
+  }
+
+  .member-tree-toolbar,
+  .member-tree-info-popover,
+  .member-tree-info-popover > button {
+    width: 100%;
+  }
+
+  .member-tree-side--compact {
+    position: static;
+    width: 100%;
+    max-height: none;
+    margin-top: 10px;
   }
 }

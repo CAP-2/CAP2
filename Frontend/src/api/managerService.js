@@ -1,4 +1,5 @@
 import { apiRequest } from "../services/api";
+import { getTreeEditKeyHeader } from "../services/treeEditSession";
 
 const BASE_URL = "/api/manager";
 
@@ -20,6 +21,29 @@ export const getManagerTree = (clanId) => {
 };
 
 export const getMembers = () => request("/members", {}, "Không thể lấy danh sách thành viên");
+
+export const getActiveTreeEditKeysAPI = (clanId) => {
+  const query = clanId ? `?clan_id=${encodeURIComponent(clanId)}` : "";
+  return request(`/tree-edit-keys${query}`, {}, "Khong the lay danh sach temporary edit key");
+};
+
+export const createTreeEditKeyAPI = (memberAccountIds) => {
+  const ids = Array.isArray(memberAccountIds) ? memberAccountIds : [memberAccountIds];
+  const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  return request(
+    "/tree-edit-keys",
+    {
+      method: "POST",
+      headers: getTreeEditKeyHeader(),
+      body: JSON.stringify(
+        uniqueIds.length === 1
+          ? { member_account_id: uniqueIds[0], member_account_ids: uniqueIds }
+          : { member_account_ids: uniqueIds },
+      ),
+    },
+    "KhÃ´ng thá»ƒ táº¡o temporary edit key"
+  );
+};
 
 export const createMember = (payload) =>
   request(
@@ -172,6 +196,7 @@ export const createPersonAPI = (data) =>
     "/people",
     {
       method: "POST",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Tạo người trong gia phả thất bại"
@@ -182,6 +207,7 @@ export const linkRelationsAPI = (data) =>
     "/people/link",
     {
       method: "PATCH",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Liên kết quan hệ thất bại"
@@ -192,6 +218,7 @@ export const updatePersonAPI = (personId, data) =>
     `/people/${personId}`,
     {
       method: "PATCH",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Khong the cap nhat nguoi trong gia pha"
@@ -202,6 +229,7 @@ export const updatePersonPositionAPI = (personId, data) =>
     `/people/${personId}/position`,
     {
       method: "PATCH",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Khong the luu vi tri"
@@ -212,6 +240,7 @@ export const saveTreeLayoutAPI = (people, clanId) =>
     clanId ? `/clans/${clanId}/family-tree/layout` : "/people/layout",
     {
       method: "PATCH",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify({ people, positions: people }),
     },
     "Khong the luu bo cuc cay"
@@ -222,6 +251,7 @@ export const deletePersonAPI = (personId) =>
     `/people/${personId}`,
     {
       method: "DELETE",
+      headers: getTreeEditKeyHeader(),
     },
     "Khong the xoa nguoi khoi gia pha"
   );
@@ -231,6 +261,7 @@ export const createFamilyAPI = (data) =>
     "/families",
     {
       method: "POST",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Khong the tao family"
@@ -241,6 +272,7 @@ export const addFamilyChildAPI = (familyId, data) =>
     `/families/${familyId}/children`,
     {
       method: "POST",
+      headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
     "Khong the them con vao family"

@@ -45,6 +45,20 @@ export const getMemberDashboard = async () =>
     "Không thể tải dữ liệu thành viên",
   );
 
+export const verifyTreeEditSession = async (key) =>
+  requestJson(
+    "/tree-edit-session",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ key }),
+    },
+    "KhÃ´ng thá»ƒ xÃ¡c thá»±c temporary edit key",
+  );
+
 export const updateMemberProfile = async (payload) =>
   requestJson(
     "/profile",

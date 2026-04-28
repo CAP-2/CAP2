@@ -313,7 +313,10 @@ export default function MemberProfile() {
               <p>Chọn vợ/chồng và con trong danh sách thành viên cùng dòng họ.</p>
             </div>
           </div>
-          <form className="member-form" onSubmit={saveRelations}>
+          <div className="member-empty">
+            Member không còn chỉnh sửa quan hệ gia đình từ trang hồ sơ. Khi manager cấp temporary edit key hợp lệ, hãy vào trang cây gia phả để sửa trong phạm vi được phép.
+          </div>
+          <form className="member-form" onSubmit={saveRelations} style={{ display: "none" }}>
             <label className="member-label">
               Vợ / chồng
               <select value={relationForm.spouse_id} onChange={(event) => setRelationForm((current) => ({ ...current, spouse_id: event.target.value }))}>

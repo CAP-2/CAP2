@@ -1,6 +1,9 @@
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
 const { getRoleName } = require("../config/roles");
+const {
+  getTreeEditSessionForAccount,
+} = require("../utils/treeEditPermissions");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -441,23 +444,31 @@ exports.getDashboard = async (req, res) => {
     let assignedTasks = [];
     let notifications = [];
     let familyTree = { roots: [] };
+    let families = [];
+    let children = [];
 
     if (clanId) {
       const [peopleRows] = await db.query(
         `
-          SELECT id, display_name, first_name, middle_name, surname, generation, branch,
-                 hometown, address, birth_date, death_date, is_living, gender,
-                 phone, email, avatar_url, bio
-          FROM people
-          WHERE clan_id = ?
-          ORDER BY generation, surname, first_name
+          SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
+                 p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
+                 p.phone, p.email, p.avatar_url, p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
+                 a.id AS account_id
+          FROM people p
+          LEFT JOIN accounts a ON a.person_id = p.id
+          WHERE p.clan_id = ?
+          ORDER BY p.generation, p.display_order, p.surname, p.middle_name, p.first_name, p.id
         `,
         [clanId]
       );
-      treeMembers = peopleRows;
+      treeMembers = peopleRows.map((person) => ({
+        ...person,
+        birth_date: person.birth_date ? String(person.birth_date).slice(0, 10) : null,
+        death_date: person.death_date ? String(person.death_date).slice(0, 10) : null,
+      }));
 
       const [familyRows] = await db.query(
-        `SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC`,
+        `SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC`,
         [clanId]
       );
       const [childRows] = await db.query(
@@ -470,6 +481,11 @@ exports.getDashboard = async (req, res) => {
         `,
         [clanId]
       );
+      families = familyRows.map((family) => ({
+        ...family,
+        marriage_date: family.marriage_date ? String(family.marriage_date).slice(0, 10) : null,
+      }));
+      children = childRows;
       familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
 
       const [eventRows] = await db.query(
@@ -580,6 +596,8 @@ exports.getDashboard = async (req, res) => {
         history: context.clan_history,
       },
       treeMembers,
+      families,
+      children,
       familyTree,
       discoverItems,
       reminders,
@@ -589,6 +607,33 @@ exports.getDashboard = async (req, res) => {
   } catch (error) {
     console.error("getDashboard error:", error);
     return res.status(500).json({ success: false, message: "Lỗi lấy dữ liệu trang thành viên" });
+  }
+};
+
+exports.verifyTreeEditSession = async (req, res) => {
+  try {
+    const rawKey = String(req.body?.key || req.headers?.["x-tree-edit-key"] || "").trim();
+
+    if (!rawKey) {
+      return res.status(400).json({ success: false, message: "Vui lòng nhập temporary edit key." });
+    }
+
+    const session = await getTreeEditSessionForAccount(req.user.id, rawKey);
+    if (!session) {
+      return res.status(403).json({ success: false, message: "Temporary edit key không hợp lệ hoặc đã hết hạn." });
+    }
+
+    return res.json({
+      success: true,
+      can_edit: true,
+      edit_scope: "limited",
+      allowed_node_ids: session.allowedNodeIds,
+      expires_at: session.expiresAt,
+      message: "Temporary edit key hợp lệ.",
+    });
+  } catch (error) {
+    console.error("verifyTreeEditSession error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi xác thực temporary edit key." });
   }
 };
 
@@ -606,6 +651,13 @@ exports.updateProfile = async (req, res) => {
     }
     if (!context.person_id) {
       return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết person" });
+    }
+
+    if ((hasFamilyField || hasSpouseField || hasChildrenField) && String(req.user?.role_name || "") === "member") {
+      return res.status(403).json({
+        success: false,
+        message: "Quan hệ gia đình không được chỉnh sửa từ hồ sơ thành viên. Hãy dùng temporary edit key tại trang cây gia phả hoặc liên hệ manager.",
+      });
     }
 
     const familyIdInput = parseNullableId(family_id);

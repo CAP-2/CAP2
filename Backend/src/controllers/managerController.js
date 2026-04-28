@@ -1,5 +1,10 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
+const {
+    createTemporaryTreeEditKey: createTemporaryTreeEditKeyRecord,
+    ensureMemberTreeEditKeysTable,
+    assertTreeMutationPermission,
+} = require('../utils/treeEditPermissions');
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
@@ -778,6 +783,169 @@ exports.getAllMembers = async (req, res) => {
     } catch (error) {
         console.error('getAllMembers error:', error);
         res.status(500).json({ success: false, message: 'Lỗi lấy danh sách thành viên' });
+    }
+};
+
+const normalizeTreeEditKeyMemberIds = (body = {}) => {
+    const raw = Array.isArray(body.member_account_ids)
+        ? body.member_account_ids
+        : Array.isArray(body.member_ids)
+          ? body.member_ids
+          : [body.member_account_id];
+    return [...new Set(raw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0))];
+};
+
+const buildTreeEditMemberName = (row) =>
+    row?.display_name ||
+    [row?.surname, row?.middle_name, row?.first_name].filter(Boolean).join(' ').trim() ||
+    `Member #${row?.account_id}`;
+
+const loadTreeEditKeyTargets = async (req, memberAccountIds) => {
+    const placeholders = memberAccountIds.map(() => '?').join(',');
+    const [rows] = await db.query(
+        `
+        SELECT
+            a.id AS account_id,
+            a.role_id,
+            a.status,
+            p.id AS person_id,
+            p.clan_id,
+            p.display_name,
+            p.first_name,
+            p.middle_name,
+            p.surname
+        FROM accounts a
+        INNER JOIN people p ON a.person_id = p.id
+        WHERE a.id IN (${placeholders})
+        `,
+        memberAccountIds
+    );
+
+    const byAccountId = new Map(rows.map((row) => [Number(row.account_id), row]));
+    const targets = memberAccountIds.map((id) => byAccountId.get(Number(id))).filter(Boolean);
+
+    if (targets.length !== memberAccountIds.length) {
+        return { ok: false, status: 404, message: 'Khong tim thay mot hoac nhieu member duoc cap key' };
+    }
+    if (targets.some((target) => Number(target.role_id) !== 3)) {
+        return { ok: false, status: 400, message: 'Chi co the cap temporary edit key cho member' };
+    }
+    if (targets.some((target) => String(target.status) !== 'active')) {
+        return { ok: false, status: 400, message: 'Mot hoac nhieu tai khoan member chua active' };
+    }
+    if (targets.some((target) => !Number(target.person_id) || !Number(target.clan_id))) {
+        return { ok: false, status: 400, message: 'Mot hoac nhieu member chua lien ket day du voi ho so dong ho' };
+    }
+
+    if (Number(req.user.role_id) === 2) {
+        const managerClanId = await getManagerClanId(req.user.id);
+        if (managerClanId == null) {
+            return { ok: false, status: 404, message: 'Khong xac dinh duoc dong ho cua manager' };
+        }
+        if (targets.some((target) => Number(managerClanId) !== Number(target.clan_id))) {
+            return { ok: false, status: 403, message: 'Chi duoc cap key cho member trong cung dong ho' };
+        }
+    }
+
+    return { ok: true, targets };
+};
+
+exports.createTemporaryTreeEditKey = async (req, res) => {
+    try {
+        const memberAccountIds = normalizeTreeEditKeyMemberIds(req.body);
+        if (!memberAccountIds.length) {
+            return res.status(400).json({ success: false, message: 'member_account_ids khong hop le' });
+        }
+
+        const targetResult = await loadTreeEditKeyTargets(req, memberAccountIds);
+        if (!targetResult.ok) {
+            return res.status(targetResult.status).json({ success: false, message: targetResult.message });
+        }
+
+        const keys = [];
+        for (const target of targetResult.targets) {
+            const created = await createTemporaryTreeEditKeyRecord({
+                memberAccountId: target.account_id,
+                memberPersonId: target.person_id,
+                clanId: target.clan_id,
+                createdByAccountId: req.user.id,
+            });
+
+            keys.push({
+                member_account_id: target.account_id,
+                member_person_id: target.person_id,
+                member_name: buildTreeEditMemberName(target),
+                key: created.rawKey,
+                expires_at: created.expiresAt,
+                created_at: new Date(),
+            });
+        }
+
+        const first = keys[0] || {};
+        return res.json({
+            success: true,
+            keys,
+            created_count: keys.length,
+            member_account_id: first.member_account_id,
+            member_person_id: first.member_person_id,
+            member_name: first.member_name,
+            key: first.key,
+            expires_at: first.expires_at,
+        });
+    } catch (error) {
+        console.error('createTemporaryTreeEditKey error:', error);
+        return res.status(500).json({ success: false, message: 'Loi tao temporary edit key' });
+    }
+};
+
+exports.getActiveTreeEditKeys = async (req, res) => {
+    try {
+        await ensureMemberTreeEditKeysTable();
+        const clanId = await resolveManagedClanId(req);
+        if (clanId == null) {
+            return res.status(404).json({ success: false, message: 'Khong xac dinh duoc dong ho can quan ly' });
+        }
+
+        const [rows] = await db.query(
+            `
+            SELECT
+                k.id,
+                k.member_account_id,
+                k.member_person_id,
+                k.clan_id,
+                k.raw_key,
+                k.expires_at,
+                k.created_at,
+                k.created_by_account_id,
+                p.display_name,
+                p.first_name,
+                p.middle_name,
+                p.surname
+            FROM member_tree_edit_keys k
+            INNER JOIN people p ON p.id = k.member_person_id
+            WHERE k.clan_id = ?
+              AND k.expires_at > NOW()
+            ORDER BY k.created_at DESC, k.id DESC
+            `,
+            [clanId]
+        );
+
+        return res.json({
+            success: true,
+            keys: rows.map((row) => ({
+                id: row.id,
+                member_account_id: row.member_account_id,
+                member_person_id: row.member_person_id,
+                member_name: buildTreeEditMemberName({ ...row, account_id: row.member_account_id }),
+                key: row.raw_key || '',
+                expires_at: row.expires_at,
+                created_at: row.created_at,
+                created_by_account_id: row.created_by_account_id,
+            })),
+        });
+    } catch (error) {
+        console.error('getActiveTreeEditKeys error:', error);
+        return res.status(500).json({ success: false, message: 'Loi lay danh sach temporary edit key' });
     }
 };
 
@@ -1741,6 +1909,13 @@ exports.rejectProfileUpdate = async (req, res) => {
 };
 exports.createPerson = async (req, res) => {
     try {
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'create_person',
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
+
         await ensurePeopleTreeLayoutColumns();
         const {
             display_name,
@@ -1856,6 +2031,14 @@ exports.linkRelations = async (req, res) => {
             return res.status(400).json({ success: false, message: 'person_id không hợp lệ' });
         }
 
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'link_relations',
+            affectedPersonIds: [personId],
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
+
         const [personRows] = await db.query('SELECT id, clan_id, gender FROM people WHERE id = ? LIMIT 1', [personId]);
         if (!personRows.length) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy người trong gia phả' });
@@ -1912,6 +2095,13 @@ exports.updateTreePerson = async (req, res) => {
     try {
         await ensurePeopleTreeLayoutColumns();
         const personId = Number(req.params.id);
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'update_person',
+            affectedPersonIds: [personId],
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
 
@@ -2024,6 +2214,12 @@ exports.updateTreePerson = async (req, res) => {
         );
 
         const hasBloodline = has('parent_father_id') || has('parent_mother_id') || has('father_person_id') || has('mother_person_id');
+        if (permission.scope === 'limited' && hasBloodline) {
+            return res.status(403).json({
+                success: false,
+                message: 'Temporary edit key khong cho phep sua quan he cha me.',
+            });
+        }
         if (hasBloodline) {
             const fatherId = parseNullableId(body.parent_father_id ?? body.father_person_id);
             const motherId = parseNullableId(body.parent_mother_id ?? body.mother_person_id);
@@ -2036,6 +2232,12 @@ exports.updateTreePerson = async (req, res) => {
         }
 
         const hasMarriage = has('family_id') || has('spouse_id') || has('spouse_person_id') || has('children_ids') || has('children_person_ids');
+        if (permission.scope === 'limited' && hasMarriage) {
+            return res.status(403).json({
+                success: false,
+                message: 'Temporary edit key khong cho phep sua quan he hon nhan va con cai.',
+            });
+        }
         if (hasMarriage) {
             const relationBody = {};
             if (has('family_id')) relationBody.family_id = body.family_id;
@@ -2071,6 +2273,13 @@ exports.updatePersonPosition = async (req, res) => {
     try {
         await ensurePeopleTreeLayoutColumns();
         const personId = Number(req.params.id);
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'move_person',
+            affectedPersonIds: [personId],
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
 
@@ -2103,6 +2312,13 @@ exports.saveTreeLayout = async (req, res) => {
             : Array.isArray(req.body?.people)
               ? req.body.people
               : [];
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'bulk_layout',
+            affectedPersonIds: people.map((item) => item.id ?? item.person_id),
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
         if (!people.length) return res.json({ success: true, updated: 0 });
 
         let updated = 0;
@@ -2129,6 +2345,12 @@ exports.saveTreeLayout = async (req, res) => {
 
 exports.createFamily = async (req, res) => {
     try {
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'create_family',
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
         const clanId = await resolveManagedClanId(req, req.body || {});
         if (clanId == null) {
             return res.status(404).json({ success: false, message: 'Khong xac dinh duoc dong ho' });
@@ -2167,6 +2389,13 @@ exports.addFamilyChild = async (req, res) => {
         if (!Number.isFinite(familyId) || !childId) {
             return res.status(400).json({ success: false, message: 'family_id hoac person_id khong hop le' });
         }
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'add_family_child',
+            affectedPersonIds: [childId],
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
 
         const [families] = await db.query('SELECT id, clan_id FROM families WHERE id = ? LIMIT 1', [familyId]);
         if (!families.length) return res.status(404).json({ success: false, message: 'Khong tim thay family' });
@@ -2202,6 +2431,13 @@ exports.addFamilyChild = async (req, res) => {
 exports.deleteTreePerson = async (req, res) => {
     try {
         const personId = Number(req.params.id);
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'delete_person',
+            affectedPersonIds: [personId],
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
 

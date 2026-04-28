@@ -757,7 +757,7 @@ function personToForm(person) {
   };
 }
 
-function PersonCard({ person, selected, dragging, onPointerDown, onSelect }) {
+function PersonCard({ person, selected, dragging, canDrag = true, onPointerDown, onSelect }) {
   const name = fullName(person, `Người #${person.id}`);
   const years = `${person.birth_date ? String(person.birth_date).slice(0, 4) : "?"} - ${
     person.death_date ? String(person.death_date).slice(0, 4) : "nay"
@@ -774,6 +774,7 @@ function PersonCard({ person, selected, dragging, onPointerDown, onSelect }) {
       tabIndex={0}
       title={name}
       onPointerDown={(event) => onPointerDown(event, person)}
+      data-static={!canDrag}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -803,6 +804,10 @@ function PersonInspector({
   onDelete,
   onCreateRelation,
   saving,
+  canEdit = false,
+  canEditRelations = false,
+  canDelete = false,
+  notice = "",
 }) {
   const [form, setForm] = useState(() => personToForm(person));
 
@@ -830,45 +835,49 @@ function PersonInspector({
         </button>
       </div>
 
-      <div className="fte-inspectorActions">
-        <button type="button" onClick={() => onCreateRelation("spouse")}>
-          <span className="material-symbols-outlined">favorite</span>
-          Chọn vợ/chồng
-        </button>
-        <button type="button" onClick={() => onCreateRelation("child")}>
-          <span className="material-symbols-outlined">person_add</span>
-          Chọn con
-        </button>
-        <button type="button" onClick={() => onCreateRelation("father")}>
-          <span className="material-symbols-outlined">man</span>
-          Chọn cha
-        </button>
-        <button type="button" onClick={() => onCreateRelation("mother")}>
-          <span className="material-symbols-outlined">woman</span>
-          Chọn mẹ
-        </button>
-      </div>
+      {canEditRelations ? (
+        <div className="fte-inspectorActions">
+          <button type="button" onClick={() => onCreateRelation("spouse")}>
+            <span className="material-symbols-outlined">favorite</span>
+            Chọn vợ/chồng
+          </button>
+          <button type="button" onClick={() => onCreateRelation("child")}>
+            <span className="material-symbols-outlined">person_add</span>
+            Chọn con
+          </button>
+          <button type="button" onClick={() => onCreateRelation("father")}>
+            <span className="material-symbols-outlined">man</span>
+            Chọn cha
+          </button>
+          <button type="button" onClick={() => onCreateRelation("mother")}>
+            <span className="material-symbols-outlined">woman</span>
+            Chọn mẹ
+          </button>
+        </div>
+      ) : null}
+
+      {notice ? <div className="fte-readOnlyNote">{notice}</div> : null}
 
       <div className="fte-formGrid">
         <label>
           Tên hiển thị
-          <input value={form.display_name} onChange={(event) => setField("display_name", event.target.value)} />
+          <input value={form.display_name} onChange={(event) => setField("display_name", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Họ
-          <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} />
+          <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Tên đệm
-          <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} />
+          <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Tên
-          <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} />
+          <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Giới tính
-          <select value={form.gender} onChange={(event) => setField("gender", event.target.value)}>
+          <select value={form.gender} onChange={(event) => setField("gender", event.target.value)} disabled={!canEdit}>
             <option value="">Không rõ</option>
             <option value="1">Nam</option>
             <option value="2">Nữ</option>
@@ -876,67 +885,71 @@ function PersonInspector({
         </label>
         <label>
           Tình trạng
-          <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)}>
+          <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)} disabled={!canEdit}>
             <option value="1">Còn sống</option>
             <option value="0">Đã mất</option>
           </select>
         </label>
         <label>
           Ngày sinh
-          <input type="date" value={form.birth_date} onChange={(event) => setField("birth_date", event.target.value)} />
+          <input type="date" value={form.birth_date} onChange={(event) => setField("birth_date", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Ngày mất
-          <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} />
+          <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Đời thứ
-          <input type="number" min="1" value={form.generation} onChange={(event) => setField("generation", event.target.value)} />
+          <input type="number" min="1" value={form.generation} onChange={(event) => setField("generation", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Chi nhánh
-          <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} />
+          <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} disabled={!canEdit} />
         </label>
         <label className="is-wide">
           Quê quán
-          <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} />
+          <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} disabled={!canEdit} />
         </label>
         <label className="is-wide">
           Địa chỉ
-          <input value={form.address} onChange={(event) => setField("address", event.target.value)} />
+          <input value={form.address} onChange={(event) => setField("address", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Điện thoại
-          <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} />
+          <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} disabled={!canEdit} />
         </label>
         <label>
           Email
-          <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} />
+          <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
         </label>
         <label className="is-wide">
           Ảnh đại diện URL
-          <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} />
+          <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
         </label>
         <label className="is-wide">
           Giới thiệu
-          <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} />
+          <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
         </label>
         <label className="is-wide">
           Ghi chú
-          <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} />
+          <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} disabled={!canEdit} />
         </label>
       </div>
 
-      <div className="fte-inspectorFooter">
-        <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
-          <span className="material-symbols-outlined">save</span>
-          {saving ? "Đang lưu..." : "Lưu"}
-        </button>
-        <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
-          <span className="material-symbols-outlined">delete</span>
-          Xóa
-        </button>
-      </div>
+      {canEdit ? (
+        <div className="fte-inspectorFooter">
+          <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
+            <span className="material-symbols-outlined">save</span>
+            {saving ? "Đang lưu..." : "Lưu"}
+          </button>
+          {canDelete ? (
+            <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
+              <span className="material-symbols-outlined">delete</span>
+              Xóa
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       </aside>
     </div>
   );
@@ -1135,6 +1148,8 @@ export default function FamilyTreeEditor({
   children: childRows = [],
   loading = false,
   onReload,
+  permission,
+  readOnly = false,
 }) {
   const treeRef = useRef(null);
   const scaleRef = useRef(0.75);
@@ -1147,6 +1162,22 @@ export default function FamilyTreeEditor({
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
+  const resolvedPermission = useMemo(() => {
+    if (permission) {
+      return {
+        canEdit: permission.canEdit === true,
+        editScope: permission.editScope || "none",
+        allowedNodeIds: asArray(permission.allowedNodeIds).map((id) => Number(id)).filter((id) => Number.isFinite(id)),
+      };
+    }
+    if (readOnly) {
+      return { canEdit: false, editScope: "none", allowedNodeIds: [] };
+    }
+    return { canEdit: true, editScope: "all", allowedNodeIds: [] };
+  }, [permission, readOnly]);
+  const canEditAll = resolvedPermission.canEdit && resolvedPermission.editScope === "all";
+  const canEditLimited = resolvedPermission.canEdit && resolvedPermission.editScope === "limited";
+  const allowedNodeSet = useMemo(() => new Set(resolvedPermission.allowedNodeIds.map((id) => Number(id))), [resolvedPermission.allowedNodeIds]);
 
   const canonicalTree = useMemo(() => {
     const { people: uniquePeople, idMap } = dedupePeopleByAccount(initialPeople);
@@ -1172,6 +1203,10 @@ export default function FamilyTreeEditor({
   const selectedSpouse = useMemo(
     () => findSpouse(selectedPerson, canonicalTree.families, people),
     [canonicalTree.families, people, selectedPerson],
+  );
+  const canEditPerson = useCallback(
+    (personId) => canEditAll || (canEditLimited && allowedNodeSet.has(Number(personId))),
+    [allowedNodeSet, canEditAll, canEditLimited],
   );
   const lines = useMemo(
     () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows),
@@ -1229,6 +1264,22 @@ export default function FamilyTreeEditor({
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
   }, []);
+
+  const handleCardPointerDown = useCallback(
+    (event, person) => {
+      if (!canEditPerson(person.id)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedId(person.id);
+        if (resolvedPermission.editScope === "limited") {
+          setStatus("Bạn chỉ được chỉnh sửa bản thân, cha mẹ trực tiếp và con trực tiếp.");
+        }
+        return;
+      }
+      beginDrag(event, person);
+    },
+    [beginDrag, canEditPerson, resolvedPermission.editScope],
+  );
 
   const handleExport = async () => {
     if (!treeRef.current) return;
@@ -1292,7 +1343,10 @@ export default function FamilyTreeEditor({
   };
 
   const handleSavePerson = async (form) => {
-    if (!selectedPerson) return;
+    if (!selectedPerson || !canEditPerson(selectedPerson.id)) {
+      setStatus("Node này nằm ngoài phạm vi chỉnh sửa của bạn.");
+      return;
+    }
     setSaving(true);
     setStatus("");
     try {
@@ -1323,7 +1377,10 @@ export default function FamilyTreeEditor({
   };
 
   const handleDeletePerson = async () => {
-    if (!selectedPerson) return;
+    if (!selectedPerson || !canEditAll) {
+      setStatus("Bạn không có quyền xóa node trong chế độ hiện tại.");
+      return;
+    }
     const ok = window.confirm(`Xóa ${fullName(selectedPerson)} khỏi cây gia phả?`);
     if (!ok) return;
     setSaving(true);
@@ -1342,6 +1399,10 @@ export default function FamilyTreeEditor({
   };
 
   const openCreateDialog = (relation) => {
+    if (!canEditAll) {
+      setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
+      return;
+    }
     if (relation !== "person" && !selectedPerson) {
       setStatus("Hãy chọn một thành viên trước.");
       return;
@@ -1358,7 +1419,7 @@ export default function FamilyTreeEditor({
   };
 
   const submitCreateDialog = async () => {
-    if (!dialog) return;
+    if (!canEditAll || !dialog) return;
     const form = dialog.form;
     const display = String(form.display_name || "").trim();
     const parts = [form.surname, form.middle_name, form.first_name].filter(Boolean).join(" ").trim();
@@ -1394,7 +1455,7 @@ export default function FamilyTreeEditor({
   };
 
   const submitRelationDialog = async () => {
-    if (!relationDialog || !selectedPerson || !relationDialog.personId) return;
+    if (!canEditAll || !relationDialog || !selectedPerson || !relationDialog.personId) return;
     const relation = relationDialog.relation;
     const targetId = Number(relationDialog.personId);
 
@@ -1441,7 +1502,7 @@ export default function FamilyTreeEditor({
   };
 
   const unlinkRelationDialog = async () => {
-    if (!relationDialog || !selectedPerson) return;
+    if (!canEditAll || !relationDialog || !selectedPerson) return;
     const relation = relationDialog.relation;
     const targetId = Number(relationDialog.personId);
 
@@ -1485,6 +1546,17 @@ export default function FamilyTreeEditor({
     }
   };
 
+  const selectedCanEdit = selectedPerson ? canEditPerson(selectedPerson.id) : false;
+  const selectedNotice = selectedPerson
+    ? canEditAll
+      ? ""
+      : selectedCanEdit
+        ? "Bạn có quyền chỉnh sửa tạm thời trong phạm vi cho phép. Không thể tạo, xóa hoặc đổi quan hệ node."
+        : canEditLimited
+          ? "Node này nằm ngoài phạm vi chỉnh sửa tạm thời của bạn."
+          : "Chế độ chỉ xem. Thành viên không có quyền chỉnh sửa cây gia phả."
+    : "";
+
   return (
     <section className="fte-shell">
       <TransformWrapper
@@ -1505,20 +1577,30 @@ export default function FamilyTreeEditor({
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <div className="fte-toolbar">
-              <div className="fte-toolbarGroup">
-                <button type="button" onClick={() => openCreateDialog("person")}>
-                  <span className="material-symbols-outlined">person_add</span>
-                  Thêm người
-                </button>
-                <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("spouse")}>
-                  <span className="material-symbols-outlined">favorite</span>
-                  Chọn vợ/chồng
-                </button>
-                <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("child")}>
-                  <span className="material-symbols-outlined">escalator_warning</span>
-                  Chọn con
-                </button>
-              </div>
+              {canEditAll ? (
+                <div className="fte-toolbarGroup">
+                  <button type="button" onClick={() => openCreateDialog("person")}>
+                    <span className="material-symbols-outlined">person_add</span>
+                    Thêm người
+                  </button>
+                  <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("spouse")}>
+                    <span className="material-symbols-outlined">favorite</span>
+                    Chọn vợ/chồng
+                  </button>
+                  <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("child")}>
+                    <span className="material-symbols-outlined">escalator_warning</span>
+                    Chọn con
+                  </button>
+                </div>
+              ) : canEditLimited ? (
+                <div className="fte-toolbarGroup">
+                  <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: self / cha mẹ / con</span>
+                </div>
+              ) : (
+                <div className="fte-toolbarGroup">
+                  <span className="fte-readOnlyBadge">Chế độ chỉ xem</span>
+                </div>
+              )}
               <div className="fte-toolbarGroup">
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
@@ -1572,7 +1654,8 @@ export default function FamilyTreeEditor({
                           person={person}
                           selected={selectedId === person.id}
                           dragging={draggingId === person.id}
-                          onPointerDown={beginDrag}
+                          canDrag={canEditPerson(person.id)}
+                          onPointerDown={handleCardPointerDown}
                           onSelect={setSelectedId}
                         />
                       ))}
@@ -1589,6 +1672,10 @@ export default function FamilyTreeEditor({
         person={selectedPerson}
         spouse={selectedSpouse}
         saving={saving}
+        canEdit={selectedCanEdit}
+        canEditRelations={canEditAll && selectedCanEdit}
+        canDelete={canEditAll && selectedCanEdit}
+        notice={selectedNotice}
         onClose={() => setSelectedId(null)}
         onSave={handleSavePerson}
         onDelete={handleDeletePerson}
