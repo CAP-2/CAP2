@@ -5,6 +5,7 @@ import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 const menuItems = [
   { icon: "dashboard", label: "Tổng quan", path: "/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/dashboard/genealogy" },
+  { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
   { icon: "group", label: "Thành viên", path: "/dashboard/members" },
   { icon: "event", label: "Sự kiện", path: "/dashboard/events" },
   { icon: "photo_library", label: "Thư viện", path: "/dashboard/gallery" },

@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
-import { getAdminDashboardStats } from "../../api/adminService";
+import { useNavigate } from "react-router-dom";
+import { getAdminDashboardStats, getAdminClans } from "../../api/adminService";
 import "./DashboardHome.css";
 
 export default function DashboardHome() {
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
+    const [clans, setClans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const res = await getAdminDashboardStats();
-                setData(res);
+                const [statsRes, clansRes] = await Promise.all([
+                    getAdminDashboardStats(),
+                    getAdminClans()
+                ]);
+                setData(statsRes);
+                setClans(clansRes.clans || []);
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -23,13 +30,13 @@ export default function DashboardHome() {
 
     if (loading) return <div className="loading-container"><div className="loader"></div><p>Đang tải dữ liệu thực tế...</p></div>;
 
-    const { stats, recent_activities } = data || {};
+    const { stats } = data || {};
 
     const statItems = [
         { icon: "group", label: "Tổng thành viên", value: stats?.total_members || 0, color: "var(--primary-gradient)", trend: "+12% tháng này" },
         { icon: "account_tree", label: "Số dòng họ", value: stats?.total_clans || 0, color: "var(--accent-gradient)", trend: "Đang phát triển" },
-        { icon: "event", label: "Sự kiện", value: stats?.total_events || 0, color: "var(--warm-gradient)", trend: "3 sắp diễn ra" },
-        { icon: "photo_library", label: "Hình ảnh kỷ niệm", value: stats?.total_photos || 0, color: "var(--cool-gradient)", trend: "Chất lượng cao" },
+        { icon: "article", label: "Tổng bài viết", value: stats?.total_posts || 0, color: "var(--warm-gradient)", trend: "5,400 bài" },
+        { icon: "event", label: "Sự kiện", value: stats?.total_events || 0, color: "var(--cool-gradient)", trend: "3 sắp diễn ra" },
     ];
 
     return (
@@ -61,21 +68,46 @@ export default function DashboardHome() {
             </div>
 
             <div className="dashboard-main-content">
-                <section className="activities-section card-glass">
+                <section className="clans-overview card-glass">
                     <div className="card-header">
-                        <h2>Hoạt động gần đây</h2>
-                        <button className="btn-link">Xem tất cả</button>
+                        <h2>Danh sách dòng họ & cây gia phả</h2>
+                        <button className="btn-link" onClick={() => navigate("/dashboard/genealogy")}>Quản lý tất cả</button>
                     </div>
-                    <div className="timeline">
-                        {recent_activities?.map((act, i) => (
-                            <div key={i} className="timeline-item">
-                                <div className="timeline-dot"></div>
-                                <div className="timeline-content">
-                                    <p><strong>Thành viên mới:</strong> {act.content}</p>
-                                    <span className="time">{new Date(act.time).toLocaleString('vi-VN')}</span>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="table-responsive">
+                        <table className="premium-table">
+                            <thead>
+                                <tr>
+                                    <th>Tên cây / Dòng họ</th>
+                                    <th>Chủ sở hữu</th>
+                                    <th>Thành viên</th>
+                                    <th>Bài viết</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {clans.map((clan) => (
+                                    <tr key={clan.id}>
+                                        <td>
+                                            <div className="clan-name-cell">
+                                                <span className="material-symbols-outlined">account_tree</span>
+                                                <strong>{clan.clan_name}</strong>
+                                            </div>
+                                        </td>
+                                        <td>{clan.owner_name || "Chưa có"}</td>
+                                        <td>{clan.member_count}</td>
+                                        <td>{clan.post_count}</td>
+                                        <td>
+                                            <button 
+                                                className="btn-outline-sm"
+                                                onClick={() => navigate(`/dashboard/posts/${clan.id}`)}
+                                            >
+                                                Xem chi tiết
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 
@@ -84,21 +116,21 @@ export default function DashboardHome() {
                         <h2>Lối tắt nhanh</h2>
                     </div>
                     <div className="action-grid">
-                        <button className="action-btn">
+                        <button className="action-btn" onClick={() => navigate("/dashboard/members")}>
                             <span className="material-symbols-outlined">person_add</span>
                             Thêm quản trị viên
                         </button>
-                        <button className="action-btn">
+                        <button className="action-btn" onClick={() => navigate("/dashboard/posts")}>
                             <span className="material-symbols-outlined">post_add</span>
-                            Tạo sự kiện toàn quốc
+                            Quản lý bài viết
                         </button>
-                        <button className="action-btn">
+                        <button className="action-btn" onClick={() => navigate("/dashboard/settings")}>
                             <span className="material-symbols-outlined">settings</span>
                             Cấu hình hệ thống
                         </button>
-                        <button className="action-btn">
-                            <span className="material-symbols-outlined">mail</span>
-                            Gửi thông báo email
+                        <button className="action-btn" onClick={() => navigate("/dashboard/events")}>
+                            <span className="material-symbols-outlined">event</span>
+                            Sự kiện toàn quốc
                         </button>
                     </div>
                 </section>

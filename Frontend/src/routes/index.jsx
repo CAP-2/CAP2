@@ -23,6 +23,7 @@ import MembersPage from "../pages/admin/MembersPage";
 import EventsPage from "../pages/admin/EventsPage";
 import GalleryPage from "../pages/admin/GalleryPage";
 import SettingsPage from "../pages/admin/SettingsPage";
+import PostsPage from "../pages/admin/PostsPage";
 
 import AccountPage from "../pages/Manager/AccountPage";
 import GenealogySection from "../pages/Manager/GenealogySection";
@@ -84,6 +85,8 @@ export default function AppRoutes() {
           <Route path="/dashboard/members" element={<MembersPage />} />
           <Route path="/dashboard/events" element={<EventsPage />} />
           <Route path="/dashboard/gallery" element={<GalleryPage />} />
+          <Route path="/dashboard/posts" element={<PostsPage />} />
+          <Route path="/dashboard/posts/:clanId" element={<PostsPage />} />
           <Route path="/dashboard/settings" element={<SettingsPage />} />
         </Route>
       </Route>

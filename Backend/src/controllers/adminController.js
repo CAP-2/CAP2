@@ -9,15 +9,17 @@ const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   return [s, m, f].filter(Boolean).join(" ").trim();
 };
 
-/** Danh sách dòng họ + số thành viên + số manager */
+/** Danh sách dòng họ + số thành viên + post count + owner name */
 exports.listClans = async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT c.id, c.clan_name, c.created_at,
+        (SELECT p.display_name FROM people p 
+         INNER JOIN accounts a ON a.person_id = p.id 
+         WHERE p.clan_id = c.id AND a.role_id = 2 
+         LIMIT 1) AS owner_name,
         (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id) AS member_count,
-        (SELECT COUNT(*) FROM accounts a
-         INNER JOIN people p ON a.person_id = p.id
-         WHERE p.clan_id = c.id AND a.role_id = 2 AND a.status = 'active') AS manager_count
+        (SELECT COUNT(*) FROM posts p WHERE p.clan_id = c.id) AS post_count
       FROM clans c
       ORDER BY c.id ASC
     `);
@@ -399,6 +401,7 @@ exports.getDashboardStats = async (req, res) => {
     const [[{ total_clans }]] = await db.query("SELECT COUNT(*) AS total_clans FROM clans");
     const [[{ total_events }]] = await db.query("SELECT COUNT(*) AS total_events FROM events");
     const [[{ total_photos }]] = await db.query("SELECT COUNT(*) AS total_photos FROM posts WHERE image_url IS NOT NULL AND image_url != ''");
+    const [[{ total_posts }]] = await db.query("SELECT COUNT(*) AS total_posts FROM posts");
     
     const [recent_activities] = await db.query(`
       SELECT 'member' as type, display_name as content, created_at as time FROM people ORDER BY created_at DESC LIMIT 5
@@ -410,12 +413,38 @@ exports.getDashboardStats = async (req, res) => {
         total_members,
         total_clans,
         total_events,
-        total_photos
+        total_photos,
+        total_posts
       },
       recent_activities
     });
   } catch (e) {
     console.error("getDashboardStats:", e);
     return res.status(500).json({ success: false, message: "Lỗi thống kê" });
+  }
+};
+
+/** Lấy danh sách bài viết theo clan_id */
+exports.getPostsByClan = async (req, res) => {
+  try {
+    const clanId = Number(req.params.clanId);
+    if (!clanId) {
+      return res.status(400).json({ success: false, message: "clanId không hợp lệ" });
+    }
+
+    const [rows] = await db.query(`
+      SELECT p.*, author.display_name AS author_name, c.clan_name
+      FROM posts p
+      LEFT JOIN accounts a ON p.author_id = a.id
+      LEFT JOIN people author ON a.person_id = author.id
+      LEFT JOIN clans c ON p.clan_id = c.id
+      WHERE p.clan_id = ?
+      ORDER BY p.created_at DESC
+    `, [clanId]);
+
+    return res.json({ success: true, posts: rows });
+  } catch (e) {
+    console.error("getPostsByClan:", e);
+    return res.status(500).json({ success: false, message: "Lỗi lấy bài viết theo dòng họ" });
   }
 };

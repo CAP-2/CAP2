@@ -132,3 +132,78 @@
 .action-btn .material-symbols-outlined {
   color: #7f1d1d;
 }
+
+/* New Table Styles */
+.table-responsive {
+  overflow-x: auto;
+  margin-top: 1.5rem;
+}
+
+.premium-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.premium-table th {
+  text-align: left;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.premium-table tbody tr {
+  background: #fdfbf7;
+  transition: all 0.2s;
+}
+
+.premium-table tbody tr:hover {
+  background: #fff;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+  transform: scale(1.01);
+}
+
+.premium-table td {
+  padding: 1.25rem 1rem;
+  border-top: 1px solid #f3f4f6;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.premium-table td:first-child {
+  border-left: 1px solid #f3f4f6;
+  border-radius: 12px 0 0 12px;
+}
+
+.premium-table td:last-child {
+  border-right: 1px solid #f3f4f6;
+  border-radius: 0 12px 12px 0;
+}
+
+.clan-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.clan-name-cell .material-symbols-outlined {
+  color: #d4af37;
+}
+
+.btn-outline-sm {
+  padding: 0.5rem 1rem;
+  border: 1px solid #7f1d1d;
+  background: transparent;
+  color: #7f1d1d;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-outline-sm:hover {
+  background: #7f1d1d;
+  color: #fef3c7;
+}
