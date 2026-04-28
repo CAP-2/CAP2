@@ -160,3 +160,10 @@ export const getAdminDashboardStats = async () => {
   if (!res.ok) throw new Error(data.message || "Không lấy được thống kê");
   return data;
 };
+
+export const getAdminPostsByClan = async (clanId) => {
+  const res = await fetch(`${BASE_URL}/posts/clan/${clanId}`, { headers: getAuthHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Không lấy được danh sách bài viết");
+  return data;
+};

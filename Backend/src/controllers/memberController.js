@@ -426,7 +426,20 @@ exports.loadClanTreeForAdmin = async (clanId) => {
   );
 
   const familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
-  return { clan, treeMembers: peopleRows, familyTree };
+  return { 
+    clan, 
+    treeMembers: peopleRows.map(p => ({
+      ...p,
+      birth_date: p.birth_date ? String(p.birth_date).slice(0, 10) : null,
+      death_date: p.death_date ? String(p.death_date).slice(0, 10) : null,
+    })), 
+    families: familyRows.map(f => ({
+      ...f,
+      marriage_date: f.marriage_date ? String(f.marriage_date).slice(0, 10) : null,
+    })),
+    children: childRows,
+    familyTree 
+  };
 };
 
 exports.getDashboard = async (req, res) => {

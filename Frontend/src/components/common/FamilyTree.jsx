@@ -1,75 +1,49 @@
-const fallbackTreeData = {
-    id: 1,
-    name: "THỦY TỔ NGUYỄN TRÍ",
-    title: "Tổ Phúc Khánh",
-    generation: "Đời 1",
-    birth: "1800",
-    death: "1875",
-    children: [
-        {
-            id: 2,
-            name: "NGUYỄN TRÍ CƯỜNG",
-            title: "Cụ Ông",
-            generation: "Đời 2",
-            birth: "1830",
-            death: "1908",
-            children: [],
-        },
-        {
-            id: 3,
-            name: "NGUYỄN TRÍ NAM",
-            title: "Cụ Ông",
-            generation: "Đời 2",
-            birth: "1850",
-            death: "1920",
-            children: [],
-        },
-    ],
-};
+import "./FamilyTree.css";
 
-export default function FamilyTree({ data, isLoggedIn = false, onEditNode, onDeleteNode }) {
-    const treeData = data || fallbackTreeData;
+export default function FamilyTree({ data, onNodeClick }) {
+    if (!data || (!data.roots && !data.person)) return null;
 
-    const renderNode = (node, isRoot = false) => {
+    const renderMemberCard = (person, type = "primary") => {
+        if (!person) return null;
         return (
-            <div key={node.id} className={`tree-node ${isRoot ? "root-node" : ""}`}>
-                <div className={`node-card ${isRoot ? "root-card" : "child-card"}`}>
-                    <div className="node-avatar">
-                        <span className="material-symbols-outlined">person</span>
-                    </div>
-                    <div className="node-content">
-                        <h4>{node.name}</h4>
-                        <p className="node-title">{node.title}</p>
-                        {node.generation && <p className="node-generation">{node.generation}</p>}
-                        {(node.birth || node.death) && (
-                            <p className="node-dates">
-                                {node.birth && `Sinh: ${node.birth}`}
-                                {node.birth && node.death && " - "}
-                                {node.death && `Mất: ${node.death}`}
-                            </p>
-                        )}
-
-                        {(onEditNode || onDeleteNode) && (
-                            <div className="node-actions">
-                                {onEditNode && (
-                                    <button type="button" onClick={() => onEditNode(node)}>
-                                        Sửa
-                                    </button>
-                                )}
-                                {onDeleteNode && !isRoot && (
-                                    <button type="button" onClick={() => onDeleteNode(node.id)}>
-                                        Xóa
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
+            <div 
+                className={`node-card ${type}`} 
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (onNodeClick) onNodeClick({ person });
+                }}
+            >
+                <div className="node-avatar">
+                    {person.avatar_url ? (
+                        <img src={person.avatar_url} alt={person.display_name} />
+                    ) : (
+                        <span className="material-symbols-outlined">
+                            {person.gender === 2 ? "female" : "male"}
+                        </span>
+                    )}
                 </div>
+                <div className="node-info">
+                    <h4>{person.display_name}</h4>
+                    <p>Đời {person.generation}</p>
+                </div>
+            </div>
+        );
+    };
+
+    const renderNode = (node) => {
+        return (
+            <div key={node.person.id} className="tree-node-wrapper">
+                <div className="node-pair">
+                    {renderMemberCard(node.person, "primary")}
+                    {node.spouse && <div className="spouse-connector"></div>}
+                    {node.spouse && renderMemberCard(node.spouse, "spouse")}
+                </div>
+                
                 {node.children && node.children.length > 0 && (
-                    <div className="tree-children">
-                        <div className="tree-line" />
-                        <div className="children-container">
-                            {node.children.map((child) => renderNode(child))}
+                    <div className="node-children">
+                        <div className="vertical-line"></div>
+                        <div className="children-grid">
+                            {node.children.map(child => renderNode(child))}
                         </div>
                     </div>
                 )}
@@ -77,9 +51,19 @@ export default function FamilyTree({ data, isLoggedIn = false, onEditNode, onDel
         );
     };
 
+    // If it's the root container (from backend structure { roots: [...] })
+    if (data.roots) {
+        return (
+            <div className="family-tree-canvas">
+                {data.roots.map(root => renderNode(root))}
+            </div>
+        );
+    }
+
+    // If it's a single node structure
     return (
-        <div className="family-tree-container">
-            {renderNode(treeData, true)}
+        <div className="family-tree-canvas">
+            {renderNode(data)}
         </div>
     );
 }

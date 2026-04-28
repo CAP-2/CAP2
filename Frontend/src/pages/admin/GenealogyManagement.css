@@ -1,0 +1,232 @@
+.genealogy-management {
+    display: flex;
+    height: calc(100vh - 220px);
+    gap: 1.5rem;
+    overflow: hidden;
+}
+
+.tree-view-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.clan-sidebar {
+    width: 280px;
+    background: white;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #f3f4f6;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.sidebar-header h3 {
+    font-family: 'Playfair Display', serif;
+    color: #7f1d1d;
+    margin: 0;
+}
+
+.clan-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.clan-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.clan-item:hover {
+    background: #fdfbf7;
+    border-color: #f3f4f6;
+}
+
+.clan-item.active {
+    background: #fef3c7;
+    border-color: #d4af37;
+}
+
+.clan-item .material-symbols-outlined {
+    color: #7f1d1d;
+    font-size: 1.5rem;
+}
+
+.clan-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.clan-info strong {
+    font-size: 0.95rem;
+    color: #111827;
+}
+
+.clan-info span {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.tree-canvas-container {
+    flex: 1;
+    background: #fdfbf7;
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);
+}
+
+.tree-canvas-container :global(.fte-editorWrapper) {
+    border-radius: 24px;
+}
+
+.tree-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #7f1d1d;
+}
+
+.member-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.member-modal-content {
+    width: 100%;
+    max-width: 600px;
+    background: white;
+    border-radius: 24px;
+    padding: 2.5rem;
+    position: relative;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.close-modal {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.modal-header-premium {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.modal-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    background: #fef3c7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.modal-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.modal-avatar .material-symbols-outlined {
+    font-size: 3rem;
+    color: #7f1d1d;
+}
+
+.modal-title h2 {
+    font-family: 'Playfair Display', serif;
+    color: #7f1d1d;
+    margin: 0;
+}
+
+.badge-generation {
+    display: inline-block;
+    background: #fef3c7;
+    color: #78350f;
+    padding: 0.25rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-top: 0.5rem;
+}
+
+.modal-body-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.info-group label {
+    display: block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+}
+
+.info-group p {
+    margin: 0;
+    font-weight: 600;
+    color: #111827;
+}
+
+.full-width {
+    grid-column: span 2;
+}
+
+.bio-box {
+    background: #fdfbf7;
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid #f3f4f6;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #374151;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2.5rem;
+}
