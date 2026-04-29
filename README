@@ -6,94 +6,52 @@ Hướng dẫn khởi động dự án
 - Python 3.10+ (để chạy `AI-server`)
 - Docker & Docker Compose (nếu muốn chạy DB bằng Docker)
 
-<<<<<<< HEAD
-**1) Khởi động MySQL bằng Docker (khuyến nghị)**
-- Chuyển vào thư mục `docker` và chạy:
-=======
----
-
 **1) Khởi động MySQL bằng Docker (khuyến nghị)**
 - Chuyển vào thư mục `docker` và chạy:
 
-```bash
->>>>>>> parent of 4dd6b07 (docker new)
 cd docker
 docker compose down -v
 docker compose up -d --build
 docker ps
 ```
-<<<<<<< HEAD
-**2) Backend (Node.js, Socket.io)**
-- Tạo file cấu hình môi trường `Backend/.env` (ví dụ: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `PORT` ...).
-- Cài đặt và chạy:
-=======
-
-Lệnh trên dừng/clean (nếu cần), build lại image và chạy container ở chế độ nền.
-
----
 
 **2) Backend (Node.js, Socket.io)**
 - Tạo file cấu hình môi trường `Backend/.env` (ví dụ: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `PORT` ...).
 - Cài đặt và chạy:
 
->>>>>>> parent of 4dd6b07 (docker new)
 ```bash
 cd Backend
 npm install
-
 npm run dev
-<<<<<<< HEAD
-npm start
-```
-- Mặc định backend lắng nghe ở `http://localhost:3000` (port có thể thay đổi trong `.env`).
 
-**Chạy các migration (nếu cần):**
-=======
-
-npm start
-```
 
 - Mặc định backend lắng nghe ở `http://localhost:3000` (port có thể thay đổi trong `.env`).
 
 **Chạy các migration (nếu cần):**
 
->>>>>>> parent of 4dd6b07 (docker new)
 ```bash
 cd Backend
 node migration_people_moderation.js
 node migration_posts.js
 ```
-<<<<<<< HEAD
-=======
-
----
-
->>>>>>> parent of 4dd6b07 (docker new)
 **3) Frontend (Vite + React)**
 - Thiết lập biến môi trường cho frontend: tạo `Frontend/.env` với ví dụ
 
 ```
 VITE_API_URL=http://localhost:3000
 ```
-<<<<<<< HEAD
-=======
-
 - Cài đặt và chạy:
 
->>>>>>> parent of 4dd6b07 (docker new)
 ```bash
 cd Frontend
 npm install
 npm run dev
 ```
-<<<<<<< HEAD
+
 =======
 
 - Frontend dev server mặc định chạy trên `http://localhost:5173`.
 
----
-
->>>>>>> parent of 4dd6b07 (docker new)
 **4) AI server (Flask + Groq)**
 - Tạo file `AI-server/.env` với ít nhất `GROQ_API_KEY` và cấu hình DB (`DB_HOST`, `DB_USER`, ...).
 - Chạy trên Windows (PowerShell) — ví dụ:
@@ -104,56 +62,23 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python app.py
-```
-<<<<<<< HEAD
-- Mặc định AI server dùng `PORT=8001` (có thể set biến `PORT` hoặc `HOST`). Endpoint health: `/health`.
-
-=======
 
 - Mặc định AI server dùng `PORT=8001` (có thể set biến `PORT` hoặc `HOST`). Endpoint health: `/health`.
 
----
-
->>>>>>> parent of 4dd6b07 (docker new)
 **5) Ghi chú ports mặc định**
 - Backend: `3000`
 - Frontend: `5173`
 - AI-server: `8001` (mặc định)
 
-<<<<<<< HEAD
-**Tài khoản thử nghiệm**
-- admin@gmail.com
-- manager@gmail.com
-- user@gmail.com
-- mật khẩu mặc định: `1` (hoặc tài khoản khác trong README cũ)
 
-Nếu bạn muốn, tôi có thể:
-- Thêm mẫu `.env.example` cho mỗi service
-- Tạo script npm để khởi động cả Backend + Frontend cùng lúc
-
-File đã cập nhật: [README](README)
-=======
----
->>>>>>> parent of 4dd6b07 (docker new)
 
 **Tài khoản thử nghiệm**
 - admin@gmail.com
 - manager@gmail.com
 - user@gmail.com
-- mật khẩu mặc định: `1` (hoặc tài khoản khác trong README cũ)
-<<<<<<< HEAD
+- mật khẩu mặc định: `1`
+
 - 0973018988a@gmail.com/123123        Tuanha@gmail.com/1    (manager)
 - dinhviet.user15@gmail.com/123123     quyet@gmail.com/123123       (member)
-- mật khẩu mặc định: 1 (hoặc tài khoản khác trong README cũ)
-=======
-
----
-
-Nếu bạn muốn, tôi có thể:
-- Thêm mẫu `.env.example` cho mỗi service
-- Tạo script npm để khởi động cả Backend + Frontend cùng lúc
-
-File đã cập nhật: [README](README)
 
 
->>>>>>> parent of 4dd6b07 (docker new)
