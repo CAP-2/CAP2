@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
-import NotificationBell from "./NotificationBell";
 import "./ManagerLayout.css";
 
 const menuItems = [
@@ -294,7 +293,10 @@ export default function ManagerLayout() {
             <button className="util-btn" title="Sửa tài khoản" onClick={openAccountModal}>
               <span className="material-symbols-outlined">account_circle</span>
             </button>
-            <NotificationBell role="manager" buttonClassName="util-btn" />
+            <button className="util-btn" title="Thông báo">
+              <span className="material-symbols-outlined">notifications</span>
+              <span className="dot"></span>
+            </button>
             <button className="util-btn" title="Hỗ trợ">
               <span className="material-symbols-outlined">help</span>
             </button>

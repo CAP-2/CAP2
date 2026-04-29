@@ -81,23 +81,6 @@ export default function BenefitsDetailPage() {
           </div>
         </section>
 
-        <section className="benefits-blessing">
-          <h3>Lời chúc từ các trưởng họ</h3>
-          <article className="blessing-quote-card">
-            <p>
-              "Gia phả là hồn cốt của dòng họ. Trong thời đại số, việc ứng dụng công nghệ như Gia Phả Việt không chỉ là
-              sự tiến bộ, mà là cách chúng ta tôn vinh tổ tiên một cách trang trọng nhất."
-            </p>
-            <div className="blessing-author">
-              <img
-                src="https://images.unsplash.com/photo-1584999734482-0361aecad844?auto=format&fit=crop&w=120&q=80"
-                alt="Đại diện trưởng họ"
-              />
-              <strong>Cụ Phạm Văn Minh</strong>
-              <span>Trưởng tộc đời 14 - Hà Tĩnh</span>
-            </div>
-          </article>
-        </section>
       </div>
     </section>
   );

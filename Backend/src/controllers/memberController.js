@@ -304,60 +304,6 @@ const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
   }
 };
 
-const displayNameFromRow = (row, fallback = "Thành viên") => {
-  const fullName =
-    row?.display_name ||
-    [row?.surname, row?.middle_name, row?.first_name].filter(Boolean).join(" ").trim();
-  return fullName || row?.account_email || row?.email || fallback;
-};
-
-const createNotificationForPerson = async (
-  req,
-  { receiverPersonId, receiverAccountId, type, title, message, linkUrl = null }
-) => {
-  if (!receiverPersonId) return;
-  await db.query(
-    "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
-    [receiverPersonId, type, title, message, linkUrl]
-  );
-  if (receiverAccountId) {
-    await emitNotificationToAccount(req, receiverAccountId, {
-      type,
-      title,
-      message,
-      link_url: linkUrl,
-    });
-  }
-};
-
-const getClanManagersForNotification = async (clanId, excludedAccountId) => {
-  if (!clanId) return [];
-  const [rows] = await db.query(
-    `
-      SELECT a.id AS account_id, a.person_id, p.display_name, p.surname, p.middle_name, p.first_name
-      FROM accounts a
-      INNER JOIN people p ON p.id = a.person_id
-      WHERE a.status = 'active'
-        AND a.role_id IN (1, 2)
-        AND p.clan_id = ?
-        AND a.id <> ?
-    `,
-    [clanId, excludedAccountId || 0]
-  );
-  return rows;
-};
-
-const notifyClanManagers = async (req, clanId, excludedAccountId, payload) => {
-  const managers = await getClanManagersForNotification(clanId, excludedAccountId);
-  for (const manager of managers) {
-    await createNotificationForPerson(req, {
-      receiverPersonId: manager.person_id,
-      receiverAccountId: manager.account_id,
-      ...payload,
-    });
-  }
-};
-
 /**
  * Cây gia phả: gốc = đời 1 (hoặc đời nhỏ nhất nếu không có đời 1).
  * Con cái: bảng children + families; ưu tiên nối con với cha (father_id), không có cha thì mẹ.
@@ -674,71 +620,6 @@ exports.getDashboard = async (req, res) => {
   } catch (error) {
     console.error("getDashboard error:", error);
     return res.status(500).json({ success: false, message: "Lỗi lấy dữ liệu trang thành viên" });
-  }
-};
-
-exports.getNotifications = async (req, res) => {
-  try {
-    const context = await getAccountContext(req.user.id);
-    if (!context || !context.person_id) {
-      return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ người dùng." });
-    }
-
-    const [notifications] = await db.query(
-      `
-        SELECT id, type, title, message, is_read, link_url, created_at
-        FROM notifications
-        WHERE receiver_person_id = ?
-        ORDER BY created_at DESC, id DESC
-        LIMIT 80
-      `,
-      [context.person_id]
-    );
-    const unreadCount = notifications.filter((item) => Number(item.is_read) === 0).length;
-    return res.json({ success: true, notifications, unread_count: unreadCount });
-  } catch (error) {
-    console.error("getNotifications error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi lấy thông báo." });
-  }
-};
-
-exports.markNotificationRead = async (req, res) => {
-  try {
-    const notificationId = Number(req.params.id);
-    if (!Number.isFinite(notificationId)) {
-      return res.status(400).json({ success: false, message: "ID thông báo không hợp lệ." });
-    }
-
-    const context = await getAccountContext(req.user.id);
-    if (!context || !context.person_id) {
-      return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ người dùng." });
-    }
-
-    const [result] = await db.query(
-      "UPDATE notifications SET is_read = 1 WHERE id = ? AND receiver_person_id = ?",
-      [notificationId, context.person_id]
-    );
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy thông báo." });
-    }
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("markNotificationRead error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi cập nhật thông báo." });
-  }
-};
-
-exports.markAllNotificationsRead = async (req, res) => {
-  try {
-    const context = await getAccountContext(req.user.id);
-    if (!context || !context.person_id) {
-      return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ người dùng." });
-    }
-    await db.query("UPDATE notifications SET is_read = 1 WHERE receiver_person_id = ?", [context.person_id]);
-    return res.json({ success: true });
-  } catch (error) {
-    console.error("markAllNotificationsRead error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi cập nhật thông báo." });
   }
 };
 
@@ -1140,14 +1021,6 @@ exports.proposeProfileUpdate = async (req, res) => {
       [pendingBio, pendingAvatarUrl, context.person_id]
     );
 
-    const requesterName = displayNameFromRow(context, `Tài khoản #${accountId}`);
-    await notifyClanManagers(req, context.clan_id, accountId, {
-      type: "profile_update_requested",
-      title: "Yêu cầu cập nhật hồ sơ",
-      message: `${requesterName} đã gửi yêu cầu cập nhật ảnh hoặc tiểu sử.`,
-      linkUrl: "/manager/pending",
-    });
-
     return res.json({ success: true, message: "Đã gửi yêu cầu cập nhật, vui lòng đợi quản lý phê duyệt." });
   } catch(error) {
     console.error("proposeProfileUpdate error:", error);
@@ -1180,16 +1053,6 @@ exports.submitMaterial = async (req, res) => {
       "INSERT INTO posts (clan_id, author_id, description, content, image_url, status) VALUES (?, ?, ?, ?, ?, ?)",
       [context.clan_id, accountId, postDescription, textContent, imgUrl, postStatus]
     );
-
-    if (postStatus === "pending") {
-      const requesterName = displayNameFromRow(context, `Tài khoản #${accountId}`);
-      await notifyClanManagers(req, context.clan_id, accountId, {
-        type: "post_approval_requested",
-        title: "Bài viết chờ duyệt",
-        message: `${requesterName} đã gửi bài viết hoặc tư liệu chờ duyệt.`,
-        linkUrl: "/manager/pending",
-      });
-    }
 
     return res.json({
       success: true,

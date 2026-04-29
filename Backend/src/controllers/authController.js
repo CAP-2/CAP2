@@ -77,49 +77,6 @@ async function ensureArchivedMembersTable() {
     `);
     hasEnsuredArchivedMembersTable = true;
 }
-
-const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
-    const onlineUsers = req.app?.locals?.onlineUsers || {};
-    const io = req.app?.locals?.io;
-    const socketId = onlineUsers[receiverAccountId];
-    if (io && socketId) {
-        io.to(socketId).emit('new_notification', {
-            ...payload,
-            time: new Date().toLocaleTimeString(),
-        });
-    }
-};
-
-const notifyManagersAboutPendingAccount = async (req, clanId, accountId, requesterName) => {
-    if (!clanId) return;
-    const [managers] = await db.query(
-        `
-            SELECT a.id AS account_id, a.person_id
-            FROM accounts a
-            INNER JOIN people p ON p.id = a.person_id
-            WHERE a.status = 'active'
-              AND a.role_id IN (1, 2)
-              AND p.clan_id = ?
-              AND a.id <> ?
-        `,
-        [clanId, accountId]
-    );
-
-    for (const manager of managers) {
-        const message = `${requesterName || "Thành viên mới"} đã gửi yêu cầu tham gia dòng họ.`;
-        await db.query(
-            "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
-            [manager.person_id, "account_approval_requested", "Tài khoản chờ duyệt", message, "/manager/pending"]
-        );
-        await emitNotificationToAccount(req, manager.account_id, {
-            type: "account_approval_requested",
-            title: "Tài khoản chờ duyệt",
-            message,
-            link_url: "/manager/pending",
-        });
-    }
-};
-
 function setResetMemory(email, codeHash, expiresAt) {
     passwordResetMemory.set(email, { code_hash: codeHash, expires_at: expiresAt });
 }
@@ -148,8 +105,7 @@ exports.register = async (req, res) => {
         const personId = personResult.insertId;
 
         const sqlAccount = `INSERT INTO accounts (email, password, person_id, role_id) VALUES (?, ?, ?, 3)`;
-        const [accountResult] = await db.query(sqlAccount, [email, hashedPassword, personId]);
-        await notifyManagersAboutPendingAccount(req, normalizedClanId, accountResult.insertId, display_name);
+        await db.query(sqlAccount, [email, hashedPassword, personId]);
 
         res.json({ success: true, message: "Đăng ký thành công!" });
     } catch (error) {

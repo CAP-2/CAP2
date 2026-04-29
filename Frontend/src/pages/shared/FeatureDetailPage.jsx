@@ -1,3 +1,5 @@
+import LandingFamilyTree from "./LandingFamilyTree";
+
 const advancedCards = [
   {
     icon: "bolt",
@@ -69,10 +71,6 @@ export default function FeatureDetailPage() {
                 <span className="material-symbols-outlined">account_tree</span>
                 Tạo nhiều thế hệ
               </button>
-              <button type="button" className="ai">
-                <span className="material-symbols-outlined">auto_awesome</span>
-                AI generate
-              </button>
             </div>
 
             <ul className="feature-detail-points">
@@ -82,8 +80,8 @@ export default function FeatureDetailPage() {
             </ul>
           </div>
 
-          <div className="feature-detail-visual">
-            <img src="/sodogiapha.png" alt="Sơ đồ phả hệ chi tiết" />
+          <div className="feature-detail-visual static-tree-visual">
+            <LandingFamilyTree compact />
           </div>
         </section>
 

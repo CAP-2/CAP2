@@ -213,17 +213,6 @@ export const linkRelationsAPI = (data) =>
     "Liên kết quan hệ thất bại"
   );
 
-export const setTreeRelationshipAPI = (data) =>
-  request(
-    "/family-tree/relationships",
-    {
-      method: "POST",
-      headers: getTreeEditKeyHeader(),
-      body: JSON.stringify(data),
-    },
-    "Khong the cap nhat quan he cay gia pha"
-  );
-
 export const updatePersonAPI = (personId, data) =>
   request(
     `/people/${personId}`,

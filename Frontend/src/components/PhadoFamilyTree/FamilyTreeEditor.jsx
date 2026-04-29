@@ -5,8 +5,8 @@ import {
   createPersonAPI,
   deletePersonAPI,
   linkRelationsAPI,
-  setTreeRelationshipAPI,
   updatePersonAPI,
+  updatePersonPositionAPI,
 } from "../../api/managerService";
 import "./FamilyTreeEditor.css";
 
@@ -23,7 +23,6 @@ const SNAP_SIZE = 20;
 const EXPORT_BACKGROUND = "#f8edb2";
 const EXPORT_MAX_CANVAS_EDGE = 14000;
 const SOURCE_BRANCH_STEP = 10;
-const DRAG_CLICK_THRESHOLD = 5;
 const BLOOD_LINE_COLORS = [
   "#1E3A8A",
   "#047857",
@@ -614,46 +613,6 @@ function findSpouse(person, families, people) {
   return people.find((item) => Number(item.id) === spouseId) || null;
 }
 
-function buildRelationshipSummary(person, families, childRows, people) {
-  if (!person) return { father: null, mother: null, spouses: [], children: [] };
-
-  const selectedId = Number(person.id);
-  const peopleMap = new Map(asArray(people).map((item) => [Number(item.id), item]));
-  const familyMap = new Map(asArray(families).map((family) => [Number(family.id), family]));
-  const parentFamily = findParentFamilyForChild(selectedId, families, childRows);
-  const ownedFamilies = asArray(families).filter(
-    (family) => Number(family.father_id) === selectedId || Number(family.mother_id) === selectedId,
-  );
-
-  const spouses = ownedFamilies
-    .map((family) => {
-      const spouseId = Number(family.father_id) === selectedId ? Number(family.mother_id) : Number(family.father_id);
-      const spouse = peopleMap.get(spouseId);
-      return spouse ? { ...spouse, family_id: Number(family.id) } : null;
-    })
-    .filter(Boolean);
-
-  const ownedFamilyIds = new Set(ownedFamilies.map((family) => Number(family.id)));
-  const children = asArray(childRows)
-    .filter((row) => ownedFamilyIds.has(Number(row.family_id)))
-    .map((row) => {
-      const child = peopleMap.get(Number(row.person_id));
-      return child ? { ...child, family_id: Number(row.family_id), sort_order: row.sort_order } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => toInt(a.sort_order, 0) - toInt(b.sort_order, 0) || personSort(a, b));
-
-  const father = peopleMap.get(Number(parentFamily?.father_id)) || null;
-  const mother = peopleMap.get(Number(parentFamily?.mother_id)) || null;
-
-  return {
-    father: father && familyMap.has(Number(parentFamily?.id)) ? father : null,
-    mother: mother && familyMap.has(Number(parentFamily?.id)) ? mother : null,
-    spouses,
-    children,
-  };
-}
-
 const relationLabels = {
   spouse: "vợ/chồng",
   child: "con",
@@ -837,70 +796,13 @@ function PersonCard({ person, selected, dragging, canDrag = true, onPointerDown,
   );
 }
 
-function RelationshipSummarySection({ summary, onSelectPerson }) {
-  const hasFather = Boolean(summary?.father);
-  const hasMother = Boolean(summary?.mother);
-  const spouses = asArray(summary?.spouses);
-  const children = asArray(summary?.children);
-  const hasAnyRelation = hasFather || hasMother || spouses.length > 0 || children.length > 0;
-
-  const renderPersonLink = (person) => (
-    <button
-      key={`${person.family_id || "person"}-${person.id}`}
-      type="button"
-      className="fte-relationLink"
-      onClick={() => onSelectPerson?.(person.id)}
-      title={`Chọn ${fullName(person)}`}
-    >
-      {fullName(person, `Người #${person.id}`)}
-    </button>
-  );
-
-  return (
-    <section className="fte-currentRelations" aria-label="Quan hệ hiện tại">
-      <div className="fte-currentRelationsHeader">
-        <h4>Quan hệ hiện tại</h4>
-        {!hasAnyRelation ? <span>Chưa thiết lập</span> : null}
-      </div>
-      <div className="fte-currentRelationRows">
-        <div className="fte-currentRelationRow">
-          <span className="fte-currentRelationLabel">Cha</span>
-          <div className="fte-currentRelationValue">
-            {hasFather ? renderPersonLink(summary.father) : <span className="fte-relationEmptyText">Chưa thiết lập</span>}
-          </div>
-        </div>
-        <div className="fte-currentRelationRow">
-          <span className="fte-currentRelationLabel">Mẹ</span>
-          <div className="fte-currentRelationValue">
-            {hasMother ? renderPersonLink(summary.mother) : <span className="fte-relationEmptyText">Chưa thiết lập</span>}
-          </div>
-        </div>
-        <div className="fte-currentRelationRow">
-          <span className="fte-currentRelationLabel">Vợ/chồng</span>
-          <div className="fte-currentRelationValue">
-            {spouses.length ? spouses.map(renderPersonLink) : <span className="fte-relationEmptyText">Chưa thiết lập</span>}
-          </div>
-        </div>
-        <div className="fte-currentRelationRow">
-          <span className="fte-currentRelationLabel">Con</span>
-          <div className="fte-currentRelationValue">
-            {children.length ? children.map(renderPersonLink) : <span className="fte-relationEmptyText">Chưa thiết lập</span>}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function PersonInspector({
   person,
   spouse,
-  relationshipSummary,
   onClose,
   onSave,
   onDelete,
   onCreateRelation,
-  onSelectRelatedPerson,
   saving,
   canEdit = false,
   canEditRelations = false,
@@ -932,8 +834,6 @@ function PersonInspector({
           <span className="material-symbols-outlined">close</span>
         </button>
       </div>
-
-      <RelationshipSummarySection summary={relationshipSummary} onSelectPerson={onSelectRelatedPerson} />
 
       {canEditRelations ? (
         <div className="fte-inspectorActions">
@@ -1261,8 +1161,6 @@ export default function FamilyTreeEditor({
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
-  const [relationshipMode, setRelationshipMode] = useState(null);
-  const [relationshipSource, setRelationshipSource] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
   const resolvedPermission = useMemo(() => {
     if (permission) {
@@ -1306,10 +1204,6 @@ export default function FamilyTreeEditor({
     () => findSpouse(selectedPerson, canonicalTree.families, people),
     [canonicalTree.families, people, selectedPerson],
   );
-  const selectedRelationshipSummary = useMemo(
-    () => buildRelationshipSummary(selectedPerson, canonicalTree.families, canonicalTree.childRows, people),
-    [canonicalTree.childRows, canonicalTree.families, people, selectedPerson],
-  );
   const canEditPerson = useCallback(
     (personId) => canEditAll || (canEditLimited && allowedNodeSet.has(Number(personId))),
     [allowedNodeSet, canEditAll, canEditLimited],
@@ -1329,26 +1223,21 @@ export default function FamilyTreeEditor({
     if (event.button != null && event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    setSelectedId(person.id);
+    setDraggingId(person.id);
 
     const startX = event.clientX;
     const startY = event.clientY;
     const originX = toInt(person.tree_x, 0);
     const originY = toInt(person.tree_y, 0);
-    let didDrag = false;
-    lastDragRef.current = null;
+    lastDragRef.current = { tree_x: originX, tree_y: originY };
 
     const handleMove = (moveEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      if (!didDrag && Math.hypot(dx, dy) < DRAG_CLICK_THRESHOLD) return;
-
-      const scale = scaleRef.current || 1;
-      didDrag = true;
       moveEvent.preventDefault();
-      setDraggingId(person.id);
+      const scale = scaleRef.current || 1;
       const nextPosition = {
-        tree_x: snap(originX + dx / scale),
-        tree_y: snap(originY + dy / scale),
+        tree_x: snap(originX + (moveEvent.clientX - startX) / scale),
+        tree_y: snap(originY + (moveEvent.clientY - startY) / scale),
       };
       lastDragRef.current = nextPosition;
       setPeople((current) =>
@@ -1356,175 +1245,40 @@ export default function FamilyTreeEditor({
       );
     };
 
-    const handleUp = () => {
+    const handleUp = async () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
       setDraggingId(null);
-      if (didDrag) {
-        lastDragRef.current = null;
-        setStatus("Đã di chuyển tạm thời. Tải lại trang để quay về vị trí đã lưu.");
-        return;
+      const finalPosition = lastDragRef.current;
+      if (!finalPosition) return;
+      if (finalPosition.tree_x !== originX || finalPosition.tree_y !== originY) {
+        try {
+          await updatePersonPositionAPI(person.id, finalPosition);
+          setStatus("Đã lưu vị trí.");
+        } catch (error) {
+          setStatus(error?.message || "Không thể lưu vị trí.");
+        }
       }
-      setStatus("");
-      setSelectedId(person.id);
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
   }, []);
 
-  const selectOnClickOnly = useCallback((event, person, afterSelect) => {
-    if (event.button != null && event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-
-    const startX = event.clientX;
-    const startY = event.clientY;
-    let moved = false;
-
-    const handleMove = (moveEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      if (Math.hypot(dx, dy) >= DRAG_CLICK_THRESHOLD) {
-        moved = true;
-      }
-    };
-
-    const handleUp = () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-      if (moved) return;
-      setSelectedId(person.id);
-      afterSelect?.();
-    };
-
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
-  }, []);
-
-  const cancelRelationshipMode = useCallback(() => {
-    setRelationshipMode(null);
-    setRelationshipSource(null);
-    setSelectedId(relationshipSource?.id || null);
-    setStatus("");
-  }, [relationshipSource]);
-
-  const handleSelectRelatedPerson = useCallback((personId) => {
-    setSelectedId(Number(personId));
-  }, []);
-
-  const beginRelationshipMode = useCallback(
-    (relation) => {
-      if (!resolvedPermission.canEdit) {
-        setStatus("Bạn không có quyền đổi quan hệ trong cây gia phả.");
-        return;
-      }
-      if (!selectedPerson) {
-        setStatus("Hãy chọn một thành viên trước.");
-        return;
-      }
-      setRelationDialog(null);
-      setDialog(null);
-      setRelationshipMode(relation);
-      setRelationshipSource(selectedPerson);
-      setSelectedId(null);
-      setStatus(`Đang chọn ${relationLabels[relation] || "quan hệ"} cho ${fullName(selectedPerson)}.`);
-    },
-    [resolvedPermission.canEdit, selectedPerson],
-  );
-
-  const confirmRelationshipTarget = useCallback(
-    async (targetPerson) => {
-      if (!relationshipMode || !relationshipSource || !targetPerson || dialogSaving) return;
-      const source = relationshipSource;
-      const target = targetPerson;
-      if (Number(source.id) === Number(target.id)) {
-        setStatus("Không thể chọn chính thành viên đó.");
-        return;
-      }
-      if (!canEditPerson(target.id)) {
-        setStatus("Node đích nằm ngoài phạm vi chỉnh sửa của bạn.");
-        return;
-      }
-      if (source.clan_id == null || target.clan_id == null || Number(source.clan_id) !== Number(target.clan_id)) {
-        setStatus("Chỉ được liên kết thành viên trong cùng dòng họ.");
-        return;
-      }
-      if (relationshipMode === "father" && Number(target.gender) === 2) {
-        setStatus("Người được chọn làm cha phải là Nam.");
-        return;
-      }
-      if (relationshipMode === "mother" && Number(target.gender) === 1) {
-        setStatus("Người được chọn làm mẹ phải là Nữ.");
-        return;
-      }
-      if (relationshipMode === "child" && Number(source.gender) !== 1 && Number(source.gender) !== 2) {
-        setStatus("Người đang chọn cần có giới tính Nam hoặc Nữ để gắn con.");
-        return;
-      }
-      if (
-        relationshipMode === "spouse" &&
-        source.gender &&
-        target.gender &&
-        Number(source.gender) === Number(target.gender)
-      ) {
-        setStatus("Vợ/chồng phải khác giới tính theo quy tắc hiện tại.");
-        return;
-      }
-
-      setDialogSaving(true);
-      setStatus("");
-      try {
-        await setTreeRelationshipAPI({
-          sourcePersonId: source.id,
-          targetPersonId: target.id,
-          relationshipType: relationshipMode,
-        });
-        const relationName = relationLabels[relationshipMode] || "quan hệ";
-        setRelationshipMode(null);
-        setRelationshipSource(null);
-        setSelectedId(source.id);
-        setStatus(`Đã cập nhật ${relationName} cho ${fullName(source)}.`);
-        await onReload?.();
-      } catch (error) {
-        setStatus(error?.message || "Không thể cập nhật quan hệ.");
-      } finally {
-        setDialogSaving(false);
-      }
-    },
-    [canEditPerson, dialogSaving, onReload, relationshipMode, relationshipSource],
-  );
-
   const handleCardPointerDown = useCallback(
     (event, person) => {
-      if (relationshipMode && relationshipSource) {
+      if (!canEditPerson(person.id)) {
         event.preventDefault();
         event.stopPropagation();
         setSelectedId(person.id);
-        confirmRelationshipTarget(person);
-        return;
-      }
-      if (!canEditPerson(person.id)) {
-        selectOnClickOnly(event, person, () => {
-          if (resolvedPermission.editScope === "limited") {
-            setStatus("Bạn chỉ được chỉnh sửa bản thân, cha mẹ trực tiếp và con trực tiếp.");
-          } else {
-            setStatus("");
-          }
-        });
+        if (resolvedPermission.editScope === "limited") {
+          setStatus("Bạn chỉ được chỉnh sửa bản thân, cha mẹ trực tiếp và con trực tiếp.");
+        }
         return;
       }
       beginDrag(event, person);
     },
-    [
-      beginDrag,
-      canEditPerson,
-      confirmRelationshipTarget,
-      relationshipMode,
-      relationshipSource,
-      resolvedPermission.editScope,
-      selectOnClickOnly,
-    ],
+    [beginDrag, canEditPerson, resolvedPermission.editScope],
   );
 
   const handleExport = async () => {
@@ -1645,20 +1399,17 @@ export default function FamilyTreeEditor({
   };
 
   const openCreateDialog = (relation) => {
-    if (relation === "person" && !canEditAll) {
-      setStatus("Temporary edit key không cho phép tạo node.");
+    if (!canEditAll) {
+      setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
       return;
     }
     if (relation !== "person" && !selectedPerson) {
       setStatus("Hãy chọn một thành viên trước.");
       return;
     }
-    if (relation !== "person" && (!resolvedPermission.canEdit || !canEditPerson(selectedPerson.id))) {
-      setStatus("Node này nằm ngoài phạm vi chỉnh sửa của bạn.");
-      return;
-    }
     if (relation !== "person") {
-      beginRelationshipMode(relation);
+      const currentIds = relationLinkedIds(relation, selectedPerson, canonicalTree.families, canonicalTree.childRows);
+      setRelationDialog({ relation, personId: [...currentIds][0] || "" });
       return;
     }
     setDialog({
@@ -1800,15 +1551,11 @@ export default function FamilyTreeEditor({
     ? canEditAll
       ? ""
       : selectedCanEdit
-        ? "Bạn có quyền chỉnh sửa tạm thời trong phạm vi cho phép. Không thể tạo hoặc xóa node."
+        ? "Bạn có quyền chỉnh sửa tạm thời trong phạm vi cho phép. Không thể tạo, xóa hoặc đổi quan hệ node."
         : canEditLimited
           ? "Node này nằm ngoài phạm vi chỉnh sửa tạm thời của bạn."
           : "Chế độ chỉ xem. Thành viên không có quyền chỉnh sửa cây gia phả."
     : "";
-  const relationshipModeLabel =
-    relationshipMode && relationshipSource
-      ? `Đang chọn ${relationLabels[relationshipMode] || "quan hệ"} cho ${fullName(relationshipSource)}`
-      : "";
 
   return (
     <section className="fte-shell">
@@ -1820,7 +1567,7 @@ export default function FamilyTreeEditor({
         maxScale={2}
         centerOnInit={false}
         limitToBounds={false}
-        panning={{ disabled: draggingId !== null || relationshipMode !== null }}
+        panning={{ disabled: draggingId !== null }}
         doubleClick={{ disabled: true }}
         wheel={{ step: 0.12 }}
         onTransformed={(_, state) => {
@@ -1874,14 +1621,6 @@ export default function FamilyTreeEditor({
             </div>
 
             {status ? <div className="fte-status">{status}</div> : null}
-            {relationshipModeLabel ? (
-              <div className="fte-relationshipBanner">
-                <span>{relationshipModeLabel}</span>
-                <button type="button" className="fte-ghostButton" disabled={dialogSaving} onClick={cancelRelationshipMode}>
-                  Hủy chọn
-                </button>
-              </div>
-            ) : null}
 
             <div className="fte-workspace">
               <div className="fte-viewport">
@@ -1915,7 +1654,7 @@ export default function FamilyTreeEditor({
                           person={person}
                           selected={selectedId === person.id}
                           dragging={draggingId === person.id}
-                          canDrag={canEditPerson(person.id) && relationshipMode === null}
+                          canDrag={canEditPerson(person.id)}
                           onPointerDown={handleCardPointerDown}
                           onSelect={setSelectedId}
                         />
@@ -1932,17 +1671,15 @@ export default function FamilyTreeEditor({
       <PersonInspector
         person={selectedPerson}
         spouse={selectedSpouse}
-        relationshipSummary={selectedRelationshipSummary}
         saving={saving}
         canEdit={selectedCanEdit}
-        canEditRelations={resolvedPermission.canEdit && selectedCanEdit}
+        canEditRelations={canEditAll && selectedCanEdit}
         canDelete={canEditAll && selectedCanEdit}
         notice={selectedNotice}
         onClose={() => setSelectedId(null)}
         onSave={handleSavePerson}
         onDelete={handleDeletePerson}
         onCreateRelation={openCreateDialog}
-        onSelectRelatedPerson={handleSelectRelatedPerson}
       />
 
       <RelationSelectDialog

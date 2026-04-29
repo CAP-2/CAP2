@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
-import NotificationBell from "./NotificationBell";
 import "./MemberLayout.css";
 
 const menuItems = [
@@ -124,7 +123,9 @@ export default function MemberLayout() {
             </span>
           </div>
           <div className="member-topbar-actions">
-            <NotificationBell role="member" buttonClassName="top-icon-btn glass-btn" />
+            <Link className="top-icon-btn glass-btn" to="/user/dashboard" title="Thông báo và công việc">
+              <span className="material-symbols-outlined">notifications</span>
+            </Link>
             <div className="divider" />
             <Link className="top-icon-btn glass-btn" to="/user/profile" title="Hồ sơ cá nhân">
               <span className="material-symbols-outlined">settings</span>

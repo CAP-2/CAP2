@@ -308,299 +308,6 @@ const assertCanManagePersonId = async (req, personId) => {
     return { ok: true, person: rows[0] };
 };
 
-const RELATIONSHIP_TYPES = new Set(['father', 'mother', 'child', 'spouse']);
-
-const createHttpError = (status, message) => {
-    const error = new Error(message);
-    error.status = status;
-    return error;
-};
-
-const loadRelationshipPerson = async (conn, personId) => {
-    const [rows] = await conn.query(
-        'SELECT id, clan_id, display_name, gender FROM people WHERE id = ? LIMIT 1 FOR UPDATE',
-        [personId]
-    );
-    return rows[0] || null;
-};
-
-const assertRelationshipPersonPair = async (conn, sourcePersonId, targetPersonId, relationshipType) => {
-    if (!RELATIONSHIP_TYPES.has(relationshipType)) {
-        throw createHttpError(400, 'relationshipType khong hop le');
-    }
-    if (!Number.isFinite(sourcePersonId) || !Number.isFinite(targetPersonId) || sourcePersonId <= 0 || targetPersonId <= 0) {
-        throw createHttpError(400, 'sourcePersonId hoac targetPersonId khong hop le');
-    }
-    if (sourcePersonId === targetPersonId) {
-        throw createHttpError(400, 'Khong the tao quan he voi chinh minh');
-    }
-
-    const source = await loadRelationshipPerson(conn, sourcePersonId);
-    const target = await loadRelationshipPerson(conn, targetPersonId);
-    if (!source) throw createHttpError(404, 'Khong tim thay thanh vien nguon');
-    if (!target) throw createHttpError(404, 'Khong tim thay thanh vien dich');
-    if (source.clan_id == null || target.clan_id == null) {
-        throw createHttpError(400, 'Thanh vien phai thuoc mot dong ho cu the');
-    }
-    if (Number(source.clan_id) !== Number(target.clan_id)) {
-        throw createHttpError(400, 'Chi duoc lien ket thanh vien trong cung dong ho');
-    }
-
-    return { source, target, clanId: Number(source.clan_id) };
-};
-
-const assertManagerCanEditClan = async (req, clanId) => {
-    if (Number(req.user.role_id) !== 2) return;
-    const managerClanId = await getManagerClanId(req.user.id);
-    if (managerClanId == null) {
-        throw createHttpError(404, 'Khong xac dinh duoc dong ho cua manager');
-    }
-    if (Number(managerClanId) !== Number(clanId)) {
-        throw createHttpError(403, 'Chi duoc thao tac voi nguoi trong cung dong ho');
-    }
-};
-
-const loadClanRelationshipGraph = async (conn, clanId) => {
-    const [families] = await conn.query(
-        'SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC',
-        [clanId]
-    );
-    const [children] = await conn.query(
-        `
-        SELECT c.family_id, c.person_id
-        FROM children c
-        INNER JOIN families f ON c.family_id = f.id
-        WHERE f.clan_id = ?
-        ORDER BY c.family_id, c.sort_order, c.id
-        `,
-        [clanId]
-    );
-    return { families, children };
-};
-
-const isAncestorInGraph = (ancestorId, descendantId, graph) => {
-    const familyById = new Map(graph.families.map((family) => [Number(family.id), family]));
-    const parentIdsByChild = new Map();
-
-    for (const child of graph.children) {
-        const family = familyById.get(Number(child.family_id));
-        if (!family) continue;
-        const parentIds = [family.father_id, family.mother_id]
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id) && id > 0);
-        const childId = Number(child.person_id);
-        if (!parentIdsByChild.has(childId)) parentIdsByChild.set(childId, []);
-        parentIdsByChild.get(childId).push(...parentIds);
-    }
-
-    const targetAncestorId = Number(ancestorId);
-    const queue = [...(parentIdsByChild.get(Number(descendantId)) || [])];
-    const visited = new Set();
-    while (queue.length) {
-        const currentId = Number(queue.shift());
-        if (!Number.isFinite(currentId) || visited.has(currentId)) continue;
-        if (currentId === targetAncestorId) return true;
-        visited.add(currentId);
-        queue.push(...(parentIdsByChild.get(currentId) || []));
-    }
-    return false;
-};
-
-const assertNoRelationshipCycle = (relationshipType, sourceId, targetId, graph) => {
-    if (relationshipType === 'father' || relationshipType === 'mother') {
-        if (isAncestorInGraph(sourceId, targetId, graph)) {
-            throw createHttpError(400, 'Khong the chon con/chau lam cha/me');
-        }
-    }
-    if (relationshipType === 'child') {
-        if (isAncestorInGraph(targetId, sourceId, graph)) {
-            throw createHttpError(400, 'Khong the chon cha/me/to tien lam con');
-        }
-    }
-    if (relationshipType === 'spouse') {
-        if (isAncestorInGraph(sourceId, targetId, graph) || isAncestorInGraph(targetId, sourceId, graph)) {
-            throw createHttpError(400, 'Khong the chon vo/chong la to tien hoac con chau truc tiep');
-        }
-    }
-};
-
-const getPrimaryChildFamily = async (conn, personId, clanId) => {
-    const [rows] = await conn.query(
-        `
-        SELECT c.id AS child_row_id, c.family_id, f.clan_id, f.father_id, f.mother_id
-        FROM children c
-        INNER JOIN families f ON c.family_id = f.id
-        WHERE c.person_id = ? AND f.clan_id = ?
-        ORDER BY c.id ASC
-        LIMIT 1
-        FOR UPDATE
-        `,
-        [personId, clanId]
-    );
-    return rows[0] || null;
-};
-
-const findFamilyByParents = async (conn, clanId, fatherId, motherId, excludeFamilyId = null) => {
-    const params = [clanId, fatherId ?? null, motherId ?? null];
-    let sql = 'SELECT id, clan_id, father_id, mother_id FROM families WHERE clan_id = ? AND (father_id <=> ?) AND (mother_id <=> ?)';
-    if (excludeFamilyId != null) {
-        sql += ' AND id <> ?';
-        params.push(excludeFamilyId);
-    }
-    sql += ' ORDER BY id ASC LIMIT 1 FOR UPDATE';
-    const [rows] = await conn.query(sql, params);
-    return rows[0] || null;
-};
-
-const assertNoDuplicateFamilyPair = async (conn, clanId, fatherId, motherId, currentFamilyId = null) => {
-    const duplicate = await findFamilyByParents(conn, clanId, fatherId, motherId, currentFamilyId);
-    if (duplicate) {
-        throw createHttpError(409, 'Cap cha/me nay da ton tai trong mot family khac');
-    }
-};
-
-const ensureChildInFamily = async (conn, familyId, personId) => {
-    const [existing] = await conn.query(
-        'SELECT id FROM children WHERE family_id = ? AND person_id = ? LIMIT 1',
-        [familyId, personId]
-    );
-    if (existing.length) return false;
-
-    const [orderRows] = await conn.query(
-        'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort_order FROM children WHERE family_id = ?',
-        [familyId]
-    );
-    const sortOrder = Number(orderRows[0]?.next_sort_order || 0);
-    await conn.query('INSERT INTO children (family_id, person_id, sort_order) VALUES (?, ?, ?)', [
-        familyId,
-        personId,
-        sortOrder,
-    ]);
-    return true;
-};
-
-const applyParentRelationship = async (conn, { source, target, clanId, relationshipType }) => {
-    if (relationshipType === 'father' && Number(target.gender) !== 1) {
-        throw createHttpError(400, 'Nguoi duoc chon lam cha phai co gioi tinh Nam');
-    }
-    if (relationshipType === 'mother' && Number(target.gender) !== 2) {
-        throw createHttpError(400, 'Nguoi duoc chon lam me phai co gioi tinh Nu');
-    }
-
-    const currentFamily = await getPrimaryChildFamily(conn, source.id, clanId);
-    if (currentFamily) {
-        const nextFatherId = relationshipType === 'father' ? target.id : currentFamily.father_id || null;
-        const nextMotherId = relationshipType === 'mother' ? target.id : currentFamily.mother_id || null;
-        await assertNoDuplicateFamilyPair(conn, clanId, nextFatherId, nextMotherId, currentFamily.family_id);
-        await conn.query(
-            'UPDATE families SET father_id = ?, mother_id = ? WHERE id = ?',
-            [nextFatherId, nextMotherId, currentFamily.family_id]
-        );
-        return { family_id: currentFamily.family_id };
-    }
-
-    const fatherId = relationshipType === 'father' ? target.id : null;
-    const motherId = relationshipType === 'mother' ? target.id : null;
-    const existingPair = await findFamilyByParents(conn, clanId, fatherId, motherId);
-    let familyId = existingPair?.id || null;
-    if (!familyId) {
-        const [created] = await conn.query(
-            'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)',
-            [clanId, fatherId, motherId]
-        );
-        familyId = created.insertId;
-    }
-    await ensureChildInFamily(conn, familyId, source.id);
-    return { family_id: familyId };
-};
-
-const applyChildRelationship = async (conn, { source, target, clanId }) => {
-    const sourceGender = Number(source.gender);
-    if (sourceGender !== 1 && sourceGender !== 2) {
-        throw createHttpError(400, 'Nguoi duoc chon lam cha/me cua con can co gioi tinh Nam hoac Nu');
-    }
-
-    const currentFamily = await getPrimaryChildFamily(conn, target.id, clanId);
-    if (currentFamily) {
-        const nextFatherId = sourceGender === 1 ? source.id : currentFamily.father_id || null;
-        const nextMotherId = sourceGender === 2 ? source.id : currentFamily.mother_id || null;
-        await assertNoDuplicateFamilyPair(conn, clanId, nextFatherId, nextMotherId, currentFamily.family_id);
-        await conn.query(
-            'UPDATE families SET father_id = ?, mother_id = ? WHERE id = ?',
-            [nextFatherId, nextMotherId, currentFamily.family_id]
-        );
-        return { family_id: currentFamily.family_id };
-    }
-
-    const fatherId = sourceGender === 1 ? source.id : null;
-    const motherId = sourceGender === 2 ? source.id : null;
-    const existingPair = await findFamilyByParents(conn, clanId, fatherId, motherId);
-    let familyId = existingPair?.id || null;
-    if (!familyId) {
-        const [created] = await conn.query(
-            'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)',
-            [clanId, fatherId, motherId]
-        );
-        familyId = created.insertId;
-    }
-    await ensureChildInFamily(conn, familyId, target.id);
-    return { family_id: familyId };
-};
-
-const loadSourceFamiliesByRole = async (conn, source, clanId) => {
-    const sourceGender = Number(source.gender);
-    const roleColumn = sourceGender === 1 ? 'father_id' : sourceGender === 2 ? 'mother_id' : null;
-    if (!roleColumn) {
-        throw createHttpError(400, 'Thanh vien can co gioi tinh Nam hoac Nu de thiet lap vo/chong');
-    }
-    const [rows] = await conn.query(
-        `SELECT id, clan_id, father_id, mother_id FROM families WHERE clan_id = ? AND ${roleColumn} = ? ORDER BY id ASC FOR UPDATE`,
-        [clanId, source.id]
-    );
-    return rows;
-};
-
-const applySpouseRelationship = async (conn, { source, target, clanId }) => {
-    const sourceGender = Number(source.gender);
-    const targetGender = Number(target.gender);
-    if ((sourceGender !== 1 && sourceGender !== 2) || (targetGender !== 1 && targetGender !== 2)) {
-        throw createHttpError(400, 'Ca hai thanh vien can co gioi tinh Nam hoac Nu de thiet lap vo/chong');
-    }
-    if (sourceGender === targetGender) {
-        throw createHttpError(400, 'Vo/chong phai khac gioi tinh theo quy tac hien tai');
-    }
-
-    const fatherId = sourceGender === 1 ? source.id : target.id;
-    const motherId = sourceGender === 1 ? target.id : source.id;
-    const existingPair = await findFamilyByParents(conn, clanId, fatherId, motherId);
-    if (existingPair) {
-        return { family_id: existingPair.id };
-    }
-
-    const sourceFamilies = await loadSourceFamiliesByRole(conn, source, clanId);
-    const spouseColumn = sourceGender === 1 ? 'mother_id' : 'father_id';
-    const openFamily = sourceFamilies.find((family) => family[spouseColumn] == null);
-    if (openFamily) {
-        await assertNoDuplicateFamilyPair(conn, clanId, fatherId, motherId, openFamily.id);
-        await conn.query('UPDATE families SET father_id = ?, mother_id = ? WHERE id = ?', [
-            fatherId,
-            motherId,
-            openFamily.id,
-        ]);
-        return { family_id: openFamily.id };
-    }
-
-    if (sourceFamilies.length > 0) {
-        throw createHttpError(409, 'Thanh vien nay da co vo/chong trong family khac. Khong tu dong ghi de quan he hien co');
-    }
-
-    const [created] = await conn.query(
-        'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)',
-        [clanId, fatherId, motherId]
-    );
-    return { family_id: created.insertId };
-};
-
 const buildManagedFamilyTree = (peopleRows, familyRows, childRows) => {
     const peopleMap = new Map(peopleRows.map((p) => [p.id, p]));
     const childrenByFamily = new Map();
@@ -1755,19 +1462,8 @@ exports.approveUser = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được duyệt thành viên cùng dòng họ' });
             }
         }
-        const target = await getNotificationTargetByAccountId(accountId);
         const sql = "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?";
         await db.query(sql, [accountId]);
-        if (target?.person_id) {
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "account_approved",
-                title: "Tài khoản đã được duyệt",
-                message: "Tài khoản của bạn đã được quản lý phê duyệt.",
-                linkUrl: "/user/dashboard",
-            });
-        }
         res.json({ success: true, message: 'Phê duyệt thành công!' });
     } catch (error) {
         console.error('approveUser error:', error);
@@ -1791,19 +1487,8 @@ exports.rejectUser = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối thành viên cùng dòng họ' });
             }
         }
-        const target = await getNotificationTargetByAccountId(accountId);
         const sql = "UPDATE accounts SET status = 'rejected' WHERE id = ?";
         await db.query(sql, [accountId]);
-        if (target?.person_id) {
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "account_rejected",
-                title: "Tài khoản bị từ chối",
-                message: "Yêu cầu tài khoản của bạn đã bị quản lý từ chối.",
-                linkUrl: "/user/dashboard",
-            });
-        }
         res.json({ success: true, message: 'Đã từ chối tài khoản (chuyển trạng thái rejected)' });
     } catch (error) {
         console.error('rejectUser error:', error);
@@ -1853,32 +1538,8 @@ exports.approvePost = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được duyệt bài viết cùng dòng họ' });
             }
         }
-        const [targetRows] = await db.query(
-            `
-                SELECT p.id AS post_id, p.description, p.content, a.id AS account_id, a.person_id,
-                       author.display_name, author.surname, author.middle_name, author.first_name
-                FROM posts p
-                INNER JOIN accounts a ON a.id = p.author_id
-                LEFT JOIN people author ON author.id = a.person_id
-                WHERE p.id = ?
-                LIMIT 1
-            `,
-            [postId]
-        );
-        const target = targetRows[0];
         const sql = "UPDATE posts SET status = 'approved' WHERE id = ?";
         await db.query(sql, [postId]);
-        if (target?.person_id) {
-            const postTitle = target.description || target.content || `#${postId}`;
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "post_approved",
-                title: "Bài viết đã được duyệt",
-                message: `Bài viết "${String(postTitle).slice(0, 80)}" đã được phê duyệt.`,
-                linkUrl: "/user/submissions",
-            });
-        }
         res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
     } catch (error) {
         console.error('approvePost error:', error);
@@ -1900,33 +1561,8 @@ exports.rejectPost = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối bài viết cùng dòng họ' });
             }
         }
-        const [targetRows] = await db.query(
-            `
-                SELECT p.id AS post_id, p.description, p.content, a.id AS account_id, a.person_id,
-                       author.display_name, author.surname, author.middle_name, author.first_name
-                FROM posts p
-                INNER JOIN accounts a ON a.id = p.author_id
-                LEFT JOIN people author ON author.id = a.person_id
-                WHERE p.id = ?
-                LIMIT 1
-            `,
-            [postId]
-        );
-        const target = targetRows[0];
-        const rejectionReason = reason || 'Không có lý do';
         const sql = "UPDATE posts SET status = 'rejected', rejection_reason = ? WHERE id = ?";
-        await db.query(sql, [rejectionReason, postId]);
-        if (target?.person_id) {
-            const postTitle = target.description || target.content || `#${postId}`;
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "post_rejected",
-                title: "Bài viết bị từ chối",
-                message: `Bài viết "${String(postTitle).slice(0, 80)}" bị từ chối. Lý do: ${rejectionReason}`,
-                linkUrl: "/user/submissions",
-            });
-        }
+        await db.query(sql, [reason || 'Không có lý do', postId]);
         res.json({ success: true, message: 'Đã từ chối bài viết!' });
     } catch (error) {
         console.error('rejectPost error:', error);
@@ -2017,60 +1653,6 @@ const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
             time: new Date().toLocaleTimeString(),
         });
     }
-};
-
-const displayNameFromRow = (row, fallback = "Thành viên") => {
-    const fullName =
-        row?.display_name ||
-        [row?.surname, row?.middle_name, row?.first_name].filter(Boolean).join(" ").trim();
-    return fullName || row?.email || row?.account_email || fallback;
-};
-
-const createNotificationForPerson = async (
-    req,
-    { receiverPersonId, receiverAccountId, type, title, message, linkUrl = null }
-) => {
-    if (!receiverPersonId) return;
-    await db.query(
-        "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
-        [receiverPersonId, type, title, message, linkUrl]
-    );
-    if (receiverAccountId) {
-        await emitNotificationToAccount(req, receiverAccountId, {
-            type,
-            title,
-            message,
-            link_url: linkUrl,
-        });
-    }
-};
-
-const getNotificationTargetByAccountId = async (accountId) => {
-    const [rows] = await db.query(
-        `
-            SELECT a.id AS account_id, a.email, a.person_id, p.display_name, p.surname, p.middle_name, p.first_name
-            FROM accounts a
-            LEFT JOIN people p ON p.id = a.person_id
-            WHERE a.id = ?
-            LIMIT 1
-        `,
-        [accountId]
-    );
-    return rows[0] || null;
-};
-
-const getNotificationTargetByPersonId = async (personId) => {
-    const [rows] = await db.query(
-        `
-            SELECT p.id AS person_id, p.display_name, p.surname, p.middle_name, p.first_name, a.id AS account_id, a.email
-            FROM people p
-            LEFT JOIN accounts a ON a.person_id = p.id
-            WHERE p.id = ?
-            LIMIT 1
-        `,
-        [personId]
-    );
-    return rows[0] || null;
 };
 
 exports.assignTask = async (req, res) => {
@@ -2209,7 +1791,7 @@ exports.completeTask = async (req, res) => {
             return res.status(400).json({ success: false, message: "ID công việc không hợp lệ" });
         }
         let sql = `
-            SELECT a.id, a.member_account_id, a.member_person_id, a.task_id, t.title
+            SELECT a.id
             FROM manager_task_assignments a
             INNER JOIN manager_tasks t ON t.id = a.task_id
             WHERE a.id = ?
@@ -2227,17 +1809,6 @@ exports.completeTask = async (req, res) => {
             "UPDATE manager_task_assignments SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
             [assignmentId]
         );
-        const assignment = rows[0];
-        if (assignment?.member_person_id) {
-            await createNotificationForPerson(req, {
-                receiverPersonId: assignment.member_person_id,
-                receiverAccountId: assignment.member_account_id,
-                type: "task_marked_completed",
-                title: "Công việc đã được xác nhận",
-                message: `Công việc "${assignment.title}" đã được quản lý xác nhận hoàn thành.`,
-                linkUrl: "/user/dashboard",
-            });
-        }
         res.json({ success: true, message: "Đã xác nhận hoàn thành công việc!" });
     } catch (error) {
         console.error('completeTask error:', error);
@@ -2287,8 +1858,7 @@ exports.approveProfileUpdate = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được duyệt hồ sơ cùng dòng họ' });
             }
         }
-        const target = await getNotificationTargetByPersonId(personId);
-
+        
         await db.query(`
             UPDATE people 
             SET 
@@ -2301,16 +1871,6 @@ exports.approveProfileUpdate = async (req, res) => {
             WHERE id = ?`, 
             [personId]
         );
-        if (target?.person_id) {
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "profile_update_approved",
-                title: "Hồ sơ đã được duyệt",
-                message: "Yêu cầu cập nhật ảnh hoặc tiểu sử của bạn đã được phê duyệt.",
-                linkUrl: "/user/profile",
-            });
-        }
         res.json({ success: true, message: 'Đã phê duyệt cập nhật hồ sơ!' });
     } catch (error) {
         console.error('approveProfileUpdate error:', error);
@@ -2332,27 +1892,15 @@ exports.rejectProfileUpdate = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối hồ sơ cùng dòng họ' });
             }
         }
-        const target = await getNotificationTargetByPersonId(personId);
-        const rejectionReason = reason || 'Không có lý do';
-
+        
         await db.query(`
             UPDATE people 
             SET 
                 moderation_status = 'rejected',
                 moderation_reason = ?
             WHERE id = ?`, 
-            [rejectionReason, personId]
+            [reason || 'Không có lý do', personId]
         );
-        if (target?.person_id) {
-            await createNotificationForPerson(req, {
-                receiverPersonId: target.person_id,
-                receiverAccountId: target.account_id,
-                type: "profile_update_rejected",
-                title: "Hồ sơ bị từ chối",
-                message: `Yêu cầu cập nhật ảnh hoặc tiểu sử bị từ chối. Lý do: ${rejectionReason}`,
-                linkUrl: "/user/profile",
-            });
-        }
         res.json({ success: true, message: 'Đã từ chối cập nhật hồ sơ!' });
     } catch (error) {
         console.error('rejectProfileUpdate error:', error);
@@ -2540,69 +2088,6 @@ exports.linkRelations = async (req, res) => {
     } catch (error) {
         console.error('linkRelations error:', error);
         res.status(500).json({ success: false, message: 'Lỗi liên kết quan hệ' });
-    }
-};
-
-exports.updateTreeRelationship = async (req, res) => {
-    const sourcePersonId = Number(req.body?.sourcePersonId);
-    const targetPersonId = Number(req.body?.targetPersonId);
-    const relationshipType = String(req.body?.relationshipType || '').trim().toLowerCase();
-
-    const permission = await assertTreeMutationPermission(req, {
-        action: 'update_relationship',
-        affectedPersonIds: [sourcePersonId, targetPersonId],
-    });
-    if (!permission.ok) {
-        return res.status(permission.status).json({ success: false, message: permission.message });
-    }
-
-    let conn;
-    try {
-        conn = await db.getConnection();
-        await conn.beginTransaction();
-
-        const context = await assertRelationshipPersonPair(conn, sourcePersonId, targetPersonId, relationshipType);
-        await assertManagerCanEditClan(req, context.clanId);
-
-        const graph = await loadClanRelationshipGraph(conn, context.clanId);
-        assertNoRelationshipCycle(relationshipType, context.source.id, context.target.id, graph);
-
-        let relationship;
-        if (relationshipType === 'father' || relationshipType === 'mother') {
-            relationship = await applyParentRelationship(conn, context);
-        } else if (relationshipType === 'child') {
-            relationship = await applyChildRelationship(conn, context);
-        } else if (relationshipType === 'spouse') {
-            relationship = await applySpouseRelationship(conn, context);
-        }
-
-        await conn.commit();
-        return res.json({
-            success: true,
-            message: 'Da cap nhat quan he cay gia pha',
-            relationship: {
-                type: relationshipType,
-                sourcePersonId: context.source.id,
-                targetPersonId: context.target.id,
-                family_id: relationship?.family_id || null,
-            },
-        });
-    } catch (error) {
-        if (conn) {
-            try {
-                await conn.rollback();
-            } catch (rollbackError) {
-                console.error('updateTreeRelationship rollback error:', rollbackError);
-            }
-        }
-        console.error('updateTreeRelationship error:', error);
-        const status = Number(error?.status) || 500;
-        return res.status(status).json({
-            success: false,
-            message: error?.message || 'Loi cap nhat quan he cay gia pha',
-        });
-    } finally {
-        conn?.release();
     }
 };
 
