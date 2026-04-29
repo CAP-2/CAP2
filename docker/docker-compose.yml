@@ -1,10 +1,7 @@
-@ -1,42 +1,14 @@
 services:
   mysql:
     image: mysql:8.0
     container_name: cap2-mysql
-    profiles:
-      - local-db
     restart: unless-stopped
     command:
       - --character-set-server=utf8mb4
@@ -29,18 +26,18 @@ services:
     image: phpmyadmin/phpmyadmin:5.2
     container_name: cap2-phpmyadmin
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
-      PMA_HOST: ${DB_HOST}
-      PMA_PORT: ${DB_PORT:-3306}
-      PMA_PORT: ${DB_PORT}
-      PMA_USER: ${DB_USER}
-      PMA_PASSWORD: ${DB_PASSWORD}
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER:-cap2_user}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-cap2_password}
       PMA_ABSOLUTE_URI: http://localhost:8081/
-      PMA_ABSOLUTE_URI: http://localhost:${PHPMYADMIN_PORT:-16001}/
       UPLOAD_LIMIT: 256M
     ports:
       - "${PHPMYADMIN_PORT:-8081}:80"
 
 volumes:
   mysql_data:
-      - "${PHPMYADMIN_PORT:-16001}:80"
