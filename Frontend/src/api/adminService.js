@@ -5,8 +5,10 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export const getAdminClans = async () => {
-  const res = await fetch(`${BASE_URL}/clans`, { headers: getAuthHeaders() });
+export const getAdminClans = async (period = "all") => {
+  const params = new URLSearchParams();
+  if (period) params.set("period", period);
+  const res = await fetch(BASE_URL + "/clans?" + params.toString(), { headers: getAuthHeaders() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Không lấy được danh sách dòng họ");
   return data;
@@ -154,8 +156,10 @@ export const deleteAdminGalleryItem = async (id) => {
   return data;
 };
 
-export const getAdminDashboardStats = async () => {
-  const res = await fetch(`${BASE_URL}/dashboard-stats`, { headers: getAuthHeaders() });
+export const getAdminDashboardStats = async (period = "all") => {
+  const params = new URLSearchParams();
+  if (period) params.set("period", period);
+  const res = await fetch(BASE_URL + "/dashboard-stats?" + params.toString(), { headers: getAuthHeaders() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Không lấy được thống kê");
   return data;

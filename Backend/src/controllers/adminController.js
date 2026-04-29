@@ -8,14 +8,31 @@ const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   const f = firstName == null ? "" : String(firstName).trim();
   return [s, m, f].filter(Boolean).join(" ").trim();
 };
+const getDashboardDateFilter = (period = "all") => {
+  const value = String(period || "all").toLowerCase();
+  if (value === "day") return "created_at >= CURDATE()";
+  if (value === "week") return "created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+  if (value === "month") return "created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')";
+  return "1=1";
+};
+
+const withDateFilter = (period, alias = "") => {
+  const filter = getDashboardDateFilter(period);
+  if (filter === "1=1") return filter;
+  return alias ? filter.replace(/created_at/g, `${alias}.created_at`) : filter;
+};
 
 /** Danh sách dòng họ + số thành viên + số manager + số bài viết + chủ quản */
 exports.listClans = async (req, res) => {
   try {
+    const period = req.query.period || req.query.range || "all";
+    const peopleFilter = withDateFilter(period, "p");
+    const postFilter = withDateFilter(period, "po");
+
     const [rows] = await db.query(`
       SELECT c.id, c.clan_name, c.created_at,
-        (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id) AS member_count,
-        (SELECT COUNT(*) FROM posts po WHERE po.clan_id = c.id) AS post_count,
+        (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id AND ${peopleFilter}) AS member_count,
+        (SELECT COUNT(*) FROM posts po WHERE po.clan_id = c.id AND ${postFilter}) AS post_count,
         (SELECT p.display_name FROM accounts a 
          JOIN people p ON a.person_id = p.id 
          WHERE p.clan_id = c.id AND a.role_id = 2 
@@ -419,26 +436,41 @@ exports.getPostsByClan = async (req, res) => {
 /** Lấy thống kê cho Dashboard */
 exports.getDashboardStats = async (req, res) => {
   try {
-    const [[{ total_members }]] = await db.query("SELECT COUNT(*) AS total_members FROM people");
-    const [[{ total_clans }]] = await db.query("SELECT COUNT(*) AS total_clans FROM clans");
+    const period = req.query.period || req.query.range || "all";
+    const accountsFilter = withDateFilter(period, "a");
+    const peopleFilter = withDateFilter(period, "p");
+    const clansFilter = withDateFilter(period, "c");
+    const postsFilter = withDateFilter(period, "po");
+
+    const [[{ total_accounts }]] = await db.query(`SELECT COUNT(*) AS total_accounts FROM accounts a WHERE ${accountsFilter}`);
+    const [[{ total_members }]] = await db.query(`SELECT COUNT(*) AS total_members FROM people p WHERE ${peopleFilter}`);
+    const [[{ total_clans }]] = await db.query(`SELECT COUNT(*) AS total_clans FROM clans c WHERE ${clansFilter}`);
     const [[{ total_events }]] = await db.query("SELECT COUNT(*) AS total_events FROM events");
-    const [[{ total_photos }]] = await db.query("SELECT COUNT(*) AS total_photos FROM posts WHERE image_url IS NOT NULL AND image_url != ''");
-    const [[{ total_posts }]] = await db.query("SELECT COUNT(*) AS total_posts FROM posts");
-    
-    const [recent_activities] = await db.query(`
-      SELECT 'member' as type, display_name as content, created_at as time FROM people ORDER BY created_at DESC LIMIT 5
+    const [[{ total_photos }]] = await db.query(`SELECT COUNT(*) AS total_photos FROM posts po WHERE po.image_url IS NOT NULL AND po.image_url != '' AND ${postsFilter}`);
+    const [[{ total_posts }]] = await db.query(`SELECT COUNT(*) AS total_posts FROM posts po WHERE ${postsFilter}`);
+
+    const [monthly_clans] = await db.query(`
+      SELECT DATE_FORMAT(c.created_at, '%Y-%m') AS month_key,
+             DATE_FORMAT(c.created_at, '%m/%Y') AS label,
+             COUNT(*) AS total
+      FROM clans c
+      WHERE c.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
+      GROUP BY month_key, label
+      ORDER BY month_key ASC
     `);
 
     return res.json({
       success: true,
+      period,
       stats: {
+        total_accounts,
         total_members,
         total_clans,
         total_events,
         total_photos,
         total_posts
       },
-      recent_activities
+      monthly_clans
     });
   } catch (e) {
     console.error("getDashboardStats:", e);
