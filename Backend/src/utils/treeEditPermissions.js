@@ -98,11 +98,12 @@ async function findValidTreeEditGrant(accountId, rawKey) {
 
   const [rows] = await db.query(
     `
-      SELECT id, member_account_id, member_person_id, clan_id, expires_at, created_by_account_id
+      SELECT id, member_account_id, member_person_id, clan_id, expires_at, created_by_account_id, created_at
       FROM member_tree_edit_keys
       WHERE member_account_id = ?
         AND key_hash = ?
         AND expires_at > NOW()
+        AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
       LIMIT 1
     `,
     [accountId, hashTreeEditKey(submittedKey)],
@@ -198,11 +199,17 @@ async function buildGenerationEditScope(memberPersonId, clanId) {
 
 async function buildTreeEditSession(grant) {
   const scope = await buildGenerationEditScope(grant.member_person_id, grant.clan_id);
+  const expiresAtTime = new Date(grant.expires_at).getTime();
+  const createdExpiryTime = new Date(grant.created_at).getTime() + TEMP_EDIT_TTL_MS;
+  const effectiveExpiresAt =
+    Number.isFinite(expiresAtTime) && Number.isFinite(createdExpiryTime)
+      ? new Date(Math.min(expiresAtTime, createdExpiryTime))
+      : grant.expires_at;
 
   return {
     grant,
     allowedNodeIds: scope.allowedNodeIds,
-    expiresAt: grant.expires_at,
+    expiresAt: effectiveExpiresAt,
     memberGeneration: scope.memberGeneration,
     allowedGenerations: scope.allowedGenerations,
   };
@@ -217,14 +224,7 @@ async function getTreeEditSessionForAccount(accountId, rawKey) {
 async function activateTreeEditSessionForAccount(accountId, rawKey) {
   const grant = await findValidTreeEditGrant(accountId, rawKey);
   if (!grant) return null;
-
-  const expiresAt = new Date(Date.now() + TEMP_EDIT_TTL_MS);
-  await db.query("UPDATE member_tree_edit_keys SET expires_at = ? WHERE id = ?", [expiresAt, grant.id]);
-
-  return buildTreeEditSession({
-    ...grant,
-    expires_at: expiresAt,
-  });
+  return buildTreeEditSession(grant);
 }
 
 async function assertTreeMutationPermission(req, { action, affectedPersonIds = [] }) {

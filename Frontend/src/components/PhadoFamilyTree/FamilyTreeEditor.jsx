@@ -161,6 +161,7 @@ const normalizePerson = (person) => ({
   ...person,
   id: Number(person.id),
   account_id: person.account_id == null ? null : Number(person.account_id),
+  role_id: person.role_id == null ? null : Number(person.role_id),
   tree_x: toInt(person.tree_x, 0),
   tree_y: toInt(person.tree_y, 0),
   display_order: toInt(person.display_order, 0),
@@ -959,6 +960,7 @@ function personToForm(person) {
     birth_date: dateInput(person?.birth_date),
     death_date: dateInput(person?.death_date),
     is_living: Number(person?.is_living) === 0 ? "0" : "1",
+    role_id: person?.role_id == null ? "" : String(person.role_id),
     generation: person?.generation != null ? String(person.generation) : "1",
     branch: person?.branch != null ? String(person.branch) : "",
     hometown: person?.hometown || "",
@@ -977,6 +979,7 @@ function PersonCard({
   dragging,
   canDrag = true,
   canEdit = false,
+  canEditRole = false,
   canDelete = false,
   founder = false,
   size = { width: CARD_WIDTH, height: CARD_HEIGHT },
@@ -990,6 +993,7 @@ function PersonCard({
   const birthText = formatDisplayDate(person.birth_date);
   const deathText = formatDisplayDate(person.death_date);
   const deceased = Number(person.is_living) === 0;
+  const isClanChief = Number(person.role_id) === 2;
   const lifeParts = [];
   if (birthText) lifeParts.push(`Sinh: ${birthText}`);
   if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
@@ -1047,6 +1051,7 @@ function PersonCard({
           ) : null}
         </div>
       ) : null}
+      {isClanChief ? <div className="fte-chiefBadge">Tộc trưởng</div> : null}
       <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
         {person.avatar_url ? (
           <img className="fte-mainPhoto" src={person.avatar_url} alt={name} draggable="false" />
@@ -1077,6 +1082,7 @@ function PersonInspector({
   onCreateRelation,
   saving,
   canEdit = false,
+  canEditRole = false,
   canEditRelations = false,
   canDelete = false,
   notice = "",
@@ -1159,6 +1165,18 @@ function PersonInspector({
             <option value="">Không rõ</option>
             <option value="1">Nam</option>
             <option value="2">Nữ</option>
+          </select>
+        </label>
+        <label>
+          Vai trò
+          <select
+            value={form.role_id}
+            onChange={(event) => setField("role_id", event.target.value)}
+            disabled={!canEditRole || !person.account_id}
+          >
+            <option value="">Chưa có tài khoản</option>
+            <option value="2">Tộc trưởng</option>
+            <option value="3">Thành viên</option>
           </select>
         </label>
         <label>
@@ -1833,6 +1851,9 @@ export default function FamilyTreeEditor({
         birth_date: form.birth_date || null,
         death_date: form.death_date || null,
       };
+      if (canEditAll && selectedPerson.account_id && (form.role_id === "2" || form.role_id === "3")) {
+        payload.role_id = Number(form.role_id);
+      }
       const result = await updatePersonAPI(selectedPerson.id, payload);
       if (result.person) {
         setPeople((current) =>
@@ -2222,6 +2243,7 @@ export default function FamilyTreeEditor({
         spouse={selectedSpouse}
         saving={saving}
         canEdit={selectedCanEdit}
+        canEditRole={canEditAll && selectedCanEdit}
         canEditRelations={canEditAll && selectedCanEdit}
         canDelete={canEditAll && selectedCanEdit}
         notice={selectedNotice}

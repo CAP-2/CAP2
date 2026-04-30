@@ -223,6 +223,32 @@
   touch-action: auto;
 }
 
+.fte-chiefBadge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  max-width: calc(100% - 14px);
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #8f1d14;
+  color: #fff7d6;
+  border: 1px solid rgba(255, 222, 133, 0.78);
+  box-shadow: 0 4px 10px rgba(88, 31, 12, 0.18);
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .fte-cardBadges {
   position: absolute;
   left: 7px;

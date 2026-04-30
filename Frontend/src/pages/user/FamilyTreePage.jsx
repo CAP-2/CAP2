@@ -79,7 +79,7 @@ export default function FamilyTreePage() {
         });
         setPermissionExpiry(response.expires_at || "");
         setKeyInput(key);
-        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời trong 1 giờ. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.");
+        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời đến khi temporary edit key hết hạn. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.");
         setKeyError("");
       } catch (err) {
         resetTemporaryPermission("");
@@ -158,7 +158,7 @@ export default function FamilyTreePage() {
           </div>
         ) : (
           <div className="member-tree-keyMeta">
-            <span>Không lưu key vĩnh viễn. Khi xác thực đúng key, quyền chỉnh sửa có hiệu lực trong 1 giờ.</span>
+            <span>Không lưu key vĩnh viễn. Quyền chỉnh sửa chỉ có hiệu lực đến thời điểm hết hạn của temporary edit key.</span>
           </div>
         )}
       </div>

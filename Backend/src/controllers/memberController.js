@@ -414,7 +414,8 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
            p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
            p.phone, p.email, p.avatar_url, p.bio,
-           a.id AS account_id
+           a.id AS account_id,
+           a.role_id
     FROM people p
     LEFT JOIN accounts a ON a.person_id = p.id
     WHERE p.clan_id = ?
@@ -479,7 +480,8 @@ exports.getDashboard = async (req, res) => {
           SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
                  p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
                  p.phone, p.email, p.avatar_url, p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
-                 a.id AS account_id
+                 a.id AS account_id,
+                 a.role_id
           FROM people p
           LEFT JOIN accounts a ON a.person_id = p.id
           WHERE p.clan_id = ?

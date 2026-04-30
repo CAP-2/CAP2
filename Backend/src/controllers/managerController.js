@@ -2192,6 +2192,42 @@ exports.updateTreePerson = async (req, res) => {
             }
         }
 
+        if (has('role_id')) {
+            if (permission.scope !== 'all') {
+                return res.status(403).json({ success: false, message: 'Khong duoc doi vai tro trong che do temporary edit.' });
+            }
+            if (Number(req.user.role_id) !== 1 && Number(req.user.role_id) !== 2) {
+                return res.status(403).json({ success: false, message: 'Ban khong co quyen doi vai tro thanh vien.' });
+            }
+
+            const rid = Number(body.role_id);
+            if (rid !== 2 && rid !== 3) {
+                return res.status(400).json({ success: false, message: 'Vai tro chi ho tro 2 - toc truong hoac 3 - thanh vien.' });
+            }
+
+            const [accountRows] = await db.query(
+                'SELECT id, role_id FROM accounts WHERE person_id = ? ORDER BY id ASC LIMIT 1',
+                [personId]
+            );
+            if (!accountRows.length) {
+                return res.status(400).json({ success: false, message: 'Thanh vien nay chua co tai khoan de doi vai tro.' });
+            }
+
+            const targetAccount = accountRows[0];
+            if (Number(req.user.role_id) === 2) {
+                if (Number(targetAccount.id) === Number(req.user.id) && rid !== Number(targetAccount.role_id)) {
+                    return res.status(400).json({ success: false, message: 'Manager khong the tu doi vai tro cua chinh minh.' });
+                }
+                if (rid === 3 && Number(targetAccount.role_id) !== 3) {
+                    return res.status(403).json({ success: false, message: 'Manager khong duoc ha vai tro cua toc truong khac.' });
+                }
+            }
+
+            if (rid !== Number(targetAccount.role_id)) {
+                await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [rid, targetAccount.id]);
+            }
+        }
+
         const nextTreeX = has('tree_x') ? parseTreeInt(body.tree_x, current.tree_x || 0) : current.tree_x || 0;
         const nextTreeY = has('tree_y') ? parseTreeInt(body.tree_y, current.tree_y || 0) : current.tree_y || 0;
         const nextDisplayOrder = has('display_order')
@@ -2270,7 +2306,16 @@ exports.updateTreePerson = async (req, res) => {
             if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
         }
 
-        const [updatedRows] = await db.query('SELECT * FROM people WHERE id = ? LIMIT 1', [personId]);
+        const [updatedRows] = await db.query(
+            `
+            SELECT p.*, a.id AS account_id, a.email AS account_email, a.role_id, a.status AS account_status
+            FROM people p
+            LEFT JOIN accounts a ON a.person_id = p.id
+            WHERE p.id = ?
+            LIMIT 1
+            `,
+            [personId]
+        );
         const updated = updatedRows[0] || null;
         return res.json({
             success: true,
