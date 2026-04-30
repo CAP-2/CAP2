@@ -13,6 +13,7 @@ const initialRegisterForm = {
   email: "",
   password: "",
   confirmPassword: "",
+  clan_id: "",
   gender: "1",
   birth_date: "",
   hometown: "",
@@ -81,11 +82,17 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
       return;
     }
 
+    const clanId = Number(String(registerForm.clan_id || "").trim());
+    if (!Number.isInteger(clanId) || clanId <= 0) {
+      setError("Vui lòng nhập ID dòng họ hợp lệ.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const result = await register(registerForm);
-      setSuccessMessage(result?.message || "Đăng ký thành công. Bạn có thể đăng nhập ngay bây giờ.");
+      setSuccessMessage(result?.message || "Đăng ký thành công. Vui lòng chờ phê duyệt tài khoản.");
       setLoginForm({ email: registerForm.email, password: "" });
       setRegisterForm(initialRegisterForm);
       setMode("login");
@@ -206,36 +213,20 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                 required
               />
 
-              <label htmlFor="register-gender">Giới tính</label>
-              <select
-                id="register-gender"
-                name="gender"
-                value={registerForm.gender}
-                onChange={handleRegisterChange}
-              >
-                <option value="1">Nam</option>
-                <option value="2">Nữ</option>
-                <option value="1">Khác</option>
-              </select>
-
-              <label htmlFor="register-birth-date">Ngày sinh</label>
+              <label htmlFor="register-clan-id">ID dòng họ</label>
               <input
-                id="register-birth-date"
-                name="birth_date"
-                type="date"
-                max={new Date().toISOString().split("T")[0]}
-                value={registerForm.birth_date}
+                id="register-clan-id"
+                name="clan_id"
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={registerForm.clan_id}
                 onChange={handleRegisterChange}
+                placeholder="Nhập ID dòng họ"
+                required
               />
-
-              <label htmlFor="register-hometown">Quê quán</label>
-              <input
-                id="register-hometown"
-                name="hometown"
-                value={registerForm.hometown}
-                onChange={handleRegisterChange}
-                placeholder="Ví dụ: Đà Nẵng"
-              />
+              <p className="auth-field-hint">ID do trưởng họ hoặc quản trị viên cung cấp để tài khoản được thêm vào cây gia phả.</p>
 
               {error && <p className="auth-error">{error}</p>}
               {successMessage && <p className="auth-success">{successMessage}</p>}

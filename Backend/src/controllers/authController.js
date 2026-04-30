@@ -97,20 +97,43 @@ async function clearResetToken(email) {
 
 exports.register = async (req, res) => {
     const { email, password, display_name, first_name, middle_name, surname, birth_date, gender, hometown, clan_id } = req.body;
+    const emailTrim = String(email || '').trim().toLowerCase();
+    const normalizedClanId = Number(clan_id);
+
+    if (!Number.isInteger(normalizedClanId) || normalizedClanId <= 0) {
+        return res.status(400).json({ success: false, message: "Vui lòng nhập ID dòng họ hợp lệ" });
+    }
+
+    if (!emailTrim || !password) {
+        return res.status(400).json({ success: false, message: "Vui lòng nhập email và mật khẩu" });
+    }
+
+    const connection = await db.getConnection();
     try {
-        const normalizedClanId = clan_id === undefined || clan_id === null || clan_id === "" ? null : Number(clan_id);
+        await connection.beginTransaction();
+
+        const [clanRows] = await connection.query('SELECT id FROM clans WHERE id = ? LIMIT 1', [normalizedClanId]);
+        if (!clanRows.length) {
+            await connection.rollback();
+            return res.status(400).json({ success: false, message: "ID dòng họ không tồn tại" });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const sqlPeople = `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`;
-        const [personResult] = await db.query(sqlPeople, [normalizedClanId, display_name, first_name, middle_name, surname, gender, birth_date, hometown]);
+        const [personResult] = await connection.query(sqlPeople, [normalizedClanId, display_name, first_name, middle_name, surname, gender, birth_date, hometown]);
         const personId = personResult.insertId;
 
         const sqlAccount = `INSERT INTO accounts (email, password, person_id, role_id) VALUES (?, ?, ?, 3)`;
-        await db.query(sqlAccount, [email, hashedPassword, personId]);
+        await connection.query(sqlAccount, [emailTrim, hashedPassword, personId]);
 
+        await connection.commit();
         res.json({ success: true, message: "Đăng ký thành công!" });
     } catch (error) {
+        try { await connection.rollback(); } catch (_) {}
         console.error("❌ Lỗi Đăng ký:", error);
         res.status(400).json({ success: false, message: error.code === 'ER_DUP_ENTRY' ? "Email đã tồn tại!" : "Lỗi dữ liệu hệ thống" });
+    } finally {
+        connection.release();
     }
 };
 

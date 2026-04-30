@@ -36,6 +36,11 @@ export async function login(form) {
 export async function register(form) {
   const displayName = String(form.display_name || "").trim();
   const parts = displayName.split(/\s+/).filter(Boolean);
+  const clanId = Number(String(form.clan_id ?? "").trim());
+
+  if (!Number.isInteger(clanId) || clanId <= 0) {
+    throw new Error("Vui lòng nhập ID dòng họ hợp lệ.");
+  }
 
   const payload = {
     email: String(form.email || "").trim().toLowerCase(),
@@ -47,7 +52,7 @@ export async function register(form) {
     birth_date: form.birth_date || null,
     gender: form.gender || "other",
     hometown: form.hometown || "",
-    clan_id: form.clan_id ? Number(form.clan_id) : null,
+    clan_id: clanId,
   };
 
   return postJson("/api/auth/register", payload);

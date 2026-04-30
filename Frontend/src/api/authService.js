@@ -55,12 +55,10 @@ export const loginAPI = async (data) => {
  */
 export const registerAPI = async (data) => {
     try {
-        const clanId =
-            data.clan_id === undefined ||
-            data.clan_id === null ||
-            String(data.clan_id).trim() === ""
-                ? null
-                : Number(data.clan_id);
+        const clanId = Number(String(data.clan_id ?? "").trim());
+        if (!Number.isInteger(clanId) || clanId <= 0) {
+            throw new Error("Vui lòng nhập ID dòng họ hợp lệ.");
+        }
 
         const payload = {
             email: data.email,

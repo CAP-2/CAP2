@@ -136,6 +136,13 @@
     font-size: 14px;
 }
 
+.auth-field-hint {
+    margin: -4px 0 4px;
+    color: #f6deb0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 .auth-demo-note {
     font-size: 12px;
     opacity: 0.75;

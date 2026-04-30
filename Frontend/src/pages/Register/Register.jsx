@@ -102,13 +102,22 @@ const Register = () => {
           <input name="password" value={form.password} type="password" placeholder="Mật khẩu" onChange={handleChange} required />
           <input name="hometown" value={form.hometown} placeholder="Quê quán" onChange={handleChange} required />
 
-          <input
-            name="clan_id"
-            value={form.clan_id}
-            placeholder="ID dòng họ (Clan ID) — có thể bỏ trống"
-            type="number"
-            onChange={handleChange}
-          />
+          <label className="form-field" htmlFor="clan_id">
+            <span>ID dòng họ</span>
+            <input
+              id="clan_id"
+              name="clan_id"
+              value={form.clan_id}
+              placeholder="Nhập ID dòng họ"
+              type="number"
+              min="1"
+              step="1"
+              inputMode="numeric"
+              onChange={handleChange}
+              required
+            />
+            <small>Nhập ID do trưởng họ hoặc quản trị viên cung cấp để tài khoản được thêm vào cây gia phả.</small>
+          </label>
 
           <div className="checkbox-group">
             <input type="checkbox" id="terms" required />
