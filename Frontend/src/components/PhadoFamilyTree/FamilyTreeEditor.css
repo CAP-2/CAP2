@@ -695,3 +695,114 @@
     justify-self: start;
   }
 }
+
+.fte-cardHoverActions {
+  position: absolute;
+  top: -16px;
+  right: -16px;
+  z-index: 8;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.fte-personCard:hover .fte-cardHoverActions,
+.fte-personCard:focus-within .fte-cardHoverActions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.fte-cardHoverActions button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d6a85b;
+  border-radius: 999px;
+  background: #fff8df;
+  color: #8b1e13;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 18px rgba(83, 42, 12, 0.24);
+  cursor: pointer;
+}
+
+.fte-cardHoverActions button:hover {
+  background: #ffe8a8;
+  color: #63160e;
+}
+
+.fte-cardHoverActions button.is-danger {
+  border-color: #ef9a9a;
+  background: #fff1f1;
+  color: #c62828;
+}
+
+.fte-cardHoverActions button.is-danger:hover {
+  background: #ffd9d9;
+  color: #9f1616;
+}
+
+.fte-cardHoverActions .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.fte-nodeLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transform-origin: top left;
+}
+
+.fte-nodeLayer .fte-personCard {
+  pointer-events: auto;
+}
+
+.fte-lineControl {
+  pointer-events: auto;
+  cursor: ns-resize;
+  opacity: 0;
+  transition: opacity 0.14s ease, filter 0.14s ease;
+}
+
+.fte-lines:hover .fte-lineControl,
+.fte-lineControl:hover,
+.fte-lineControl.is-dragging {
+  opacity: 1;
+}
+
+.fte-lineControl line {
+  stroke: rgba(120, 53, 15, 0.42);
+  stroke-width: 18;
+  stroke-linecap: round;
+}
+
+.fte-lineControl circle {
+  fill: #fff8db;
+  stroke: #8b1e13;
+  stroke-width: 3;
+  filter: drop-shadow(0 3px 8px rgba(69, 38, 8, 0.28));
+}
+
+.fte-lineControl path {
+  fill: none;
+  stroke: #8b1e13;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Cho phep keo truc tiep cac duong noi quan he trong so do */
+.fte-line.is-draggable {
+  pointer-events: stroke;
+  cursor: ns-resize;
+}
+
+.fte-line.is-draggable:hover,
+.fte-line.is-draggable.is-dragging {
+  stroke-width: 7;
+  filter: drop-shadow(0 2px 5px rgba(92, 45, 8, 0.3));
+}

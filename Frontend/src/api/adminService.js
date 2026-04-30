@@ -14,6 +14,39 @@ export const getAdminClans = async (period = "all") => {
   return data;
 };
 
+
+export const createAdminClan = async (body) => {
+  const res = await fetch(`${BASE_URL}/clans`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Tạo dòng họ thất bại");
+  return data;
+};
+
+export const updateAdminClan = async (clanId, body) => {
+  const res = await fetch(`${BASE_URL}/clans/${clanId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Cập nhật dòng họ thất bại");
+  return data;
+};
+
+export const deleteAdminClan = async (clanId) => {
+  const res = await fetch(`${BASE_URL}/clans/${clanId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Xóa dòng họ thất bại");
+  return data;
+};
+
 export const getAdminClanTree = async (clanId) => {
   const res = await fetch(`${BASE_URL}/clans/${clanId}/tree`, { headers: getAuthHeaders() });
   const data = await res.json().catch(() => ({}));

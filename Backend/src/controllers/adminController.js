@@ -30,7 +30,7 @@ exports.listClans = async (req, res) => {
     const postFilter = withDateFilter(period, "po");
 
     const [rows] = await db.query(`
-      SELECT c.id, c.clan_name, c.created_at,
+      SELECT c.id, c.clan_name, c.history, c.hall_address, c.created_at,
         (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id AND ${peopleFilter}) AS member_count,
         (SELECT COUNT(*) FROM posts po WHERE po.clan_id = c.id AND ${postFilter}) AS post_count,
         (SELECT p.display_name FROM accounts a 
@@ -44,6 +44,107 @@ exports.listClans = async (req, res) => {
   } catch (e) {
     console.error("listClans:", e);
     return res.status(500).json({ success: false, message: "Lỗi danh sách dòng họ" });
+  }
+};
+
+
+exports.createClan = async (req, res) => {
+  try {
+    const clanName = String(req.body.clan_name || req.body.name || "").trim();
+    const history = req.body.history == null ? null : String(req.body.history).trim();
+    const hallAddress = req.body.hall_address == null ? null : String(req.body.hall_address).trim();
+
+    if (!clanName) {
+      return res.status(400).json({ success: false, message: "Tên dòng họ không được để trống" });
+    }
+
+    const [exists] = await db.query("SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) LIMIT 1", [clanName]);
+    if (exists.length) {
+      return res.status(409).json({ success: false, message: "Dòng họ này đã tồn tại" });
+    }
+
+    const [result] = await db.query(
+      "INSERT INTO clans (clan_name, history, hall_address) VALUES (?, ?, ?)",
+      [clanName, history || null, hallAddress || null]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Đã thêm dòng họ",
+      clan: { id: result.insertId, clan_name: clanName, history, hall_address: hallAddress }
+    });
+  } catch (e) {
+    console.error("createClan:", e);
+    return res.status(500).json({ success: false, message: "Lỗi tạo dòng họ" });
+  }
+};
+
+exports.updateClan = async (req, res) => {
+  try {
+    const clanId = Number(req.params.clanId);
+    const clanName = String(req.body.clan_name || req.body.name || "").trim();
+    const history = req.body.history == null ? null : String(req.body.history).trim();
+    const hallAddress = req.body.hall_address == null ? null : String(req.body.hall_address).trim();
+
+    if (!Number.isInteger(clanId) || clanId <= 0) {
+      return res.status(400).json({ success: false, message: "clan_id không hợp lệ" });
+    }
+    if (!clanName) {
+      return res.status(400).json({ success: false, message: "Tên dòng họ không được để trống" });
+    }
+
+    const [rows] = await db.query("SELECT id FROM clans WHERE id = ? LIMIT 1", [clanId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy dòng họ" });
+    }
+
+    const [dups] = await db.query(
+      "SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) AND id <> ? LIMIT 1",
+      [clanName, clanId]
+    );
+    if (dups.length) {
+      return res.status(409).json({ success: false, message: "Tên dòng họ này đã tồn tại" });
+    }
+
+    await db.query(
+      "UPDATE clans SET clan_name = ?, history = ?, hall_address = ? WHERE id = ?",
+      [clanName, history || null, hallAddress || null, clanId]
+    );
+
+    return res.json({ success: true, message: "Đã cập nhật dòng họ" });
+  } catch (e) {
+    console.error("updateClan:", e);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật dòng họ" });
+  }
+};
+
+exports.deleteClan = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const clanId = Number(req.params.clanId);
+    if (!Number.isInteger(clanId) || clanId <= 0) {
+      return res.status(400).json({ success: false, message: "clan_id không hợp lệ" });
+    }
+
+    await connection.beginTransaction();
+    const [rows] = await connection.query("SELECT id, clan_name FROM clans WHERE id = ? LIMIT 1", [clanId]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Không tìm thấy dòng họ" });
+    }
+
+    // Xóa dòng họ sẽ xóa toàn bộ phả hệ liên quan nhờ các khóa ngoại ON DELETE CASCADE.
+    // Account có person_id thuộc dòng họ bị xóa sẽ tự set NULL theo ràng buộc FK_Account_Person.
+    await connection.query("DELETE FROM manager_tasks WHERE clan_id = ?", [clanId]);
+    await connection.query("DELETE FROM clans WHERE id = ?", [clanId]);
+    await connection.commit();
+    return res.json({ success: true, message: "Đã xóa dòng họ và phả hệ liên quan" });
+  } catch (e) {
+    try { await connection.rollback(); } catch (_) {}
+    console.error("deleteClan:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa dòng họ" });
+  } finally {
+    connection.release();
   }
 };
 

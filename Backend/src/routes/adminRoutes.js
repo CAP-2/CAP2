@@ -4,6 +4,9 @@ const adminController = require("../controllers/adminController");
 const { verifyToken, checkRole } = require("../middleware/authMiddleware");
 
 router.get("/clans", verifyToken, checkRole(["admin"]), adminController.listClans);
+router.post("/clans", verifyToken, checkRole(["admin"]), adminController.createClan);
+router.put("/clans/:clanId", verifyToken, checkRole(["admin"]), adminController.updateClan);
+router.delete("/clans/:clanId", verifyToken, checkRole(["admin"]), adminController.deleteClan);
 router.get("/clans/:clanId/tree", verifyToken, checkRole(["admin"]), adminController.getClanTree);
 router.get("/accounts", verifyToken, checkRole(["admin"]), adminController.listAccounts);
 router.put("/accounts/:id", verifyToken, checkRole(["admin"]), adminController.updateAccountAccess);

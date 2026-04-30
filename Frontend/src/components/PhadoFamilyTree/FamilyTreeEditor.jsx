@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { toBlob } from "html-to-image";
 import {
@@ -34,6 +34,7 @@ const BLOOD_LINE_COLORS = [
 ];
 const TRANSPARENT_IMAGE_DATA_URL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+const LINE_ROUTE_STORAGE_PREFIX = "family-tree-line-routes:";
 
 const toInt = (value, fallback = 0) => {
   const n = Number(value);
@@ -41,6 +42,31 @@ const toInt = (value, fallback = 0) => {
 };
 
 const snap = (value) => Math.round(toInt(value, 0) / SNAP_SIZE) * SNAP_SIZE;
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+function getLineRouteStorageKey(clanId) {
+  return `${LINE_ROUTE_STORAGE_PREFIX}${clanId || "default"}`;
+}
+
+function loadLineRoutes(clanId) {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(getLineRouteStorageKey(clanId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLineRoutes(clanId, routes) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(getLineRouteStorageKey(clanId), JSON.stringify(routes || {}));
+  } catch {
+    // localStorage can be unavailable; line dragging still works in memory.
+  }
+}
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -479,7 +505,7 @@ function downloadBlob(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function buildTreeLines(people, families, childRows) {
+function buildTreeLines(people, families, childRows, lineRoutes = {}) {
   const peopleMap = new Map(people.map((person) => [Number(person.id), person]));
   const childrenByFamily = new Map();
 
@@ -538,6 +564,9 @@ function buildTreeLines(people, families, childRows) {
   });
 
   familyRows.forEach((family) => {
+    const familyId = Number(family.id);
+    if (!Number.isFinite(familyId)) return;
+
     const father = peopleMap.get(Number(family.father_id));
     const mother = peopleMap.get(Number(family.mother_id));
     const parents = [father, mother].filter(Boolean);
@@ -551,23 +580,43 @@ function buildTreeLines(people, families, childRows) {
       .map((row) => row.person)
       .sort((a, b) => a.tree_x - b.tree_x || personSort(a, b));
 
+    let coupleJoinPoint = null;
+
     if (father && mother) {
       const left = toInt(father.tree_x, 0) <= toInt(mother.tree_x, 0) ? father : mother;
       const right = left === father ? mother : father;
       const leftEdge = toInt(left.tree_x, 0) + CARD_WIDTH;
       const rightEdge = toInt(right.tree_x, 0);
       const y = Math.round((centerOf(father).y + centerOf(mother).y) / 2);
+      const startX = rightEdge > leftEdge ? leftEdge : Math.round(centerOf(left).x);
+      const endX = rightEdge > leftEdge ? rightEdge : Math.round(centerOf(right).x);
+      coupleJoinPoint = {
+        x: Math.round((startX + endX) / 2),
+        y,
+      };
+      const savedSpouseY = Number(lineRoutes?.[familyId]?.spouseY);
+      const spouseMinY = Math.min(toInt(father.tree_y, 0), toInt(mother.tree_y, 0)) + 24;
+      const spouseMaxY = Math.max(toInt(father.tree_y, 0), toInt(mother.tree_y, 0)) + CARD_HEIGHT - 24;
+      const spouseY = snap(clamp(Number.isFinite(savedSpouseY) ? savedSpouseY : y, spouseMinY, spouseMaxY));
+      coupleJoinPoint.y = spouseY;
+
       lines.push({
+        id: `family-${familyId}-spouse`,
+        familyId,
+        routeKey: "spouseY",
         type: "spouse",
-        d: rightEdge > leftEdge ? `M ${leftEdge} ${y} H ${rightEdge}` : `M ${centerOf(father).x} ${y} H ${centerOf(mother).x}`,
+        dragAxis: "y",
+        minY: spouseMinY,
+        maxY: spouseMaxY,
+        d: `M ${startX} ${spouseY} H ${endX}`,
       });
     }
 
     if (!parents.length || !children.length) return;
 
     const lineParent = father || parents[0];
-    const parentX = Math.round(centerOf(lineParent).x);
-    const parentBottomY = toInt(lineParent.tree_y, 0) + CARD_HEIGHT;
+    const parentX = coupleJoinPoint ? coupleJoinPoint.x : Math.round(centerOf(lineParent).x);
+    const parentBottomY = coupleJoinPoint ? coupleJoinPoint.y : toInt(lineParent.tree_y, 0) + CARD_HEIGHT;
     const childCenters = children.map((child) => ({
       x: toInt(child.tree_x, 0) + CARD_WIDTH / 2,
       y: toInt(child.tree_y, 0),
@@ -579,14 +628,31 @@ function buildTreeLines(people, families, childRows) {
     const sourceTier = branchTierByFamily.get(familyKey) || 0;
     const minBranchY = parentBottomY + 38;
     const maxBranchY = Math.max(minBranchY, firstChildY - 32);
-    const baseY = Math.round(Math.min(Math.max(minBranchY, firstChildY - 72) + sourceTier * SOURCE_BRANCH_STEP, maxBranchY));
+    const naturalBaseY = Math.round(Math.min(Math.max(minBranchY, firstChildY - 72) + sourceTier * SOURCE_BRANCH_STEP, maxBranchY));
+    const savedBaseY = Number(lineRoutes?.[familyId]?.baseY);
+    const baseY = snap(clamp(Number.isFinite(savedBaseY) ? savedBaseY : naturalBaseY, minBranchY, maxBranchY));
     const colorIndex = colorIndexByFamily.get(familyKey) || 0;
     const color = BLOOD_LINE_COLORS[colorIndex % BLOOD_LINE_COLORS.length];
+    const lineId = `family-${familyId}`;
 
-    lines.push({ type: "blood", color, d: `M ${parentX} ${parentBottomY} V ${baseY}` });
-    lines.push({ type: "blood", color, d: `M ${busMinX} ${baseY} H ${busMaxX}` });
+    const bloodDragMeta = { familyId, routeKey: "baseY", dragAxis: "y", minY: minBranchY, maxY: maxBranchY };
+    lines.push({ id: `${lineId}-parent`, ...bloodDragMeta, type: "blood", color, d: `M ${parentX} ${parentBottomY} V ${baseY}` });
+    lines.push({ id: `${lineId}-bus`, ...bloodDragMeta, type: "blood", color, d: `M ${busMinX} ${baseY} H ${busMaxX}` });
     childCenters.forEach((child) => {
-      lines.push({ type: "blood", color, d: `M ${child.x} ${baseY} V ${child.y}` });
+      lines.push({ id: `${lineId}-child-${child.x}`, ...bloodDragMeta, type: "blood", color, d: `M ${child.x} ${baseY} V ${child.y}` });
+    });
+
+    lines.push({
+      id: `${lineId}-control`,
+      familyId,
+      routeKey: "baseY",
+      dragAxis: "y",
+      type: "route-control",
+      color,
+      x: (busMinX + busMaxX) / 2,
+      y: baseY,
+      minY: minBranchY,
+      maxY: maxBranchY,
     });
   });
 
@@ -757,7 +823,17 @@ function personToForm(person) {
   };
 }
 
-function PersonCard({ person, selected, dragging, canDrag = true, onPointerDown, onSelect }) {
+function PersonCard({
+  person,
+  selected,
+  dragging,
+  canDrag = true,
+  canEdit = false,
+  canDelete = false,
+  onPointerDown,
+  onEdit,
+  onDelete,
+}) {
   const name = fullName(person, `Người #${person.id}`);
   const years = `${person.birth_date ? String(person.birth_date).slice(0, 4) : "?"} - ${
     person.death_date ? String(person.death_date).slice(0, 4) : "nay"
@@ -766,11 +842,16 @@ function PersonCard({ person, selected, dragging, canDrag = true, onPointerDown,
   const genderText = Number(person.gender) === 1 ? "Nam" : Number(person.gender) === 2 ? "Nữ" : "?";
   const deceased = Number(person.is_living) === 0;
 
+  const stopActionPointer = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <div
       className={`fte-personCard ${genderClass} ${deceased ? "is-deceased" : ""} ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
       style={{ left: person.tree_x, top: person.tree_y }}
-      role="button"
+      role="group"
       tabIndex={0}
       title={name}
       onPointerDown={(event) => onPointerDown(event, person)}
@@ -778,10 +859,41 @@ function PersonCard({ person, selected, dragging, canDrag = true, onPointerDown,
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onSelect(person.id);
+          onEdit(person);
         }
       }}
     >
+      {canEdit || canDelete ? (
+        <div className="fte-cardHoverActions" aria-label="Thao tác thành viên">
+          {canEdit ? (
+            <button
+              type="button"
+              title="Sửa thành viên"
+              onPointerDown={stopActionPointer}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(person);
+              }}
+            >
+              <span className="material-symbols-outlined">edit</span>
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              className="is-danger"
+              title="Xóa thành viên"
+              onPointerDown={stopActionPointer}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(person);
+              }}
+            >
+              <span className="material-symbols-outlined">delete</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="fte-cardBadges">
         <span className="fte-genderBadge">{genderText}</span>
         {deceased ? <span className="fte-lifeBadge" title="Đã mất">Đã mất</span> : null}
@@ -1154,14 +1266,21 @@ export default function FamilyTreeEditor({
   const treeRef = useRef(null);
   const scaleRef = useRef(0.75);
   const lastDragRef = useRef(null);
+  const lineDragRef = useRef(null);
   const [people, setPeople] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [draggingLineId, setDraggingLineId] = useState(null);
+  const [lineRoutes, setLineRoutes] = useState(() => loadLineRoutes(clan?.id));
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
+
+  useEffect(() => {
+    setLineRoutes(loadLineRoutes(clan?.id));
+  }, [clan?.id]);
   const resolvedPermission = useMemo(() => {
     if (permission) {
       return {
@@ -1209,8 +1328,8 @@ export default function FamilyTreeEditor({
     [allowedNodeSet, canEditAll, canEditLimited],
   );
   const lines = useMemo(
-    () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows),
-    [people, canonicalTree.families, canonicalTree.childRows],
+    () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows, lineRoutes),
+    [people, canonicalTree.families, canonicalTree.childRows, lineRoutes],
   );
 
   const canvasSize = useMemo(() => {
@@ -1223,7 +1342,6 @@ export default function FamilyTreeEditor({
     if (event.button != null && event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    setSelectedId(person.id);
     setDraggingId(person.id);
 
     const startX = event.clientX;
@@ -1265,6 +1383,33 @@ export default function FamilyTreeEditor({
     window.addEventListener("pointerup", handleUp);
   }, []);
 
+  const openPersonEditor = useCallback((person) => {
+    if (!person) return;
+    setSelectedId(person.id);
+  }, []);
+
+  const handleDeletePersonByCard = useCallback(async (person) => {
+    if (!person || !canEditAll) {
+      setStatus("Bạn không có quyền xóa node trong chế độ hiện tại.");
+      return;
+    }
+    const ok = window.confirm(`Xóa ${fullName(person)} khỏi cây gia phả?`);
+    if (!ok) return;
+    setSaving(true);
+    setStatus("");
+    try {
+      await deletePersonAPI(person.id);
+      setPeople((current) => current.filter((item) => item.id !== person.id));
+      setSelectedId((current) => (Number(current) === Number(person.id) ? null : current));
+      setStatus("Đã xóa thành viên khỏi cây.");
+      await onReload?.();
+    } catch (error) {
+      setStatus(error?.message || "Không thể xóa thành viên.");
+    } finally {
+      setSaving(false);
+    }
+  }, [canEditAll, onReload]);
+
   const handleCardPointerDown = useCallback(
     (event, person) => {
       if (!canEditPerson(person.id)) {
@@ -1280,6 +1425,60 @@ export default function FamilyTreeEditor({
     },
     [beginDrag, canEditPerson, resolvedPermission.editScope],
   );
+
+  const beginLineDrag = useCallback((event, controlLine) => {
+    if (!canEditAll || (event.button != null && event.button !== 0)) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const familyId = Number(controlLine.familyId);
+    if (!Number.isFinite(familyId)) return;
+
+    const routeKey = controlLine.routeKey || "baseY";
+    const startY = event.clientY;
+    const originY = Number(controlLine.y ?? lineRoutes?.[familyId]?.[routeKey]);
+    const minY = Number(controlLine.minY);
+    const maxY = Number(controlLine.maxY);
+    setDraggingLineId(`${familyId}:${routeKey}`);
+    lineDragRef.current = { familyId, routeKey, value: originY };
+
+    const handleMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const scale = scaleRef.current || 1;
+      const nextValue = snap(clamp(originY + (moveEvent.clientY - startY) / scale, minY, maxY));
+      lineDragRef.current = { familyId, routeKey, value: nextValue };
+      setLineRoutes((current) => ({
+        ...current,
+        [familyId]: { ...(current?.[familyId] || {}), [routeKey]: nextValue },
+      }));
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      setDraggingLineId(null);
+      const finalRoute = lineDragRef.current;
+      lineDragRef.current = null;
+      setLineRoutes((current) => {
+        const next = {
+          ...current,
+          [familyId]: { ...(current?.[familyId] || {}), [routeKey]: finalRoute?.value ?? originY },
+        };
+        saveLineRoutes(clan?.id, next);
+        return next;
+      });
+      setStatus("Đã lưu vị trí đường liên kết trên trình duyệt.");
+    };
+
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp);
+  }, [canEditAll, clan?.id, lineRoutes]);
+
+  const resetLineRoutes = useCallback(() => {
+    setLineRoutes({});
+    saveLineRoutes(clan?.id, {});
+    setStatus("Đã đưa đường liên kết về mặc định.");
+  }, [clan?.id]);
 
   const handleExport = async () => {
     if (!treeRef.current) return;
@@ -1567,7 +1766,7 @@ export default function FamilyTreeEditor({
         maxScale={2}
         centerOnInit={false}
         limitToBounds={false}
-        panning={{ disabled: draggingId !== null }}
+        panning={{ disabled: draggingId !== null || draggingLineId !== null }}
         doubleClick={{ disabled: true }}
         wheel={{ step: 0.12 }}
         onTransformed={(_, state) => {
@@ -1602,6 +1801,12 @@ export default function FamilyTreeEditor({
                 </div>
               )}
               <div className="fte-toolbarGroup">
+                {canEditAll ? (
+                  <button type="button" onClick={resetLineRoutes} disabled={loading || saving} title="Đưa các đường liên kết về vị trí tự động">
+                    <span className="material-symbols-outlined">polyline</span>
+                    Reset đường nối
+                  </button>
+                ) : null}
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
                   Export PNG
@@ -1638,15 +1843,28 @@ export default function FamilyTreeEditor({
                         <span>Gia phả</span>
                         <strong>{String(clan?.clan_name || "Dòng họ").toUpperCase()}</strong>
                       </div>
-                      <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden="true">
-                        {lines.map((line, index) => (
+                      <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden={false}>
+                        {lines.filter((line) => line.type !== "route-control").map((line, index) => (
                           <path
-                            key={`${line.type}-${index}`}
-                            className={`fte-line is-${line.type}`}
+                            key={line.id || `${line.type}-${index}`}
+                            className={`fte-line is-${line.type} ${canEditAll && line.dragAxis ? "is-draggable" : ""} ${draggingLineId === `${Number(line.familyId)}:${line.routeKey || "baseY"}` ? "is-dragging" : ""}`}
                             d={line.d}
                             style={line.color ? { "--line-color": line.color } : undefined}
+                            onPointerDown={canEditAll && line.dragAxis ? (event) => beginLineDrag(event, line) : undefined}
                           />
                         ))}
+                        {canEditAll ? lines.filter((line) => line.type === "route-control").map((line) => (
+                          <g
+                            key={line.id}
+                            className={`fte-lineControl ${draggingLineId === `${Number(line.familyId)}:${line.routeKey || "baseY"}` ? "is-dragging" : ""}`}
+                            transform={`translate(${line.x}, ${line.y})`}
+                            onPointerDown={(event) => beginLineDrag(event, line)}
+                          >
+                            <line x1="-28" y1="0" x2="28" y2="0" />
+                            <circle cx="0" cy="0" r="12" />
+                            <path d="M -5 -3 L 0 -8 L 5 -3 M -5 3 L 0 8 L 5 3" />
+                          </g>
+                        )) : null}
                       </svg>
                       {people.map((person) => (
                         <PersonCard
@@ -1655,8 +1873,11 @@ export default function FamilyTreeEditor({
                           selected={selectedId === person.id}
                           dragging={draggingId === person.id}
                           canDrag={canEditPerson(person.id)}
+                          canEdit={canEditPerson(person.id)}
+                          canDelete={canEditAll && canEditPerson(person.id)}
                           onPointerDown={handleCardPointerDown}
-                          onSelect={setSelectedId}
+                          onEdit={openPersonEditor}
+                          onDelete={handleDeletePersonByCard}
                         />
                       ))}
                     </div>
