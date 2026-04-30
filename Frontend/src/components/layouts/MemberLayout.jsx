@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
+import NotificationBell from "./NotificationBell";
 import "./MemberLayout.css";
 
 const menuItems = [
+  { icon: "assignment", label: "Công việc", path: "/user/tasks" },
   { icon: "dashboard", label: "Tổng quan", path: "/user/dashboard" },
   { icon: "account_tree", label: "Cây gia phả", path: "/user/family-tree" },
   { icon: "history_edu", label: "Bảng tin", path: "/user/posts" },
@@ -123,9 +125,7 @@ export default function MemberLayout() {
             </span>
           </div>
           <div className="member-topbar-actions">
-            <Link className="top-icon-btn glass-btn" to="/user/dashboard" title="Thông báo và công việc">
-              <span className="material-symbols-outlined">notifications</span>
-            </Link>
+            <NotificationBell role="member" buttonClassName="top-icon-btn glass-btn" />
             <div className="divider" />
             <Link className="top-icon-btn glass-btn" to="/user/profile" title="Hồ sơ cá nhân">
               <span className="material-symbols-outlined">settings</span>

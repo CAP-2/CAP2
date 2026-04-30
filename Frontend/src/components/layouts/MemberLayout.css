@@ -280,6 +280,8 @@
 }
 
 .member-topbar {
+  position: relative;
+  z-index: 5000;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -287,6 +289,7 @@
   border-radius: 20px;
   margin-bottom: 2rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  overflow: visible;
 }
 
 .topbar-welcome {
@@ -301,6 +304,8 @@
 }
 
 .member-topbar-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 1rem;

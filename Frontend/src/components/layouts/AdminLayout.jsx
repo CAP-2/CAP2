@@ -4,12 +4,11 @@ import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import "./AdminLayout.css";
 
 const menuItems = [
+  { icon: "assignment", label: "Công việc", path: "/dashboard/tasks" },
   { icon: "dashboard", label: "Tổng quan", path: "/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/dashboard/genealogy" },
   { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
   { icon: "group", label: "Thành viên", path: "/dashboard/members" },
-  { icon: "event", label: "Sự kiện", path: "/dashboard/events" },
-  { icon: "photo_library", label: "Thư viện", path: "/dashboard/gallery" },
   { icon: "settings", label: "Cài đặt", path: "/dashboard/settings" },
 ];
 
@@ -88,17 +87,6 @@ export default function AdminLayout() {
           <div className="header-context">
             <h1>Hệ thống Quản trị Toàn quốc</h1>
             <p>{currentTime.toLocaleTimeString('vi-VN')} | {new Date().toLocaleDateString('vi-VN', { weekday: 'long' })}</p>
-          </div>
-          <div className="header-utils">
-            <button className="util-btn" title="Thông báo">
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <button className="util-btn" title="Cấu hình">
-              <span className="material-symbols-outlined">settings_suggest</span>
-            </button>
-            <button className="util-btn" title="Hỗ trợ">
-              <span className="material-symbols-outlined">contact_support</span>
-            </button>
           </div>
         </header>
 

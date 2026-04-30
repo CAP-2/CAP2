@@ -262,12 +262,15 @@
 }
 
 .manager-top-header {
+  position: relative;
+  z-index: 5000;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem 3rem;
   border-radius: 24px;
   margin-bottom: 2.5rem;
+  overflow: visible;
 }
 
 .header-context h1 {
@@ -286,6 +289,8 @@
 }
 
 .header-utils {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 1.2rem;
 }

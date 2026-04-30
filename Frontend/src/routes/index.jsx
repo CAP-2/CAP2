@@ -21,8 +21,6 @@ import DashboardHome from "../pages/admin/DashboardHome";
 import GenealogyManagement from "../pages/admin/GenealogyManagement";
 import PostsPage from "../pages/admin/PostsPage";
 import MembersPage from "../pages/admin/MembersPage";
-import EventsPage from "../pages/admin/EventsPage";
-import GalleryPage from "../pages/admin/GalleryPage";
 import SettingsPage from "../pages/admin/SettingsPage";
 
 import AccountPage from "../pages/Manager/AccountPage";
@@ -34,6 +32,7 @@ import FamilyTreePage from "../pages/user/FamilyTreePage";
 import MemberDashboard from "../pages/Member/MemberDashboard";
 import MemberProfile from "../pages/Member/MemberProfile";
 import MemberSubmissions from "../pages/Member/MemberSubmissions";
+import TaskManagementPage from "../pages/Tasks/TaskManagementPage";
 import GeneralPosts from "../pages/GeneralPosts/GeneralPosts";
 
 export default function AppRoutes() {
@@ -62,6 +61,8 @@ export default function AppRoutes() {
           <Route path="/user/family-tree" element={<FamilyTreePage />} />
           <Route path="/user/posts" element={<GeneralPosts />} />
           <Route path="/posts/general" element={<GeneralPosts />} />
+          <Route path="/user/tasks" element={<TaskManagementPage role="member" />} />
+          <Route path="/member/tasks/:taskId" element={<Navigate to="/user/tasks" replace />} />
           <Route path="/user/submissions" element={<MemberSubmissions />} />
           <Route path="/user/profile" element={<MemberProfile />} />
         </Route>
@@ -74,6 +75,8 @@ export default function AppRoutes() {
           <Route path="/manager/dashboard" element={<ManagerDashboard />} />
           <Route path="/manager/account" element={<AccountPage />} />
           <Route path="/manager/genealogy" element={<GenealogySection />} />
+          <Route path="/manager/tasks" element={<TaskManagementPage role="manager" />} />
+          <Route path="/manager/tasks/:taskId" element={<TaskManagementPage role="manager" />} />
           <Route path="/manager/posts" element={<GeneralPosts />} />
           <Route path="/manager/pending" element={<PendingApprovals />} />
           <Route path="/manager/media" element={<Navigate to="/manager/posts" replace />} />
@@ -87,9 +90,11 @@ export default function AppRoutes() {
           <Route path="/dashboard/genealogy" element={<GenealogyManagement />} />
           <Route path="/dashboard/posts" element={<PostsPage />} />
           <Route path="/dashboard/posts/clan/:clanId" element={<PostsPage />} />
+          <Route path="/dashboard/tasks" element={<TaskManagementPage role="admin" />} />
+          <Route path="/dashboard/tasks/clan/:clanId" element={<TaskManagementPage role="admin" />} />
           <Route path="/dashboard/members" element={<MembersPage />} />
-          <Route path="/dashboard/events" element={<EventsPage />} />
-          <Route path="/dashboard/gallery" element={<GalleryPage />} />
+          <Route path="/dashboard/events" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard/gallery" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard/settings" element={<SettingsPage />} />
         </Route>
       </Route>

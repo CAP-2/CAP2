@@ -5,6 +5,7 @@ const {
     ensureMemberTreeEditKeysTable,
     assertTreeMutationPermission,
 } = require('../utils/treeEditPermissions');
+const { createNotification } = require('../utils/notifications');
 const { deletePersonCompletely } = require('../utils/personDeletion');
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
@@ -1692,7 +1693,21 @@ exports.assignTask = async (req, res) => {
             return res.status(403).json({ success: false, message: "Manager chỉ được giao việc cho thành viên cùng dòng họ" });
         }
 
-        const taskClanId = managerClanId ?? memberRows[0]?.clan_id ?? null;
+        const requestedClanId = req.body.clan_id == null || req.body.clan_id === "" ? null : Number(req.body.clan_id);
+        if (requestedClanId != null && (!Number.isFinite(requestedClanId) || requestedClanId <= 0)) {
+            return res.status(400).json({ success: false, message: "clan_id khong hop le" });
+        }
+        if (managerClanId == null) {
+            const taskClanIds = [...new Set(memberRows.map((m) => Number(m.clan_id)).filter((id) => Number.isFinite(id)))];
+            if (requestedClanId != null && memberRows.some((m) => Number(m.clan_id) !== requestedClanId)) {
+                return res.status(403).json({ success: false, message: "Chi duoc giao viec cho thanh vien trong dong ho da chon" });
+            }
+            if (requestedClanId == null && taskClanIds.length > 1) {
+                return res.status(400).json({ success: false, message: "Vui long chi giao viec cho thanh vien trong cung mot dong ho" });
+            }
+        }
+
+        const taskClanId = managerClanId ?? requestedClanId ?? memberRows[0]?.clan_id ?? null;
         const [taskResult] = await db.query(
             "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date) VALUES (?, ?, ?, ?, ?)",
             [req.user.id, taskClanId, title, description || null, dueDate || null]
@@ -1745,6 +1760,8 @@ exports.getAssignedTasks = async (req, res) => {
                 t.description,
                 t.due_date,
                 t.created_at,
+                t.clan_id,
+                c.clan_name,
                 a.status,
                 a.assigned_at,
                 a.completed_at,
@@ -1756,6 +1773,7 @@ exports.getAssignedTasks = async (req, res) => {
                 member.first_name
             FROM manager_task_assignments a
             INNER JOIN manager_tasks t ON t.id = a.task_id
+            LEFT JOIN clans c ON c.id = t.clan_id
             INNER JOIN accounts m ON m.id = t.manager_account_id
             LEFT JOIN people mp ON mp.id = m.person_id
             INNER JOIN people member ON member.id = a.member_person_id
@@ -1766,10 +1784,15 @@ exports.getAssignedTasks = async (req, res) => {
             if (clanId == null) {
                 return res.status(404).json({ success: false, message: "Không xác định được clan của manager" });
             }
-            sql += " WHERE t.manager_account_id = ? AND t.clan_id = ?";
-            params.push(req.user.id, clanId);
+            sql += " WHERE t.clan_id = ?";
+            params.push(clanId);
         } else {
             sql += " WHERE 1=1";
+            const clanId = Number(req.query.clan_id);
+            if (Number.isFinite(clanId) && clanId > 0) {
+                sql += " AND t.clan_id = ?";
+                params.push(clanId);
+            }
         }
         sql += " ORDER BY t.created_at DESC, a.id DESC";
         const [results] = await db.query(sql, params);

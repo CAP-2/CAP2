@@ -1692,7 +1692,7 @@ export default function FamilyTreeEditor({
         event.stopPropagation();
         setSelectedId(person.id);
         if (resolvedPermission.editScope === "limited") {
-          setStatus("Bạn chỉ được chỉnh sửa bản thân, cha mẹ trực tiếp và con trực tiếp.");
+          setStatus("Bạn chỉ được chỉnh sửa node thuộc đời hiện tại, trên 1 đời và dưới 1 đời.");
         }
         return;
       }
@@ -2110,7 +2110,7 @@ export default function FamilyTreeEditor({
                 </div>
               ) : canEditLimited ? (
                 <div className="fte-toolbarGroup">
-                  <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: self / cha mẹ / con</span>
+                  <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: đời hiện tại ±1</span>
                 </div>
               ) : (
                 <div className="fte-toolbarGroup">

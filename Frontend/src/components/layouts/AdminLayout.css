@@ -200,31 +200,6 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
-.header-utils {
-  display: flex;
-  gap: 1rem;
-}
-
-.util-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.3s;
-}
-
-.util-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-}
-
 .glass-effect {
   background: rgba(17, 20, 32, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.1);

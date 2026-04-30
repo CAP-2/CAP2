@@ -9,6 +9,45 @@ const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   const f = firstName == null ? "" : String(firstName).trim();
   return [s, m, f].filter(Boolean).join(" ").trim();
 };
+
+let hasEnsuredTaskTables = false;
+
+const ensureTaskTables = async () => {
+  if (hasEnsuredTaskTables) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS manager_tasks (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      manager_account_id INT NOT NULL,
+      clan_id INT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NULL,
+      due_date DATE NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_manager_tasks_manager (manager_account_id),
+      KEY idx_manager_tasks_clan (clan_id),
+      CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS manager_task_assignments (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      task_id INT NOT NULL,
+      member_account_id INT NOT NULL,
+      member_person_id INT NOT NULL,
+      status ENUM('assigned','in_progress','completed') DEFAULT 'assigned',
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP NULL DEFAULT NULL,
+      UNIQUE KEY uk_task_member (task_id, member_account_id),
+      KEY idx_task_assignments_member (member_account_id),
+      KEY idx_task_assignments_person (member_person_id),
+      CONSTRAINT fk_task_assignments_task FOREIGN KEY (task_id) REFERENCES manager_tasks(id) ON DELETE CASCADE,
+      CONSTRAINT fk_task_assignments_account FOREIGN KEY (member_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+      CONSTRAINT fk_task_assignments_person FOREIGN KEY (member_person_id) REFERENCES people(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  hasEnsuredTaskTables = true;
+};
 const getDashboardDateFilter = (period = "all") => {
   const value = String(period || "all").toLowerCase();
   if (value === "day") return "created_at >= CURDATE()";
@@ -26,14 +65,34 @@ const withDateFilter = (period, alias = "") => {
 /** Danh sách dòng họ + số thành viên + số manager + số bài viết + chủ quản */
 exports.listClans = async (req, res) => {
   try {
+    await ensureTaskTables();
     const period = req.query.period || req.query.range || "all";
     const peopleFilter = withDateFilter(period, "p");
     const postFilter = withDateFilter(period, "po");
+    const taskFilter = withDateFilter(period, "mt");
 
     const [rows] = await db.query(`
       SELECT c.id, c.clan_name, c.history, c.hall_address, c.created_at,
         (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id AND ${peopleFilter}) AS member_count,
         (SELECT COUNT(*) FROM posts po WHERE po.clan_id = c.id AND ${postFilter}) AS post_count,
+        (
+          SELECT COUNT(*)
+          FROM manager_task_assignments mta
+          INNER JOIN manager_tasks mt ON mt.id = mta.task_id
+          WHERE mt.clan_id = c.id AND ${taskFilter}
+        ) AS task_count,
+        (
+          SELECT COUNT(*)
+          FROM manager_task_assignments mta
+          INNER JOIN manager_tasks mt ON mt.id = mta.task_id
+          WHERE mt.clan_id = c.id AND mta.status <> 'completed' AND ${taskFilter}
+        ) AS open_task_count,
+        (
+          SELECT COUNT(*)
+          FROM manager_task_assignments mta
+          INNER JOIN manager_tasks mt ON mt.id = mta.task_id
+          WHERE mt.clan_id = c.id AND mta.status = 'completed' AND ${taskFilter}
+        ) AS completed_task_count,
         (
           SELECT COUNT(DISTINCT a.id)
           FROM accounts a
@@ -56,6 +115,72 @@ exports.listClans = async (req, res) => {
   } catch (e) {
     console.error("listClans:", e);
     return res.status(500).json({ success: false, message: "Lỗi danh sách dòng họ" });
+  }
+};
+
+exports.getTasksByClan = async (req, res) => {
+  try {
+    await ensureTaskTables();
+    const clanId = Number(req.params.clanId);
+    if (!Number.isFinite(clanId) || clanId <= 0) {
+      return res.status(400).json({ success: false, message: "clan_id không hợp lệ" });
+    }
+
+    const [clans] = await db.query(
+      "SELECT id, clan_name, history, hall_address FROM clans WHERE id = ? LIMIT 1",
+      [clanId]
+    );
+    if (!clans.length) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy dòng họ" });
+    }
+
+    const [tasks] = await db.query(
+      `
+        SELECT
+          a.id,
+          a.task_id,
+          t.title,
+          t.description,
+          t.due_date,
+          t.created_at,
+          t.clan_id,
+          c.clan_name,
+          a.status,
+          a.assigned_at,
+          a.completed_at,
+          m.id AS manager_id,
+          COALESCE(mp.display_name, m.email) AS manager_name,
+          member.id AS member_person_id,
+          ma.id AS member_id,
+          member.display_name AS member_name,
+          member.surname,
+          member.middle_name,
+          member.first_name
+        FROM manager_task_assignments a
+        INNER JOIN manager_tasks t ON t.id = a.task_id
+        LEFT JOIN clans c ON c.id = t.clan_id
+        INNER JOIN accounts m ON m.id = t.manager_account_id
+        LEFT JOIN people mp ON mp.id = m.person_id
+        INNER JOIN accounts ma ON ma.id = a.member_account_id
+        INNER JOIN people member ON member.id = a.member_person_id
+        WHERE t.clan_id = ?
+        ORDER BY
+          CASE a.status
+            WHEN 'assigned' THEN 0
+            WHEN 'in_progress' THEN 1
+            WHEN 'completed' THEN 2
+            ELSE 3
+          END,
+          t.created_at DESC,
+          a.id DESC
+      `,
+      [clanId]
+    );
+
+    return res.json({ success: true, clan: clans[0], tasks });
+  } catch (e) {
+    console.error("getTasksByClan:", e);
+    return res.status(500).json({ success: false, message: "Lỗi lấy công việc theo dòng họ" });
   }
 };
 

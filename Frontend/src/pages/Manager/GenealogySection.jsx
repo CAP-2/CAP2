@@ -33,7 +33,7 @@ export default function GenealogySection() {
       .toLowerCase()
       .trim();
 
-  const formatDateTime = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "1 giờ từ lúc tạo");
+  const formatDateTime = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "1 giờ từ lúc member xác thực");
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -205,7 +205,7 @@ export default function GenealogySection() {
     <div className="panel-card tree-key-panel tree-key-panel--compact">
       <div className="panel-header">
         <h2>Temporary edit key</h2>
-        <span>Hiệu lực 1 giờ</span>
+        <span>Hiệu lực 1 giờ sau khi member xác thực</span>
       </div>
 
       <div className="tree-key-bulk">

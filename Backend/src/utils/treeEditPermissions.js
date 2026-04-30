@@ -164,18 +164,67 @@ function buildAllowedNodeIds(memberPersonId, families, childRows) {
   ]);
 }
 
-async function getTreeEditSessionForAccount(accountId, rawKey) {
-  const grant = await findValidTreeEditGrant(accountId, rawKey);
-  if (!grant) return null;
+async function buildGenerationEditScope(memberPersonId, clanId) {
+  const [memberRows] = await db.query(
+    "SELECT id, generation FROM people WHERE id = ? AND clan_id = ? LIMIT 1",
+    [memberPersonId, clanId],
+  );
+  const member = memberRows[0] || null;
+  const memberGeneration = Number(member?.generation);
 
-  const relationRows = await loadClanRelationRows(grant.clan_id);
-  const allowedNodeIds = buildAllowedNodeIds(grant.member_person_id, relationRows.families, relationRows.children);
+  if (!member || !Number.isInteger(memberGeneration) || memberGeneration <= 0) {
+    return {
+      allowedNodeIds: uniqueNumericIds([memberPersonId]),
+      memberGeneration: null,
+      allowedGenerations: [],
+    };
+  }
+
+  const allowedGenerations = [memberGeneration - 1, memberGeneration, memberGeneration + 1].filter(
+    (value) => Number.isInteger(value) && value > 0,
+  );
+  const placeholders = allowedGenerations.map(() => "?").join(",");
+  const [peopleRows] = await db.query(
+    `SELECT id FROM people WHERE clan_id = ? AND generation IN (${placeholders})`,
+    [clanId, ...allowedGenerations],
+  );
+
+  return {
+    allowedNodeIds: uniqueNumericIds(peopleRows.map((row) => row.id)),
+    memberGeneration,
+    allowedGenerations,
+  };
+}
+
+async function buildTreeEditSession(grant) {
+  const scope = await buildGenerationEditScope(grant.member_person_id, grant.clan_id);
 
   return {
     grant,
-    allowedNodeIds,
+    allowedNodeIds: scope.allowedNodeIds,
     expiresAt: grant.expires_at,
+    memberGeneration: scope.memberGeneration,
+    allowedGenerations: scope.allowedGenerations,
   };
+}
+
+async function getTreeEditSessionForAccount(accountId, rawKey) {
+  const grant = await findValidTreeEditGrant(accountId, rawKey);
+  if (!grant) return null;
+  return buildTreeEditSession(grant);
+}
+
+async function activateTreeEditSessionForAccount(accountId, rawKey) {
+  const grant = await findValidTreeEditGrant(accountId, rawKey);
+  if (!grant) return null;
+
+  const expiresAt = new Date(Date.now() + TEMP_EDIT_TTL_MS);
+  await db.query("UPDATE member_tree_edit_keys SET expires_at = ? WHERE id = ?", [expiresAt, grant.id]);
+
+  return buildTreeEditSession({
+    ...grant,
+    expires_at: expiresAt,
+  });
 }
 
 async function assertTreeMutationPermission(req, { action, affectedPersonIds = [] }) {
@@ -212,7 +261,7 @@ async function assertTreeMutationPermission(req, { action, affectedPersonIds = [
     return {
       ok: false,
       status: 403,
-      message: "Temporary edit key chi cho phep sua thong tin va vi tri cua ban than, cha me truc tiep va con truc tiep.",
+      message: "Temporary edit key chi cho phep sua thong tin va vi tri cac node thuoc doi hien tai, tren 1 doi va duoi 1 doi.",
     };
   }
 
@@ -221,7 +270,7 @@ async function assertTreeMutationPermission(req, { action, affectedPersonIds = [
     return {
       ok: false,
       status: 403,
-      message: "Ban chi duoc chinh sua ban than, cha me truc tiep va con truc tiep.",
+      message: "Ban chi duoc chinh sua cac node thuoc doi hien tai, tren 1 doi va duoi 1 doi.",
     };
   }
 
@@ -231,6 +280,8 @@ async function assertTreeMutationPermission(req, { action, affectedPersonIds = [
     allowedNodeIds: session.allowedNodeIds,
     expiresAt: session.expiresAt,
     memberPersonId: session.grant.member_person_id,
+    memberGeneration: session.memberGeneration,
+    allowedGenerations: session.allowedGenerations,
     clanId: session.grant.clan_id,
   };
 }
@@ -242,7 +293,9 @@ module.exports = {
   createTemporaryTreeEditKey,
   readTreeEditKeyFromRequest,
   getTreeEditSessionForAccount,
+  activateTreeEditSessionForAccount,
   assertTreeMutationPermission,
+  buildGenerationEditScope,
   buildAllowedNodeIds,
   getDirectParentIds,
   getDirectChildIds,

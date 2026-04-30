@@ -17,6 +17,8 @@ export default function FamilyTreePage() {
     canEdit: false,
     editScope: "none",
     allowedNodeIds: [],
+    memberGeneration: null,
+    allowedGenerations: [],
   });
   const [permissionExpiry, setPermissionExpiry] = useState("");
 
@@ -43,6 +45,8 @@ export default function FamilyTreePage() {
       canEdit: false,
       editScope: "none",
       allowedNodeIds: [],
+      memberGeneration: null,
+      allowedGenerations: [],
     });
     setPermissionExpiry("");
     if (message) setKeyStatus(message);
@@ -64,16 +68,18 @@ export default function FamilyTreePage() {
       }
 
       try {
-        const response = await verifyTreeEditSession(key);
+        const response = await verifyTreeEditSession(key, { activate: !silent });
         saveTreeEditSession({ key, expiresAt: response.expires_at });
         setPermission({
           canEdit: true,
           editScope: "limited",
           allowedNodeIds: Array.isArray(response.allowed_node_ids) ? response.allowed_node_ids : [],
+          memberGeneration: response.member_generation ?? null,
+          allowedGenerations: Array.isArray(response.allowed_generations) ? response.allowed_generations : [],
         });
         setPermissionExpiry(response.expires_at || "");
         setKeyInput(key);
-        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời. Chỉ được chỉnh sửa bản thân, cha/mẹ trực tiếp và con trực tiếp.");
+        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời trong 1 giờ. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.");
         setKeyError("");
       } catch (err) {
         resetTemporaryPermission("");
@@ -116,6 +122,9 @@ export default function FamilyTreePage() {
   const remainingText = permissionExpiry
     ? `${Math.floor(remainingMs / 60000)}:${String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0")}`
     : "";
+  const generationScopeText = permission.allowedGenerations?.length
+    ? permission.allowedGenerations.map((generation) => `đời ${generation}`).join(", ")
+    : "đời hiện tại ±1";
 
   const renderTreeInfoPanel = () => (
     <aside className="member-panel member-tree-side member-tree-side--compact">
@@ -143,12 +152,13 @@ export default function FamilyTreePage() {
         {permission.canEdit ? (
           <div className="member-tree-keyMeta">
             <strong>Đang bật editable mode</strong>
-            <span>Phạm vi: bản thân, cha/mẹ trực tiếp, con trực tiếp</span>
+            <span>Đời của bạn: {permission.memberGeneration ? `đời ${permission.memberGeneration}` : "chưa xác định"}</span>
+            <span>Phạm vi: {generationScopeText}</span>
             <span>Còn lại: {remainingText}</span>
           </div>
         ) : (
           <div className="member-tree-keyMeta">
-            <span>Không lưu key vĩnh viễn. Quyền sẽ tự hết hạn sau 1 giờ kể từ lúc manager tạo key.</span>
+            <span>Không lưu key vĩnh viễn. Khi xác thực đúng key, quyền chỉnh sửa có hiệu lực trong 1 giờ.</span>
           </div>
         )}
       </div>
@@ -167,7 +177,7 @@ export default function FamilyTreePage() {
         </div>
       </div>
       <div className="member-tree-note">
-        Chọn một người trên cây để mở thông tin chi tiết. Các thao tác thêm, sửa, xóa và kéo thả bị khóa nếu chưa có temporary edit key hợp lệ.
+        Chọn một người trên cây để mở thông tin chi tiết. Khi có temporary edit key hợp lệ, bạn chỉ sửa được node thuộc đời của mình, trên 1 đời và dưới 1 đời.
       </div>
     </aside>
   );

@@ -45,7 +45,7 @@ export const getMemberDashboard = async () =>
     "Không thể tải dữ liệu thành viên",
   );
 
-export const verifyTreeEditSession = async (key) =>
+export const verifyTreeEditSession = async (key, options = {}) =>
   requestJson(
     "/tree-edit-session",
     {
@@ -54,7 +54,7 @@ export const verifyTreeEditSession = async (key) =>
         "Content-Type": "application/json",
         ...getAuthHeaders(),
       },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, activate: options.activate !== false }),
     },
     "KhÃ´ng thá»ƒ xÃ¡c thá»±c temporary edit key",
   );

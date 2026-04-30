@@ -54,6 +54,13 @@ export const getAdminClanTree = async (clanId) => {
   return data;
 };
 
+export const getAdminClanTasks = async (clanId) => {
+  const res = await fetch(`${BASE_URL}/clans/${clanId}/tasks`, { headers: getAuthHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Không tải được công việc của dòng họ");
+  return data;
+};
+
 export const getAdminAccounts = async () => {
   const res = await fetch(`${BASE_URL}/accounts`, { headers: getAuthHeaders() });
   const data = await res.json().catch(() => ({}));

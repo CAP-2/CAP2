@@ -3,7 +3,9 @@ const bcrypt = require("bcryptjs");
 const { getRoleName } = require("../config/roles");
 const {
   getTreeEditSessionForAccount,
+  activateTreeEditSessionForAccount,
 } = require("../utils/treeEditPermissions");
+const { createNotification, ensureNotificationSchema } = require("../utils/notifications");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -634,6 +636,75 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
+exports.getNotifications = async (req, res) => {
+  try {
+    const context = await getAccountContext(req.user.id);
+    if (!context?.person_id) {
+      return res.json({ success: true, notifications: [], unread_count: 0 });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT id, type, title, message, is_read, link_url, created_at
+        FROM notifications
+        WHERE receiver_person_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 50
+      `,
+      [context.person_id]
+    );
+
+    const unreadCount = rows.filter((row) => Number(row.is_read) === 0).length;
+    return res.json({ success: true, notifications: rows, unread_count: unreadCount });
+  } catch (error) {
+    console.error("getNotifications error:", error);
+    return res.status(500).json({ success: false, message: "Khong the tai thong bao" });
+  }
+};
+
+exports.markNotificationRead = async (req, res) => {
+  try {
+    const notificationId = Number(req.params.id);
+    if (!Number.isInteger(notificationId) || notificationId <= 0) {
+      return res.status(400).json({ success: false, message: "ID thong bao khong hop le" });
+    }
+
+    const context = await getAccountContext(req.user.id);
+    if (!context?.person_id) {
+      return res.status(404).json({ success: false, message: "Tai khoan chua lien ket ho so" });
+    }
+
+    await db.query(
+      "UPDATE notifications SET is_read = 1 WHERE id = ? AND receiver_person_id = ?",
+      [notificationId, context.person_id]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("markNotificationRead error:", error);
+    return res.status(500).json({ success: false, message: "Khong the cap nhat thong bao" });
+  }
+};
+
+exports.markAllNotificationsRead = async (req, res) => {
+  try {
+    const context = await getAccountContext(req.user.id);
+    if (!context?.person_id) {
+      return res.json({ success: true, updated: 0 });
+    }
+
+    const [result] = await db.query(
+      "UPDATE notifications SET is_read = 1 WHERE receiver_person_id = ?",
+      [context.person_id]
+    );
+
+    return res.json({ success: true, updated: result.affectedRows || 0 });
+  } catch (error) {
+    console.error("markAllNotificationsRead error:", error);
+    return res.status(500).json({ success: false, message: "Khong the cap nhat thong bao" });
+  }
+};
+
 exports.verifyTreeEditSession = async (req, res) => {
   try {
     const rawKey = String(req.body?.key || req.headers?.["x-tree-edit-key"] || "").trim();
@@ -642,7 +713,10 @@ exports.verifyTreeEditSession = async (req, res) => {
       return res.status(400).json({ success: false, message: "Vui lòng nhập temporary edit key." });
     }
 
-    const session = await getTreeEditSessionForAccount(req.user.id, rawKey);
+    const shouldActivate = req.body?.activate !== false;
+    const session = shouldActivate
+      ? await activateTreeEditSessionForAccount(req.user.id, rawKey)
+      : await getTreeEditSessionForAccount(req.user.id, rawKey);
     if (!session) {
       return res.status(403).json({ success: false, message: "Temporary edit key không hợp lệ hoặc đã hết hạn." });
     }
@@ -652,6 +726,8 @@ exports.verifyTreeEditSession = async (req, res) => {
       can_edit: true,
       edit_scope: "limited",
       allowed_node_ids: session.allowedNodeIds,
+      member_generation: session.memberGeneration,
+      allowed_generations: session.allowedGenerations,
       expires_at: session.expiresAt,
       message: "Temporary edit key hợp lệ.",
     });

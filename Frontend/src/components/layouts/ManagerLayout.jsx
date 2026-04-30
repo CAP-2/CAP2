@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
+import NotificationBell from "./NotificationBell";
 import "./ManagerLayout.css";
 
 const menuItems = [
+  { icon: "assignment", label: "Công việc", path: "/manager/tasks" },
   { icon: "post_add", label: "Bảng tin", path: "/manager/posts" },
   { icon: "dashboard", label: "Tổng quan", path: "/manager/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/manager/genealogy" },
@@ -293,10 +295,7 @@ export default function ManagerLayout() {
             <button className="util-btn" title="Sửa tài khoản" onClick={openAccountModal}>
               <span className="material-symbols-outlined">account_circle</span>
             </button>
-            <button className="util-btn" title="Thông báo">
-              <span className="material-symbols-outlined">notifications</span>
-              <span className="dot"></span>
-            </button>
+            <NotificationBell role="manager" buttonClassName="util-btn" />
             <button className="util-btn" title="Hỗ trợ">
               <span className="material-symbols-outlined">help</span>
             </button>

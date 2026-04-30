@@ -8,6 +8,7 @@ router.post("/clans", verifyToken, checkRole(["admin"]), adminController.createC
 router.put("/clans/:clanId", verifyToken, checkRole(["admin"]), adminController.updateClan);
 router.delete("/clans/:clanId", verifyToken, checkRole(["admin"]), adminController.deleteClan);
 router.get("/clans/:clanId/tree", verifyToken, checkRole(["admin"]), adminController.getClanTree);
+router.get("/clans/:clanId/tasks", verifyToken, checkRole(["admin"]), adminController.getTasksByClan);
 router.get("/accounts", verifyToken, checkRole(["admin"]), adminController.listAccounts);
 router.post("/accounts", verifyToken, checkRole(["admin"]), adminController.createAccount);
 router.put("/accounts/:id", verifyToken, checkRole(["admin"]), adminController.updateAccountAccess);
