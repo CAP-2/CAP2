@@ -18,7 +18,7 @@ const MAX_CARD_WIDTH = 360;
 const MAX_CARD_HEIGHT = 360;
 const LEVEL_HEIGHT = Math.round(CARD_HEIGHT * 1.5);
 const X_GAP = Math.round(CARD_WIDTH * 0.9);
-const SPOUSE_GAP = X_GAP;
+const SPOUSE_GAP = 20; // ~0.5cm between linked spouses only
 const SIBLING_GAP = X_GAP;
 const FAMILY_GAP = Math.round(CARD_WIDTH * 1.2);
 const Y_GAP = LEVEL_HEIGHT;
@@ -376,8 +376,7 @@ function autoLayoutPeople(sourcePeople, families = [], childRows = []) {
     nextVisited.add(familyId);
 
     const parents = [peopleMap.get(Number(family.father_id)), peopleMap.get(Number(family.mother_id))]
-      .filter(Boolean)
-      .sort((a, b) => toInt(a.gender, 0) - toInt(b.gender, 0) || personSort(a, b));
+      .filter(Boolean);
     const children = asArray(childrenByFamily.get(familyId))
       .map((row) => ({
         ...row,
@@ -456,7 +455,7 @@ function autoLayoutPeople(sourcePeople, families = [], childRows = []) {
     };
   });
 
-  return normalizeGenerationSpacing(assignDisplayOrder(laidOut));
+  return normalizeGenerationSpacing(assignDisplayOrder(laidOut), familyRows);
 }
 
 function hasManualLayout(people) {
@@ -482,7 +481,65 @@ function assignDisplayOrder(people) {
   return people.map((person) => ({ ...person, display_order: orderById.get(person.id) ?? person.display_order ?? 0 }));
 }
 
-function normalizeGenerationSpacing(people) {
+function getSpouseAwareGenerationUnits(row, families = []) {
+  const members = asArray(row).slice();
+  const personById = new Map(members.map((person) => [Number(person.id), person]));
+  const used = new Set();
+  const units = [];
+
+  asArray(families).forEach((family) => {
+    const father = personById.get(Number(family.father_id));
+    const mother = personById.get(Number(family.mother_id));
+    if (!father || !mother) return;
+    if (used.has(Number(father.id)) || used.has(Number(mother.id))) return;
+
+    const fatherGeneration = toInt(father.generation, 1) || 1;
+    const motherGeneration = toInt(mother.generation, 1) || 1;
+    if (fatherGeneration !== motherGeneration) return;
+
+    used.add(Number(father.id));
+    used.add(Number(mother.id));
+    units.push({
+      // Tự sắp xếp cặp vợ/chồng theo yêu cầu: vợ đứng trước, chồng đứng sau.
+      // Chỉ riêng cặp đã liên kết được đặt sát nhau bằng SPOUSE_GAP (~0.5cm).
+      members: [mother, father],
+      x: Math.min(toInt(father.tree_x, 0), toInt(mother.tree_x, 0)),
+      sortPerson: mother,
+      isSpouseUnit: true,
+    });
+  });
+
+  members.forEach((person) => {
+    if (used.has(Number(person.id))) return;
+    units.push({
+      members: [person],
+      x: toInt(person.tree_x, 0),
+      sortPerson: person,
+      isSpouseUnit: false,
+    });
+  });
+
+  return units.sort((a, b) => a.x - b.x || personSort(a.sortPerson || {}, b.sortPerson || {}));
+}
+
+function getSpouseAwareGenerationRow(row, families = []) {
+  return getSpouseAwareGenerationUnits(row, families).flatMap((unit) => unit.members);
+}
+
+function getGenerationUnitWidth(unit) {
+  const members = asArray(unit?.members);
+  if (!members.length) return 0;
+  const innerGap = unit?.isSpouseUnit ? SPOUSE_GAP : X_GAP;
+  return members.length * CARD_WIDTH + Math.max(0, members.length - 1) * innerGap;
+}
+
+function getGenerationUnitsWidth(units) {
+  const safeUnits = asArray(units);
+  if (!safeUnits.length) return CARD_WIDTH;
+  return safeUnits.reduce((sum, unit) => sum + getGenerationUnitWidth(unit), 0) + Math.max(0, safeUnits.length - 1) * X_GAP;
+}
+
+function normalizeGenerationSpacing(people, families = []) {
   const grouped = new Map();
   asArray(people).forEach((person) => {
     const generation = toInt(person.generation, 1) || 1;
@@ -491,34 +548,45 @@ function normalizeGenerationSpacing(people) {
   });
 
   const generations = [...grouped.keys()].sort((a, b) => a - b);
-  const rowPitch = CARD_WIDTH + X_GAP;
-  const maxRowWidth = Math.max(
-    CARD_WIDTH,
-    ...generations.map((generation) => {
-      const row = grouped.get(generation) || [];
-      return row.length * CARD_WIDTH + Math.max(0, row.length - 1) * X_GAP;
-    }),
-  );
+  const orderedUnits = new Map();
 
-  const positioned = [];
   generations.forEach((generation) => {
     const row = (grouped.get(generation) || [])
       .slice()
       .sort((a, b) => toInt(a.tree_x, 0) - toInt(b.tree_x, 0) || personSort(a, b));
-    const rowWidth = row.length * CARD_WIDTH + Math.max(0, row.length - 1) * X_GAP;
-    const startX = CANVAS_PADDING + Math.max(0, (maxRowWidth - rowWidth) / 2);
-    row.forEach((person, index) => {
-      positioned.push({
-        ...person,
-        tree_x: snap(startX + index * rowPitch),
-        tree_y: generationY(generation),
-        display_order: index,
+    orderedUnits.set(generation, getSpouseAwareGenerationUnits(row, families));
+  });
+
+  const maxRowWidth = Math.max(
+    CARD_WIDTH,
+    ...generations.map((generation) => getGenerationUnitsWidth(orderedUnits.get(generation) || [])),
+  );
+
+  const positioned = [];
+  generations.forEach((generation) => {
+    const units = orderedUnits.get(generation) || [];
+    const rowWidth = getGenerationUnitsWidth(units);
+    let cursorX = CANVAS_PADDING + Math.max(0, (maxRowWidth - rowWidth) / 2);
+    let displayOrder = 0;
+
+    units.forEach((unit) => {
+      const innerGap = unit.isSpouseUnit ? SPOUSE_GAP : X_GAP;
+      unit.members.forEach((person, memberIndex) => {
+        positioned.push({
+          ...person,
+          tree_x: snap(cursorX + memberIndex * (CARD_WIDTH + innerGap)),
+          tree_y: generationY(generation),
+          display_order: displayOrder,
+        });
+        displayOrder += 1;
       });
+      cursorX += getGenerationUnitWidth(unit) + X_GAP;
     });
   });
 
   return positioned.sort((a, b) => toInt(a.generation, 1) - toInt(b.generation, 1) || personSort(a, b));
 }
+
 
 function centerOf(person, cardSizes = {}) {
   const size = getCardSize(cardSizes, person?.id);

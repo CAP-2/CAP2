@@ -22,6 +22,7 @@ import {
   assignTaskAPI, 
   approveProfileUpdateAPI,
   rejectProfileUpdateAPI,
+  updateMemberRelations,
 } from "../../api/managerService";
 import { fullName } from "./managerData";
 import {
@@ -689,9 +690,18 @@ const Manager = () => {
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
                   <label className="mgr-rowKey" style={{ display: 'block', marginBottom: '8px' }}>👉 Chọn hồ sơ:</label>
-                  <select className="mgr-search" style={{ width: '100%', border: '2px solid var(--mgr-primary-2)', color: 'var(--mgr-text)' }} value={linkData.person_id} onChange={e => setLinkData({...linkData, person_id: e.target.value})}>
+                  <select
+                    className="mgr-search"
+                    style={{ width: '100%', border: '2px solid var(--mgr-primary-2)', color: 'var(--mgr-text)' }}
+                    value={treeBuildAccountId}
+                    onChange={(e) => setTreeBuildAccountId(e.target.value)}
+                  >
                     <option value="" style={{color: 'var(--mgr-text)'}}>-- Click để chọn thành viên --</option>
-                    {members.map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.middle_name || ""} {m.first_name}</option>))}
+                    {members.map((m) => (
+                      <option key={m.account_id} value={String(m.account_id)} style={{color: 'var(--mgr-text)'}}>
+                        {memberDisplayName(m)} - account #{m.account_id} / person #{m.person_id}
+                      </option>
+                    ))}
                   </select>
                   {treeBuildLoading ? <div className="mgr-subtle" style={{ marginTop: '10px' }}>Đang tải quan hệ từ máy chủ…</div> : null}
                 </div>
@@ -700,31 +710,78 @@ const Manager = () => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <div>
                         <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👤 Người Cha:</label>
-                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.father_id} onChange={e => setLinkData({...linkData, father_id: e.target.value})}>
+                        <select
+                          className="mgr-search"
+                          style={{ width: '100%', color: 'var(--mgr-text)' }}
+                          value={linkData.father_person_id}
+                          onChange={(e) => setLinkData((prev) => ({ ...prev, father_person_id: e.target.value }))}
+                          disabled={!treeBuildAccountId}
+                        >
                           <option value="" style={{color: 'var(--mgr-text)'}}>-- Khuyết / Chưa rõ --</option>
-                          {members.filter(m => m.gender === 'Nam' || m.gender === '1').map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.first_name}</option>))}
+                          {members
+                            .filter((m) => String(m.account_id) !== treeBuildAccountId)
+                            .filter(isMaleMember)
+                            .map((m) => (
+                              <option key={m.person_id} value={String(m.person_id)} style={{color: 'var(--mgr-text)'}}>
+                                {memberDisplayName(m)} - person #{m.person_id}
+                              </option>
+                            ))}
                         </select>
                     </div>
                     <div>
                         <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>👩 Người Mẹ:</label>
-                        <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.mother_id} onChange={e => setLinkData({...linkData, mother_id: e.target.value})}>
+                        <select
+                          className="mgr-search"
+                          style={{ width: '100%', color: 'var(--mgr-text)' }}
+                          value={linkData.mother_person_id}
+                          onChange={(e) => setLinkData((prev) => ({ ...prev, mother_person_id: e.target.value }))}
+                          disabled={!treeBuildAccountId}
+                        >
                           <option value="" style={{color: 'var(--mgr-text)'}}>-- Khuyết / Chưa rõ --</option>
-                          {members.filter(m => m.gender === 'Nữ' || m.gender === '2').map(m => (<option key={m.account_id} value={m.account_id} style={{color: 'var(--mgr-text)'}}>{m.surname} {m.first_name}</option>))}
+                          {members
+                            .filter((m) => String(m.account_id) !== treeBuildAccountId)
+                            .filter(isFemaleMember)
+                            .map((m) => (
+                              <option key={m.person_id} value={String(m.person_id)} style={{color: 'var(--mgr-text)'}}>
+                                {memberDisplayName(m)} - person #{m.person_id}
+                              </option>
+                            ))}
                         </select>
                     </div>
                   </div>
                 </div>
                 <div style={{ background: '#fff', padding: '15px', borderRadius: '12px', border: '1px solid var(--mgr-border)' }}>
                   <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px' }}>💍 Tình trạng hôn nhân:</label>
-                  <select className="mgr-search" style={{ width: '100%', marginBottom: '10px', color: 'var(--mgr-text)' }} value={maritalStatus} onChange={e => { setMaritalStatus(e.target.value); if(e.target.value === "Độc thân") setLinkData({...linkData, spouse_id: ""}); }}>
+                  <select
+                    className="mgr-search"
+                    style={{ width: '100%', marginBottom: '10px', color: 'var(--mgr-text)' }}
+                    value={maritalStatus}
+                    onChange={(e) => {
+                      setMaritalStatus(e.target.value);
+                      if (e.target.value === "Độc thân") setLinkData((prev) => ({ ...prev, spouse_person_id: "" }));
+                    }}
+                    disabled={!treeBuildAccountId}
+                  >
                     <option value="Độc thân">Độc thân</option><option value="Đã kết hôn">Đã kết hôn</option>
                   </select>
                   {maritalStatus === "Đã kết hôn" && (
                     <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--mgr-border)' }}>
                       <label className="mgr-miniLabel" style={{ display: 'block', marginBottom: '6px', color: '#e83e8c' }}>Chọn Vợ / Chồng:</label>
-                      <select className="mgr-search" style={{ width: '100%', color: 'var(--mgr-text)' }} value={linkData.spouse_id} onChange={e => setLinkData({...linkData, spouse_id: e.target.value})}>
+                      <select
+                        className="mgr-search"
+                        style={{ width: '100%', color: 'var(--mgr-text)' }}
+                        value={linkData.spouse_person_id}
+                        onChange={(e) => setLinkData((prev) => ({ ...prev, spouse_person_id: e.target.value }))}
+                        disabled={!treeBuildAccountId}
+                      >
                         <option value="">-- Chọn hồ sơ Vợ/Chồng --</option>
-                        {members.map(m => (<option key={m.account_id} value={m.account_id}>{m.surname} {m.first_name}</option>))}
+                        {members
+                          .filter((m) => String(m.account_id) !== treeBuildAccountId)
+                          .map((m) => (
+                            <option key={m.person_id} value={String(m.person_id)}>
+                              {memberDisplayName(m)} - person #{m.person_id}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   )}

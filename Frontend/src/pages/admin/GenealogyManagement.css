@@ -20,6 +20,7 @@
     flex-direction: column;
     border: 1px solid #f3f4f6;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
 }
 
 .sidebar-header {
@@ -36,10 +37,22 @@
 .clan-list {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+}
+
+.clan-list {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.clan-list::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .clan-item {
@@ -70,12 +83,15 @@
 
 .clan-info {
     display: flex;
+    flex: 1;
+    min-width: 0;
     flex-direction: column;
 }
 
 .clan-info strong {
     font-size: 0.95rem;
     color: #111827;
+    overflow-wrap: anywhere;
 }
 
 .clan-info span {
@@ -451,4 +467,60 @@
 .clan-modal-actions button:disabled {
     cursor: not-allowed;
     opacity: 0.7;
+}
+
+
+.clan-info small {
+    margin-top: 0.15rem;
+    color: #9f7f28;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.manager-account-section {
+    border: 1px solid #ead8aa;
+    background: #fffaf0;
+    border-radius: 16px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.manager-section-title {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    color: #7f1d1d;
+}
+
+.manager-section-title .material-symbols-outlined {
+    color: #b45309;
+    font-size: 1.45rem;
+    margin-top: 0.1rem;
+}
+
+.manager-section-title strong {
+    display: block;
+    font-size: 0.95rem;
+}
+
+.manager-section-title p {
+    margin: 0.2rem 0 0;
+    color: #6b7280;
+    font-size: 0.82rem;
+    font-weight: 500;
+    line-height: 1.45;
+}
+
+.manager-name-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+@media (max-width: 720px) {
+    .manager-name-grid {
+        grid-template-columns: 1fr;
+    }
 }

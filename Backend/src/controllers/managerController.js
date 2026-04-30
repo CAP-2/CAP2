@@ -5,6 +5,7 @@ const {
     ensureMemberTreeEditKeysTable,
     assertTreeMutationPermission,
 } = require('../utils/treeEditPermissions');
+const { deletePersonCompletely } = require('../utils/personDeletion');
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
@@ -1046,14 +1047,10 @@ exports.deleteArchivedMemberPermanently = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
         }
         const accountId = Number(archivedRows[0].account_id);
-
         const [ctxRows] = await db.query('SELECT person_id FROM accounts WHERE id = ? LIMIT 1', [accountId]);
         const personId = ctxRows[0]?.person_id ?? null;
         if (personId) {
-            await db.query('UPDATE families SET father_id = NULL WHERE father_id = ?', [personId]);
-            await db.query('UPDATE families SET mother_id = NULL WHERE mother_id = ?', [personId]);
-            await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
-            await db.query('DELETE FROM people WHERE id = ?', [personId]);
+            await deletePersonCompletely(personId, { deleteAccounts: false });
         }
         await db.query('DELETE FROM accounts WHERE id = ?', [accountId]);
         const [result] = await db.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
@@ -2441,19 +2438,14 @@ exports.deleteTreePerson = async (req, res) => {
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
 
-        const [familyRows] = await db.query('SELECT id FROM families WHERE father_id = ? OR mother_id = ?', [
-            personId,
-            personId,
-        ]);
-        const familyIds = familyRows.map((row) => row.id);
-        if (familyIds.length) {
-            await db.query(`DELETE FROM children WHERE family_id IN (${familyIds.map(() => '?').join(',')})`, familyIds);
-            await db.query(`DELETE FROM families WHERE id IN (${familyIds.map(() => '?').join(',')})`, familyIds);
-        }
-        await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
-        await db.query('DELETE FROM people WHERE id = ?', [personId]);
+        const result = await deletePersonCompletely(personId, { deleteAccounts: false });
 
-        res.json({ success: true, person_id: personId });
+        res.json({
+            success: true,
+            person_id: personId,
+            deleted_family_ids: result.deleted_family_ids,
+            message: 'Da xoa nguoi khoi cay va go toan bo lien ket vo/chong, cha/me/con lien quan.',
+        });
     } catch (error) {
         console.error('deleteTreePerson error:', error);
         res.status(500).json({ success: false, message: 'Loi xoa nguoi khoi gia pha' });

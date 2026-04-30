@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const bcrypt = require("bcryptjs");
+const { deletePersonCompletely } = require("../utils/personDeletion");
 const memberController = require("./memberController");
 
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -59,7 +60,73 @@ exports.listClans = async (req, res) => {
 };
 
 
+
+const normalizeOptionalString = (value) => (value == null ? "" : String(value).trim());
+
+const managerPayloadPresent = (body = {}) => {
+  return [
+    body.manager_email,
+    body.manager_password,
+    body.manager_surname,
+    body.manager_middle_name,
+    body.manager_first_name,
+    body.manager_display_name,
+  ].some((value) => normalizeOptionalString(value) !== "");
+};
+
+async function createManagerForClan(connection, clanId, body = {}) {
+  const email = normalizeOptionalString(body.manager_email || body.email).toLowerCase();
+  const password = String(body.manager_password || body.password || "");
+  const surname = normalizeOptionalString(body.manager_surname || body.surname);
+  const middleName = normalizeOptionalString(body.manager_middle_name || body.middle_name);
+  const firstName = normalizeOptionalString(body.manager_first_name || body.first_name);
+  const displayName =
+    normalizeOptionalString(body.manager_display_name || body.display_name) ||
+    buildDisplayNameFromParts(surname, middleName, firstName) ||
+    email;
+
+  if (!email || !password) {
+    const err = new Error("Vui lòng nhập email và mật khẩu Manager phụ trách dòng họ");
+    err.status = 400;
+    throw err;
+  }
+  if (password.length < 6) {
+    const err = new Error("Mật khẩu Manager tối thiểu 6 ký tự");
+    err.status = 400;
+    throw err;
+  }
+  if (!surname && !firstName && !displayName) {
+    const err = new Error("Vui lòng nhập họ tên Manager phụ trách dòng họ");
+    err.status = 400;
+    throw err;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const [personResult] = await connection.query(
+    `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, generation)
+     VALUES (?, ?, ?, ?, ?, 1)`,
+    [clanId, displayName, firstName || null, middleName || null, surname || null]
+  );
+  const personId = personResult.insertId;
+
+  const [accountResult] = await connection.query(
+    `INSERT INTO accounts (email, password, person_id, role_id, status) VALUES (?, ?, ?, 2, 'active')`,
+    [email, hashedPassword, personId]
+  );
+  const accountId = accountResult.insertId;
+
+  await connection.query(
+    `INSERT INTO account_clans (account_id, clan_id, person_id, status)
+     VALUES (?, ?, ?, 'active')
+     ON DUPLICATE KEY UPDATE person_id = VALUES(person_id), status = 'active'`,
+    [accountId, clanId, personId]
+  );
+
+  return { account_id: accountId, person_id: personId, email, display_name: displayName };
+}
+
 exports.createClan = async (req, res) => {
+  const connection = await db.getConnection();
   try {
     const clanName = String(req.body.clan_name || req.body.name || "").trim();
     const history = req.body.history == null ? null : String(req.body.history).trim();
@@ -69,27 +136,42 @@ exports.createClan = async (req, res) => {
       return res.status(400).json({ success: false, message: "Tên dòng họ không được để trống" });
     }
 
-    const [exists] = await db.query("SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) LIMIT 1", [clanName]);
+    await connection.beginTransaction();
+    const [exists] = await connection.query("SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) LIMIT 1", [clanName]);
     if (exists.length) {
+      await connection.rollback();
       return res.status(409).json({ success: false, message: "Dòng họ này đã tồn tại" });
     }
 
-    const [result] = await db.query(
+    const [result] = await connection.query(
       "INSERT INTO clans (clan_name, history, hall_address) VALUES (?, ?, ?)",
       [clanName, history || null, hallAddress || null]
     );
+    const clanId = result.insertId;
 
+    let manager = null;
+    if (managerPayloadPresent(req.body)) {
+      manager = await createManagerForClan(connection, clanId, req.body);
+    }
+
+    await connection.commit();
     return res.status(201).json({
       success: true,
-      message: "Đã thêm dòng họ",
-      clan: { id: result.insertId, clan_name: clanName, history, hall_address: hallAddress }
+      message: manager ? "Đã thêm dòng họ và tài khoản Manager phụ trách" : "Đã thêm dòng họ",
+      clan: { id: clanId, clan_name: clanName, history, hall_address: hallAddress },
+      manager,
     });
   } catch (e) {
+    try { await connection.rollback(); } catch (_) {}
     console.error("createClan:", e);
-    return res.status(500).json({ success: false, message: "Lỗi tạo dòng họ" });
+    if (e.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ success: false, message: "Email Manager đã tồn tại trong hệ thống" });
+    }
+    return res.status(e.status || 500).json({ success: false, message: e.message || "Lỗi tạo dòng họ" });
+  } finally {
+    connection.release();
   }
 };
-
 exports.updateClan = async (req, res) => {
   try {
     const clanId = Number(req.params.clanId);
@@ -341,6 +423,13 @@ exports.createManagerAccount = async (req, res) => {
       [emailTrim, hashedPassword, personId]
     );
 
+    await db.query(
+      `INSERT INTO account_clans (account_id, clan_id, person_id, status)
+       VALUES (?, ?, ?, 'active')
+       ON DUPLICATE KEY UPDATE person_id = VALUES(person_id), status = 'active'`,
+      [accResult.insertId, cid, personId]
+    );
+
     return res.status(201).json({
       success: true,
       message: "Đã tạo tài khoản Manager và gán dòng họ",
@@ -398,10 +487,8 @@ exports.updateMember = async (req, res) => {
 exports.deleteMember = async (req, res) => {
   const personId = Number(req.params.id);
   try {
-    // Xóa account liên quan trước (nếu có)
-    await db.query("DELETE FROM accounts WHERE person_id = ?", [personId]);
-    await db.query("DELETE FROM people WHERE id = ?", [personId]);
-    return res.json({ success: true, message: "Đã xóa thành viên" });
+    await deletePersonCompletely(personId, { deleteAccounts: true });
+    return res.json({ success: true, message: "Đã xóa thành viên và toàn bộ liên kết gia phả liên quan" });
   } catch (e) {
     console.error("deleteMember:", e);
     return res.status(500).json({ success: false, message: "Lỗi xóa thành viên" });
@@ -837,9 +924,13 @@ exports.deleteAccount = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ success: false, message: "Không xóa tài khoản Admin qua màn hình này" });
     }
+    const personId = rows[0].person_id ? Number(rows[0].person_id) : null;
+    if (personId) {
+      await deletePersonCompletely(personId, { connection, deleteAccounts: false });
+    }
     await connection.query("DELETE FROM accounts WHERE id = ?", [targetId]);
     await connection.commit();
-    return res.json({ success: true, message: "Đã xóa tài khoản đăng nhập" });
+    return res.json({ success: true, message: "Đã xóa tài khoản và dữ liệu gia phả liên quan" });
   } catch (e) {
     try { await connection.rollback(); } catch (_) {}
     console.error("deleteAccount:", e);

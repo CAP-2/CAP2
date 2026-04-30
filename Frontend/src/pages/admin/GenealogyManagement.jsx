@@ -9,7 +9,16 @@ import {
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
 import "./GenealogyManagement.css";
 
-const emptyClanForm = { clan_name: "", history: "", hall_address: "" };
+const emptyClanForm = {
+    clan_name: "",
+    history: "",
+    hall_address: "",
+    manager_email: "",
+    manager_password: "",
+    manager_surname: "",
+    manager_middle_name: "",
+    manager_first_name: "",
+};
 
 export default function GenealogyManagement() {
     const [clans, setClans] = useState([]);
@@ -96,6 +105,7 @@ export default function GenealogyManagement() {
     const openEditModal = (clan) => {
         setModalMode("edit");
         setClanForm({
+            ...emptyClanForm,
             clan_name: clan?.clan_name || "",
             history: clan?.history || "",
             hall_address: clan?.hall_address || "",
@@ -115,6 +125,20 @@ export default function GenealogyManagement() {
         if (!clanName) {
             setFormError("Vui lòng nhập tên dòng họ.");
             return;
+        }
+        if (modalMode === "create") {
+            if (!clanForm.manager_email.trim() || !clanForm.manager_password.trim()) {
+                setFormError("Vui lòng nhập email và mật khẩu tài khoản Manager phụ trách dòng họ.");
+                return;
+            }
+            if (clanForm.manager_password.trim().length < 6) {
+                setFormError("Mật khẩu Manager tối thiểu 6 ký tự.");
+                return;
+            }
+            if (!clanForm.manager_surname.trim() && !clanForm.manager_first_name.trim()) {
+                setFormError("Vui lòng nhập ít nhất họ hoặc tên của Manager phụ trách.");
+                return;
+            }
         }
         setSaving(true);
         setFormError("");
@@ -185,7 +209,8 @@ export default function GenealogyManagement() {
                             <span className="material-symbols-outlined">account_balance</span>
                             <div className="clan-info">
                                 <strong>{clan.clan_name}</strong>
-                                <span>{clan.member_count} thành viên</span>
+                                <span>{clan.member_count} thành viên · {clan.manager_count || 0} manager</span>
+                                {clan.owner_name ? <small>QL: {clan.owner_name}</small> : null}
                             </div>
                             <div className="clan-actions" onClick={(event) => event.stopPropagation()}>
                                 <button type="button" title="Sửa dòng họ" onClick={() => { setSelectedClanId(clan.id); openEditModal(clan); }}>
@@ -250,6 +275,62 @@ export default function GenealogyManagement() {
                                 placeholder="Nhập địa chỉ nếu có"
                             />
                         </label>
+                        {modalMode === "create" && (
+                            <div className="manager-account-section">
+                                <div className="manager-section-title">
+                                    <span className="material-symbols-outlined">manage_accounts</span>
+                                    <div>
+                                        <strong>Tài khoản Manager phụ trách</strong>
+                                        <p>Manager này sẽ được gán quyền quản lý dòng họ vừa tạo và có quyền thêm người vào cây gia phả.</p>
+                                    </div>
+                                </div>
+                                <label>
+                                    Email Manager <b>*</b>
+                                    <input
+                                        type="email"
+                                        value={clanForm.manager_email}
+                                        onChange={(event) => setClanForm(prev => ({ ...prev, manager_email: event.target.value }))}
+                                        placeholder="manager@example.com"
+                                    />
+                                </label>
+                                <label>
+                                    Mật khẩu Manager <b>*</b>
+                                    <input
+                                        type="password"
+                                        value={clanForm.manager_password}
+                                        onChange={(event) => setClanForm(prev => ({ ...prev, manager_password: event.target.value }))}
+                                        placeholder="Tối thiểu 6 ký tự"
+                                        autoComplete="new-password"
+                                    />
+                                </label>
+                                <div className="manager-name-grid">
+                                    <label>
+                                        Họ Manager <b>*</b>
+                                        <input
+                                            value={clanForm.manager_surname}
+                                            onChange={(event) => setClanForm(prev => ({ ...prev, manager_surname: event.target.value }))}
+                                            placeholder="Ví dụ: Nguyễn"
+                                        />
+                                    </label>
+                                    <label>
+                                        Tên đệm
+                                        <input
+                                            value={clanForm.manager_middle_name}
+                                            onChange={(event) => setClanForm(prev => ({ ...prev, manager_middle_name: event.target.value }))}
+                                            placeholder="Ví dụ: Văn"
+                                        />
+                                    </label>
+                                    <label>
+                                        Tên Manager <b>*</b>
+                                        <input
+                                            value={clanForm.manager_first_name}
+                                            onChange={(event) => setClanForm(prev => ({ ...prev, manager_first_name: event.target.value }))}
+                                            placeholder="Ví dụ: An"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        )}
                         {formError && <p className="clan-form-error">{formError}</p>}
                         <div className="clan-modal-actions">
                             <button type="button" className="secondary" onClick={closeModal} disabled={saving}>Hủy</button>
