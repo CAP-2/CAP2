@@ -61,6 +61,27 @@ export const getAdminAccounts = async () => {
   return data;
 };
 
+
+export const createAdminAccount = async (body) => {
+  const res = await fetch(`${BASE_URL}/accounts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Tạo tài khoản thất bại");
+  return data;
+};
+
+export const deleteAdminAccount = async (accountId) => {
+  const res = await fetch(`${BASE_URL}/accounts/${accountId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Xóa tài khoản thất bại");
+  return data;
+};
 export const updateAdminAccountAccess = async (accountId, body) => {
   const res = await fetch(`${BASE_URL}/accounts/${accountId}`, {
     method: "PUT",

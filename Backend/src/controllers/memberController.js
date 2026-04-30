@@ -13,6 +13,17 @@ const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   return [s, m, f].filter(Boolean).join(" ").trim();
 };
 
+const fmtSqlDate = (d) => {
+  if (!d) return null;
+  if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  const text = String(d).trim();
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return text.length >= 10 ? text.slice(0, 10) : text || null;
+};
+
 const getAccountContext = async (accountId) => {
   const sql = `
     SELECT 
@@ -430,8 +441,8 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     clan, 
     treeMembers: peopleRows.map(p => ({
       ...p,
-      birth_date: p.birth_date ? String(p.birth_date).slice(0, 10) : null,
-      death_date: p.death_date ? String(p.death_date).slice(0, 10) : null,
+      birth_date: fmtSqlDate(p.birth_date),
+      death_date: fmtSqlDate(p.death_date),
     })), 
     families: familyRows.map(f => ({
       ...f,
@@ -476,8 +487,8 @@ exports.getDashboard = async (req, res) => {
       );
       treeMembers = peopleRows.map((person) => ({
         ...person,
-        birth_date: person.birth_date ? String(person.birth_date).slice(0, 10) : null,
-        death_date: person.death_date ? String(person.death_date).slice(0, 10) : null,
+        birth_date: fmtSqlDate(person.birth_date),
+        death_date: fmtSqlDate(person.death_date),
       }));
 
       const [familyRows] = await db.query(

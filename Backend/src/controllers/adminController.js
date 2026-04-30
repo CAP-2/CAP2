@@ -33,10 +33,21 @@ exports.listClans = async (req, res) => {
       SELECT c.id, c.clan_name, c.history, c.hall_address, c.created_at,
         (SELECT COUNT(*) FROM people p WHERE p.clan_id = c.id AND ${peopleFilter}) AS member_count,
         (SELECT COUNT(*) FROM posts po WHERE po.clan_id = c.id AND ${postFilter}) AS post_count,
-        (SELECT p.display_name FROM accounts a 
-         JOIN people p ON a.person_id = p.id 
-         WHERE p.clan_id = c.id AND a.role_id = 2 
-         ORDER BY a.id ASC LIMIT 1) AS owner_name
+        (
+          SELECT COUNT(DISTINCT a.id)
+          FROM accounts a
+          LEFT JOIN people mp ON mp.id = a.person_id
+          LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+          WHERE a.role_id = 2 AND (mp.clan_id = c.id OR ac.clan_id = c.id)
+        ) AS manager_count,
+        (
+          SELECT COALESCE(NULLIF(mp.display_name, ''), a.email)
+          FROM accounts a
+          LEFT JOIN people mp ON mp.id = a.person_id
+          LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+          WHERE a.role_id = 2 AND (mp.clan_id = c.id OR ac.clan_id = c.id)
+          ORDER BY a.id ASC LIMIT 1
+        ) AS owner_name
       FROM clans c
       ORDER BY c.id ASC
     `);
@@ -576,5 +587,264 @@ exports.getDashboardStats = async (req, res) => {
   } catch (e) {
     console.error("getDashboardStats:", e);
     return res.status(500).json({ success: false, message: "Lỗi thống kê" });
+  }
+};
+
+// === Admin account management full CRUD (override/extend) ===
+const normalizeText = (value) => (value == null ? "" : String(value).trim());
+const normalizeNullable = (value) => {
+  const text = normalizeText(value);
+  return text === "" ? null : text;
+};
+
+async function ensurePersonForAccount(connection, account, data) {
+  const displayName = normalizeText(data.display_name) || buildDisplayNameFromParts(data.surname, data.middle_name, data.first_name) || normalizeText(data.email);
+  const clanId = data.clan_id === null || data.clan_id === "" || data.clan_id === undefined ? null : Number(data.clan_id);
+  if (clanId !== null && !Number.isFinite(clanId)) {
+    const err = new Error("clan_id không hợp lệ");
+    err.status = 400;
+    throw err;
+  }
+  if (clanId !== null) {
+    const [clans] = await connection.query("SELECT id FROM clans WHERE id = ? LIMIT 1", [clanId]);
+    if (!clans.length) {
+      const err = new Error("Dòng họ không tồn tại");
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const personPayload = [
+    clanId,
+    displayName,
+    normalizeNullable(data.first_name),
+    normalizeNullable(data.middle_name),
+    normalizeNullable(data.surname),
+  ];
+
+  if (account.person_id) {
+    await connection.query(
+      `UPDATE people SET clan_id = ?, display_name = ?, first_name = ?, middle_name = ?, surname = ? WHERE id = ?`,
+      [...personPayload, account.person_id]
+    );
+    return account.person_id;
+  }
+
+  const [result] = await connection.query(
+    `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, generation) VALUES (?, ?, ?, ?, ?, 1)`,
+    personPayload
+  );
+  await connection.query("UPDATE accounts SET person_id = ? WHERE id = ?", [result.insertId, account.id]);
+  return result.insertId;
+}
+
+exports.listAccounts = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        a.id AS account_id,
+        a.email,
+        a.role_id,
+        a.status,
+        a.person_id,
+        a.created_at,
+        a.updated_at,
+        p.first_name,
+        p.middle_name,
+        p.surname,
+        p.display_name,
+        CASE WHEN a.role_id = 1 THEN NULL ELSE COALESCE(p.clan_id, ac_primary.clan_id) END AS clan_id,
+        CASE WHEN a.role_id = 1 THEN NULL ELSE COALESCE(c_person.clan_name, ac_names.clan_names) END AS clan_name,
+        CASE WHEN a.role_id = 1 THEN NULL ELSE ac_names.clan_ids END AS managed_clan_ids,
+        CASE WHEN a.role_id = 1 THEN NULL ELSE ac_names.clan_names END AS managed_clan_names
+      FROM accounts a
+      LEFT JOIN people p ON a.person_id = p.id
+      LEFT JOIN clans c_person ON p.clan_id = c_person.id
+      LEFT JOIN (
+        SELECT account_id, MIN(clan_id) AS clan_id
+        FROM account_clans
+        WHERE status = 'active'
+        GROUP BY account_id
+      ) ac_primary ON ac_primary.account_id = a.id
+      LEFT JOIN (
+        SELECT ac.account_id,
+               GROUP_CONCAT(DISTINCT ac.clan_id ORDER BY ac.clan_id SEPARATOR ',') AS clan_ids,
+               GROUP_CONCAT(DISTINCT c.clan_name ORDER BY c.clan_name SEPARATOR ', ') AS clan_names
+        FROM account_clans ac
+        JOIN clans c ON c.id = ac.clan_id
+        WHERE ac.status = 'active'
+        GROUP BY ac.account_id
+      ) ac_names ON ac_names.account_id = a.id
+      ORDER BY
+        CASE WHEN a.role_id = 1 THEN 0 ELSE 1 END,
+        COALESCE(c_person.clan_name, ac_names.clan_names, 'zzz'),
+        a.role_id ASC,
+        a.id DESC
+    `);
+    return res.json({ success: true, accounts: rows });
+  } catch (e) {
+    console.error("listAccounts:", e);
+    return res.status(500).json({ success: false, message: "Lỗi danh sách tài khoản" });
+  }
+};
+
+exports.createAccount = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const email = normalizeText(req.body.email).toLowerCase();
+    const password = String(req.body.password || "");
+    const roleId = Number(req.body.role_id || 3);
+    const status = normalizeText(req.body.status) || "active";
+
+    if (!email || !password) return res.status(400).json({ success: false, message: "Vui lòng nhập email và mật khẩu" });
+    if (password.length < 6) return res.status(400).json({ success: false, message: "Mật khẩu tối thiểu 6 ký tự" });
+    if (![2, 3].includes(roleId)) return res.status(400).json({ success: false, message: "Chỉ được tạo Manager hoặc Member" });
+    if (!["pending", "active", "rejected"].includes(status)) return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+
+    await connection.beginTransaction();
+    const displayName = normalizeText(req.body.display_name) || buildDisplayNameFromParts(req.body.surname, req.body.middle_name, req.body.first_name) || email;
+    const clanId = req.body.clan_id === null || req.body.clan_id === "" || req.body.clan_id === undefined ? null : Number(req.body.clan_id);
+    if (clanId !== null && !Number.isFinite(clanId)) throw Object.assign(new Error("clan_id không hợp lệ"), { status: 400 });
+    if (clanId !== null) {
+      const [clans] = await connection.query("SELECT id FROM clans WHERE id = ? LIMIT 1", [clanId]);
+      if (!clans.length) throw Object.assign(new Error("Dòng họ không tồn tại"), { status: 400 });
+    }
+
+    const [personResult] = await connection.query(
+      `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, generation) VALUES (?, ?, ?, ?, ?, 1)`,
+      [clanId, displayName, normalizeNullable(req.body.first_name), normalizeNullable(req.body.middle_name), normalizeNullable(req.body.surname)]
+    );
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [accResult] = await connection.query(
+      `INSERT INTO accounts (email, password, person_id, role_id, status) VALUES (?, ?, ?, ?, ?)`,
+      [email, hashedPassword, personResult.insertId, roleId, status]
+    );
+
+    // Manager phải được ghi cả vào bảng account_clans để màn hình Admin
+    // đọc đúng dòng họ quản lý, kể cả khi sau này person_id/clan_id thay đổi.
+    if (Number(roleId) === 2 && clanId !== null) {
+      await connection.query(
+        `INSERT INTO account_clans (account_id, clan_id, person_id, status)
+         VALUES (?, ?, ?, 'active')
+         ON DUPLICATE KEY UPDATE clan_id = VALUES(clan_id), person_id = VALUES(person_id), status = 'active'`,
+        [accResult.insertId, clanId, personResult.insertId]
+      );
+    }
+
+    await connection.commit();
+    return res.status(201).json({ success: true, message: "Đã tạo tài khoản", account_id: accResult.insertId, person_id: personResult.insertId });
+  } catch (e) {
+    try { await connection.rollback(); } catch (_) {}
+    console.error("createAccount:", e);
+    if (e.code === "ER_DUP_ENTRY") return res.status(400).json({ success: false, message: "Email đã tồn tại" });
+    return res.status(e.status || 500).json({ success: false, message: e.message || "Lỗi tạo tài khoản" });
+  } finally {
+    connection.release();
+  }
+};
+
+exports.updateAccountAccess = async (req, res) => {
+  const targetId = Number(req.params.id);
+  const selfId = Number(req.user.id);
+  const connection = await db.getConnection();
+  try {
+    if (!Number.isFinite(targetId)) return res.status(400).json({ success: false, message: "account_id không hợp lệ" });
+    await connection.beginTransaction();
+    const [rows] = await connection.query("SELECT id, person_id, role_id FROM accounts WHERE id = ? LIMIT 1", [targetId]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản" });
+    }
+    const acc = rows[0];
+    const body = req.body || {};
+
+    const email = normalizeText(body.email).toLowerCase();
+    if (email) await connection.query("UPDATE accounts SET email = ? WHERE id = ?", [email, targetId]);
+
+    if (body.password != null && String(body.password).trim() !== "") {
+      const pwd = String(body.password);
+      if (pwd.length < 6) throw Object.assign(new Error("Mật khẩu tối thiểu 6 ký tự"), { status: 400 });
+      const hashed = await bcrypt.hash(pwd, 10);
+      await connection.query("UPDATE accounts SET password = ? WHERE id = ?", [hashed, targetId]);
+    }
+
+    if (body.role_id !== undefined) {
+      if (targetId === selfId) throw Object.assign(new Error("Không thể đổi quyền của chính mình"), { status: 400 });
+      if (Number(acc.role_id) === 1) throw Object.assign(new Error("Không chỉnh quyền tài khoản Admin qua màn hình này"), { status: 400 });
+      const rid = Number(body.role_id);
+      if (![2, 3].includes(rid)) throw Object.assign(new Error("Chỉ gán vai trò Manager hoặc Member"), { status: 400 });
+      await connection.query("UPDATE accounts SET role_id = ? WHERE id = ?", [rid, targetId]);
+    }
+
+    if (body.status !== undefined) {
+      const st = normalizeText(body.status);
+      if (["pending", "active", "rejected"].includes(st)) {
+        if (targetId === selfId && st !== "active") throw Object.assign(new Error("Không thể khóa tài khoản admin đang đăng nhập"), { status: 400 });
+        await connection.query("UPDATE accounts SET status = ? WHERE id = ?", [st, targetId]);
+      }
+    }
+
+    let ensuredPersonId = acc.person_id;
+    if (["display_name", "first_name", "middle_name", "surname", "clan_id"].some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+      ensuredPersonId = await ensurePersonForAccount(connection, acc, body);
+    }
+
+    // Đồng bộ quan hệ tài khoản - dòng họ cho Manager.
+    // Đây là nguồn dữ liệu chính để Admin lọc/tách tài khoản theo dòng họ.
+    const [[freshAcc]] = await connection.query("SELECT id, person_id, role_id FROM accounts WHERE id = ? LIMIT 1", [targetId]);
+    const finalRoleId = Number(freshAcc?.role_id || acc.role_id);
+    const finalPersonId = ensuredPersonId || freshAcc?.person_id || acc.person_id;
+    if (Object.prototype.hasOwnProperty.call(body, "clan_id") || body.role_id !== undefined) {
+      const clanId = body.clan_id === null || body.clan_id === "" || body.clan_id === undefined ? null : Number(body.clan_id);
+      if (finalRoleId === 2 && clanId !== null && Number.isFinite(clanId) && finalPersonId) {
+        await connection.query(
+          `INSERT INTO account_clans (account_id, clan_id, person_id, status)
+           VALUES (?, ?, ?, 'active')
+           ON DUPLICATE KEY UPDATE clan_id = VALUES(clan_id), person_id = VALUES(person_id), status = 'active'`,
+          [targetId, clanId, finalPersonId]
+        );
+      } else if (finalRoleId !== 2 || clanId === null) {
+        await connection.query("DELETE FROM account_clans WHERE account_id = ?", [targetId]);
+      }
+    }
+
+    await connection.commit();
+    return res.json({ success: true, message: "Đã cập nhật tài khoản" });
+  } catch (e) {
+    try { await connection.rollback(); } catch (_) {}
+    console.error("updateAccountAccess:", e);
+    if (e.code === "ER_DUP_ENTRY") return res.status(400).json({ success: false, message: "Email đã tồn tại" });
+    return res.status(e.status || 500).json({ success: false, message: e.message || "Lỗi cập nhật tài khoản" });
+  } finally {
+    connection.release();
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  const targetId = Number(req.params.id);
+  const selfId = Number(req.user.id);
+  const connection = await db.getConnection();
+  try {
+    if (!Number.isFinite(targetId)) return res.status(400).json({ success: false, message: "account_id không hợp lệ" });
+    if (targetId === selfId) return res.status(400).json({ success: false, message: "Không thể xóa tài khoản đang đăng nhập" });
+    await connection.beginTransaction();
+    const [rows] = await connection.query("SELECT id, person_id, role_id FROM accounts WHERE id = ? LIMIT 1", [targetId]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản" });
+    }
+    if (Number(rows[0].role_id) === 1) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Không xóa tài khoản Admin qua màn hình này" });
+    }
+    await connection.query("DELETE FROM accounts WHERE id = ?", [targetId]);
+    await connection.commit();
+    return res.json({ success: true, message: "Đã xóa tài khoản đăng nhập" });
+  } catch (e) {
+    try { await connection.rollback(); } catch (_) {}
+    console.error("deleteAccount:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa tài khoản" });
+  } finally {
+    connection.release();
   }
 };

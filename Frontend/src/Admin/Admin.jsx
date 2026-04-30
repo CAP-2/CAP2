@@ -24,6 +24,9 @@ const Admin = () => {
   const [error, setError] = useState("");
   const [clans, setClans] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [accountFolder, setAccountFolder] = useState(null);
+  const [accountFolderSearch, setAccountFolderSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedClanId, setSelectedClanId] = useState(null);
   const [clanTreeData, setClanTreeData] = useState(null);
@@ -199,6 +202,35 @@ const Admin = () => {
 
   const roots = clanTreeData?.familyTree?.roots || [];
 
+  const adminAccounts = accounts.filter((a) => Number(a.role_id) === 1);
+  const clanAccountFolders = [
+    { id: "admin", name: "Tài khoản Admin", count: adminAccounts.length, accounts: adminAccounts, isAdmin: true },
+    ...clans.map((c) => {
+      const list = accounts.filter((a) => {
+        if (Number(a.role_id) === 1) return false;
+        const managedIds = String(a.managed_clan_ids || "").split(",").map((x) => Number(x)).filter(Boolean);
+        return Number(a.clan_id) === Number(c.id) || managedIds.includes(Number(c.id));
+      });
+      return { id: Number(c.id), name: c.clan_name, count: list.length, accounts: list, isAdmin: false };
+    }),
+    {
+      id: "unassigned",
+      name: "Chưa gắn dòng họ",
+      count: accounts.filter((a) => Number(a.role_id) !== 1 && !a.clan_id && !a.managed_clan_ids).length,
+      accounts: accounts.filter((a) => Number(a.role_id) !== 1 && !a.clan_id && !a.managed_clan_ids),
+      isAdmin: false,
+    },
+  ].filter((f) => f.count > 0 || f.id !== "unassigned");
+  const visibleAccountFolders = clanAccountFolders.filter((f) =>
+    f.name.toLowerCase().includes(accountFolderSearch.trim().toLowerCase())
+  );
+  const currentAccountFolder = accountFolder ? clanAccountFolders.find((f) => String(f.id) === String(accountFolder)) : null;
+  const visibleFolderAccounts = (currentAccountFolder?.accounts || []).filter((a) => {
+    const q = accountSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [a.email, a.display_name, a.clan_name, a.managed_clan_names].some((v) => String(v || "").toLowerCase().includes(q));
+  });
+
   return (
     <div className="adm-page">
       <header className="adm-topbar">
@@ -252,145 +284,96 @@ const Admin = () => {
       {loading ? (
         <p className="adm-muted">Đang tải…</p>
       ) : tab === "access" ? (
-        <div className="adm-grid">
-          <section className="adm-card adm-card--wide">
-            <h2>Tài khoản và quyền</h2>
-            <p className="adm-muted">
-              Chỉnh vai trò Manager / Member, trạng thái, và dòng họ gắn với hồ sơ người (person). Tài khoản Admin
-              không chỉnh tại đây.
-            </p>
-            <div className="adm-table-wrap">
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Email</th>
-                    <th>Vai trò</th>
-                    <th>Trạng thái</th>
-                    <th>Dòng họ</th>
-                    <th> </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accounts.map((row) => (
-                    <tr key={row.account_id}>
-                      <td>{row.account_id}</td>
-                      <td>{row.email}</td>
-                      <td>{roleLabel(row.role_id)}</td>
-                      <td>{row.status}</td>
-                      <td>{row.clan_name || "—"}</td>
-                      <td>
-                        {row.role_id === 1 ? (
-                          <span className="adm-muted">—</span>
-                        ) : (
-                          <button type="button" className="adm-btn adm-btn--sm" onClick={() => setAccessEdit({ ...row })}>
-                            Sửa
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section className="adm-card adm-card--wide">
+          <div className="adm-section-head">
+            <div>
+              <h2>Quản lý tài khoản đăng nhập</h2>
+              <p className="adm-muted">Chọn một mục bên dưới để mở tệp tài khoản. Tài khoản Manager lấy đúng dòng họ từ hồ sơ người và bảng account_clans.</p>
             </div>
-          </section>
-
-          <section className="adm-card">
-            <h2>Cấp quyền Manager mới</h2>
-            <p className="adm-muted">Tạo tài khoản manager và gán một dòng họ.</p>
-            <form className="adm-form" onSubmit={submitManager}>
-              <label>
-                Dòng họ *
-                <select
-                  required
-                  value={managerForm.clan_id}
-                  onChange={(e) => setManagerForm((p) => ({ ...p, clan_id: e.target.value }))}
-                >
-                  <option value="">Chọn…</option>
-                  {clans.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      #{c.id} — {c.clan_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Email *
-                <input
-                  value={managerForm.email}
-                  onChange={(e) => setManagerForm((p) => ({ ...p, email: e.target.value }))}
-                  required
-                  type="email"
-                />
-              </label>
-              <label>
-                Mật khẩu *
-                <input
-                  value={managerForm.password}
-                  onChange={(e) => setManagerForm((p) => ({ ...p, password: e.target.value }))}
-                  required
-                  type="password"
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </label>
-              <div className="adm-form-row">
-                <label>
-                  Họ
-                  <input value={managerForm.surname} onChange={(e) => setManagerForm((p) => ({ ...p, surname: e.target.value }))} />
-                </label>
-                <label>
-                  Tên đệm
-                  <input
-                    value={managerForm.middle_name}
-                    onChange={(e) => setManagerForm((p) => ({ ...p, middle_name: e.target.value }))}
-                  />
-                </label>
-                <label>
-                  Tên *
-                  <input
-                    value={managerForm.first_name}
-                    onChange={(e) => setManagerForm((p) => ({ ...p, first_name: e.target.value }))}
-                    required
-                  />
-                </label>
-              </div>
-              <label>
-                Giới tính
-                <select value={managerForm.gender} onChange={(e) => setManagerForm((p) => ({ ...p, gender: Number(e.target.value) }))}>
-                  <option value={1}>Nam</option>
-                  <option value={2}>Nữ</option>
-                </select>
-              </label>
-              <label>
-                Ngày sinh
-                <input
-                  type="date"
-                  value={managerForm.birth_date}
-                  onChange={(e) => setManagerForm((p) => ({ ...p, birth_date: e.target.value }))}
-                />
-              </label>
-              <label>
-                Quê quán
-                <input value={managerForm.hometown} onChange={(e) => setManagerForm((p) => ({ ...p, hometown: e.target.value }))} />
-              </label>
-              <label>
-                Đời (thế hệ)
-                <input
-                  type="number"
-                  min={1}
-                  value={managerForm.generation}
-                  onChange={(e) => setManagerForm((p) => ({ ...p, generation: e.target.value }))}
-                />
-              </label>
-              <button type="submit" className="adm-btn adm-btn--primary">
-                Tạo Manager
+            {currentAccountFolder ? (
+              <button type="button" className="adm-btn adm-btn--ghost" onClick={() => { setAccountFolder(null); setAccountSearch(""); }}>
+                ← Quay lại danh sách dòng họ
               </button>
-            </form>
-          </section>
-        </div>
+            ) : null}
+          </div>
+
+          {!currentAccountFolder ? (
+            <>
+              <div className="adm-toolbar">
+                <input
+                  className="adm-search"
+                  value={accountFolderSearch}
+                  onChange={(e) => setAccountFolderSearch(e.target.value)}
+                  placeholder="Tìm kiếm dòng họ hoặc mục tài khoản..."
+                />
+              </div>
+              <div className="adm-folder-grid">
+                {visibleAccountFolders.map((folder) => (
+                  <button key={folder.id} type="button" className="adm-folder-card" onClick={() => setAccountFolder(folder.id)}>
+                    <span className="adm-folder-icon">▣</span>
+                    <strong>{folder.name}</strong>
+                    <small>{folder.count} tài khoản</small>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="adm-folder-title">
+                <h3>Tệp tài khoản: {currentAccountFolder.name}</h3>
+                <p className="adm-muted">Chỉ hiển thị tài khoản thuộc mục đang chọn.</p>
+              </div>
+              <div className="adm-toolbar">
+                <input
+                  className="adm-search"
+                  value={accountSearch}
+                  onChange={(e) => setAccountSearch(e.target.value)}
+                  placeholder="Tìm theo email, tên hoặc dòng họ..."
+                />
+              </div>
+              <div className="adm-table-wrap">
+                <table className="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Tài khoản</th>
+                      <th>Dòng họ</th>
+                      <th>Vai trò</th>
+                      <th>Trạng thái</th>
+                      <th>Ngày tạo</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleFolderAccounts.map((row) => (
+                      <tr key={row.account_id}>
+                        <td>
+                          <strong>{row.display_name || row.email}</strong>
+                          <br />
+                          <span className="adm-muted">{row.email}</span>
+                        </td>
+                        <td>{Number(row.role_id) === 1 ? "Tài khoản Admin" : row.clan_name || row.managed_clan_names || "Chưa gắn"}</td>
+                        <td>{roleLabel(Number(row.role_id))}</td>
+                        <td>{row.status}</td>
+                        <td>{row.created_at ? new Date(row.created_at).toLocaleDateString("vi-VN") : "—"}</td>
+                        <td>
+                          {Number(row.role_id) === 1 ? (
+                            <span className="adm-muted">—</span>
+                          ) : (
+                            <button type="button" className="adm-btn adm-btn--sm" onClick={() => setAccessEdit({ ...row })}>
+                              Sửa
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
       ) : (
-        <div className="adm-tree-layout">
+<div className="adm-tree-layout">
           <aside className="adm-card adm-clan-list">
             <h2>Các cây phả hệ</h2>
             <p className="adm-muted">

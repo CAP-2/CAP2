@@ -10,8 +10,12 @@ import {
 } from "../../api/managerService";
 import "./FamilyTreeEditor.css";
 
-const CARD_WIDTH = 180;
-const CARD_HEIGHT = 210;
+const CARD_WIDTH = 170;
+const CARD_HEIGHT = 185;
+const MIN_CARD_WIDTH = 130;
+const MIN_CARD_HEIGHT = 145;
+const MAX_CARD_WIDTH = 360;
+const MAX_CARD_HEIGHT = 360;
 const LEVEL_HEIGHT = Math.round(CARD_HEIGHT * 1.5);
 const X_GAP = Math.round(CARD_WIDTH * 0.9);
 const SPOUSE_GAP = X_GAP;
@@ -35,6 +39,7 @@ const BLOOD_LINE_COLORS = [
 const TRANSPARENT_IMAGE_DATA_URL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const LINE_ROUTE_STORAGE_PREFIX = "family-tree-line-routes:";
+const CARD_SIZE_STORAGE_PREFIX = "family-tree-card-sizes:";
 
 const toInt = (value, fallback = 0) => {
   const n = Number(value);
@@ -46,6 +51,56 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 function getLineRouteStorageKey(clanId) {
   return `${LINE_ROUTE_STORAGE_PREFIX}${clanId || "default"}`;
+}
+
+function getCardSizeStorageKey(clanId) {
+  return `${CARD_SIZE_STORAGE_PREFIX}${clanId || "default"}`;
+}
+
+
+function normalizeCardSize(size) {
+  const width = clamp(toInt(size?.width, CARD_WIDTH), MIN_CARD_WIDTH, MAX_CARD_WIDTH);
+  const height = clamp(toInt(size?.height, CARD_HEIGHT), MIN_CARD_HEIGHT, MAX_CARD_HEIGHT);
+  return { width, height };
+}
+
+function getCardSize(cardSizes, personId) {
+  return normalizeCardSize(cardSizes?.[Number(personId)]);
+}
+
+function loadCardSizes(clanId) {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(getCardSizeStorageKey(clanId));
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [key, normalizeCardSize(value)])
+        .filter(([key]) => Number.isFinite(Number(key))),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveCardSizes(clanId, sizes) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(getCardSizeStorageKey(clanId), JSON.stringify(sizes || {}));
+  } catch {
+    // localStorage can be unavailable; resizing still works in memory.
+  }
+}
+
+function findFounderIds(people, families, childRows) {
+  const peopleIds = new Set(asArray(people).map((person) => Number(person.id)));
+  const childIds = new Set(asArray(childRows).map((row) => Number(row.person_id)).filter((id) => peopleIds.has(id)));
+  const roots = asArray(people).filter((person) => !childIds.has(Number(person.id)));
+  const candidates = roots.length ? roots : asArray(people);
+  if (!candidates.length) return new Set();
+  const minGeneration = Math.min(...candidates.map((person) => toInt(person.generation, 1)));
+  return new Set(candidates.filter((person) => toInt(person.generation, 1) === minGeneration).map((person) => Number(person.id)));
 }
 
 function loadLineRoutes(clanId) {
@@ -72,8 +127,22 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const dateInput = (value) => {
   if (!value) return "";
-  const text = String(value);
-  return text.length >= 10 ? text.slice(0, 10) : text;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return "";
+};
+
+const formatDisplayDate = (value) => {
+  const text = dateInput(value);
+  if (!text) return "";
+  const [year, month, day] = text.split("-");
+  return day && month && year ? `${day}/${month}/${year}` : text;
 };
 
 const birthTime = (person) => {
@@ -451,11 +520,22 @@ function normalizeGenerationSpacing(people) {
   return positioned.sort((a, b) => toInt(a.generation, 1) - toInt(b.generation, 1) || personSort(a, b));
 }
 
-function centerOf(person) {
+function centerOf(person, cardSizes = {}) {
+  const size = getCardSize(cardSizes, person?.id);
   return {
-    x: toInt(person.tree_x, 0) + CARD_WIDTH / 2,
-    y: toInt(person.tree_y, 0) + CARD_HEIGHT / 2,
+    x: toInt(person.tree_x, 0) + size.width / 2,
+    y: toInt(person.tree_y, 0) + size.height / 2,
   };
+}
+
+function bottomOf(person, cardSizes = {}) {
+  const size = getCardSize(cardSizes, person?.id);
+  return toInt(person.tree_y, 0) + size.height;
+}
+
+function rightOf(person, cardSizes = {}) {
+  const size = getCardSize(cardSizes, person?.id);
+  return toInt(person.tree_x, 0) + size.width;
 }
 
 function getTreeExportBounds(people) {
@@ -505,7 +585,7 @@ function downloadBlob(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function buildTreeLines(people, families, childRows, lineRoutes = {}) {
+function buildTreeLines(people, families, childRows, lineRoutes = {}, cardSizes = {}) {
   const peopleMap = new Map(people.map((person) => [Number(person.id), person]));
   const childrenByFamily = new Map();
 
@@ -585,18 +665,18 @@ function buildTreeLines(people, families, childRows, lineRoutes = {}) {
     if (father && mother) {
       const left = toInt(father.tree_x, 0) <= toInt(mother.tree_x, 0) ? father : mother;
       const right = left === father ? mother : father;
-      const leftEdge = toInt(left.tree_x, 0) + CARD_WIDTH;
+      const leftEdge = rightOf(left, cardSizes);
       const rightEdge = toInt(right.tree_x, 0);
-      const y = Math.round((centerOf(father).y + centerOf(mother).y) / 2);
-      const startX = rightEdge > leftEdge ? leftEdge : Math.round(centerOf(left).x);
-      const endX = rightEdge > leftEdge ? rightEdge : Math.round(centerOf(right).x);
+      const y = Math.round((centerOf(father, cardSizes).y + centerOf(mother, cardSizes).y) / 2);
+      const startX = rightEdge > leftEdge ? leftEdge : Math.round(centerOf(left, cardSizes).x);
+      const endX = rightEdge > leftEdge ? rightEdge : Math.round(centerOf(right, cardSizes).x);
       coupleJoinPoint = {
         x: Math.round((startX + endX) / 2),
         y,
       };
       const savedSpouseY = Number(lineRoutes?.[familyId]?.spouseY);
       const spouseMinY = Math.min(toInt(father.tree_y, 0), toInt(mother.tree_y, 0)) + 24;
-      const spouseMaxY = Math.max(toInt(father.tree_y, 0), toInt(mother.tree_y, 0)) + CARD_HEIGHT - 24;
+      const spouseMaxY = Math.max(bottomOf(father, cardSizes), bottomOf(mother, cardSizes)) - 24;
       const spouseY = snap(clamp(Number.isFinite(savedSpouseY) ? savedSpouseY : y, spouseMinY, spouseMaxY));
       coupleJoinPoint.y = spouseY;
 
@@ -615,10 +695,10 @@ function buildTreeLines(people, families, childRows, lineRoutes = {}) {
     if (!parents.length || !children.length) return;
 
     const lineParent = father || parents[0];
-    const parentX = coupleJoinPoint ? coupleJoinPoint.x : Math.round(centerOf(lineParent).x);
-    const parentBottomY = coupleJoinPoint ? coupleJoinPoint.y : toInt(lineParent.tree_y, 0) + CARD_HEIGHT;
+    const parentX = coupleJoinPoint ? coupleJoinPoint.x : Math.round(centerOf(lineParent, cardSizes).x);
+    const parentBottomY = coupleJoinPoint ? coupleJoinPoint.y : bottomOf(lineParent, cardSizes);
     const childCenters = children.map((child) => ({
-      x: toInt(child.tree_x, 0) + CARD_WIDTH / 2,
+      x: centerOf(child, cardSizes).x,
       y: toInt(child.tree_y, 0),
     }));
     const busMinX = Math.min(parentX, ...childCenters.map((item) => item.x));
@@ -830,17 +910,22 @@ function PersonCard({
   canDrag = true,
   canEdit = false,
   canDelete = false,
+  founder = false,
+  size = { width: CARD_WIDTH, height: CARD_HEIGHT },
   onPointerDown,
+  onResizePointerDown,
   onEdit,
   onDelete,
 }) {
   const name = fullName(person, `Người #${person.id}`);
-  const years = `${person.birth_date ? String(person.birth_date).slice(0, 4) : "?"} - ${
-    person.death_date ? String(person.death_date).slice(0, 4) : "nay"
-  }`;
   const genderClass = Number(person.gender) === 1 ? "is-male" : Number(person.gender) === 2 ? "is-female" : "is-unknown";
-  const genderText = Number(person.gender) === 1 ? "Nam" : Number(person.gender) === 2 ? "Nữ" : "?";
+  const birthText = formatDisplayDate(person.birth_date);
+  const deathText = formatDisplayDate(person.death_date);
   const deceased = Number(person.is_living) === 0;
+  const lifeParts = [];
+  if (birthText) lifeParts.push(`Sinh: ${birthText}`);
+  if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
+  const lifeText = lifeParts.join(" - ");
 
   const stopActionPointer = (event) => {
     event.preventDefault();
@@ -849,8 +934,8 @@ function PersonCard({
 
   return (
     <div
-      className={`fte-personCard ${genderClass} ${deceased ? "is-deceased" : ""} ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
-      style={{ left: person.tree_x, top: person.tree_y }}
+      className={`fte-personCard ${genderClass} ${founder ? "is-founder" : ""} ${deceased ? "is-deceased" : ""} ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
+      style={{ left: person.tree_x, top: person.tree_y, width: size.width, height: size.height }}
       role="group"
       tabIndex={0}
       title={name}
@@ -894,16 +979,23 @@ function PersonCard({
           ) : null}
         </div>
       ) : null}
-      <div className="fte-cardBadges">
-        <span className="fte-genderBadge">{genderText}</span>
-        {deceased ? <span className="fte-lifeBadge" title="Đã mất">Đã mất</span> : null}
+      <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
+        {person.avatar_url ? (
+          <img className="fte-mainPhoto" src={person.avatar_url} alt={name} draggable="false" />
+        ) : (
+          <span className="material-symbols-outlined">person</span>
+        )}
       </div>
-      <div className="fte-avatar">
-        {person.avatar_url ? <img src={person.avatar_url} alt={name} draggable="false" /> : <span>{name.charAt(0).toUpperCase()}</span>}
-      </div>
-      <div className="fte-cardName">{name}</div>
-      <div className="fte-cardMeta">{years}</div>
-      <div className="fte-cardGeneration">Đời {person.generation || "?"}</div>
+      <div className="fte-cardName">{String(name).toUpperCase()}</div>
+      <div className="fte-cardGeneration">ĐỜI {person.generation || "?"}</div>
+      {lifeText ? <div className="fte-cardMeta">{lifeText}</div> : null}
+      {canDrag ? (
+        <span
+          className="fte-resizeHandle"
+          title="Kéo để đổi kích thước ô"
+          onPointerDown={(event) => onResizePointerDown?.(event, person)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -931,7 +1023,13 @@ function PersonInspector({
     return null;
   }
 
-  const setField = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const setField = (field, value) =>
+    setForm((current) => {
+      if (field === "is_living" && value === "1") {
+        return { ...current, is_living: value, death_date: "" };
+      }
+      return { ...current, [field]: value };
+    });
 
   return (
     <div className="fte-modalOverlay fte-inspectorOverlay" role="presentation" onMouseDown={onClose}>
@@ -1008,7 +1106,7 @@ function PersonInspector({
         </label>
         <label>
           Ngày mất
-          <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={!canEdit} />
+          <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={!canEdit || form.is_living === "1"} />
         </label>
         <label>
           Đời thứ
@@ -1078,6 +1176,7 @@ function RelationSelectDialog({
   onCancel,
   onSubmit,
   onUnlink,
+  onPickOnTree,
   saving,
 }) {
   const [query, setQuery] = useState("");
@@ -1108,6 +1207,11 @@ function RelationSelectDialog({
         </div>
 
         <div className="fte-relationPicker">
+          <button type="button" className="fte-pickOnTreeButton" disabled={saving} onClick={onPickOnTree}>
+            <span className="material-symbols-outlined">account_tree</span>
+            Chọn trực tiếp trên cây phả hệ
+          </button>
+          <div className="fte-relationDivider"><span>hoặc</span></div>
           <label>
             Tìm trong thành viên đã có
             <input
@@ -1177,7 +1281,13 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
     mother: "Thêm mẹ",
   };
 
-  const setField = (field, value) => onChange({ ...form, [field]: value });
+  const setField = (field, value) => {
+    if (field === "is_living" && value === "1") {
+      onChange({ ...form, is_living: value, death_date: "" });
+      return;
+    }
+    onChange({ ...form, [field]: value });
+  };
 
   return (
     <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
@@ -1222,12 +1332,19 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
             <input type="number" min="1" value={form.generation} onChange={(event) => setField("generation", event.target.value)} />
           </label>
           <label>
+            Tình trạng
+            <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)}>
+              <option value="1">Còn sống</option>
+              <option value="0">Đã mất</option>
+            </select>
+          </label>
+          <label>
             Ngày sinh
             <input type="date" value={form.birth_date} onChange={(event) => setField("birth_date", event.target.value)} />
           </label>
           <label>
             Ngày mất
-            <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} />
+            <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={form.is_living === "1"} />
           </label>
           <label className="is-wide">
             Quê quán
@@ -1272,14 +1389,17 @@ export default function FamilyTreeEditor({
   const [draggingId, setDraggingId] = useState(null);
   const [draggingLineId, setDraggingLineId] = useState(null);
   const [lineRoutes, setLineRoutes] = useState(() => loadLineRoutes(clan?.id));
+  const [cardSizes, setCardSizes] = useState(() => loadCardSizes(clan?.id));
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
+  const [treeRelationPicker, setTreeRelationPicker] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
 
   useEffect(() => {
     setLineRoutes(loadLineRoutes(clan?.id));
+    setCardSizes(loadCardSizes(clan?.id));
   }, [clan?.id]);
   const resolvedPermission = useMemo(() => {
     if (permission) {
@@ -1323,20 +1443,24 @@ export default function FamilyTreeEditor({
     () => findSpouse(selectedPerson, canonicalTree.families, people),
     [canonicalTree.families, people, selectedPerson],
   );
+  const treeRelationSource = useMemo(
+    () => people.find((person) => Number(person.id) === Number(treeRelationPicker?.sourcePersonId)) || null,
+    [people, treeRelationPicker?.sourcePersonId],
+  );
   const canEditPerson = useCallback(
     (personId) => canEditAll || (canEditLimited && allowedNodeSet.has(Number(personId))),
     [allowedNodeSet, canEditAll, canEditLimited],
   );
   const lines = useMemo(
-    () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows, lineRoutes),
-    [people, canonicalTree.families, canonicalTree.childRows, lineRoutes],
+    () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes),
+    [people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes],
   );
 
   const canvasSize = useMemo(() => {
-    const maxX = Math.max(2400, ...people.map((person) => toInt(person.tree_x, 0) + CARD_WIDTH + CANVAS_PADDING));
-    const maxY = Math.max(1400, ...people.map((person) => toInt(person.tree_y, 0) + CARD_HEIGHT + CANVAS_PADDING));
+    const maxX = Math.max(2400, ...people.map((person) => toInt(person.tree_x, 0) + getCardSize(cardSizes, person.id).width + CANVAS_PADDING));
+    const maxY = Math.max(1400, ...people.map((person) => toInt(person.tree_y, 0) + getCardSize(cardSizes, person.id).height + CANVAS_PADDING));
     return { width: maxX, height: maxY };
-  }, [people]);
+  }, [people, cardSizes]);
 
   const beginDrag = useCallback((event, person) => {
     if (event.button != null && event.button !== 0) return;
@@ -1410,8 +1534,91 @@ export default function FamilyTreeEditor({
     }
   }, [canEditAll, onReload]);
 
+  const linkRelationTarget = useCallback(async (relation, sourcePerson, targetId) => {
+    if (!canEditAll || !sourcePerson || !targetId) return false;
+    const sourceId = Number(sourcePerson.id);
+    const nextTargetId = Number(targetId);
+    if (!Number.isFinite(sourceId) || !Number.isFinite(nextTargetId) || sourceId === nextTargetId) {
+      setStatus("Không thể liên kết thành viên này.");
+      return false;
+    }
+
+    setDialogSaving(true);
+    setStatus("");
+    try {
+      if (relation === "spouse") {
+        await linkRelationsAPI({ person_id: sourceId, spouse_person_id: nextTargetId });
+      }
+
+      if (relation === "child") {
+        const family = findFamilyForParent(sourceId, canonicalTree.families);
+        const existingChildren = family
+          ? asArray(canonicalTree.childRows)
+              .filter((row) => Number(row.family_id) === Number(family.id))
+              .map((row) => Number(row.person_id))
+          : [];
+        const childrenIds = Array.from(new Set([...existingChildren, nextTargetId])).filter(
+          (id) => Number(id) !== sourceId,
+        );
+        await linkRelationsAPI({
+          person_id: sourceId,
+          children_person_ids: childrenIds,
+        });
+      }
+
+      if (relation === "father" || relation === "mother") {
+        const currentParents = findParentFamilyForChild(sourceId, canonicalTree.families, canonicalTree.childRows);
+        await linkRelationsAPI({
+          person_id: sourceId,
+          father_person_id: relation === "father" ? nextTargetId : currentParents?.father_id || null,
+          mother_person_id: relation === "mother" ? nextTargetId : currentParents?.mother_id || null,
+        });
+      }
+
+      setRelationDialog(null);
+      setTreeRelationPicker(null);
+      setStatus(`Đã liên kết ${relationLabels[relation] || "quan hệ"}.`);
+      await onReload?.();
+      return true;
+    } catch (error) {
+      setStatus(error?.message || "Không thể liên kết quan hệ.");
+      return false;
+    } finally {
+      setDialogSaving(false);
+    }
+  }, [canEditAll, canonicalTree.families, canonicalTree.childRows, onReload]);
+
+  const submitTreeRelationPick = useCallback((targetPerson) => {
+    if (!treeRelationPicker || !targetPerson) return;
+    const relation = treeRelationPicker.relation;
+    const sourcePerson = people.find((item) => Number(item.id) === Number(treeRelationPicker.sourcePersonId));
+    if (!sourcePerson) {
+      setTreeRelationPicker(null);
+      setStatus("Không tìm thấy thành viên gốc để liên kết.");
+      return;
+    }
+    const linkedIds = relationLinkedIds(relation, sourcePerson, canonicalTree.families, canonicalTree.childRows);
+    if (linkedIds.has(Number(targetPerson.id))) {
+      setStatus("Thành viên này đã được liên kết với quan hệ đang chọn.");
+      return;
+    }
+    const candidates = relationCandidates(relation, sourcePerson, people, linkedIds);
+    const allowed = candidates.some((item) => Number(item.id) === Number(targetPerson.id));
+    if (!allowed) {
+      setStatus("Thành viên này không phù hợp hoặc đã được liên kết. Hãy chọn thành viên khác trên cây.");
+      return;
+    }
+    linkRelationTarget(relation, sourcePerson, targetPerson.id);
+  }, [canonicalTree.families, canonicalTree.childRows, linkRelationTarget, people, treeRelationPicker]);
+
   const handleCardPointerDown = useCallback(
     (event, person) => {
+      if (treeRelationPicker) {
+        event.preventDefault();
+        event.stopPropagation();
+        submitTreeRelationPick(person);
+        return;
+      }
       if (!canEditPerson(person.id)) {
         event.preventDefault();
         event.stopPropagation();
@@ -1423,7 +1630,7 @@ export default function FamilyTreeEditor({
       }
       beginDrag(event, person);
     },
-    [beginDrag, canEditPerson, resolvedPermission.editScope],
+    [beginDrag, canEditPerson, resolvedPermission.editScope, submitTreeRelationPick, treeRelationPicker],
   );
 
   const beginLineDrag = useCallback((event, controlLine) => {
@@ -1609,6 +1816,7 @@ export default function FamilyTreeEditor({
     if (relation !== "person") {
       const currentIds = relationLinkedIds(relation, selectedPerson, canonicalTree.families, canonicalTree.childRows);
       setRelationDialog({ relation, personId: [...currentIds][0] || "" });
+      setTreeRelationPicker(null);
       return;
     }
     setDialog({
@@ -1745,6 +1953,47 @@ export default function FamilyTreeEditor({
     }
   };
 
+  const founderIds = useMemo(
+    () => findFounderIds(people, canonicalTree.families, canonicalTree.childRows),
+    [people, canonicalTree.families, canonicalTree.childRows],
+  );
+
+  const beginCardResize = useCallback((event, person) => {
+    if (!canEditPerson(person.id) || (event.button != null && event.button !== 0)) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const personId = Number(person.id);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const origin = getCardSize(cardSizes, personId);
+    let latest = origin;
+
+    const handleMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const scale = scaleRef.current || 1;
+      latest = normalizeCardSize({
+        width: snap(origin.width + (moveEvent.clientX - startX) / scale),
+        height: snap(origin.height + (moveEvent.clientY - startY) / scale),
+      });
+      setCardSizes((current) => ({ ...current, [personId]: latest }));
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      setCardSizes((current) => {
+        const next = { ...current, [personId]: latest };
+        saveCardSizes(clan?.id, next);
+        return next;
+      });
+      setStatus("Đã lưu kích thước ô thành viên trên trình duyệt.");
+    };
+
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp);
+  }, [canEditPerson, cardSizes, clan?.id]);
+
   const selectedCanEdit = selectedPerson ? canEditPerson(selectedPerson.id) : false;
   const selectedNotice = selectedPerson
     ? canEditAll
@@ -1826,6 +2075,14 @@ export default function FamilyTreeEditor({
             </div>
 
             {status ? <div className="fte-status">{status}</div> : null}
+            {treeRelationPicker ? (
+              <div className="fte-treePickBanner">
+                <span className="material-symbols-outlined">account_tree</span>
+                <strong>Đang chọn {relationLabels[treeRelationPicker.relation] || "quan hệ"}</strong>
+                <span>cho {treeRelationSource ? fullName(treeRelationSource) : "thành viên đã chọn"}. Bấm trực tiếp vào một ô thành viên trên cây để liên kết.</span>
+                <button type="button" onClick={() => setTreeRelationPicker(null)}>Hủy chọn</button>
+              </div>
+            ) : null}
 
             <div className="fte-workspace">
               <div className="fte-viewport">
@@ -1836,7 +2093,7 @@ export default function FamilyTreeEditor({
                     <div
                       id="family-tree"
                       ref={treeRef}
-                      className="fte-canvas"
+                      className={`fte-canvas ${treeRelationPicker ? "is-relation-picking" : ""}`}
                       style={{ width: canvasSize.width, height: canvasSize.height }}
                     >
                       <div className="fte-canvasTitle">
@@ -1875,7 +2132,10 @@ export default function FamilyTreeEditor({
                           canDrag={canEditPerson(person.id)}
                           canEdit={canEditPerson(person.id)}
                           canDelete={canEditAll && canEditPerson(person.id)}
+                          founder={founderIds.has(Number(person.id))}
+                          size={getCardSize(cardSizes, person.id)}
                           onPointerDown={handleCardPointerDown}
+                          onResizePointerDown={beginCardResize}
                           onEdit={openPersonEditor}
                           onDelete={handleDeletePersonByCard}
                         />
@@ -1915,6 +2175,14 @@ export default function FamilyTreeEditor({
         onCancel={() => !dialogSaving && setRelationDialog(null)}
         onSubmit={submitRelationDialog}
         onUnlink={unlinkRelationDialog}
+        onPickOnTree={() => {
+          if (!selectedPerson) return;
+          const relation = relationDialog?.relation;
+          setTreeRelationPicker({ relation, sourcePersonId: selectedPerson.id });
+          setRelationDialog(null);
+          setSelectedId(null);
+          setStatus(`Đang chọn ${relationLabels[relation] || "quan hệ"} cho ${fullName(selectedPerson)}. Hãy bấm vào một thành viên trên cây.`);
+        }}
       />
 
       <CreatePersonDialog

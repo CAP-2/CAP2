@@ -350,3 +350,16 @@
 .adm-modal h3 {
   margin: 0 0 6px;
 }
+
+/* Account folder view */
+.adm-section-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.adm-toolbar { display:flex; gap:12px; align-items:center; margin:14px 0 18px; }
+.adm-search { width:100%; border:1px solid #e0c18a; border-radius:10px; padding:12px 14px; font-weight:600; background:#fffdf7; color:#3d1f16; }
+.adm-folder-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:14px; }
+.adm-folder-card { min-height:120px; border:1px solid #d9a13b; border-radius:14px; background:linear-gradient(180deg,#fff8de,#fffdf8); color:#4a1d12; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; box-shadow:0 8px 20px rgba(80,40,20,.08); transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.adm-folder-card:hover { transform:translateY(-2px); border-color:#a81f12; box-shadow:0 12px 24px rgba(80,40,20,.14); }
+.adm-folder-icon { width:42px; height:42px; border-radius:12px; background:#fff0b8; color:#a81f12; display:grid; place-items:center; font-size:22px; font-weight:900; }
+.adm-folder-card strong { font-size:15px; text-align:center; }
+.adm-folder-card small { color:#9a1f10; font-weight:800; }
+.adm-folder-title { border:1px solid #e7d8bd; border-radius:12px; background:#fffdf7; padding:12px 14px; margin-bottom:12px; }
+.adm-folder-title h3 { margin:0 0 4px; color:#9a1f10; }
