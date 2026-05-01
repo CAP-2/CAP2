@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import Header from "./Header";
 import SiteFooter from "./SiteFooter";
-import Login from "../../pages/shared/Login";
-import { getCurrentUser, logout, isAuthenticated } from "../../utils/auth";
+import Login from "../../pages/Login/Login";
+import { getCurrentUser, logout } from "../../utils/auth";
 
 export default function UserLayout() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -14,6 +14,11 @@ export default function UserLayout() {
 
   const handleRedirection = useCallback((user) => {
     if (!user) return;
+
+    if (user.status === "pending") {
+      navigate("/waiting", { replace: true });
+      return;
+    }
     
     // Redirect logic based on role_name
     if (user.role_name === "admin") {
