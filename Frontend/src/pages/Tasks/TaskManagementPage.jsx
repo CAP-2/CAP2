@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getAdminClanTasks, getAdminClans, getAdminMembers } from "../../api/adminService";
-import { assignTaskAPI, getMembers, getTasksAPI } from "../../api/managerService";
+import { assignTaskAPI, createManagerEventAPI, getManagerEventsAPI, getMembers, getTasksAPI } from "../../api/managerService";
 import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
 import "./TaskManagementPage.css";
 
@@ -155,17 +155,20 @@ export default function TaskManagementPage({ role = "member" }) {
   const [clan, setClan] = useState(null);
   const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingTaskId, setSavingTaskId] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [form, setForm] = useState({
+    event_id: "",
     member_ids: [],
     title: "",
     description: "",
     due_date: "",
   });
+  const [eventForm, setEventForm] = useState({ title: "", event_date: "", description: "" });
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
@@ -181,6 +184,7 @@ export default function TaskManagementPage({ role = "member" }) {
         const data = await getAdminClans();
         setClans(asArray(data.clans));
         setTasks([]);
+        setEvents([]);
         setMembers([]);
         setClan(null);
         return;
@@ -189,18 +193,21 @@ export default function TaskManagementPage({ role = "member" }) {
       if (isMember) {
         const data = await getMemberTasks();
         setTasks(asArray(data.tasks));
+        setEvents([]);
         setMembers([]);
         setClan(null);
         return;
       }
 
       if (isAdmin && clanId) {
-        const [taskData, memberData] = await Promise.all([
+        const [taskData, memberData, eventData] = await Promise.all([
           getAdminClanTasks(clanId),
           getAdminMembers(),
+          getManagerEventsAPI({ clan_id: clanId }),
         ]);
         setClan(taskData.clan || null);
         setTasks(asArray(taskData.tasks));
+        setEvents(asArray(eventData.events));
         setMembers(
           asArray(memberData.members).filter(
             (member) =>
@@ -213,8 +220,9 @@ export default function TaskManagementPage({ role = "member" }) {
         return;
       }
 
-      const [taskRows, memberRows] = await Promise.all([getTasksAPI(), getMembers()]);
+      const [taskRows, memberRows, eventData] = await Promise.all([getTasksAPI(), getMembers(), getManagerEventsAPI()]);
       setTasks(asArray(taskRows));
+      setEvents(asArray(eventData.events));
       setMembers(
         asArray(memberRows).filter(
           (member) =>
@@ -248,6 +256,10 @@ export default function TaskManagementPage({ role = "member" }) {
       setError("Vui lòng nhập tiêu đề công việc.");
       return;
     }
+    if (!form.event_id) {
+      setError("Vui lòng chọn sự kiện liên quan trước khi giao việc.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -255,15 +267,45 @@ export default function TaskManagementPage({ role = "member" }) {
         ...form,
         title: form.title.trim(),
         description: form.description.trim(),
+        event_id: Number(form.event_id),
         member_ids: memberIds,
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       };
       const result = await assignTaskAPI(payload);
       setMessage(`Đã giao việc cho ${result.assigned_count || memberIds.length} thành viên.`);
-      setForm({ member_ids: [], title: "", description: "", due_date: "" });
+      setForm({ event_id: form.event_id, member_ids: [], title: "", description: "", due_date: "" });
       await loadData();
     } catch (err) {
       setError(err?.message || "Không thể giao công việc.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitEvent = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (!eventForm.title.trim()) {
+      setError("Vui lòng nhập tên sự kiện.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await createManagerEventAPI({
+        title: eventForm.title.trim(),
+        event_date: eventForm.event_date || null,
+        description: eventForm.description.trim(),
+        ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
+      });
+      setMessage("Đã tạo sự kiện. Bạn có thể tạo công việc bên trong sự kiện này.");
+      setEventForm({ title: "", event_date: "", description: "" });
+      await loadData();
+      if (result?.event_id) {
+        setForm((prev) => ({ ...prev, event_id: String(result.event_id) }));
+      }
+    } catch (err) {
+      setError(err?.message || "Không thể tạo sự kiện.");
     } finally {
       setSaving(false);
     }
@@ -387,11 +429,63 @@ export default function TaskManagementPage({ role = "member" }) {
 
       <div className={canAssign ? "task-layout" : "task-layout single"}>
         {canAssign && (
+          <div className="task-side">
+          <form className="task-card task-form" onSubmit={submitEvent}>
+            <div className="task-card-title">
+              <span className="material-symbols-outlined">event</span>
+              <h2>Tạo sự kiện mới</h2>
+            </div>
+            <label>
+              <span>Tên sự kiện</span>
+              <input
+                value={eventForm.title}
+                onChange={(event) => setEventForm((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder="Ví dụ: Giỗ tổ năm nay"
+              />
+            </label>
+            <label>
+              <span>Ngày sự kiện</span>
+              <input
+                type="date"
+                value={eventForm.event_date}
+                onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))}
+              />
+            </label>
+            <label>
+              <span>Mô tả sự kiện</span>
+              <textarea
+                value={eventForm.description}
+                onChange={(event) => setEventForm((prev) => ({ ...prev, description: event.target.value }))}
+                rows={3}
+                placeholder="Thông tin chung về sự kiện"
+              />
+            </label>
+            <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
+              <span className="material-symbols-outlined">add</span>
+              Tạo sự kiện
+            </button>
+          </form>
+
           <form className="task-card task-form" onSubmit={submitTask}>
             <div className="task-card-title">
               <span className="material-symbols-outlined">assignment_add</span>
               <h2>Giao việc mới</h2>
             </div>
+            <label>
+              <span>Sự kiện liên quan</span>
+              <select
+                value={form.event_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, event_id: event.target.value }))}
+                disabled={saving || !events.length}
+              >
+                <option value="">Chọn sự kiện trước khi giao việc</option>
+                {events.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title} {item.event_date ? `- ${formatDate(item.event_date)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="task-field">
               <span>Người thực hiện</span>
               <MemberCombobox
@@ -426,12 +520,14 @@ export default function TaskManagementPage({ role = "member" }) {
                 onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))}
               />
             </label>
-            <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length}>
+            <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length || !events.length}>
               <span className="material-symbols-outlined">send</span>
               {saving ? "Đang giao..." : "Giao việc"}
             </button>
+            {!events.length && <p className="task-note">Hãy tạo sự kiện trước, sau đó mới tạo công việc trong sự kiện.</p>}
             {!members.length && <p className="task-note">Chưa có member active để giao việc trong dòng họ này.</p>}
           </form>
+          </div>
         )}
 
         <div className="task-card">
@@ -453,6 +549,7 @@ export default function TaskManagementPage({ role = "member" }) {
                   {task.description && <p>{task.description}</p>}
                   <div className="task-meta">
                     {!isMember && <span>Người nhận: {fullName(task)}</span>}
+                    <span>Sự kiện: {task.event_title || "Chưa gắn sự kiện"}</span>
                     <span>Người giao: {task.manager_name || "Manager"}</span>
                     <span>Hạn: {formatDate(task.due_date)}</span>
                     <span>Giao lúc: {formatDate(task.assigned_at || task.created_at, true)}</span>

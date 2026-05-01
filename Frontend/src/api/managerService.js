@@ -288,7 +288,13 @@ export const assignTaskAPI = (data) =>
     "Giao việc thất bại"
   );
 
-export const getTasksAPI = () => request("/tasks", {}, "Lấy danh sách việc thất bại");
+export const getTasksAPI = (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.event_id) query.set("event_id", params.event_id);
+  if (params.clan_id) query.set("clan_id", params.clan_id);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request(`/tasks${suffix}`, {}, "Lấy danh sách việc thất bại");
+};
 
 export const completeTaskAPI = (assignmentId) =>
   request(
@@ -319,4 +325,32 @@ export const rejectProfileUpdateAPI = (id, reason) =>
       body: JSON.stringify({ reason }),
     },
     "Từ chối hồ sơ thất bại"
+  );
+
+
+export const getManagerEventsAPI = (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.clan_id) query.set("clan_id", params.clan_id);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request(`/events${suffix}`, {}, "Lấy danh sách sự kiện thất bại");
+};
+
+export const createManagerEventAPI = (data) =>
+  request(
+    "/events",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Tạo sự kiện thất bại"
+  );
+
+export const createEventTaskAPI = (eventId, data) =>
+  request(
+    `/events/${eventId}/tasks`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Tạo công việc trong sự kiện thất bại"
   );

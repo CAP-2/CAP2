@@ -268,6 +268,47 @@ const getOwnedFamilyRelations = async (personId) => {
 
 let hasEnsuredTaskTables = false;
 
+const ensureManagerTaskEventLink = async () => {
+    const [cols] = await db.query(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND COLUMN_NAME = 'event_id'
+    `);
+    if (!cols.length) {
+        await db.query(`ALTER TABLE manager_tasks ADD COLUMN event_id INT NULL AFTER due_date`);
+    }
+
+    const [idx] = await db.query(`
+        SELECT INDEX_NAME
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND INDEX_NAME = 'idx_manager_tasks_event'
+    `);
+    if (!idx.length) {
+        await db.query(`ALTER TABLE manager_tasks ADD INDEX idx_manager_tasks_event (event_id)`);
+    }
+
+    const [fk] = await db.query(`
+        SELECT CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND CONSTRAINT_NAME = 'fk_manager_tasks_event'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    `);
+    if (!fk.length) {
+        await db.query(`
+            ALTER TABLE manager_tasks
+            ADD CONSTRAINT fk_manager_tasks_event
+            FOREIGN KEY (event_id) REFERENCES events(id)
+            ON DELETE SET NULL
+        `);
+    }
+};
+
 const ensureTaskTables = async () => {
   if (hasEnsuredTaskTables) return;
   await db.query(`
@@ -278,10 +319,13 @@ const ensureTaskTables = async () => {
       title VARCHAR(255) NOT NULL,
       description TEXT NULL,
       due_date DATE NULL,
+      event_id INT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       KEY idx_manager_tasks_manager (manager_account_id),
       KEY idx_manager_tasks_clan (clan_id),
-      CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      KEY idx_manager_tasks_event (event_id),
+      CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+      CONSTRAINT fk_manager_tasks_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
   await db.query(`
@@ -302,6 +346,7 @@ const ensureTaskTables = async () => {
       CONSTRAINT fk_task_assignments_person FOREIGN KEY (member_person_id) REFERENCES people(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  await ensureManagerTaskEventLink();
   hasEnsuredTaskTables = true;
 };
 
@@ -537,12 +582,17 @@ exports.getDashboard = async (req, res) => {
             t.description,
             t.due_date,
             t.created_at,
+            t.event_id,
+            e.title AS event_title,
+            e.event_date,
+            e.description AS event_description,
             a.status,
             a.assigned_at,
             a.completed_at,
             COALESCE(pm.display_name, am.email, 'Manager') AS manager_name
           FROM manager_task_assignments a
           INNER JOIN manager_tasks t ON t.id = a.task_id
+          LEFT JOIN events e ON e.id = t.event_id
           INNER JOIN accounts am ON am.id = t.manager_account_id
           LEFT JOIN people pm ON pm.id = am.person_id
           WHERE a.member_account_id = ?
@@ -1340,12 +1390,17 @@ exports.getAssignedTasks = async (req, res) => {
           t.description,
           t.due_date,
           t.created_at,
+          t.event_id,
+          e.title AS event_title,
+          e.event_date,
+          e.description AS event_description,
           a.status,
           a.assigned_at,
           a.completed_at,
           COALESCE(pm.display_name, am.email, 'Manager') AS manager_name
         FROM manager_task_assignments a
         INNER JOIN manager_tasks t ON t.id = a.task_id
+        LEFT JOIN events e ON e.id = t.event_id
         INNER JOIN accounts am ON am.id = t.manager_account_id
         LEFT JOIN people pm ON pm.id = am.person_id
         WHERE a.member_account_id = ?

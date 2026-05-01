@@ -41,7 +41,11 @@
     router.get('/media', verifyToken, checkRole(['admin', 'manager']), managerController.getMedia);
 
     // --- 🌟 CÁC ROUTES MỚI CHO TÍNH NĂNG PHÂN CÔNG & GIA PHẢ 🌟 ---
-    // 1. Phân công công việc
+    // 1. Sự kiện và phân công công việc
+    router.get('/events', verifyToken, checkRole(['admin', 'manager']), managerController.getManagerEvents);
+    router.post('/events', verifyToken, checkRole(['admin', 'manager']), managerController.createManagerEvent);
+    router.post('/events/:eventId/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.createTaskForEvent);
+
     router.post('/assign-task', verifyToken, checkRole(['admin', 'manager']), managerController.assignTask);
     router.get('/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.getAssignedTasks);
     router.patch('/tasks/:id/complete', verifyToken, checkRole(['admin', 'manager']), managerController.completeTask);

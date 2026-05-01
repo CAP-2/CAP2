@@ -1599,6 +1599,47 @@ exports.getMedia = async (req, res) => {
 
 let hasEnsuredTaskTables = false;
 
+const ensureManagerTaskEventLink = async () => {
+    const [cols] = await db.query(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND COLUMN_NAME = 'event_id'
+    `);
+    if (!cols.length) {
+        await db.query(`ALTER TABLE manager_tasks ADD COLUMN event_id INT NULL AFTER due_date`);
+    }
+
+    const [idx] = await db.query(`
+        SELECT INDEX_NAME
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND INDEX_NAME = 'idx_manager_tasks_event'
+    `);
+    if (!idx.length) {
+        await db.query(`ALTER TABLE manager_tasks ADD INDEX idx_manager_tasks_event (event_id)`);
+    }
+
+    const [fk] = await db.query(`
+        SELECT CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'manager_tasks'
+          AND CONSTRAINT_NAME = 'fk_manager_tasks_event'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    `);
+    if (!fk.length) {
+        await db.query(`
+            ALTER TABLE manager_tasks
+            ADD CONSTRAINT fk_manager_tasks_event
+            FOREIGN KEY (event_id) REFERENCES events(id)
+            ON DELETE SET NULL
+        `);
+    }
+};
+
 const ensureTaskTables = async () => {
     if (hasEnsuredTaskTables) return;
     await db.query(`
@@ -1609,10 +1650,13 @@ const ensureTaskTables = async () => {
             title VARCHAR(255) NOT NULL,
             description TEXT NULL,
             due_date DATE NULL,
+            event_id INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             KEY idx_manager_tasks_manager (manager_account_id),
             KEY idx_manager_tasks_clan (clan_id),
-            CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+            KEY idx_manager_tasks_event (event_id),
+            CONSTRAINT fk_manager_tasks_account FOREIGN KEY (manager_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+            CONSTRAINT fk_manager_tasks_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     await db.query(`
@@ -1633,7 +1677,8 @@ const ensureTaskTables = async () => {
             CONSTRAINT fk_task_assignments_person FOREIGN KEY (member_person_id) REFERENCES people(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    hasEnsuredTaskTables = true;
+    await ensureManagerTaskEventLink();
+  hasEnsuredTaskTables = true;
 };
 
 const normalizeTaskMemberIds = (body) => {
@@ -1653,10 +1698,153 @@ const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
     }
 };
 
+
+const parseOptionalPositiveInt = (value) => {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const resolveTaskClanAndEvent = async (req, memberRows = []) => {
+    let managerClanId = null;
+    if (req.user.role_id === 2) {
+        managerClanId = await getManagerClanId(req.user.id);
+        if (managerClanId == null) {
+            const err = new Error('Không xác định được clan của manager');
+            err.status = 404;
+            throw err;
+        }
+    }
+
+    const requestedClanId = parseOptionalPositiveInt(req.body.clan_id);
+    const requestedEventId = parseOptionalPositiveInt(req.body.event_id ?? req.body.eventId);
+    let eventRow = null;
+
+    if (requestedEventId != null) {
+        const [events] = await db.query(
+            'SELECT id, clan_id, title, event_date, description FROM events WHERE id = ? LIMIT 1',
+            [requestedEventId]
+        );
+        eventRow = events[0] || null;
+        if (!eventRow) {
+            const err = new Error('Không tìm thấy sự kiện được chọn');
+            err.status = 404;
+            throw err;
+        }
+        if (managerClanId != null && Number(eventRow.clan_id) !== Number(managerClanId)) {
+            const err = new Error('Manager chỉ được tạo công việc trong sự kiện thuộc dòng họ của mình');
+            err.status = 403;
+            throw err;
+        }
+        if (requestedClanId != null && Number(eventRow.clan_id) !== Number(requestedClanId)) {
+            const err = new Error('Sự kiện không thuộc dòng họ đã chọn');
+            err.status = 400;
+            throw err;
+        }
+    }
+
+    if (managerClanId != null && memberRows.some((m) => Number(m.clan_id) !== Number(managerClanId))) {
+        const err = new Error('Manager chỉ được giao việc cho thành viên cùng dòng họ');
+        err.status = 403;
+        throw err;
+    }
+
+    const taskClanId = managerClanId ?? requestedClanId ?? eventRow?.clan_id ?? memberRows[0]?.clan_id ?? null;
+    if (taskClanId != null && memberRows.some((m) => Number(m.clan_id) !== Number(taskClanId))) {
+        const err = new Error('Chỉ được giao việc cho thành viên trong cùng dòng họ với sự kiện');
+        err.status = 403;
+        throw err;
+    }
+
+    if (eventRow && taskClanId != null && Number(eventRow.clan_id) !== Number(taskClanId)) {
+        const err = new Error('Công việc và sự kiện phải cùng dòng họ');
+        err.status = 400;
+        throw err;
+    }
+
+    return { taskClanId, eventId: eventRow ? eventRow.id : requestedEventId, eventRow };
+};
+
+exports.getManagerEvents = async (req, res) => {
+    try {
+        await ensureTaskTables();
+        let sql = `
+            SELECT
+                e.id,
+                e.clan_id,
+                e.title,
+                e.event_date,
+                e.description,
+                c.clan_name,
+                COUNT(DISTINCT mt.id) AS task_count,
+                COUNT(mta.id) AS assignment_count,
+                SUM(CASE WHEN mta.status = 'completed' THEN 1 ELSE 0 END) AS completed_assignment_count
+            FROM events e
+            LEFT JOIN clans c ON c.id = e.clan_id
+            LEFT JOIN manager_tasks mt ON mt.event_id = e.id
+            LEFT JOIN manager_task_assignments mta ON mta.task_id = mt.id
+            WHERE 1=1
+        `;
+        const params = [];
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            sql += ' AND e.clan_id = ?';
+            params.push(clanId);
+        } else {
+            const clanId = parseOptionalPositiveInt(req.query.clan_id);
+            if (clanId != null) {
+                sql += ' AND e.clan_id = ?';
+                params.push(clanId);
+            }
+        }
+        sql += ' GROUP BY e.id, e.clan_id, e.title, e.event_date, e.description, c.clan_name ORDER BY e.event_date DESC, e.id DESC';
+        const [rows] = await db.query(sql, params);
+        return res.json({ success: true, events: rows });
+    } catch (error) {
+        console.error('getManagerEvents error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi lấy danh sách sự kiện' });
+    }
+};
+
+exports.createManagerEvent = async (req, res) => {
+    try {
+        await ensureTaskTables();
+        const title = String(req.body.title || '').trim();
+        const description = req.body.description == null ? null : String(req.body.description).trim();
+        const eventDate = req.body.event_date || req.body.eventDate || null;
+        if (!title) return res.status(400).json({ success: false, message: 'Tên sự kiện không được để trống' });
+
+        let clanId = null;
+        if (req.user.role_id === 2) {
+            clanId = await getManagerClanId(req.user.id);
+            if (clanId == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+        } else {
+            clanId = parseOptionalPositiveInt(req.body.clan_id);
+            if (clanId == null) return res.status(400).json({ success: false, message: 'Vui lòng chọn dòng họ cho sự kiện' });
+        }
+
+        const [result] = await db.query(
+            'INSERT INTO events (clan_id, title, event_date, description) VALUES (?, ?, ?, ?)',
+            [clanId, title, eventDate || null, description || null]
+        );
+        return res.json({ success: true, message: 'Đã tạo sự kiện', event_id: result.insertId });
+    } catch (error) {
+        console.error('createManagerEvent error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi tạo sự kiện' });
+    }
+};
+
+exports.createTaskForEvent = async (req, res) => {
+    req.body.event_id = req.params.eventId;
+    return exports.assignTask(req, res);
+};
+
 exports.assignTask = async (req, res) => {
     const title = String(req.body.title || "").trim();
     const description = String(req.body.description || "").trim();
     const dueDate = req.body.due_date || null;
+    const eventIdFromBody = req.body.event_id ?? req.body.eventId ?? null;
     const memberIds = normalizeTaskMemberIds(req.body);
 
     try {
@@ -1666,14 +1854,6 @@ exports.assignTask = async (req, res) => {
         }
         if (!memberIds.length) {
             return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một thành viên" });
-        }
-
-        let managerClanId = null;
-        if (req.user.role_id === 2) {
-            managerClanId = await getManagerClanId(req.user.id);
-            if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: "Không xác định được clan của manager" });
-            }
         }
 
         const placeholders = memberIds.map(() => "?").join(",");
@@ -1689,28 +1869,16 @@ exports.assignTask = async (req, res) => {
         if (memberRows.length !== memberIds.length) {
             return res.status(400).json({ success: false, message: "Một hoặc nhiều thành viên không hợp lệ hoặc chưa kích hoạt" });
         }
-        if (managerClanId != null && memberRows.some((m) => m.clan_id !== managerClanId)) {
-            return res.status(403).json({ success: false, message: "Manager chỉ được giao việc cho thành viên cùng dòng họ" });
+        let taskContext;
+        try {
+            taskContext = await resolveTaskClanAndEvent(req, memberRows);
+        } catch (err) {
+            return res.status(err.status || 400).json({ success: false, message: err.message });
         }
 
-        const requestedClanId = req.body.clan_id == null || req.body.clan_id === "" ? null : Number(req.body.clan_id);
-        if (requestedClanId != null && (!Number.isFinite(requestedClanId) || requestedClanId <= 0)) {
-            return res.status(400).json({ success: false, message: "clan_id khong hop le" });
-        }
-        if (managerClanId == null) {
-            const taskClanIds = [...new Set(memberRows.map((m) => Number(m.clan_id)).filter((id) => Number.isFinite(id)))];
-            if (requestedClanId != null && memberRows.some((m) => Number(m.clan_id) !== requestedClanId)) {
-                return res.status(403).json({ success: false, message: "Chi duoc giao viec cho thanh vien trong dong ho da chon" });
-            }
-            if (requestedClanId == null && taskClanIds.length > 1) {
-                return res.status(400).json({ success: false, message: "Vui long chi giao viec cho thanh vien trong cung mot dong ho" });
-            }
-        }
-
-        const taskClanId = managerClanId ?? requestedClanId ?? memberRows[0]?.clan_id ?? null;
         const [taskResult] = await db.query(
-            "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date) VALUES (?, ?, ?, ?, ?)",
-            [req.user.id, taskClanId, title, description || null, dueDate || null]
+            "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?)",
+            [req.user.id, taskContext.taskClanId, title, description || null, dueDate || null, taskContext.eventId || null]
         );
 
         for (const member of memberRows) {
@@ -1761,6 +1929,10 @@ exports.getAssignedTasks = async (req, res) => {
                 t.due_date,
                 t.created_at,
                 t.clan_id,
+                t.event_id,
+                e.title AS event_title,
+                e.event_date,
+                e.description AS event_description,
                 c.clan_name,
                 a.status,
                 a.assigned_at,
@@ -1773,6 +1945,7 @@ exports.getAssignedTasks = async (req, res) => {
                 member.first_name
             FROM manager_task_assignments a
             INNER JOIN manager_tasks t ON t.id = a.task_id
+            LEFT JOIN events e ON e.id = t.event_id
             LEFT JOIN clans c ON c.id = t.clan_id
             INNER JOIN accounts m ON m.id = t.manager_account_id
             LEFT JOIN people mp ON mp.id = m.person_id
@@ -1794,7 +1967,12 @@ exports.getAssignedTasks = async (req, res) => {
                 params.push(clanId);
             }
         }
-        sql += " ORDER BY t.created_at DESC, a.id DESC";
+        const eventId = Number(req.query.event_id || req.query.eventId);
+        if (Number.isFinite(eventId) && eventId > 0) {
+            sql += " AND t.event_id = ?";
+            params.push(eventId);
+        }
+        sql += " ORDER BY COALESCE(e.event_date, t.created_at) DESC, t.created_at DESC, a.id DESC";
         const [results] = await db.query(sql, params);
         res.json(results);
     } catch (error) {
