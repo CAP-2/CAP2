@@ -10,6 +10,7 @@ const menuItems = [
   { icon: "post_add", label: "Bảng tin", path: "/manager/posts" },
   { icon: "dashboard", label: "Tổng quan", path: "/manager/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/manager/genealogy" },
+  { icon: "hourglass", label: "Viên nang thời gian", path: "/manager/time-capsule" },
   { icon: "group", label: "Thành viên", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
 ];

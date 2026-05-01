@@ -9,6 +9,7 @@ const menuItems = [
   { icon: "assignment", label: "Công việc", path: "/user/tasks" },
   { icon: "dashboard", label: "Tổng quan", path: "/user/dashboard" },
   { icon: "account_tree", label: "Cây gia phả", path: "/user/family-tree" },
+  { icon: "hourglass", label: "Viên nang thời gian", path: "/user/time-capsule" },
   { icon: "history_edu", label: "Bảng tin", path: "/user/posts" },
   { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
 ];

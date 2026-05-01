@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { getMemberChat, sendMemberChat } from "../../api/memberService";
 import { sendPublicAiChat } from "../../api/aiServerService";
 import { getStoredUser } from "../../utils/auth";
+import VoiceRecorder from "../../voice/VoiceRecorder";
 import "./AIChat.css";
 
 const initialMessages = [
@@ -107,6 +108,15 @@ const AIChatGateway = () => {
             <div ref={endRef} />
           </div>
           <form className="ai-chat-input" onSubmit={handleSend}>
+            {user && (
+              <VoiceRecorder
+                disabled={loading}
+                maxSeconds={180}
+                onTranscript={(transcript) => {
+                  if (transcript) setInput(transcript);
+                }}
+              />
+            )}
             <input
               type="text"
               placeholder="Hoi ve thanh vien, gia pha, bang tin, su kien..."

@@ -52,6 +52,7 @@ const managerRoutes = require('./src/routes/managerRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
+const voiceRoutes = require('../voice/backendRoutes');
 const managerController = require('./src/controllers/managerController');
 const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
@@ -126,6 +127,7 @@ app.use('/api/manager', managerRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/voice', voiceRoutes);
 
 // 8. Xử lý lỗi 404
 app.use((req, res) => {

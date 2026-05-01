@@ -34,6 +34,7 @@ import MemberProfile from "../pages/Member/MemberProfile";
 import MemberSubmissions from "../pages/Member/MemberSubmissions";
 import TaskManagementPage from "../pages/Tasks/TaskManagementPage";
 import GeneralPosts from "../pages/GeneralPosts/GeneralPosts";
+import TimeCapsulePage from "../pages/TimeCapsule/TimeCapsulePage";
 
 export default function AppRoutes() {
   return (
@@ -62,6 +63,7 @@ export default function AppRoutes() {
           <Route path="/user/posts" element={<GeneralPosts />} />
           <Route path="/posts/general" element={<GeneralPosts />} />
           <Route path="/user/tasks" element={<TaskManagementPage role="member" />} />
+          <Route path="/user/time-capsule" element={<TimeCapsulePage role="member" />} />
           <Route path="/member/tasks/:taskId" element={<Navigate to="/user/tasks" replace />} />
           <Route path="/user/submissions" element={<MemberSubmissions />} />
           <Route path="/user/profile" element={<MemberProfile />} />
@@ -77,6 +79,7 @@ export default function AppRoutes() {
           <Route path="/manager/genealogy" element={<GenealogySection />} />
           <Route path="/manager/tasks" element={<TaskManagementPage role="manager" />} />
           <Route path="/manager/tasks/:taskId" element={<TaskManagementPage role="manager" />} />
+          <Route path="/manager/time-capsule" element={<TimeCapsulePage role="manager" />} />
           <Route path="/manager/posts" element={<GeneralPosts />} />
           <Route path="/manager/pending" element={<PendingApprovals />} />
           <Route path="/manager/media" element={<Navigate to="/manager/posts" replace />} />

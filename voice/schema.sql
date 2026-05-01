@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS recordings (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  account_id INT NOT NULL,
+  person_id INT NULL,
+  clan_id INT NULL,
+  original_filename VARCHAR(255) NULL,
+  stored_filename VARCHAR(255) NOT NULL,
+  storage_path VARCHAR(1000) NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  duration_seconds INT UNSIGNED NULL,
+  file_size_bytes BIGINT UNSIGNED NOT NULL,
+  status ENUM('uploaded', 'transcribing', 'completed', 'failed') NOT NULL DEFAULT 'uploaded',
+  transcript LONGTEXT NULL,
+  error_message TEXT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_recordings_account (account_id),
+  KEY idx_recordings_clan (clan_id),
+  KEY idx_recordings_status_created (status, created_at),
+  FULLTEXT KEY ft_recordings_transcript (transcript)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

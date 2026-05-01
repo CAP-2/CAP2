@@ -2,3 +2,8 @@
 docker/.env
 node_modules/
 .codex-logs/
+Backend/storage/
+.venv/
+.venv-whisper/
+__pycache__/
+*.pyc*
