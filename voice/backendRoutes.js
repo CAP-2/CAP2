@@ -70,12 +70,55 @@ const ensureVoiceSchema = () => {
   if (!schemaReadyPromise) {
     const schemaPath = path.join(__dirname, "schema.sql");
     const schemaSql = fs.readFileSync(schemaPath, "utf8");
-    schemaReadyPromise = db.query(schemaSql).catch((error) => {
+    schemaReadyPromise = (async () => {
+      await db.query(schemaSql);
+      const [columns] = await db.query("SHOW COLUMNS FROM recordings");
+      const existingColumns = new Set(columns.map((column) => column.Field));
+      const migrations = [
+        ["processing_started_at", "ALTER TABLE recordings ADD COLUMN processing_started_at TIMESTAMP NULL AFTER status"],
+        ["transcript_edited", "ALTER TABLE recordings ADD COLUMN transcript_edited TINYINT(1) NOT NULL DEFAULT 0 AFTER transcript"],
+        ["transcript_edited_at", "ALTER TABLE recordings ADD COLUMN transcript_edited_at TIMESTAMP NULL AFTER transcript_edited"],
+        ["transcribed_at", "ALTER TABLE recordings ADD COLUMN transcribed_at TIMESTAMP NULL AFTER transcript_edited_at"],
+      ];
+
+      for (const [columnName, statement] of migrations) {
+        if (!existingColumns.has(columnName)) {
+          await db.query(statement);
+        }
+      }
+    })().catch((error) => {
       schemaReadyPromise = null;
       throw error;
     });
   }
   return schemaReadyPromise;
+};
+
+const resolveStoragePath = (storagePath) => {
+  const resolved = path.isAbsolute(storagePath)
+    ? path.resolve(storagePath)
+    : path.resolve(STORAGE_ROOT, storagePath);
+  const storageRootWithSep = STORAGE_ROOT.endsWith(path.sep) ? STORAGE_ROOT : `${STORAGE_ROOT}${path.sep}`;
+  if (resolved !== STORAGE_ROOT && !resolved.startsWith(storageRootWithSep)) {
+    throw new Error("Duong dan file ghi am khong hop le.");
+  }
+  return resolved;
+};
+
+const getRecordingById = async (id) => {
+  const [rows] = await db.query(
+    `
+      SELECT id, account_id, person_id, clan_id, original_filename, storage_path, mime_type,
+             duration_seconds, file_size_bytes, status, transcript, transcript_edited,
+             transcript_edited_at, transcribed_at, processing_started_at, error_message,
+             created_at, updated_at
+      FROM recordings
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [id]
+  );
+  return rows[0] || null;
 };
 
 const getAccountContext = async (accountId) => {
@@ -111,6 +154,14 @@ const canReadRecording = async (req, recording) => {
 
   return false;
 };
+
+router.use((req, _res, next) => {
+  const token = typeof req.query?.token === "string" ? req.query.token : "";
+  if (req.method === "GET" && /\/recordings\/\d+\/audio$/.test(req.path) && token && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${token}`;
+  }
+  next();
+});
 
 router.use(verifyToken, checkRole(["admin", "manager", "member"]));
 
@@ -182,7 +233,8 @@ router.get("/recordings", async (req, res) => {
 
     let sql = `
       SELECT id, account_id, person_id, clan_id, original_filename, mime_type,
-             duration_seconds, file_size_bytes, status, transcript, error_message,
+             duration_seconds, file_size_bytes, status, transcript, transcript_edited,
+             transcript_edited_at, transcribed_at, processing_started_at, error_message,
              created_at, updated_at
       FROM recordings
     `;
@@ -214,18 +266,7 @@ router.get("/recordings/:id", async (req, res) => {
     const id = parsePositiveInt(req.params.id);
     if (!id) return res.status(400).json({ success: false, message: "ID ghi am khong hop le." });
 
-    const [rows] = await db.query(
-      `
-        SELECT id, account_id, person_id, clan_id, original_filename, mime_type,
-               duration_seconds, file_size_bytes, status, transcript, error_message,
-               created_at, updated_at
-        FROM recordings
-        WHERE id = ?
-        LIMIT 1
-      `,
-      [id]
-    );
-    const recording = rows[0];
+    const recording = await getRecordingById(id);
     if (!recording) return res.status(404).json({ success: false, message: "Khong tim thay ghi am." });
 
     if (!(await canReadRecording(req, recording))) {
@@ -236,6 +277,112 @@ router.get("/recordings/:id", async (req, res) => {
   } catch (error) {
     console.error("voice detail error:", error);
     return res.status(500).json({ success: false, message: "Khong the tai ghi am." });
+  }
+});
+
+router.get("/recordings/:id/audio", async (req, res) => {
+  try {
+    await ensureVoiceSchema();
+
+    const id = parsePositiveInt(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID ghi am khong hop le." });
+
+    const recording = await getRecordingById(id);
+    if (!recording) return res.status(404).json({ success: false, message: "Khong tim thay ghi am." });
+
+    if (!(await canReadRecording(req, recording))) {
+      return res.status(403).json({ success: false, message: "Ban khong co quyen nghe ghi am nay." });
+    }
+
+    const audioPath = resolveStoragePath(recording.storage_path);
+    if (!fs.existsSync(audioPath)) {
+      return res.status(404).json({ success: false, message: "File ghi am khong ton tai." });
+    }
+
+    const stat = fs.statSync(audioPath);
+    res.setHeader("Content-Type", recording.mime_type || "application/octet-stream");
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Cache-Control", "private, max-age=0, no-cache");
+    return fs.createReadStream(audioPath).pipe(res);
+  } catch (error) {
+    console.error("voice audio stream error:", error);
+    return res.status(500).json({ success: false, message: "Khong the phat file ghi am." });
+  }
+});
+
+router.patch("/recordings/:id/transcript", async (req, res) => {
+  try {
+    await ensureVoiceSchema();
+
+    const id = parsePositiveInt(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID ghi am khong hop le." });
+
+    const transcript = String(req.body?.transcript || "").trim();
+    if (!transcript) {
+      return res.status(400).json({ success: false, message: "Transcript khong duoc de trong." });
+    }
+    if (transcript.length > 50000) {
+      return res.status(400).json({ success: false, message: "Transcript toi da 50.000 ky tu." });
+    }
+
+    const recording = await getRecordingById(id);
+    if (!recording) return res.status(404).json({ success: false, message: "Khong tim thay ghi am." });
+
+    if (!(await canReadRecording(req, recording))) {
+      return res.status(403).json({ success: false, message: "Ban khong co quyen sua transcript nay." });
+    }
+
+    await db.query(
+      `
+        UPDATE recordings
+        SET transcript = ?,
+            transcript_edited = 1,
+            transcript_edited_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      [transcript, id]
+    );
+
+    const updated = await getRecordingById(id);
+    return res.json({ success: true, recording: updated });
+  } catch (error) {
+    console.error("voice transcript update error:", error);
+    return res.status(500).json({ success: false, message: "Khong the cap nhat transcript." });
+  }
+});
+
+router.post("/recordings/:id/retry", async (req, res) => {
+  try {
+    await ensureVoiceSchema();
+
+    const id = parsePositiveInt(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID ghi am khong hop le." });
+
+    const recording = await getRecordingById(id);
+    if (!recording) return res.status(404).json({ success: false, message: "Khong tim thay ghi am." });
+
+    if (!(await canReadRecording(req, recording))) {
+      return res.status(403).json({ success: false, message: "Ban khong co quyen xu ly lai ghi am nay." });
+    }
+
+    await db.query(
+      `
+        UPDATE recordings
+        SET status = 'uploaded',
+            error_message = NULL,
+            processing_started_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      [id]
+    );
+
+    const updated = await getRecordingById(id);
+    return res.json({ success: true, recording: updated });
+  } catch (error) {
+    console.error("voice retry error:", error);
+    return res.status(500).json({ success: false, message: "Khong the dua ghi am ve hang doi." });
   }
 });
 

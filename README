@@ -82,3 +82,11 @@ python app.py
 - dinhviet.user15@gmail.com/123123     quyet@gmail.com/123123       (member)
 
 
+
+**Voice worker (local STT, khong dung OpenAI API)**
+- Voice worker KHONG dung chung venv voi `AI-server`.
+- Python dung cho voice phai la `D:\cap2\.venv-whisper\Scripts\python.exe`.
+- Cai dependency rieng bang `D:\cap2\.venv-whisper\Scripts\python.exe -m pip install -r D:\cap2\voice\requirements.txt`.
+- Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
+- Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
+- Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.

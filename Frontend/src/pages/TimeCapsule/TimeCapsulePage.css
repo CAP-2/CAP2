@@ -86,9 +86,24 @@
   color: #fff;
 }
 
+.time-capsule-secondary {
+  min-height: 38px;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #1d2b44;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .time-capsule-refresh:disabled,
 .time-capsule-primary:disabled,
-.time-capsule-danger:disabled {
+.time-capsule-danger:disabled,
+.time-capsule-secondary:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -287,6 +302,35 @@
   color: #24324a;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.time-capsule-audio {
+  width: 100%;
+  min-height: 40px;
+}
+
+.time-capsule-editor {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.time-capsule-editor textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.85rem;
+  color: #24324a;
+  font: inherit;
+  line-height: 1.55;
+  background: #fff;
+}
+
+.time-capsule-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
 .time-capsule-error {

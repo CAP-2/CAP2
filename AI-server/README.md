@@ -1,6 +1,18 @@
 # AI-server
 
-Python server dung Groq de nhan `prompt`, sinh SQL read-only, query MySQL truc tiep, roi tom tat ket qua bang tieng Viet.
+Python Flask server dùng Groq và MySQL cho trợ lý Gia Phả Việt.
+
+Luồng an toàn hiện tại:
+
+```text
+User hỏi
+-> normalize tiếng Việt
+-> detect intent
+-> câu hỏi thường: Groq trả lời tự nhiên
+-> câu hỏi cần database: fixed SQL whitelist -> MySQL -> Groq diễn giải dữ liệu thật
+```
+
+Server không để AI tự sinh SQL để chạy trực tiếp.
 
 ## Cai dat
 
@@ -27,9 +39,11 @@ Mac dinh server chay tai `http://localhost:8001`.
 
 ```json
 {
-  "prompt": "Cho toi 5 thanh vien moi tao gan day",
-  "user_id": 20,
-  "clan_id": 3
+  "prompt": "Bố mẹ tôi là ai?",
+  "account_id": 20,
+  "person_id": 10,
+  "clan_id": 3,
+  "role": "member"
 }
 ```
 
@@ -38,15 +52,20 @@ Response:
 ```json
 {
   "success": true,
-  "prompt": "Cho toi 5 thanh vien moi tao gan day",
-  "sql": "SELECT ...",
-  "row_count": 5,
-  "data": [],
-  "answer": "Tom tat ket qua bang tieng Viet"
+  "intent": "PARENTS",
+  "prompt": "Bố mẹ tôi là ai?",
+  "row_count": 1,
+  "data": {
+    "intent": "PARENTS",
+    "rows": [],
+    "row_count": 1
+  },
+  "answer": "Câu trả lời tiếng Việt dựa trên dữ liệu trong database."
 }
 ```
 
 ## Gioi han
 
-- Server chan cac lenh SQL thay doi du lieu nhu `INSERT`, `UPDATE`, `DELETE`, `DROP`.
-- Luong hien tai phu hop cho doc du lieu. Neu ban muon cho phep ghi du lieu, can them co che whitelist va xac nhan thao tac.
+- Chỉ dùng fixed SQL whitelist theo intent, không chạy SQL do AI sinh ra.
+- Server chặn các lệnh SQL thay đổi dữ liệu như `INSERT`, `UPDATE`, `DELETE`, `DROP`.
+- Câu hỏi không cần database sẽ được trả lời tự nhiên bằng Groq.

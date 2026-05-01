@@ -26,83 +26,17 @@ BLOCKED_SQL = (
     r"\breplace\b",
 )
 MODEL_NAME = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-SCHEMA_HINT = """
-Schema chinh:
-- accounts(id, email, password, person_id, role_id, status, created_at, updated_at)
-- account_clans(id, account_id, clan_id, person_id, status, created_at, updated_at)
-- people(id, clan_id, display_name, first_name, middle_name, surname, gender, generation, branch, birth_date, death_date, is_living, phone, email, zalo, facebook, address, hometown, avatar_url, bio, note, created_at, pending_avatar_url, pending_bio, moderation_status, moderation_reason)
-- clans(id, clan_name, history, hall_address, created_at)
-- families(id, clan_id, father_id, mother_id, marriage_date)
-- children(id, family_id, person_id, sort_order)
-- events(id, clan_id, title, event_date, description)
-- event_costs(id, event_id, item_name, amount, note, created_at)
-- event_contributions(id, event_id, person_id, amount, contribution_date, method, note, created_at)
-- posts(id, clan_id, author_id, content, image_url, created_at, status, rejection_reason)
-- post_comments(id, post_id, person_id, parent_id, content, created_at)
-- post_likes(id, post_id, person_id, created_at)
-- manager_announcements(id, manager_account_id, title, content, priority, created_at)
-- conversations(id, account_id, title, created_at)
-- messages(id, conversation_id, sender_type, content, created_at)
-
-Quy tac:
-- Chi duoc tra ve 1 cau lenh SQL SELECT.
-- "toi" la tai khoan accounts.id = {user_id}.
-- Luon gioi han trong clan_id = {clan_id}.
-- Uu tien cac bang people, families, children, clans de tra loi ve cay gia pha.
-- Neu truy van bai viet thi uu tien posts.status = 'approved'.
-- Khong duoc dung markdown hoac ```sql.
-"""
-
-GLOBAL_SCHEMA_HINT = """
-Schema chinh:
-- accounts(id, email, password, person_id, role_id, status, created_at, updated_at)
-- account_clans(id, account_id, clan_id, person_id, status, created_at, updated_at)
-- people(id, clan_id, display_name, first_name, middle_name, surname, gender, generation, branch, birth_date, death_date, is_living, phone, email, zalo, facebook, address, hometown, avatar_url, bio, note, created_at, pending_avatar_url, pending_bio, moderation_status, moderation_reason)
-- clans(id, clan_name, history, hall_address, created_at)
-- families(id, clan_id, father_id, mother_id, marriage_date)
-- children(id, family_id, person_id, sort_order)
-- events(id, clan_id, title, event_date, description)
-- posts(id, clan_id, author_id, content, image_url, created_at, status, rejection_reason)
-- conversations(id, account_id, title, created_at)
-- messages(id, conversation_id, sender_type, content, created_at)
-
-Quy tac:
-- Chi duoc tra ve 1 cau lenh SQL SELECT.
-- "toi" la tai khoan accounts.id = {user_id}.
-- Day la pham vi admin/toan he thong, khong bat buoc loc theo clan_id.
-- Neu truy van bai viet thi uu tien posts.status = 'approved'.
-- Khong duoc dung markdown hoac ```sql.
-"""
-
 PUBLIC_SYSTEM_PROMPT = """
-Ban la tro ly AI cua Gia Pha Viet tren trang chu cong khai.
-Tra loi ngan gon bang tieng Viet, huong dan nguoi dung ve dang ky, dang nhap,
-tao dong ho, quan ly cay gia pha, thanh vien, bai viet, su kien va thu vien.
-Khong duoc noi rang ban da truy cap du lieu rieng tu neu nguoi dung chua dang nhap.
+Bạn là trợ lý AI của Gia Phả Việt.
+Trả lời ngắn gọn, tự nhiên bằng tiếng Việt có dấu.
+Bạn có thể hướng dẫn người dùng về đăng ký, đăng nhập, tạo dòng họ,
+quản lý cây gia phả, thành viên, bài viết, sự kiện và thư viện.
+Không được nói rằng bạn đã truy cập dữ liệu riêng tư nếu người dùng chưa đăng nhập.
 """
 
 
 def normalize_text(text: str) -> str:
-    text = text.lower().strip()
-    replace = {
-        "cha me": "bo me",
-        "ba me": "bo me",
-        "bo me": "bo me",
-        "ong ba": "ong ba",
-        "ong noi": "ong ba",
-        "ba noi": "ong ba",
-        "ong ngoai": "ong ba",
-        "ba ngoai": "ong ba",
-        "vo": "vo",
-        "chong": "chong",
-        "anh chi em": "anh chi em",
-        "gia toc": "gia pha",
-        "dong toc": "gia pha",
-        "nha tho": "tu duong",
-    }
-    for src, dst in replace.items():
-        text = text.replace(src, dst)
-    return text
+    return normalize_vietnamese(text)
 
 
 def parse_int(value: Any) -> int | None:
@@ -517,15 +451,15 @@ def semantic_query_global(prompt: str, user_id: int | None) -> str | None:
 
 def public_answer(client: Groq | None, model: str, prompt: str) -> str:
     fallback = (
-        "Toi la tro ly AI cua Gia Pha Viet. Ban co the hoi ve cach dang ky, dang nhap, "
-        "tao dong ho, quan ly cay gia pha, thanh vien, bai viet, su kien va thu vien."
+        "Tôi là trợ lý AI của Gia Phả Việt. Bạn có thể hỏi về cách đăng ký, đăng nhập, "
+        "tạo dòng họ, quản lý cây gia phả, thành viên, bài viết, sự kiện và thư viện."
     )
     if client is None:
         p = normalize_text(prompt)
         if "dang ky" in p:
-            return "Ban co the dang ky tai khoan hoac dang ky dong ho moi tren trang chu, sau do cho quan tri vien xet duyet."
+            return "Bạn có thể đăng ký tài khoản hoặc đăng ký dòng họ mới trên trang chủ, sau đó chờ quản trị viên xét duyệt."
         if "dang nhap" in p:
-            return "Ban dang nhap bang email va mat khau da duoc cap. He thong se dua ban vao trang phu hop voi vai tro."
+            return "Bạn đăng nhập bằng email và mật khẩu đã được cấp. Hệ thống sẽ đưa bạn vào trang phù hợp với vai trò."
         return fallback
 
     try:
@@ -542,68 +476,117 @@ def public_answer(client: Groq | None, model: str, prompt: str) -> str:
         return fallback
 
 
-def ai_sql(
-    client: Groq | None,
-    model: str,
-    prompt: str,
-    user_id: int | None,
-    clan_id: int | None,
-    global_scope: bool = False,
-) -> str | None:
-    if client is None:
-        return None
+def answer_general(client: Groq | None, model: str, prompt: str) -> str:
+    fallback = (
+        "Tôi là trợ lý AI của hệ thống Gia Phả Việt. "
+        "Bạn có thể hỏi tôi về cách sử dụng hệ thống, quản lý thành viên, "
+        "dòng họ, bài viết, sự kiện hoặc các thông tin gia phả nếu bạn có quyền truy cập."
+    )
 
-    system_prompt = (
-        GLOBAL_SCHEMA_HINT.format(user_id=user_id or 0)
-        if global_scope
-        else SCHEMA_HINT.format(user_id=user_id, clan_id=clan_id)
-    )
-    res = client.chat.completions.create(
-        model=model,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return extract_sql_candidate(res.choices[0].message.content or "")
+    if client is None:
+        return fallback
+
+    try:
+        res = client.chat.completions.create(
+            model=model,
+            temperature=0.4,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Bạn là trợ lý AI của hệ thống Gia Phả Việt. "
+                        "Trả lời tự nhiên bằng tiếng Việt có dấu, rõ ràng, dễ hiểu. "
+                        "Bạn có thể hỗ trợ người dùng về cách sử dụng hệ thống, "
+                        "quản lý gia phả, thành viên, dòng họ, bài viết, sự kiện, "
+                        "và các câu hỏi thông thường. "
+                        "Nếu câu hỏi cần dữ liệu riêng tư nhưng chưa có dữ liệu được cung cấp, "
+                        "hãy nói rằng cần đăng nhập hoặc cần quyền truy cập. "
+                        "Không bịa dữ liệu từ database."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        text = (res.choices[0].message.content or "").strip()
+        return text or fallback
+    except Exception:
+        return fallback
+
+
+def answer_with_database(client: Groq | None, model: str, prompt: str, data: dict[str, Any]) -> str:
+    fallback = "Tôi đã lấy được dữ liệu, nhưng hiện chưa thể diễn giải bằng AI."
+
+    if client is None:
+        return fallback
+
+    try:
+        res = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Bạn là trợ lý AI của hệ thống Gia Phả Việt. "
+                        "Hãy trả lời bằng tiếng Việt có dấu, tự nhiên, dễ hiểu. "
+                        "Chỉ được sử dụng dữ liệu được cung cấp trong DATABASE_CONTEXT. "
+                        "Không được bịa thêm người, quan hệ, ngày tháng, sự kiện hoặc số liệu. "
+                        "Nếu DATABASE_CONTEXT không có dữ liệu phù hợp, hãy nói rõ rằng "
+                        "hệ thống chưa có dữ liệu phù hợp."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Câu hỏi của người dùng:\n{prompt}\n\n"
+                        f"DATABASE_CONTEXT:\n{json.dumps(data, ensure_ascii=False, default=str)}"
+                    ),
+                },
+            ],
+        )
+
+        text = (res.choices[0].message.content or "").strip()
+        return text or fallback
+    except Exception:
+        return fallback
 
 
 def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return "Khong tim thay du lieu phu hop trong gia pha cho cau hoi nay."
+        return "Không tìm thấy dữ liệu phù hợp trong gia phả cho câu hỏi này."
 
     first = rows[0]
     if len(rows) == 1 and "father" in first and "mother" in first:
-        father = first.get("father") or "chua co du lieu"
-        mother = first.get("mother") or "chua co du lieu"
-        return f"Bo: {father}. Me: {mother}."
+        father = first.get("father") or "chưa có dữ liệu"
+        mother = first.get("mother") or "chưa có dữ liệu"
+        return f"Bố: {father}. Mẹ: {mother}."
 
     if len(rows) == 1 and "clan_name" in first and ("history" in first or "hall_address" in first):
-        clan_name = first.get("clan_name") or "Dong ho hien tai"
+        clan_name = first.get("clan_name") or "Dòng họ hiện tại"
         history = first.get("history")
         hall_address = first.get("hall_address")
-        parts = [f"Thong tin cua {clan_name}."]
+        parts = [f"Thông tin của {clan_name}."]
         if history:
-            parts.append(f"Lich su: {history}")
+            parts.append(f"Lịch sử: {history}")
         if hall_address:
-            parts.append(f"Tu duong: {hall_address}")
+            parts.append(f"Từ đường: {hall_address}")
         return " ".join(parts)
 
     if "generation" in first and "member_count" in first:
-        parts = [f"Doi {row['generation']}: {row['member_count']} nguoi" for row in rows]
-        return "Thong ke theo doi: " + "; ".join(parts) + "."
+        parts = [f"Đời {row['generation']}: {row['member_count']} người" for row in rows]
+        return "Thống kê theo đời: " + "; ".join(parts) + "."
 
     if len(rows) == 1 and "member_count" in first:
-        return f"Gia pha hien co {first.get('member_count') or 0} thanh vien."
+        return f"Gia phả hiện có {first.get('member_count') or 0} thành viên."
 
     if "branch" in first and "member_count" in first:
-        parts = [f"Chi {row['branch']}: {row['member_count']} nguoi" for row in rows]
-        return "Thong ke theo chi: " + "; ".join(parts) + "."
+        parts = [f"Chi {row['branch']}: {row['member_count']} người" for row in rows]
+        return "Thống kê theo chi: " + "; ".join(parts) + "."
 
     if "like_count" in first and "post_id" in first:
-        parts = [f"Bai viet {row['post_id']}: {row['like_count']} luot thich" for row in rows[:10]]
-        return "Thong ke luot thich: " + "; ".join(parts) + "."
+        parts = [f"Bài viết {row['post_id']}: {row['like_count']} lượt thích" for row in rows[:10]]
+        return "Thống kê lượt thích: " + "; ".join(parts) + "."
 
     labels = []
     for row in rows[:10]:
@@ -612,8 +595,8 @@ def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
         elif row.get("grandparent_name"):
             labels.append(str(row["grandparent_name"]))
         elif row.get("father_name") or row.get("mother_name"):
-            father_name = row.get("father_name") or "chua ro"
-            mother_name = row.get("mother_name") or "chua ro"
+            father_name = row.get("father_name") or "chưa rõ"
+            mother_name = row.get("mother_name") or "chưa rõ"
             marriage_date = row.get("marriage_date")
             suffix = f" ({marriage_date})" if marriage_date else ""
             labels.append(f"{father_name} - {mother_name}{suffix}")
@@ -627,10 +610,10 @@ def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
                 labels.append(", ".join(values[:3]))
 
     if not labels:
-        return f"Tim thay {len(rows)} ban ghi phu hop."
+        return f"Tìm thấy {len(rows)} bản ghi phù hợp."
     if len(rows) <= 10:
-        return f"Tim thay {len(rows)} ket qua: " + "; ".join(labels) + "."
-    return f"Tim thay {len(rows)} ket qua. Mot vai muc dau: " + "; ".join(labels) + "."
+        return f"Tìm thấy {len(rows)} kết quả: " + "; ".join(labels) + "."
+    return f"Tìm thấy {len(rows)} kết quả. Một vài mục đầu: " + "; ".join(labels) + "."
 
 
 def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict[str, Any]]) -> str:
@@ -647,11 +630,11 @@ def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict
                 {
                     "role": "system",
                     "content": (
-                        "Ban la tro ly gia pha. Hay tom tat ket qua truy van thanh tieng Viet "
-                        "ro rang, ngan gon, than thien. Khong duoc bịa them thong tin."
+                        "Bạn là trợ lý gia phả. Hãy tóm tắt kết quả truy vấn thành tiếng Việt "
+                        "rõ ràng, ngắn gọn, thân thiện. Không được bịa thêm thông tin."
                     ),
                 },
-                {"role": "user", "content": f"Cau hoi: {prompt}\nDu lieu: {preview}"},
+                {"role": "user", "content": f"Câu hỏi: {prompt}\nDữ liệu: {preview}"},
             ],
         )
         text = (res.choices[0].message.content or "").strip()
@@ -661,6 +644,16 @@ def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict
 
 
 ROLE_NAMES = {1: "admin", 2: "manager", 3: "member"}
+
+GENERAL_INTENTS = {
+    "GREETING",
+    "HELP",
+    "CAPABILITY",
+    "HOW_TO_USE",
+    "GENERAL_QUESTION",
+    "PUBLIC",
+    "UNKNOWN",
+}
 
 RELATION_INTENTS = {
     "PARENTS",
@@ -695,6 +688,18 @@ ADMIN_INTENTS = MANAGER_INTENTS | {
     "ADMIN_POSTS",
     "ADMIN_EVENTS",
     "ADMIN_MEMBERS",
+}
+
+DB_INTENTS = ADMIN_INTENTS | MANAGER_INTENTS | MEMBER_INTENTS | {
+    "WHO_AM_I",
+    "MY_PARENTS",
+    "MY_CHILDREN",
+    "MY_SPOUSE",
+    "CLAN_MEMBERS_COUNT",
+    "CLAN_HISTORY",
+    "PERSON_INFO",
+    "RECENT_POSTS",
+    "UPCOMING_EVENTS",
 }
 
 SENSITIVE_PATTERNS = (
@@ -796,9 +801,40 @@ def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
 
     if "mat khau" in p or "password" in p or "token" in p or "secret" in p:
         return "SENSITIVE_DATA", 0.99, slots
+
+    if p in {"xin chao", "chao", "hello", "hi"} or "xin chao" in p:
+        return "GREETING", 0.95, slots
+    if (
+        "ban la ai" in p
+        or "ban co the lam gi" in p
+        or "ban lam duoc gi" in p
+        or "chuc nang cua ban" in p
+        or "tro ly ai" in p
+    ):
+        return "CAPABILITY", 0.95, slots
+    if (
+        "huong dan" in p
+        or "cach su dung" in p
+        or "lam sao" in p
+        or "lam the nao" in p
+        or "bat dau" in p
+        or "them thanh vien" in p
+        or "tao gia pha" in p
+        or "tao dong ho" in p
+    ):
+        return "HOW_TO_USE", 0.8, slots
+    if "ngay le" in p or "le lon" in p or (("thang toi" in p or "thang sau" in p) and "su kien" not in p):
+        return "GENERAL_QUESTION", 0.75, slots
+
     if "bo me" in p or "bo toi" in p or "me toi" in p or "cha toi" in p:
         return "PARENTS", 0.95, slots
-    if "con toi" in p or "cac con cua toi" in p or "con cua toi" in p:
+    if (
+        "con toi" in p
+        or "cac con cua toi" in p
+        or "con cua toi" in p
+        or "nguoi con" in p
+        or "bao nhieu con" in p
+    ):
         return "CHILDREN", 0.92, slots
     if "vo toi" in p or "chong toi" in p or "vo chong cua toi" in p:
         return "SPOUSE", 0.9, slots
@@ -834,6 +870,9 @@ def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
         return "BRANCH_STATS", 0.82, slots
     if "thong bao" in p or "truong ho" in p or "quan ly" in p:
         return "ANNOUNCEMENTS", 0.8, slots
+    if "su kien sap toi" in p or ("su kien" in p and ("sap toi" in p or "gan toi" in p)):
+        slots["time"] = "upcoming"
+        return "EVENTS", 0.86, slots
     if "su kien" in p or "gio" in p or "nhac" in p:
         return "EVENTS", 0.82, slots
     if "dong gop" in p or "ung ho" in p:
@@ -856,6 +895,9 @@ def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
 def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | None:
     p = normalize_vietnamese(prompt)
     role = ctx.get("role") or "member"
+
+    if intent in GENERAL_INTENTS or intent == "UNKNOWN":
+        return None
 
     if intent == "SENSITIVE_DATA" or any(pattern in p for pattern in SENSITIVE_PATTERNS):
         return "Tôi không thể cung cấp mật khẩu, token, khóa bí mật hoặc dữ liệu nhạy cảm."
@@ -934,6 +976,17 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
                 [],
             )
         if intent == "EVENTS":
+            if slots.get("time") == "upcoming":
+                return (
+                    """
+                    SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
+                    FROM events ev
+                    LEFT JOIN clans c ON c.id = ev.clan_id
+                    WHERE ev.event_date >= CURDATE()
+                    ORDER BY ev.event_date ASC, ev.id ASC
+                    """,
+                    [],
+                )
             return (
                 """
                 SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
@@ -1149,6 +1202,16 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
         )
 
     if intent == "EVENTS":
+        if slots.get("time") == "upcoming":
+            return (
+                """
+                SELECT id, title, event_date, description
+                FROM events
+                WHERE clan_id = %s AND event_date >= CURDATE()
+                ORDER BY event_date ASC, id ASC
+                """,
+                [clan_id],
+            )
         return (
             """
             SELECT id, title, event_date, description
@@ -1437,32 +1500,34 @@ def create_app() -> Flask:
         public_scope = scope == "public"
 
         if not prompt:
-            return jsonify({"success": False, "message": "Thieu prompt"}), 400
-        if public_scope or (ctx.get("account_id") is None and ctx.get("clan_id") is None):
+            return jsonify({"success": False, "message": "Prompt không được để trống."}), 400
+
+        intent, confidence, slots = detect_intent(prompt)
+        user_payload = context_user_payload(ctx)
+
+        if public_scope or intent in GENERAL_INTENTS or intent == "UNKNOWN":
             return jsonify(
                 {
                     "success": True,
-                    "intent": "PUBLIC",
-                    "confidence": 1,
+                    "intent": "PUBLIC" if public_scope else intent,
+                    "confidence": 1 if public_scope else confidence,
                     "prompt": prompt,
-                    "scope": "public",
+                    "scope": "public" if public_scope else scope or None,
                     "row_count": 0,
-                    "user": None,
+                    "user": None if public_scope else user_payload,
                     "data": {},
-                    "answer": public_answer(groq_client, MODEL_NAME, prompt),
+                    "answer": answer_general(groq_client, MODEL_NAME, prompt),
                 }
             )
 
         if ctx.get("account_id") is None:
-            return jsonify({"success": False, "message": "Thieu account_id"}), 400
+            return jsonify({"success": False, "message": "Thiếu account_id."}), 400
 
-        intent, confidence, slots = detect_intent(prompt)
-        user_payload = context_user_payload(ctx)
         denial = permission_denial(intent, ctx, prompt)
         if denial:
             return jsonify(
                 {
-                    "success": True,
+                    "success": False,
                     "intent": intent,
                     "confidence": confidence,
                     "prompt": prompt,
@@ -1470,29 +1535,13 @@ def create_app() -> Flask:
                     "row_count": 0,
                     "data": {},
                     "answer": denial,
+                    "message": denial,
                 }
-            )
-
-        if intent == "UNKNOWN":
-            return jsonify(
-                {
-                    "success": True,
-                    "intent": intent,
-                    "confidence": confidence,
-                    "prompt": prompt,
-                    "user": user_payload,
-                    "row_count": 0,
-                    "data": {},
-                    "answer": (
-                        "Tôi chưa hỗ trợ câu hỏi này bằng intent/query cố định. "
-                        "Bạn có thể hỏi về bố mẹ, con, vợ/chồng, anh chị em, ông bà, hồ sơ cá nhân, "
-                        "thành viên, lịch sử dòng họ, bài viết hoặc sự kiện."
-                    ),
-                }
-            )
+            ), 403
 
         query = fixed_query(intent, ctx, slots)
         if not query:
+            answer = answer_general(groq_client, MODEL_NAME, prompt)
             return jsonify(
                 {
                     "success": True,
@@ -1502,7 +1551,7 @@ def create_app() -> Flask:
                     "user": user_payload,
                     "row_count": 0,
                     "data": {},
-                    "answer": "Intent này đã được nhận diện nhưng chưa có query whitelist tương ứng.",
+                    "answer": answer,
                 }
             )
 
@@ -1520,8 +1569,16 @@ def create_app() -> Flask:
             cur = conn.cursor(dictionary=True)
             cur.execute(sql, params)
             rows = cur.fetchall()
-            data = shape_data(intent, rows)
-            answer = deterministic_answer(intent, data, rows, prompt)
+            shaped_data = shape_data(intent, rows)
+            data = {
+                "intent": intent,
+                "rows": json_safe(rows),
+                "row_count": len(rows),
+            }
+            answer = answer_with_database(groq_client, MODEL_NAME, prompt, data)
+
+            if not answer or answer == "Tôi đã lấy được dữ liệu, nhưng hiện chưa thể diễn giải bằng AI.":
+                answer = deterministic_answer(intent, shaped_data, rows, prompt)
 
             return jsonify(
                 {
@@ -1530,8 +1587,6 @@ def create_app() -> Flask:
                     "confidence": confidence,
                     "prompt": prompt,
                     "user": user_payload,
-                    "sql": sql,
-                    "params": params,
                     "row_count": len(rows),
                     "data": data,
                     "answer": answer,
@@ -1545,7 +1600,7 @@ def create_app() -> Flask:
                     "confidence": confidence,
                     "user": user_payload,
                     "data": {},
-                    "message": f"Khong ket noi hoac truy van duoc database: {exc}",
+                    "message": f"Không kết nối hoặc truy vấn được database: {exc}",
                 }
             ), 503
         finally:

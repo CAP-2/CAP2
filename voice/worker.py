@@ -1,5 +1,7 @@
 import os
 import platform
+import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -10,17 +12,39 @@ import mysql.connector
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_PYTHON = Path(
+    os.getenv("VOICE_WORKER_PYTHON")
+    or (REPO_ROOT / ".venv-whisper" / "Scripts" / "python.exe")
+).resolve()
 
 load_dotenv(REPO_ROOT / "Backend" / ".env")
-load_dotenv(REPO_ROOT / "AI-server" / ".env")
 load_dotenv(REPO_ROOT / ".env")
 
 STORAGE_ROOT = Path(os.getenv("VOICE_STORAGE_ROOT") or (REPO_ROOT / "Backend" / "storage")).resolve()
-POLL_SECONDS = float(os.getenv("VOICE_WORKER_POLL_SECONDS", "5"))
-MODEL_NAME = os.getenv("VOICE_WHISPER_MODEL", "base")
+POLL_SECONDS = float(os.getenv("VOICE_WORKER_POLL_SECONDS", "3"))
+MODEL_NAME = os.getenv("VOICE_WHISPER_MODEL", "small")
 DEVICE = os.getenv("VOICE_WHISPER_DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("VOICE_WHISPER_COMPUTE_TYPE", "int8")
 LANGUAGE = os.getenv("VOICE_WHISPER_LANGUAGE", "vi").strip() or None
+DELETE_WAV_ON_SUCCESS = os.getenv("VOICE_DELETE_WAV_ON_SUCCESS", "true").strip().lower() != "false"
+DELETE_WAV_ON_FAILED = os.getenv("VOICE_DELETE_WAV_ON_FAILED", "false").strip().lower() == "true"
+
+
+def validate_python_executable():
+    current = Path(sys.executable).resolve()
+    if EXPECTED_PYTHON.exists() and current != EXPECTED_PYTHON:
+        raise RuntimeError(
+            "Voice worker phai chay bang .venv-whisper, khong dung AI-server\\.venv.\n"
+            f"Expected: {EXPECTED_PYTHON}\n"
+            f"Current : {current}\n"
+            f"Run     : {EXPECTED_PYTHON} {REPO_ROOT / 'voice' / 'worker.py'}\n"
+            f"Or      : powershell -ExecutionPolicy Bypass -File {REPO_ROOT / 'run_voice_worker.ps1'}"
+        )
+
+    if "AI-server" in str(current) and ".venv" in str(current):
+        raise RuntimeError(
+            "Dang chay nham Python cua AI-server\\.venv. Hay dung D:\\cap2\\.venv-whisper\\Scripts\\python.exe."
+        )
 
 
 def load_whisper_model_class():
@@ -35,7 +59,7 @@ def load_whisper_model_class():
     except ImportError as exc:
         raise RuntimeError(
             f"Thieu dependency Python: {exc}. Hay activate venv dung va chay: "
-            "pip install -r AI-server/requirements.txt"
+            f"{EXPECTED_PYTHON} -m pip install -r {REPO_ROOT / 'voice' / 'requirements.txt'}"
         ) from exc
 
     return WhisperModel
@@ -62,6 +86,29 @@ def ensure_schema():
     cur = conn.cursor()
     try:
         cur.execute(schema_sql)
+        cur.execute("SHOW COLUMNS FROM recordings")
+        existing_columns = {row[0] for row in cur.fetchall()}
+        migrations = [
+            (
+                "processing_started_at",
+                "ALTER TABLE recordings ADD COLUMN processing_started_at TIMESTAMP NULL AFTER status",
+            ),
+            (
+                "transcript_edited",
+                "ALTER TABLE recordings ADD COLUMN transcript_edited TINYINT(1) NOT NULL DEFAULT 0 AFTER transcript",
+            ),
+            (
+                "transcript_edited_at",
+                "ALTER TABLE recordings ADD COLUMN transcript_edited_at TIMESTAMP NULL AFTER transcript_edited",
+            ),
+            (
+                "transcribed_at",
+                "ALTER TABLE recordings ADD COLUMN transcribed_at TIMESTAMP NULL AFTER transcript_edited_at",
+            ),
+        ]
+        for column_name, statement in migrations:
+            if column_name not in existing_columns:
+                cur.execute(statement)
         conn.commit()
     finally:
         cur.close()
@@ -78,6 +125,11 @@ def claim_recording():
             SELECT id, storage_path
             FROM recordings
             WHERE status = 'uploaded'
+               OR (status = 'failed' AND transcript IS NULL)
+               OR (
+                    status = 'transcribing'
+                    AND processing_started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+                  )
             ORDER BY created_at ASC, id ASC
             LIMIT 1
             FOR UPDATE
@@ -91,7 +143,10 @@ def claim_recording():
         cur.execute(
             """
             UPDATE recordings
-            SET status = 'transcribing', error_message = NULL, updated_at = CURRENT_TIMESTAMP
+            SET status = 'transcribing',
+                processing_started_at = CURRENT_TIMESTAMP,
+                error_message = NULL,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
             """,
             (row["id"],),
@@ -106,20 +161,43 @@ def claim_recording():
         conn.close()
 
 
-def update_recording(recording_id: int, status: str, transcript: str | None = None, error_message: str | None = None):
+def mark_completed(recording_id: int, transcript: str):
     conn = connect()
     cur = conn.cursor()
     try:
         cur.execute(
             """
             UPDATE recordings
-            SET status = %s,
-                transcript = CASE WHEN %s IS NULL THEN transcript ELSE %s END,
-                error_message = %s,
+            SET status = 'completed',
+                transcript = %s,
+                transcribed_at = CURRENT_TIMESTAMP,
+                processing_started_at = NULL,
+                error_message = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
             """,
-            (status, transcript, transcript, error_message, recording_id),
+            (transcript, recording_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_failed(recording_id: int, error_message: str):
+    conn = connect()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE recordings
+            SET status = 'failed',
+                error_message = %s,
+                processing_started_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (error_message[:2000], recording_id),
         )
         conn.commit()
     finally:
@@ -134,20 +212,93 @@ def resolve_audio_path(storage_path: str) -> Path:
     return (STORAGE_ROOT / candidate).resolve()
 
 
-def transcribe(model, audio_path: Path) -> str:
-    segments, _info = model.transcribe(
-        str(audio_path),
-        language=LANGUAGE,
-        beam_size=5,
-        vad_filter=True,
+def convert_to_wav(input_path: Path) -> Path:
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg not found in PATH. Cai ffmpeg va mo lai terminal truoc khi chay voice worker.")
+
+    output_path = input_path.with_suffix(".wav")
+    if output_path.resolve() == input_path.resolve():
+        output_path = input_path.with_name(f"{input_path.stem}.whisper.wav")
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+        str(output_path),
+    ]
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
-    return " ".join(segment.text.strip() for segment in segments if segment.text).strip()
+
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr[:2000]}")
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("ffmpeg converted file is empty.")
+
+    return output_path
+
+
+def normalize_transcript(text: str) -> str:
+    text = " ".join(text.split())
+    text = text.replace(" ,", ",")
+    text = text.replace(" .", ".")
+    text = text.replace(" ?", "?")
+    text = text.replace(" !", "!")
+    text = text.replace(" :", ":")
+    return text.strip()
+
+
+def transcribe(model, wav_path: Path) -> str:
+    segments, info = model.transcribe(
+        str(wav_path),
+        language=LANGUAGE,
+        task="transcribe",
+        beam_size=5,
+        best_of=5,
+        temperature=0,
+        vad_filter=False,
+        condition_on_previous_text=False,
+        no_speech_threshold=0.4,
+        log_prob_threshold=-1.0,
+        compression_ratio_threshold=2.4,
+    )
+    print(
+        "Detected language/probability: "
+        f"{getattr(info, 'language', None)}/{getattr(info, 'language_probability', None)}",
+        flush=True,
+    )
+
+    texts: list[str] = []
+    for segment in segments:
+        segment_text = (segment.text or "").strip()
+        print(f"Segment: {segment_text}", flush=True)
+        if segment_text:
+            texts.append(segment_text)
+
+    transcript = normalize_transcript(" ".join(texts))
+    print(f"Transcript length: {len(transcript)}", flush=True)
+    return transcript
 
 
 def main():
+    validate_python_executable()
+    print("Voice worker started", flush=True)
+    print(f"Using Python executable: {sys.executable}", flush=True)
     print(
-        f"Voice worker started: model={MODEL_NAME}, device={DEVICE}, "
-        f"compute_type={COMPUTE_TYPE}, language={LANGUAGE or 'auto'}"
+        f"Model name/device/compute type/language: "
+        f"{MODEL_NAME}/{DEVICE}/{COMPUTE_TYPE}/{LANGUAGE or 'auto'}",
+        flush=True,
     )
     ensure_schema()
     WhisperModel = load_whisper_model_class()
@@ -161,22 +312,34 @@ def main():
 
         recording_id = int(job["id"])
         audio_path = resolve_audio_path(str(job["storage_path"]))
-        print(f"Transcribing recording #{recording_id}: {audio_path}")
+        wav_path = None
+        print(f"Found recording #{recording_id}", flush=True)
+        print(f"Input path: {audio_path}", flush=True)
 
         try:
             if not audio_path.exists():
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-            transcript = transcribe(model, audio_path)
-            if not transcript:
-                raise RuntimeError("Whisper returned an empty transcript.")
+            wav_path = convert_to_wav(audio_path)
+            print(f"Converted wav path: {wav_path}", flush=True)
 
-            update_recording(recording_id, "completed", transcript=transcript, error_message=None)
-            print(f"Completed recording #{recording_id}")
+            transcript = transcribe(model, wav_path)
+            if not transcript:
+                raise RuntimeError(
+                    "Whisper returned an empty transcript after wav conversion. "
+                    "Kiem tra mic, file audio, ffmpeg output va nguong no_speech_threshold."
+                )
+
+            mark_completed(recording_id, transcript=transcript)
+            print(f"Completed recording #{recording_id}", flush=True)
+            if DELETE_WAV_ON_SUCCESS and wav_path and wav_path.exists():
+                wav_path.unlink()
         except Exception as exc:
             traceback.print_exc()
-            update_recording(recording_id, "failed", error_message=str(exc)[:2000])
-            print(f"Failed recording #{recording_id}: {exc}")
+            mark_failed(recording_id, str(exc))
+            print(f"Failed recording #{recording_id} with reason: {exc}", flush=True)
+            if DELETE_WAV_ON_FAILED and wav_path and wav_path.exists():
+                wav_path.unlink()
 
 
 if __name__ == "__main__":

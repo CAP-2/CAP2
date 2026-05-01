@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 docker/.env
 node_modules/
 .codex-logs/

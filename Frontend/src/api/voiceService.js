@@ -5,6 +5,8 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const getAuthToken = () => localStorage.getItem("auth_token") || localStorage.getItem("token") || "";
+
 const parseResponse = async (response, fallbackMessage) => {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -47,4 +49,32 @@ export const getVoiceRecordings = async (limit = 50) => {
   });
 
   return parseResponse(response, "Khong the tai danh sach ghi am.");
+};
+
+export const updateVoiceTranscript = async (id, transcript) => {
+  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/transcript`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ transcript }),
+  });
+
+  return parseResponse(response, "Khong the cap nhat transcript.");
+};
+
+export const retryVoiceRecording = async (id) => {
+  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  return parseResponse(response, "Khong the xu ly lai ghi am.");
+};
+
+export const getVoiceRecordingAudioUrl = (id) => {
+  const token = getAuthToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${BASE_URL}/recordings/${encodeURIComponent(id)}/audio${query}`;
 };

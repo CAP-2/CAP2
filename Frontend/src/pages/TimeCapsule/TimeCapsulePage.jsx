@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getVoiceRecordings, uploadVoiceRecording } from "../../api/voiceService";
+import {
+  getVoiceRecordingAudioUrl,
+  getVoiceRecordings,
+  retryVoiceRecording,
+  updateVoiceTranscript,
+  uploadVoiceRecording,
+} from "../../api/voiceService";
 import "./TimeCapsulePage.css";
 
 const MAX_SECONDS = 180;
@@ -38,6 +44,10 @@ export default function TimeCapsulePage({ role = "member" }) {
   const [error, setError] = useState("");
   const [recorderState, setRecorderState] = useState("idle");
   const [seconds, setSeconds] = useState(0);
+  const [editingId, setEditingId] = useState(null);
+  const [transcriptDraft, setTranscriptDraft] = useState("");
+  const [savingTranscriptId, setSavingTranscriptId] = useState(null);
+  const [retryingId, setRetryingId] = useState(null);
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
@@ -166,6 +176,58 @@ export default function TimeCapsulePage({ role = "member" }) {
     }
   };
 
+  const startEditTranscript = (recording) => {
+    setEditingId(recording.id);
+    setTranscriptDraft(recording.transcript || "");
+    setError("");
+    setStatus("");
+  };
+
+  const cancelEditTranscript = () => {
+    setEditingId(null);
+    setTranscriptDraft("");
+  };
+
+  const saveTranscript = async (recordingId) => {
+    const nextTranscript = transcriptDraft.trim();
+    if (!nextTranscript) {
+      setError("Transcript không được để trống.");
+      return;
+    }
+
+    try {
+      setSavingTranscriptId(recordingId);
+      setError("");
+      const result = await updateVoiceTranscript(recordingId, nextTranscript);
+      setRecordings((items) =>
+        items.map((item) => (item.id === recordingId ? { ...item, ...(result.recording || {}) } : item))
+      );
+      setStatus("Đã lưu transcript.");
+      cancelEditTranscript();
+    } catch (err) {
+      setError(err?.message || "Không thể lưu transcript.");
+    } finally {
+      setSavingTranscriptId(null);
+    }
+  };
+
+  const retryRecording = async (recordingId) => {
+    try {
+      setRetryingId(recordingId);
+      setError("");
+      const result = await retryVoiceRecording(recordingId);
+      setRecordings((items) =>
+        items.map((item) => (item.id === recordingId ? { ...item, ...(result.recording || {}) } : item))
+      );
+      setStatus("Đã đưa bản ghi vào hàng đợi xử lý lại.");
+      await loadRecordings(true);
+    } catch (err) {
+      setError(err?.message || "Không thể xử lý lại ghi âm.");
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
   const busy = recorderState === "recording" || recorderState === "uploading";
   const isManager = role === "manager";
 
@@ -258,9 +320,51 @@ export default function TimeCapsulePage({ role = "member" }) {
                 <div className="time-capsule-item-meta">
                   <span className={`time-capsule-badge is-${item.status}`}>{getStatusLabel(item.status)}</span>
                   <span>{formatDuration(item.duration_seconds)}</span>
+                  {item.transcript_edited ? <span>Đã sửa transcript</span> : null}
                 </div>
                 {item.status === "failed" && <p className="time-capsule-error">{item.error_message || "Worker xử lý thất bại."}</p>}
-                {item.transcript && <div className="time-capsule-transcript">{item.transcript}</div>}
+                <audio className="time-capsule-audio" controls src={getVoiceRecordingAudioUrl(item.id)} />
+                {editingId === item.id ? (
+                  <div className="time-capsule-editor">
+                    <textarea
+                      value={transcriptDraft}
+                      onChange={(event) => setTranscriptDraft(event.target.value)}
+                      maxLength={50000}
+                    />
+                    <div className="time-capsule-inline-actions">
+                      <button
+                        type="button"
+                        className="time-capsule-primary"
+                        onClick={() => saveTranscript(item.id)}
+                        disabled={savingTranscriptId === item.id}
+                      >
+                        Lưu
+                      </button>
+                      <button type="button" className="time-capsule-secondary" onClick={cancelEditTranscript}>
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  item.transcript && <div className="time-capsule-transcript">{item.transcript}</div>
+                )}
+                <div className="time-capsule-inline-actions">
+                  {item.transcript && editingId !== item.id ? (
+                    <button type="button" className="time-capsule-secondary" onClick={() => startEditTranscript(item)}>
+                      Sửa transcript
+                    </button>
+                  ) : null}
+                  {item.status === "failed" ? (
+                    <button
+                      type="button"
+                      className="time-capsule-secondary"
+                      onClick={() => retryRecording(item.id)}
+                      disabled={retryingId === item.id}
+                    >
+                      {retryingId === item.id ? "Đang đưa vào hàng đợi..." : "Xử lý lại"}
+                    </button>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
