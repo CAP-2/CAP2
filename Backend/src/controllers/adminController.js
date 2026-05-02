@@ -764,7 +764,7 @@ exports.getGallery = async (req, res) => {
       LEFT JOIN clans c ON p.clan_id = c.id 
       LEFT JOIN accounts a ON p.author_id = a.id
       LEFT JOIN people author ON a.person_id = author.id
-      WHERE p.image_url IS NOT NULL AND p.image_url != ''
+      WHERE ((p.image_url IS NOT NULL AND p.image_url != '') OR p.image_media_id IS NOT NULL)
       ORDER BY p.created_at DESC
     `);
     return res.json({ success: true, gallery: rows });
@@ -820,7 +820,7 @@ exports.getDashboardStats = async (req, res) => {
     const [[{ total_members }]] = await db.query(`SELECT COUNT(*) AS total_members FROM people p WHERE ${peopleFilter}`);
     const [[{ total_clans }]] = await db.query(`SELECT COUNT(*) AS total_clans FROM clans c WHERE ${clansFilter}`);
     const [[{ total_events }]] = await db.query("SELECT COUNT(*) AS total_events FROM events");
-    const [[{ total_photos }]] = await db.query(`SELECT COUNT(*) AS total_photos FROM posts po WHERE po.image_url IS NOT NULL AND po.image_url != '' AND ${postsFilter}`);
+    const [[{ total_photos }]] = await db.query(`SELECT COUNT(*) AS total_photos FROM posts po WHERE ((po.image_url IS NOT NULL AND po.image_url != '') OR po.image_media_id IS NOT NULL) AND ${postsFilter}`);
     const [[{ total_posts }]] = await db.query(`SELECT COUNT(*) AS total_posts FROM posts po WHERE ${postsFilter}`);
 
     const [monthly_clans] = await db.query(`

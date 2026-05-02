@@ -7,6 +7,7 @@ import {
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
 import { getStoredUser } from "../../utils/auth";
+import { resolveImageUrl } from "../../utils/media";
 import "./MemberDashboard.css";
 
 function personName(person) {
@@ -32,7 +33,11 @@ function updateStoredUser(profile) {
     email: profile.email || current.email,
     status: profile.status || current.status,
     role_id: profile.role_id || current.role_id,
-    avatar_url: profile.avatar_url || current.avatar_url,
+    avatar_url: resolveImageUrl({
+      mediaId: profile.pending_avatar_media_id || profile.avatar_media_id,
+      avatar_url: profile.pending_avatar_url || profile.avatar_url || current.avatar_url,
+    }),
+    avatar_media_id: profile.pending_avatar_media_id || profile.avatar_media_id || current.avatar_media_id || null,
   };
   localStorage.setItem("user", JSON.stringify(next));
   localStorage.setItem("auth_user", JSON.stringify(next));
@@ -56,7 +61,7 @@ export default function MemberProfile() {
     hometown: "",
     generation: "",
   });
-  const [contentForm, setContentForm] = useState({ bio: "", avatar_url: "" });
+  const [contentForm, setContentForm] = useState({ bio: "", avatar_url: "", avatar_media_id: null });
   const [relationForm, setRelationForm] = useState({ spouse_id: "", children_ids: [] });
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
 
@@ -80,8 +85,12 @@ export default function MemberProfile() {
         bio: nextProfile.pending_bio != null ? nextProfile.pending_bio || "" : nextProfile.bio || "",
         avatar_url:
           nextProfile.pending_avatar_url != null
-            ? nextProfile.pending_avatar_url || ""
-            : nextProfile.avatar_url || "",
+            ? resolveImageUrl({ mediaId: nextProfile.pending_avatar_media_id, avatar_url: nextProfile.pending_avatar_url || "" })
+            : resolveImageUrl({ mediaId: nextProfile.avatar_media_id, avatar_url: nextProfile.avatar_url || "" }),
+        avatar_media_id:
+          nextProfile.pending_avatar_media_id != null
+            ? nextProfile.pending_avatar_media_id || null
+            : nextProfile.avatar_media_id || null,
       });
       setRelationForm({
         spouse_id: nextProfile.spouse_id ?? "",
@@ -152,6 +161,7 @@ export default function MemberProfile() {
       await proposeProfileUpdate({
         bio: contentForm.bio,
         avatar_url: contentForm.avatar_url,
+        avatar_media_id: contentForm.avatar_media_id || null,
       });
       setNotice("Đã gửi ảnh và tiểu sử để quản lý duyệt.");
       await loadProfile();
@@ -226,7 +236,9 @@ export default function MemberProfile() {
           <h1>{personName(profile)}</h1>
           <p>Cập nhật thông tin cơ bản, quan hệ gia đình, ảnh đại diện và mật khẩu đăng nhập.</p>
         </div>
-        {contentForm.avatar_url && <img className="member-profile-avatar" src={contentForm.avatar_url} alt="" />}
+        {resolveImageUrl({ mediaId: contentForm.avatar_media_id, avatar_url: contentForm.avatar_url }) && (
+          <img className="member-profile-avatar" src={resolveImageUrl({ mediaId: contentForm.avatar_media_id, avatar_url: contentForm.avatar_url })} alt="" />
+        )}
       </section>
 
       <div className="member-content-grid">
@@ -287,11 +299,19 @@ export default function MemberProfile() {
           <form className="member-form" onSubmit={saveContentForReview}>
             <ImageUpload
               label="Tải ảnh hồ sơ"
-              onUploadSuccess={(url) => setContentForm((current) => ({ ...current, avatar_url: url }))}
+              value={contentForm.avatar_url}
+              usageType="pending_avatar"
+              onUploadSuccess={(url, file) =>
+                setContentForm((current) => ({
+                  ...current,
+                  avatar_url: url,
+                  avatar_media_id: file?.mediaId || file?.media_id || null,
+                }))
+              }
             />
             <label className="member-label">
               URL ảnh hiện tại
-              <input value={contentForm.avatar_url} onChange={(event) => setContentForm((current) => ({ ...current, avatar_url: event.target.value }))} />
+              <input value={contentForm.avatar_url} onChange={(event) => setContentForm((current) => ({ ...current, avatar_url: event.target.value, avatar_media_id: null }))} />
             </label>
             <label className="member-label">
               Tiểu sử

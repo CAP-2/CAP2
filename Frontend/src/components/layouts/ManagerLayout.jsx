@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
+import { resolveImageUrl } from "../../utils/media";
 import NotificationBell from "./NotificationBell";
 import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./ManagerLayout.css";
@@ -34,6 +35,7 @@ export default function ManagerLayout() {
     generation: "",
     bio: "",
     avatar_url: "",
+    avatar_media_id: null,
     moderation_status: "none",
     person_id: null,
   });
@@ -61,7 +63,11 @@ export default function ManagerLayout() {
           email: profile.email || storedUser.email,
           role_id: profile.role_id || storedUser.role_id,
           status: profile.status || storedUser.status,
-          avatar_url: profile.avatar_url || storedUser.avatar_url || "",
+          avatar_url: resolveImageUrl({
+            mediaId: profile.pending_avatar_media_id || profile.avatar_media_id,
+            avatar_url: profile.pending_avatar_url || profile.avatar_url || storedUser.avatar_url || "",
+          }),
+          avatar_media_id: profile.pending_avatar_media_id || profile.avatar_media_id || storedUser.avatar_media_id || null,
         };
         localStorage.setItem("auth_user", JSON.stringify(nextUser));
         localStorage.setItem("user", JSON.stringify(nextUser));
@@ -94,7 +100,11 @@ export default function ManagerLayout() {
       name: profileName || storedUser.name,
       role_id: profile.role_id || storedUser.role_id,
       status: profile.status || storedUser.status,
-      avatar_url: profile.avatar_url || storedUser.avatar_url || currentUser?.avatar_url || "",
+      avatar_url: resolveImageUrl({
+        mediaId: profile.pending_avatar_media_id || profile.avatar_media_id,
+        avatar_url: profile.pending_avatar_url || profile.avatar_url || storedUser.avatar_url || currentUser?.avatar_url || "",
+      }),
+      avatar_media_id: profile.pending_avatar_media_id || profile.avatar_media_id || storedUser.avatar_media_id || currentUser?.avatar_media_id || null,
     };
     localStorage.setItem("auth_user", JSON.stringify(nextUser));
     localStorage.setItem("user", JSON.stringify(nextUser));
@@ -117,8 +127,12 @@ export default function ManagerLayout() {
         bio: profile.pending_bio !== null && profile.pending_bio !== undefined ? profile.pending_bio || "" : profile.bio || "",
         avatar_url:
           profile.pending_avatar_url !== null && profile.pending_avatar_url !== undefined
-            ? profile.pending_avatar_url || ""
-            : profile.avatar_url || "",
+            ? resolveImageUrl({ mediaId: profile.pending_avatar_media_id, avatar_url: profile.pending_avatar_url || "" })
+            : resolveImageUrl({ mediaId: profile.avatar_media_id, avatar_url: profile.avatar_url || "" }),
+        avatar_media_id:
+          profile.pending_avatar_media_id !== null && profile.pending_avatar_media_id !== undefined
+            ? profile.pending_avatar_media_id || null
+            : profile.avatar_media_id || null,
         moderation_status: profile.moderation_status || "none",
         person_id: profile.person_id ?? null,
       });
@@ -195,6 +209,7 @@ export default function ManagerLayout() {
         body: JSON.stringify({
           bio: accountForm.bio,
           avatar_url: accountForm.avatar_url,
+          avatar_media_id: accountForm.avatar_media_id || null,
         }),
       });
       setAccountMessage("Đã gửi yêu cầu cập nhật ảnh và tiểu sử.");
@@ -253,8 +268,8 @@ export default function ManagerLayout() {
 
         <button type="button" className="sidebar-user-section" onClick={openAccountModal} title="Sửa tài khoản">
           <div className="manager-avatar-wrapper">
-            {currentUser?.avatar_url ? (
-              <img src={currentUser.avatar_url} alt="" className="manager-avatar-img" />
+            {resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url }) ? (
+              <img src={resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url })} alt="" className="manager-avatar-img" />
             ) : (
               <span className="material-symbols-outlined">manage_accounts</span>
             )}

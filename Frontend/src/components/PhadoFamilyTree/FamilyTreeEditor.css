@@ -1197,3 +1197,70 @@
   outline-color: #b7791f;
   transform: translateY(-2px);
 }
+
+.fte-avatarUploadField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 700;
+  color: #5b2a12;
+}
+
+.fte-avatarUploadField .image-upload-container {
+  margin: 0;
+}
+
+.fte-avatarUploadField .upload-dropzone {
+  min-height: 112px;
+  border-color: rgba(183, 121, 31, 0.38);
+  background: #fffaf3;
+}
+
+.fte-avatarUploadField .upload-dropzone.has-preview {
+  height: 150px;
+}
+
+.fte-avatarUploadField .url-input-wrapper {
+  display: none;
+}
+
+.fte-urlSubField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #6b3a1e;
+}
+
+.fte-urlSubField input {
+  width: 100%;
+}
+
+.fte-formGrid .is-wide {
+  grid-column: 1 / -1;
+}
+
+/* Unified avatar display: every person photo in genealogy is circular. */
+.fte-ancestorIcon,
+.fte-ancestorIcon.has-photo,
+.fte-avatar,
+.fte-relationAvatar {
+  border-radius: 999px !important;
+  aspect-ratio: 1 / 1;
+}
+
+.fte-ancestorIcon img,
+.fte-avatar img,
+.fte-relationAvatar img,
+.fte-mainPhoto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
+.fte-relationAvatar {
+  border: 2px solid #d6a536;
+  background: #fff7db;
+}

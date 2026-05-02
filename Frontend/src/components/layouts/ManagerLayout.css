@@ -681,3 +681,14 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Unified circular account avatar. */
+.manager-avatar-wrapper,
+.manager-avatar-img {
+  border-radius: 50% !important;
+}
+
+.manager-avatar-wrapper {
+  overflow: hidden;
+  border: 2px solid rgba(214, 165, 54, 0.72);
+}

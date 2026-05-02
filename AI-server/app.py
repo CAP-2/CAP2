@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 import unicodedata
 from datetime import date, datetime
 from decimal import Decimal
@@ -37,6 +38,24 @@ Không được nói rằng bạn đã truy cập dữ liệu riêng tư nếu n
 
 def normalize_text(text: str) -> str:
     return normalize_vietnamese(text)
+
+
+def phrase_pattern(phrase: str) -> str:
+    escaped = re.escape(phrase.strip())
+    escaped = escaped.replace(r"\ ", r"\s+")
+    return rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
+
+
+def has_phrase(text: str, phrase: str) -> bool:
+    return re.search(phrase_pattern(phrase), text) is not None
+
+
+def has_any_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
+    return any(has_phrase(text, phrase) for phrase in phrases)
+
+
+def has_token(text: str, token: str) -> bool:
+    return has_phrase(text, token)
 
 
 def parse_int(value: Any) -> int | None:
@@ -666,6 +685,7 @@ RELATION_INTENTS = {
 CLAN_INTENTS = {
     "PROFILE",
     "CLAN_INFO",
+    "CLAN_OVERVIEW",
     "MEMBER_SEARCH",
     "TREE",
     "MEMBER_COUNT",
@@ -674,6 +694,9 @@ CLAN_INTENTS = {
     "EVENTS",
     "POSTS",
     "ANNOUNCEMENTS",
+    "NOTIFICATIONS",
+    "CONTRIBUTIONS",
+    "EVENT_COSTS",
     "LIVING_MEMBERS",
     "DECEASED_MEMBERS",
     "RECENT_MEMBERS",
@@ -795,99 +818,105 @@ def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
     slots: dict[str, Any] = {}
 
     member_name = extract_member_name_vn(prompt)
-    if member_name and ("tim" in p or "ten" in p or "ai la" in p):
+    if member_name and (has_token(p, "tim") or has_token(p, "ten") or has_any_phrase(p, ("ai la",))):
         slots["name"] = member_name
         return "MEMBER_SEARCH", 0.92, slots
 
-    if "mat khau" in p or "password" in p or "token" in p or "secret" in p:
+    if has_any_phrase(p, ("mat khau", "password", "token", "secret")):
         return "SENSITIVE_DATA", 0.99, slots
 
-    if p in {"xin chao", "chao", "hello", "hi"} or "xin chao" in p:
+    if p in {"xin chao", "chao", "hello", "hi"} or has_phrase(p, "xin chao"):
         return "GREETING", 0.95, slots
-    if (
-        "ban la ai" in p
-        or "ban co the lam gi" in p
-        or "ban lam duoc gi" in p
-        or "chuc nang cua ban" in p
-        or "tro ly ai" in p
-    ):
+    if has_any_phrase(p, ("ban la ai", "ban co the lam gi", "ban lam duoc gi", "chuc nang cua ban", "tro ly ai")):
         return "CAPABILITY", 0.95, slots
-    if (
-        "huong dan" in p
-        or "cach su dung" in p
-        or "lam sao" in p
-        or "lam the nao" in p
-        or "bat dau" in p
-        or "them thanh vien" in p
-        or "tao gia pha" in p
-        or "tao dong ho" in p
+    if has_any_phrase(
+        p,
+        (
+            "huong dan",
+            "cach su dung",
+            "lam sao",
+            "lam the nao",
+            "bat dau",
+            "them thanh vien",
+            "tao gia pha",
+            "tao dong ho",
+        ),
     ):
         return "HOW_TO_USE", 0.8, slots
-    if "ngay le" in p or "le lon" in p or (("thang toi" in p or "thang sau" in p) and "su kien" not in p):
+    if has_any_phrase(p, ("ngay le", "le lon")) or (
+        has_any_phrase(p, ("thang toi", "thang sau")) and not has_phrase(p, "su kien")
+    ):
         return "GENERAL_QUESTION", 0.75, slots
 
-    if "bo me" in p or "bo toi" in p or "me toi" in p or "cha toi" in p:
+    # Specific database intents must be checked before broad intents.
+    if has_any_phrase(p, ("chi phi su kien", "kinh phi su kien", "chi tieu su kien", "chi phi")):
+        return "EVENT_COSTS", 0.9, slots
+    if has_any_phrase(p, ("dong gop su kien", "dong gop", "ung ho su kien", "ung ho")):
+        return "CONTRIBUTIONS", 0.9, slots
+    if has_any_phrase(p, ("thong bao quan ly", "thong bao truong ho", "thong bao tu quan ly", "truong ho")):
+        return "ANNOUNCEMENTS", 0.9, slots
+    if has_any_phrase(p, ("thong bao cua toi", "thong bao cho toi", "thong bao ca nhan", "notification cua toi")):
+        return "NOTIFICATIONS", 0.9, slots
+    if has_phrase(p, "thong bao"):
+        return "NOTIFICATIONS", 0.82, slots
+    if has_any_phrase(p, ("nguoi con song", "thanh vien con song", "con song trong dong ho", "con song")):
+        return "LIVING_MEMBERS", 0.88, slots
+    if has_any_phrase(p, ("nguoi da mat", "thanh vien da mat", "nhung nguoi da mat", "da mat", "qua doi")):
+        return "DECEASED_MEMBERS", 0.88, slots
+    if has_any_phrase(p, ("bo me", "bo toi", "me toi", "cha toi", "cha me toi", "con cua ai")):
         return "PARENTS", 0.95, slots
     if (
-        "con toi" in p
-        or "cac con cua toi" in p
-        or "con cua toi" in p
-        or "nguoi con" in p
-        or "bao nhieu con" in p
+        has_any_phrase(p, ("con toi", "cac con cua toi", "con cua toi", "toi co may nguoi con", "toi co may con"))
+        or re.search(r"(?<![a-z0-9])bao nhieu\s+con(?![a-z0-9])", p)
+        or re.search(r"(?<![a-z0-9])may\s+nguoi\s+con(?![a-z0-9])", p)
     ):
         return "CHILDREN", 0.92, slots
-    if "vo toi" in p or "chong toi" in p or "vo chong cua toi" in p:
+    if has_any_phrase(p, ("vo toi", "chong toi", "vo cua toi", "chong cua toi", "vo chong cua toi")):
         return "SPOUSE", 0.9, slots
-    if "anh chi em" in p or "anh em toi" in p or "chi em toi" in p or "anh chi em toi" in p:
+    if has_any_phrase(p, ("anh chi em", "anh em toi", "chi em toi", "anh chi em toi")):
         return "SIBLINGS", 0.9, slots
-    if "ong ba" in p:
+    if has_any_phrase(p, ("ong ba", "ong noi", "ba noi", "ong ngoai", "ba ngoai")):
         return "GRANDPARENTS", 0.9, slots
-    if "tai khoan cua toi" in p or "thong tin tai khoan" in p or "toi la ai" in p or "thong tin cua toi" in p:
-        return "PROFILE", 0.95, slots
-    if "lich su dong ho" in p or "lich su gia pha" in p or "nguon goc dong ho" in p or "tu duong" in p:
-        return "CLAN_INFO", 0.9, slots
-    if "tong quan" in p or "dashboard" in p or ("thong ke" in p and "he thong" in p):
-        return "ADMIN_OVERVIEW", 0.88, slots
-    if "danh sach clan" in p or "cac dong ho" in p or "tat ca dong ho" in p:
-        return "ADMIN_CLANS", 0.9, slots
-    if "tai khoan" in p or "account" in p or "nguoi dung" in p:
-        return "ADMIN_ACCOUNTS", 0.85, slots
-    if "bai viet toan he thong" in p:
-        return "ADMIN_POSTS", 0.85, slots
-    if "su kien toan he thong" in p:
-        return "ADMIN_EVENTS", 0.85, slots
-    if "thanh vien toan he thong" in p:
-        return "ADMIN_MEMBERS", 0.85, slots
-    if "cay gia pha" in p or "so do gia pha" in p:
-        return "TREE", 0.86, slots
-    if ("bao nhieu" in p or "so luong" in p or "tong cong" in p) and (
-        "nguoi" in p or "thanh vien" in p or "gia pha" in p
+    if has_any_phrase(p, ("su kien sap toi", "lich su kien sap toi")) or (
+        has_phrase(p, "su kien") and has_any_phrase(p, ("sap toi", "gan toi", "toi day"))
     ):
-        return "MEMBER_COUNT", 0.88, slots
-    if "the he" in p or re.search(r"\bdoi\b", p):
-        return "GENERATION_STATS", 0.82, slots
-    if "chi" in p and ("bao nhieu" in p or "thong ke" in p):
-        return "BRANCH_STATS", 0.82, slots
-    if "thong bao" in p or "truong ho" in p or "quan ly" in p:
-        return "ANNOUNCEMENTS", 0.8, slots
-    if "su kien sap toi" in p or ("su kien" in p and ("sap toi" in p or "gan toi" in p)):
         slots["time"] = "upcoming"
         return "EVENTS", 0.86, slots
-    if "su kien" in p or "gio" in p or "nhac" in p:
+    if has_phrase(p, "su kien") or has_token(p, "gio") or has_token(p, "nhac"):
         return "EVENTS", 0.82, slots
-    if "dong gop" in p or "ung ho" in p:
-        return "CONTRIBUTIONS", 0.82, slots
-    if "chi phi su kien" in p or "kinh phi" in p or "chi tieu" in p:
-        return "EVENT_COSTS", 0.82, slots
-    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
+    if has_any_phrase(p, ("bai viet moi nhat", "bai viet", "bang tin", "tin moi")):
         return "POSTS", 0.82, slots
-    if "thanh vien moi" in p or "nguoi moi" in p:
+    if has_any_phrase(p, ("tai khoan cua toi", "thong tin tai khoan", "toi la ai", "thong tin cua toi")):
+        return "PROFILE", 0.95, slots
+    if has_any_phrase(p, ("lich su dong ho", "lich su gia pha", "nguon goc dong ho", "tu duong", "tong quan dong ho")):
+        return "CLAN_OVERVIEW", 0.9, slots
+    if has_token(p, "tong quan") or has_token(p, "dashboard") or (has_token(p, "thong ke") and has_token(p, "he thong")):
+        return "ADMIN_OVERVIEW", 0.88, slots
+    if has_any_phrase(p, ("danh sach clan", "cac dong ho", "tat ca dong ho")):
+        return "ADMIN_CLANS", 0.9, slots
+    if has_token(p, "tai khoan") or has_token(p, "account") or has_any_phrase(p, ("nguoi dung",)):
+        return "ADMIN_ACCOUNTS", 0.85, slots
+    if has_phrase(p, "bai viet toan he thong"):
+        return "ADMIN_POSTS", 0.85, slots
+    if has_phrase(p, "su kien toan he thong"):
+        return "ADMIN_EVENTS", 0.85, slots
+    if has_phrase(p, "thanh vien toan he thong"):
+        return "ADMIN_MEMBERS", 0.85, slots
+    if has_any_phrase(p, ("cay gia pha", "so do gia pha")):
+        return "TREE", 0.86, slots
+    if (has_any_phrase(p, ("bao nhieu", "so luong", "tong cong"))) and (
+        has_token(p, "nguoi") or has_phrase(p, "thanh vien") or has_phrase(p, "gia pha")
+    ):
+        return "MEMBER_COUNT", 0.88, slots
+    if has_phrase(p, "the he") or has_token(p, "doi"):
+        return "GENERATION_STATS", 0.82, slots
+    if has_token(p, "chi") and has_any_phrase(p, ("bao nhieu", "thong ke")):
+        return "BRANCH_STATS", 0.82, slots
+    if has_any_phrase(p, ("thanh vien moi", "nguoi moi")):
         return "RECENT_MEMBERS", 0.82, slots
-    if "da mat" in p or "qua doi" in p:
-        return "DECEASED_MEMBERS", 0.82, slots
-    if "con song" in p:
-        return "LIVING_MEMBERS", 0.82, slots
-    if "thanh vien" in p or "gia pha" in p or "dong ho" in p:
+    if has_phrase(p, "dong ho") or has_phrase(p, "gia pha"):
+        return "CLAN_OVERVIEW", 0.65, slots
+    if has_phrase(p, "thanh vien"):
         return "TREE", 0.65, slots
     return "UNKNOWN", 0.0, slots
 
@@ -899,7 +928,7 @@ def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | No
     if intent in GENERAL_INTENTS or intent == "UNKNOWN":
         return None
 
-    if intent == "SENSITIVE_DATA" or any(pattern in p for pattern in SENSITIVE_PATTERNS):
+    if intent == "SENSITIVE_DATA" or any(has_phrase(p, pattern) for pattern in SENSITIVE_PATTERNS):
         return "Tôi không thể cung cấp mật khẩu, token, khóa bí mật hoặc dữ liệu nhạy cảm."
 
     allowed = ADMIN_INTENTS if role == "admin" else MANAGER_INTENTS if role == "manager" else MEMBER_INTENTS
@@ -913,6 +942,9 @@ def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | No
 
     if intent in RELATION_INTENTS and not ctx.get("person_id"):
         return "Tài khoản của bạn chưa được liên kết với hồ sơ thành viên nên chưa thể tra cứu quan hệ gia đình."
+
+    if intent == "NOTIFICATIONS" and not ctx.get("person_id"):
+        return "Tai khoan cua ban chua lien ket voi ho so thanh vien nen chua the tra cuu thong bao ca nhan."
 
     return None
 
@@ -1008,6 +1040,75 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
                 """,
                 [],
             )
+        if intent == "LIVING_MEMBERS":
+            return (
+                """
+                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.birth_date, p.hometown
+                FROM people p
+                LEFT JOIN clans c ON c.id = p.clan_id
+                WHERE p.is_living = 1 OR p.death_date IS NULL
+                ORDER BY p.clan_id ASC, p.generation ASC, p.display_name ASC
+                """,
+                [],
+            )
+        if intent == "DECEASED_MEMBERS":
+            return (
+                """
+                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.death_date, p.hometown
+                FROM people p
+                LEFT JOIN clans c ON c.id = p.clan_id
+                WHERE p.is_living = 0 OR p.death_date IS NOT NULL
+                ORDER BY p.death_date DESC, p.clan_id ASC, p.display_name ASC
+                """,
+                [],
+            )
+        if intent == "CONTRIBUTIONS":
+            return (
+                """
+                SELECT ev.clan_id, c.clan_name, ev.title, p.display_name, ec.amount,
+                       ec.contribution_date, ec.method, ec.note
+                FROM event_contributions ec
+                JOIN events ev ON ev.id = ec.event_id
+                LEFT JOIN clans c ON c.id = ev.clan_id
+                JOIN people p ON p.id = ec.person_id AND p.clan_id = ev.clan_id
+                ORDER BY ec.contribution_date DESC, ec.id DESC
+                """,
+                [],
+            )
+        if intent == "EVENT_COSTS":
+            return (
+                """
+                SELECT ev.clan_id, c.clan_name, ev.title, cost.item_name, cost.amount, cost.note, cost.created_at
+                FROM event_costs cost
+                JOIN events ev ON ev.id = cost.event_id
+                LEFT JOIN clans c ON c.id = ev.clan_id
+                ORDER BY cost.created_at DESC, cost.id DESC
+                """,
+                [],
+            )
+        if intent == "ANNOUNCEMENTS":
+            return (
+                """
+                SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at,
+                       ma.manager_account_id, acc.email AS manager_email
+                FROM manager_announcements ma
+                JOIN accounts acc ON acc.id = ma.manager_account_id
+                ORDER BY ma.created_at DESC, ma.id DESC
+                """,
+                [],
+            )
+        if intent == "NOTIFICATIONS":
+            return (
+                """
+                SELECT n.id, n.receiver_person_id, p.clan_id, c.clan_name, n.type, n.title,
+                       n.message, n.is_read, n.link_url, n.created_at
+                FROM notifications n
+                JOIN people p ON p.id = n.receiver_person_id
+                LEFT JOIN clans c ON c.id = p.clan_id
+                ORDER BY n.created_at DESC, n.id DESC
+                """,
+                [],
+            )
 
     if intent == "PROFILE":
         if role == "admin":
@@ -1030,13 +1131,16 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
                    p.display_name, p.gender, p.generation, p.birth_date, p.hometown,
                    COALESCE(p.clan_id, ac.clan_id) AS clan_id, c.clan_name
             FROM accounts a
-            LEFT JOIN people p ON p.id = a.person_id
-            LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+            LEFT JOIN account_clans ac
+              ON ac.account_id = a.id
+             AND ac.status = 'active'
+             AND (%s IS NULL OR ac.clan_id = %s)
+            LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
             LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
             WHERE a.id = %s AND COALESCE(p.clan_id, ac.clan_id) = %s
             LIMIT 1
             """,
-            [account_id, clan_id],
+            [clan_id, clan_id, account_id, clan_id],
         )
 
     if intent == "PARENTS":
@@ -1116,7 +1220,7 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
             [clan_id, clan_id, person_id, clan_id, clan_id],
         )
 
-    if intent == "CLAN_INFO":
+    if intent in {"CLAN_INFO", "CLAN_OVERVIEW"}:
         return (
             """
             SELECT id, clan_name, history, hall_address, created_at
@@ -1201,6 +1305,18 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
             [clan_id, clan_id],
         )
 
+    if intent == "NOTIFICATIONS":
+        return (
+            """
+            SELECT n.id, n.type, n.title, n.message, n.is_read, n.link_url, n.created_at
+            FROM notifications n
+            JOIN people receiver ON receiver.id = n.receiver_person_id
+            WHERE n.receiver_person_id = %s AND receiver.clan_id = %s
+            ORDER BY n.created_at DESC, n.id DESC
+            """,
+            [person_id, clan_id],
+        )
+
     if intent == "EVENTS":
         if slots.get("time") == "upcoming":
             return (
@@ -1228,7 +1344,7 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
             SELECT ev.title, p.display_name, ec.amount, ec.contribution_date, ec.method
             FROM event_contributions ec
             JOIN events ev ON ev.id = ec.event_id
-            JOIN people p ON p.id = ec.person_id
+            JOIN people p ON p.id = ec.person_id AND p.clan_id = ev.clan_id
             WHERE ev.clan_id = %s
             ORDER BY ec.contribution_date DESC, ec.id DESC
             """,
@@ -1384,7 +1500,7 @@ def shape_data(intent: str, rows: list[dict[str, Any]]) -> Any:
     first = safe_rows[0] if safe_rows else {}
     if intent == "PARENTS":
         return {"father": first.get("father"), "mother": first.get("mother")}
-    if intent in {"PROFILE", "CLAN_INFO", "MEMBER_COUNT", "ADMIN_OVERVIEW"}:
+    if intent in {"PROFILE", "CLAN_INFO", "CLAN_OVERVIEW", "MEMBER_COUNT", "ADMIN_OVERVIEW"}:
         return first or {}
     return safe_rows
 
@@ -1426,7 +1542,7 @@ def deterministic_answer(intent: str, data: Any, rows: list[dict[str, Any]], pro
         suffix = f", đời {generation}" if generation else ""
         return f"Bạn là {name}, thuộc dòng họ {clan}{suffix}."
 
-    if intent == "CLAN_INFO":
+    if intent in {"CLAN_INFO", "CLAN_OVERVIEW"}:
         clan_name = data.get("clan_name") or "dòng họ hiện tại"
         history = data.get("history")
         hall = data.get("hall_address")
@@ -1463,7 +1579,89 @@ def deterministic_answer(intent: str, data: Any, rows: list[dict[str, Any]], pro
             more = "" if len(rows) <= 10 else f" và {len(rows) - 10} người khác"
             return f"{prefix}: {', '.join(names)}{more}."
 
+    if intent in {"POSTS", "EVENTS", "CONTRIBUTIONS", "EVENT_COSTS", "ANNOUNCEMENTS", "NOTIFICATIONS"}:
+        labels = []
+        for row in rows[:10]:
+            if row.get("title") and row.get("display_name") and row.get("amount") is not None:
+                labels.append(f"{row.get('title')} - {row.get('display_name')}: {row.get('amount')}")
+            elif row.get("title") and row.get("item_name"):
+                labels.append(f"{row.get('title')} - {row.get('item_name')}: {row.get('amount')}")
+            elif row.get("title"):
+                labels.append(str(row.get("title")))
+            elif row.get("message"):
+                labels.append(str(row.get("message"))[:80])
+        if labels:
+            more = "" if len(rows) <= 10 else f" va {len(rows) - 10} muc khac"
+            return f"Tim thay {len(rows)} ket qua: " + "; ".join(labels) + more + "."
+
     return simple_answer(prompt, rows)
+
+
+AI_AUDIT_DDL = """
+CREATE TABLE IF NOT EXISTS ai_audit_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  account_id INT NULL,
+  person_id INT NULL,
+  clan_id INT NULL,
+  role VARCHAR(50) NULL,
+  prompt TEXT NOT NULL,
+  intent VARCHAR(80) NULL,
+  confidence DECIMAL(5,4) NULL,
+  row_count INT NOT NULL DEFAULT 0,
+  duration_ms INT NOT NULL DEFAULT 0,
+  error TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_audit_account (account_id),
+  KEY idx_ai_audit_clan (clan_id),
+  KEY idx_ai_audit_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+"""
+
+
+def write_ai_audit(
+    get_pool,
+    ctx: dict[str, Any],
+    prompt: str,
+    intent: str,
+    confidence: float,
+    row_count: int,
+    duration_ms: int,
+    error: str | None = None,
+) -> None:
+    conn = None
+    cur = None
+    try:
+        conn = get_pool().get_connection()
+        cur = conn.cursor()
+        cur.execute(AI_AUDIT_DDL)
+        cur.execute(
+            """
+            INSERT INTO ai_audit_logs
+              (account_id, person_id, clan_id, role, prompt, intent, confidence, row_count, duration_ms, error)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                ctx.get("account_id"),
+                ctx.get("person_id"),
+                ctx.get("clan_id"),
+                ctx.get("role"),
+                prompt[:5000],
+                intent,
+                confidence,
+                row_count,
+                duration_ms,
+                (error or "")[:4000] or None,
+            ],
+        )
+        conn.commit()
+    except Exception:
+        # Audit must never break the user-facing AI flow.
+        pass
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
 def create_app() -> Flask:
@@ -1492,6 +1690,7 @@ def create_app() -> Flask:
 
     @app.post("/ask-db")
     def ask():
+        started_at = time.perf_counter()
         body = request.get_json(silent=True) or {}
 
         prompt = str(body.get("prompt") or "").strip()
@@ -1506,6 +1705,16 @@ def create_app() -> Flask:
         user_payload = context_user_payload(ctx)
 
         if public_scope or intent in GENERAL_INTENTS or intent == "UNKNOWN":
+            answer = answer_general(groq_client, MODEL_NAME, prompt)
+            write_ai_audit(
+                get_pool,
+                ctx,
+                prompt,
+                "PUBLIC" if public_scope else intent,
+                1 if public_scope else confidence,
+                0,
+                int((time.perf_counter() - started_at) * 1000),
+            )
             return jsonify(
                 {
                     "success": True,
@@ -1516,7 +1725,7 @@ def create_app() -> Flask:
                     "row_count": 0,
                     "user": None if public_scope else user_payload,
                     "data": {},
-                    "answer": answer_general(groq_client, MODEL_NAME, prompt),
+                    "answer": answer,
                 }
             )
 
@@ -1525,6 +1734,16 @@ def create_app() -> Flask:
 
         denial = permission_denial(intent, ctx, prompt)
         if denial:
+            write_ai_audit(
+                get_pool,
+                ctx,
+                prompt,
+                intent,
+                confidence,
+                0,
+                int((time.perf_counter() - started_at) * 1000),
+                denial,
+            )
             return jsonify(
                 {
                     "success": False,
@@ -1542,6 +1761,15 @@ def create_app() -> Flask:
         query = fixed_query(intent, ctx, slots)
         if not query:
             answer = answer_general(groq_client, MODEL_NAME, prompt)
+            write_ai_audit(
+                get_pool,
+                ctx,
+                prompt,
+                intent,
+                confidence,
+                0,
+                int((time.perf_counter() - started_at) * 1000),
+            )
             return jsonify(
                 {
                     "success": True,
@@ -1575,7 +1803,33 @@ def create_app() -> Flask:
                 "rows": json_safe(rows),
                 "row_count": len(rows),
             }
-            answer = answer_with_database(groq_client, MODEL_NAME, prompt, data)
+            direct_answer_intents = RELATION_INTENTS | {
+                "PROFILE",
+                "CLAN_INFO",
+                "CLAN_OVERVIEW",
+                "MEMBER_COUNT",
+                "LIVING_MEMBERS",
+                "DECEASED_MEMBERS",
+                "POSTS",
+                "EVENTS",
+                "CONTRIBUTIONS",
+                "EVENT_COSTS",
+                "ANNOUNCEMENTS",
+                "NOTIFICATIONS",
+            }
+            if not rows or intent in direct_answer_intents:
+                answer = deterministic_answer(intent, shaped_data, rows, prompt)
+            else:
+                answer = answer_with_database(groq_client, MODEL_NAME, prompt, data)
+            write_ai_audit(
+                get_pool,
+                ctx,
+                prompt,
+                intent,
+                confidence,
+                len(rows),
+                int((time.perf_counter() - started_at) * 1000),
+            )
 
             if not answer or answer == "Tôi đã lấy được dữ liệu, nhưng hiện chưa thể diễn giải bằng AI.":
                 answer = deterministic_answer(intent, shaped_data, rows, prompt)
@@ -1593,6 +1847,17 @@ def create_app() -> Flask:
                 }
             )
         except Exception as exc:
+            app.logger.exception("AI database query failed")
+            write_ai_audit(
+                get_pool,
+                ctx,
+                prompt,
+                intent,
+                confidence,
+                0,
+                int((time.perf_counter() - started_at) * 1000),
+                str(exc),
+            )
             return jsonify(
                 {
                     "success": False,
@@ -1600,7 +1865,8 @@ def create_app() -> Flask:
                     "confidence": confidence,
                     "user": user_payload,
                     "data": {},
-                    "message": f"Không kết nối hoặc truy vấn được database: {exc}",
+                    "answer": "Khong the truy van du lieu AI luc nay. Vui long thu lai sau.",
+                    "message": "Khong the truy van du lieu AI luc nay. Vui long thu lai sau.",
                 }
             ), 503
         finally:

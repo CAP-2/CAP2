@@ -1,4 +1,46 @@
 
+- Frontend dev server mặc định chạy trên `http://localhost:5173`.
+
+**4) AI server (Flask + Groq)**
+- Tạo file `AI-server/.env` với ít nhất `GROQ_API_KEY` và cấu hình DB (`DB_HOST`, `DB_USER`, ...).
+- Chạy trên Windows (PowerShell) — ví dụ:
+
+```powershell
+cd AI-server
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python app.py
+
+- Mặc định AI server dùng `PORT=8001` (có thể set biến `PORT` hoặc `HOST`). Endpoint health: `/health`.
+
+**5) Ghi chú ports mặc định**
+- Backend: `3000`
+- Frontend: `5173`
+- AI-server: `8001` (mặc định)
+
+
+
+**Tài khoản thử nghiệm**
+- admin@gmail.com
+- manager@gmail.com
+- user@gmail.com
+- mật khẩu mặc định: `1`
+
+- 0973018988a@gmail.com/123123        Tuanha@gmail.com/1    (manager)
+- dinhviet.user15@gmail.com/123123     quyet@gmail.com/123123       (member)
+
+
+
+**Voice worker (local STT, khong dung OpenAI API)**
+- Voice worker KHONG dung chung venv voi `AI-server`.
+- Python dung cho voice phai la `D:\cap2\.venv-whisper\Scripts\python.exe`.
+- Cai dependency rieng bang `D:\cap2\.venv-whisper\Scripts\python.exe -m pip install -r D:\cap2\voice\requirements.txt`.
+- Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
+- Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
+- Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.
+=======
+
 Hướng dẫn khởi động dự án
 
 **Yêu cầu:**
@@ -47,6 +89,7 @@ cd Frontend
 npm install
 npm run dev
 ```
+nếu có lỗi 
 
 =======
 
@@ -90,3 +133,5 @@ python app.py
 - Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
 - Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
 - Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.
+
+

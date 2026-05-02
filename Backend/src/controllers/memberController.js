@@ -7,6 +7,7 @@ const {
 } = require("../utils/treeEditPermissions");
 const { createNotification, ensureNotificationSchema } = require("../utils/notifications");
 const { getTreeLayoutSettings } = require("../utils/treeLayoutSettings");
+const { normalizeMediaId, extractMediaIdFromUrl } = require("../utils/media");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -34,7 +35,7 @@ const getAccountContext = async (accountId) => {
       a.email AS account_email,
       a.role_id,
       a.status,
-      a.person_id,
+      COALESCE(a.person_id, ac.person_id) AS person_id,
       p.display_name,
       p.first_name,
       p.middle_name,
@@ -46,15 +47,17 @@ const getAccountContext = async (accountId) => {
       COALESCE(p.clan_id, ac.clan_id) AS clan_id,
       p.bio,
       p.avatar_url,
+      p.avatar_media_id,
       p.pending_bio,
       p.pending_avatar_url,
+      p.pending_avatar_media_id,
       p.moderation_status,
       p.moderation_reason,
       c.clan_name,
       c.history AS clan_history
     FROM accounts a
-    LEFT JOIN people p ON a.person_id = p.id
     LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+    LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
     LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
     WHERE a.id = ?
     ORDER BY ac.id ASC
@@ -459,7 +462,11 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     `
     SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
            p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
-           p.phone, p.email, p.avatar_url, p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
+           p.phone, p.email,
+           COALESCE(p.pending_avatar_url, p.avatar_url) AS avatar_url,
+           COALESCE(p.pending_avatar_media_id, p.avatar_media_id) AS avatar_media_id,
+           p.pending_avatar_url, p.pending_avatar_media_id,
+           p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
            a.id AS account_id,
            a.role_id
     FROM people p
@@ -528,7 +535,11 @@ exports.getDashboard = async (req, res) => {
         `
           SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
                  p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
-                 p.phone, p.email, p.avatar_url, p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
+                 p.phone, p.email,
+                 COALESCE(p.pending_avatar_url, p.avatar_url) AS avatar_url,
+                 COALESCE(p.pending_avatar_media_id, p.avatar_media_id) AS avatar_media_id,
+                 p.pending_avatar_url, p.pending_avatar_media_id,
+                 p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
                  a.id AS account_id,
                  a.role_id
           FROM people p
@@ -665,8 +676,10 @@ exports.getDashboard = async (req, res) => {
         generation: context.generation,
         bio: context.bio,
         avatar_url: context.avatar_url,
+        avatar_media_id: context.avatar_media_id,
         pending_bio: context.pending_bio,
         pending_avatar_url: context.pending_avatar_url,
+        pending_avatar_media_id: context.pending_avatar_media_id,
         moderation_status: context.moderation_status,
         moderation_reason: context.moderation_reason,
         family_id: relations.family_id,
@@ -1147,7 +1160,7 @@ exports.createReminder = async (req, res) => {
 exports.proposeProfileUpdate = async (req, res) => {
   try {
     const accountId = req.user.id;
-    const { bio, avatar_url } = req.body;
+    const { bio, avatar_url, avatar_media_id } = req.body;
     
     const context = await getAccountContext(accountId);
     if (!context || !context.person_id) {
@@ -1156,14 +1169,21 @@ exports.proposeProfileUpdate = async (req, res) => {
 
     const pendingBio = bio !== undefined && bio !== null ? String(bio).trim() : null;
     const pendingAvatarUrl = avatar_url !== undefined && avatar_url !== null ? String(avatar_url).trim() : null;
+    const pendingAvatarMediaId = normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(pendingAvatarUrl);
 
-    if (pendingBio === null && pendingAvatarUrl === null) {
+    if (pendingBio === null && pendingAvatarUrl === null && pendingAvatarMediaId === null) {
         return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật" });
     }
 
     await db.query(
-      "UPDATE people SET pending_bio = ?, pending_avatar_url = ?, moderation_status = 'pending', moderation_reason = NULL WHERE id = ?",
-      [pendingBio, pendingAvatarUrl, context.person_id]
+      `UPDATE people
+       SET pending_bio = ?,
+           pending_avatar_url = ?,
+           pending_avatar_media_id = ?,
+           moderation_status = 'pending',
+           moderation_reason = NULL
+       WHERE id = ?`,
+      [pendingBio, pendingAvatarUrl, pendingAvatarMediaId, context.person_id]
     );
 
     return res.json({ success: true, message: "Đã gửi yêu cầu cập nhật, vui lòng đợi quản lý phê duyệt." });
@@ -1176,7 +1196,7 @@ exports.proposeProfileUpdate = async (req, res) => {
 exports.submitMaterial = async (req, res) => {
   try {
     const accountId = req.user.id;
-    const { description, content, image_url } = req.body;
+    const { description, content, image_url, image_media_id } = req.body;
 
     const context = await getAccountContext(accountId);
     if (!context || !context.clan_id) {
@@ -1186,8 +1206,9 @@ exports.submitMaterial = async (req, res) => {
     const postDescription = description !== undefined && description !== null ? String(description).trim() : "";
     const textContent = content !== undefined && content !== null ? String(content).trim() : "";
     const imgUrl = image_url !== undefined && image_url !== null ? String(image_url).trim() : null;
+    const imgMediaId = normalizeMediaId(image_media_id) || extractMediaIdFromUrl(imgUrl);
 
-    if (!postDescription && !textContent && !imgUrl) {
+    if (!postDescription && !textContent && !imgUrl && !imgMediaId) {
         return res.status(400).json({ success: false, message: "Vui lòng nhập mô tả, nội dung hoặc URL ảnh" });
     }
 
@@ -1195,8 +1216,8 @@ exports.submitMaterial = async (req, res) => {
     const postStatus = roleId === 1 || roleId === 2 ? "approved" : "pending";
 
     const [created] = await db.query(
-      "INSERT INTO posts (clan_id, author_id, description, content, image_url, status) VALUES (?, ?, ?, ?, ?, ?)",
-      [context.clan_id, accountId, postDescription, textContent, imgUrl, postStatus]
+      "INSERT INTO posts (clan_id, author_id, description, content, image_url, image_media_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [context.clan_id, accountId, postDescription, textContent, imgUrl, imgMediaId, postStatus]
     );
 
     return res.json({
@@ -1223,7 +1244,7 @@ exports.getGeneralPosts = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      `SELECT p.id, p.description, p.content, p.image_url, p.created_at, 
+      `SELECT p.id, p.description, p.content, p.image_url, p.image_media_id, p.created_at, 
               COALESCE(author.display_name, a.email, 'Thành viên') as author_name,
               (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
               (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
@@ -1364,7 +1385,7 @@ exports.getMySubmissions = async (req, res) => {
     
     // Get user's posts status
     const [posts] = await db.query(
-      "SELECT description, content, image_url, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
+      "SELECT description, content, image_url, image_media_id, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
       [accountId]
     );
 
@@ -1373,7 +1394,8 @@ exports.getMySubmissions = async (req, res) => {
       moderation_status: context.moderation_status,
       moderation_reason: context.moderation_reason,
       pending_bio: context.pending_bio,
-      pending_avatar_url: context.pending_avatar_url
+      pending_avatar_url: context.pending_avatar_url,
+      pending_avatar_media_id: context.pending_avatar_media_id
     };
 
     return res.json({ success: true, posts, profile: profileStatus });
