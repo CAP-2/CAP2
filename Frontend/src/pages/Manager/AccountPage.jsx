@@ -14,6 +14,7 @@ import "./manager.css";
 const emptyCreateForm = {
   email: "",
   password: "",
+  display_name: "", // Thêm trường display_name cho chức năng tự động tách tên
   surname: "",
   middle_name: "",
   first_name: "",
@@ -28,6 +29,7 @@ const emptyEditForm = {
   email: "",
   status: "active",
   role_id: "3",
+  display_name: "", // Thêm trường display_name
   surname: "",
   middle_name: "",
   first_name: "",
@@ -59,6 +61,7 @@ const toEditForm = (member) => ({
   email: member.email || "",
   status: member.status || "active",
   role_id: String(member.role_id ?? 3),
+  display_name: member.display_name || [member.surname, member.middle_name, member.first_name].filter(Boolean).join(' ') || "",
   surname: member.surname || "",
   middle_name: member.middle_name || "",
   first_name: member.first_name || "",
@@ -150,6 +153,34 @@ export default function AccountPage() {
     const selectedPersonId = selectedRelationMember?.person_id == null ? "" : String(selectedRelationMember.person_id);
     return memberOptions.filter((member) => member.personId !== selectedPersonId);
   }, [memberOptions, selectedRelationMember]);
+
+
+  // --- 🌟 HÀM XỬ LÝ TÁCH TÊN TỰ ĐỘNG 🌟 ---
+  const handleFullNameChange = (e, isCreateForm = true) => {
+    const fullNameValue = e.target.value;
+    const parts = fullNameValue.trim().split(/\s+/);
+    
+    let surname = "";
+    let middle_name = "";
+    let first_name = "";
+
+    if (parts.length === 1 && parts[0] !== "") {
+      first_name = parts[0];
+    } else if (parts.length === 2) {
+      surname = parts[0];
+      first_name = parts[1];
+    } else if (parts.length >= 3) {
+      surname = parts[0];
+      first_name = parts[parts.length - 1];
+      middle_name = parts.slice(1, parts.length - 1).join(" ");
+    }
+
+    if (isCreateForm) {
+      setCreateForm(prev => ({ ...prev, display_name: fullNameValue, surname, middle_name, first_name }));
+    } else {
+      setEditForm(prev => ({ ...prev, display_name: fullNameValue, surname, middle_name, first_name }));
+    }
+  };
 
   const updateCreateField = (event) => {
     const { name, value } = event.target;
@@ -331,11 +362,16 @@ export default function AccountPage() {
               <form className="member-form" onSubmit={submitCreate}>
                 <input className="mgr-field" name="email" type="email" value={createForm.email} onChange={updateCreateField} placeholder="Email đăng nhập" required />
                 <input className="mgr-field" name="password" type="password" value={createForm.password} onChange={updateCreateField} placeholder="Mật khẩu" required />
+                
+                {/* 🌟 Ô Tên đầy đủ tích hợp tách tên (Form Tạo) 🌟 */}
+                <input className="mgr-field" name="display_name" value={createForm.display_name} onChange={(e) => handleFullNameChange(e, true)} placeholder="Tên hiển thị đầy đủ *" required />
+
                 <div className="form-row">
                   <input className="mgr-field" name="surname" value={createForm.surname} onChange={updateCreateField} placeholder="Họ" />
                   <input className="mgr-field" name="middle_name" value={createForm.middle_name} onChange={updateCreateField} placeholder="Tên đệm" />
                 </div>
                 <input className="mgr-field" name="first_name" value={createForm.first_name} onChange={updateCreateField} placeholder="Tên" required />
+                
                 <div className="form-row">
                   <select className="mgr-field" name="gender" value={createForm.gender} onChange={updateCreateField}>
                     <option value="1">Nam</option>
@@ -501,9 +537,14 @@ export default function AccountPage() {
                 </select>
               )}
               <input className="mgr-field" name="new_password" type="password" value={editForm.new_password} onChange={updateEditField} placeholder="Mật khẩu mới nếu cần đổi" />
+              
+              {/* 🌟 Ô Tên đầy đủ tích hợp tách tên (Form Sửa) 🌟 */}
+              <input className="mgr-field" style={{ gridColumn: "1 / -1" }} name="display_name" value={editForm.display_name} onChange={(e) => handleFullNameChange(e, false)} placeholder="Tên hiển thị đầy đủ *" required />
+
               <input className="mgr-field" name="surname" value={editForm.surname} onChange={updateEditField} placeholder="Họ" />
               <input className="mgr-field" name="middle_name" value={editForm.middle_name} onChange={updateEditField} placeholder="Tên đệm" />
               <input className="mgr-field" name="first_name" value={editForm.first_name} onChange={updateEditField} placeholder="Tên" />
+              
               <select className="mgr-field" name="gender" value={editForm.gender} onChange={updateEditField}>
                 <option value="1">Nam</option>
                 <option value="2">Nữ</option>

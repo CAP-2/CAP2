@@ -61,6 +61,36 @@ const ClanRegister = () => {
     setManagerForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  // --- 🌟 HÀM MỚI: TỰ ĐỘNG TÁCH HỌ TÊN KHI GÕ VÀO Ô "TÊN HIỂN THỊ ĐẦY ĐỦ" 🌟 ---
+  const handleFullNameChange = (e) => {
+    const fullName = e.target.value;
+    const parts = fullName.trim().split(/\s+/); // Tách chuỗi dựa trên khoảng trắng
+
+    let surname = "";
+    let middle_name = "";
+    let first_name = "";
+
+    if (parts.length === 1 && parts[0] !== "") {
+      first_name = parts[0];
+    } else if (parts.length === 2) {
+      surname = parts[0];
+      first_name = parts[1];
+    } else if (parts.length >= 3) {
+      surname = parts[0];
+      first_name = parts[parts.length - 1];
+      middle_name = parts.slice(1, parts.length - 1).join(" ");
+    }
+
+    // Cập nhật cả 4 ô (Tên đầy đủ, Họ, Tên đệm, Tên) cùng 1 lúc
+    setManagerForm((prev) => ({
+      ...prev,
+      display_name: fullName,
+      surname: surname,
+      middle_name: middle_name,
+      first_name: first_name
+    }));
+  };
+
   const handleManagerSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -149,11 +179,12 @@ const ClanRegister = () => {
                 />
               </div>
 
+              {/* 🌟 ĐÃ GẮN HÀM TÁCH TÊN VÀO Ô NÀY 🌟 */}
               <input
                 name="display_name"
                 value={managerForm.display_name}
                 placeholder="Tên hiển thị đầy đủ"
-                onChange={handleManagerChange}
+                onChange={handleFullNameChange}
                 required
               />
 
@@ -243,4 +274,3 @@ const ClanRegister = () => {
 };
 
 export default ClanRegister;
-

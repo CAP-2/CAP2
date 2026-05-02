@@ -42,6 +42,7 @@ export default function ProfileDrawer({
   const [message, setMessage] = useState("");
   const [profile, setProfile] = useState({});
   const [basicForm, setBasicForm] = useState({
+    display_name: "", // Đã thêm display_name
     email: "",
     surname: "",
     middle_name: "",
@@ -71,6 +72,7 @@ export default function ProfileDrawer({
       const nextProfile = data.profile || {};
       setProfile(nextProfile);
       setBasicForm({
+        display_name: nextProfile.display_name || [nextProfile.surname, nextProfile.middle_name, nextProfile.first_name].filter(Boolean).join(" ").trim() || "",
         email: nextProfile.email || "",
         surname: nextProfile.surname || "",
         middle_name: nextProfile.middle_name || "",
@@ -111,6 +113,35 @@ export default function ProfileDrawer({
 
   if (!open) return null;
 
+  // --- 🌟 HÀM TÁCH TÊN TỰ ĐỘNG CHO TRANG PROFILE CÁ NHÂN 🌟 ---
+  const handleFullNameChange = (e) => {
+    const fullNameValue = e.target.value;
+    const parts = fullNameValue.trim().split(/\s+/);
+    
+    let surname = "";
+    let middle_name = "";
+    let first_name = "";
+
+    if (parts.length === 1 && parts[0] !== "") {
+      first_name = parts[0];
+    } else if (parts.length === 2) {
+      surname = parts[0];
+      first_name = parts[1];
+    } else if (parts.length >= 3) {
+      surname = parts[0];
+      first_name = parts[parts.length - 1];
+      middle_name = parts.slice(1, parts.length - 1).join(" ");
+    }
+
+    setBasicForm((prev) => ({
+      ...prev,
+      display_name: fullNameValue,
+      surname: surname,
+      middle_name: middle_name,
+      first_name: first_name
+    }));
+  };
+
   const updateBasicField = (event) => {
     const { name, value } = event.target;
     setBasicForm((prev) => ({ ...prev, [name]: value }));
@@ -145,6 +176,7 @@ export default function ProfileDrawer({
       const data = await apiRequest("/api/member/profile", {
         method: "PUT",
         body: JSON.stringify({
+          display_name: basicForm.display_name,
           email: basicForm.email,
           surname: basicForm.surname,
           middle_name: basicForm.middle_name,
@@ -255,6 +287,17 @@ export default function ProfileDrawer({
           </div>
 
           <div className="profile-drawer-grid">
+            {/* 🌟 THÊM Ô TÊN HIỂN THỊ ĐẦY ĐỦ Ở ĐẦY TIÊN 🌟 */}
+            <label className="profile-drawer-full">
+              <span>Tên hiển thị đầy đủ (Gõ vào đây sẽ tự tách họ tên)</span>
+              <input 
+                name="display_name" 
+                value={basicForm.display_name} 
+                onChange={handleFullNameChange} 
+                placeholder="Ví dụ: Nguyễn Văn A" 
+              />
+            </label>
+
             <label>
               <span>Họ</span>
               <input name="surname" value={basicForm.surname} onChange={updateBasicField} placeholder="Ví dụ: Nguyễn" />
@@ -330,7 +373,7 @@ export default function ProfileDrawer({
           </div>
 
           <div className="profile-drawer-grid">
-            <label>
+            <label className="profile-drawer-full">
               <span>Mật khẩu hiện tại</span>
               <input name="current_password" type="password" value={passwordForm.current_password} onChange={updatePasswordField} placeholder="Nhập mật khẩu hiện tại" />
             </label>
@@ -338,7 +381,7 @@ export default function ProfileDrawer({
               <span>Mật khẩu mới</span>
               <input name="new_password" type="password" value={passwordForm.new_password} onChange={updatePasswordField} placeholder="Nhập mật khẩu mới" />
             </label>
-            <label className="profile-drawer-full">
+            <label>
               <span>Xác nhận mật khẩu mới</span>
               <input name="confirm_password" type="password" value={passwordForm.confirm_password} onChange={updatePasswordField} placeholder="Nhập lại mật khẩu mới" />
             </label>

@@ -19,7 +19,7 @@ const MAX_CARD_WIDTH = 360;
 const MAX_CARD_HEIGHT = 360;
 const LEVEL_HEIGHT = Math.round(CARD_HEIGHT * 1.5);
 const X_GAP = Math.round(CARD_WIDTH * 0.9);
-const SPOUSE_GAP = 20; // ~0.5cm between linked spouses only
+const SPOUSE_GAP = 20; 
 const SIBLING_GAP = X_GAP;
 const FAMILY_GAP = Math.round(CARD_WIDTH * 1.2);
 const Y_GAP = LEVEL_HEIGHT;
@@ -120,7 +120,6 @@ function saveCardSizes(clanId, sizes) {
   try {
     window.localStorage.setItem(getCardSizeStorageKey(clanId), JSON.stringify(sizes || {}));
   } catch {
-    // localStorage can be unavailable; resizing still works in memory.
   }
 }
 
@@ -150,7 +149,6 @@ function saveLineRoutes(clanId, routes) {
   try {
     window.localStorage.setItem(getLineRouteStorageKey(clanId), JSON.stringify(routes || {}));
   } catch {
-    // localStorage can be unavailable; line dragging still works in memory.
   }
 }
 
@@ -532,8 +530,6 @@ function getSpouseAwareGenerationUnits(row, families = []) {
     used.add(Number(father.id));
     used.add(Number(mother.id));
     units.push({
-      // Tự sắp xếp cặp vợ/chồng theo yêu cầu: vợ đứng trước, chồng đứng sau.
-      // Chỉ riêng cặp đã liên kết được đặt sát nhau bằng SPOUSE_GAP (~0.5cm).
       members: [mother, father],
       x: Math.min(toInt(father.tree_x, 0), toInt(mother.tree_x, 0)),
       sortPerson: mother,
@@ -618,7 +614,6 @@ function normalizeGenerationSpacing(people, families = []) {
 
   return positioned.sort((a, b) => toInt(a.generation, 1) - toInt(b.generation, 1) || personSort(a, b));
 }
-
 
 function centerOf(person, cardSizes = {}) {
   const size = getCardSize(cardSizes, person?.id);
@@ -1136,6 +1131,35 @@ function PersonInspector({
       return { ...current, [field]: value };
     });
 
+  // --- 🌟 HÀM TÁCH TÊN TỰ ĐỘNG CHO INSPECTOR 🌟 ---
+  const handleFullNameChange = (e) => {
+    const fullNameValue = e.target.value;
+    const parts = fullNameValue.trim().split(/\s+/);
+    
+    let surname = "";
+    let middle_name = "";
+    let first_name = "";
+
+    if (parts.length === 1 && parts[0] !== "") {
+      first_name = parts[0];
+    } else if (parts.length === 2) {
+      surname = parts[0];
+      first_name = parts[1];
+    } else if (parts.length >= 3) {
+      surname = parts[0];
+      first_name = parts[parts.length - 1];
+      middle_name = parts.slice(1, parts.length - 1).join(" ");
+    }
+
+    setForm((current) => ({
+      ...current,
+      display_name: fullNameValue,
+      surname: surname,
+      middle_name: middle_name,
+      first_name: first_name
+    }));
+  };
+
   return (
     <div className="fte-modalOverlay fte-inspectorOverlay" role="presentation" onMouseDown={onClose}>
       <aside className="fte-inspector" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -1176,7 +1200,8 @@ function PersonInspector({
       <div className="fte-formGrid">
         <label>
           Tên hiển thị
-          <input value={form.display_name} onChange={(event) => setField("display_name", event.target.value)} disabled={!canEdit} />
+          {/* Đã gắn sự kiện tách tên tự động */}
+          <input value={form.display_name} onChange={handleFullNameChange} disabled={!canEdit} />
         </label>
         <label>
           Họ
@@ -1406,6 +1431,35 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
     onChange({ ...form, [field]: value });
   };
 
+  // --- 🌟 HÀM TÁCH TÊN TỰ ĐỘNG CHO MODAL THÊM NGƯỜI 🌟 ---
+  const handleFullNameChange = (e) => {
+    const fullNameValue = e.target.value;
+    const parts = fullNameValue.trim().split(/\s+/);
+    
+    let surname = "";
+    let middle_name = "";
+    let first_name = "";
+
+    if (parts.length === 1 && parts[0] !== "") {
+      first_name = parts[0];
+    } else if (parts.length === 2) {
+      surname = parts[0];
+      first_name = parts[1];
+    } else if (parts.length >= 3) {
+      surname = parts[0];
+      first_name = parts[parts.length - 1];
+      middle_name = parts.slice(1, parts.length - 1).join(" ");
+    }
+
+    onChange({
+      ...form,
+      display_name: fullNameValue,
+      surname: surname,
+      middle_name: middle_name,
+      first_name: first_name
+    });
+  };
+
   return (
     <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
       <div className="fte-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -1422,7 +1476,8 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
         <div className="fte-formGrid fte-formGrid--modal">
           <label className="is-wide">
             Tên hiển thị
-            <input autoFocus value={form.display_name} onChange={(event) => setField("display_name", event.target.value)} />
+            {/* Đã gắn sự kiện tách tên tự động */}
+            <input autoFocus value={form.display_name} onChange={handleFullNameChange} />
           </label>
           <label>
             Họ
