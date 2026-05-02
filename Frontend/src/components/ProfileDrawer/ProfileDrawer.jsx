@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/api";
 import { getStoredUser } from "../../utils/auth";
+import { resolveImageUrl } from "../../utils/media";
+import ImageUpload from "../ImageUpload/ImageUpload";
 import "./ProfileDrawer.css";
 
 const buildName = (profile) =>
@@ -20,7 +22,11 @@ function syncStoredUser(profile, setCurrentUser) {
     name: profileName || storedUser.name,
     role_id: profile.role_id || storedUser.role_id,
     status: profile.status || storedUser.status,
-    avatar_url: profile.avatar_url || storedUser.avatar_url || "",
+    avatar_url: resolveImageUrl({
+      mediaId: profile.pending_avatar_media_id || profile.avatar_media_id,
+      avatar_url: profile.pending_avatar_url || profile.avatar_url || storedUser.avatar_url || "",
+    }),
+    avatar_media_id: profile.pending_avatar_media_id || profile.avatar_media_id || storedUser.avatar_media_id || null,
   };
   localStorage.setItem("auth_user", JSON.stringify(nextUser));
   localStorage.setItem("user", JSON.stringify(nextUser));
@@ -49,7 +55,7 @@ export default function ProfileDrawer({
     hometown: "",
     generation: "",
   });
-  const [contentForm, setContentForm] = useState({ avatar_url: "", bio: "" });
+  const [contentForm, setContentForm] = useState({ avatar_url: "", avatar_media_id: null, bio: "" });
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
@@ -61,7 +67,10 @@ export default function ProfileDrawer({
     [profile, currentUser],
   );
 
-  const avatarUrl = contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url || "";
+  const avatarUrl = resolveImageUrl({
+    mediaId: contentForm.avatar_media_id || profile.avatar_media_id || currentUser?.avatar_media_id,
+    avatar_url: contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url || "",
+  });
 
   const loadProfile = async () => {
     setLoading(true);
@@ -81,8 +90,12 @@ export default function ProfileDrawer({
       setContentForm({
         avatar_url:
           nextProfile.pending_avatar_url !== null && nextProfile.pending_avatar_url !== undefined
-            ? nextProfile.pending_avatar_url || ""
-            : nextProfile.avatar_url || "",
+            ? resolveImageUrl({ mediaId: nextProfile.pending_avatar_media_id, avatar_url: nextProfile.pending_avatar_url || "" })
+            : resolveImageUrl({ mediaId: nextProfile.avatar_media_id, avatar_url: nextProfile.avatar_url || "" }),
+        avatar_media_id:
+          nextProfile.pending_avatar_media_id !== null && nextProfile.pending_avatar_media_id !== undefined
+            ? nextProfile.pending_avatar_media_id || null
+            : nextProfile.avatar_media_id || null,
         bio:
           nextProfile.pending_bio !== null && nextProfile.pending_bio !== undefined
             ? nextProfile.pending_bio || ""
@@ -118,7 +131,7 @@ export default function ProfileDrawer({
 
   const updateContentField = (event) => {
     const { name, value } = event.target;
-    setContentForm((prev) => ({ ...prev, [name]: value }));
+    setContentForm((prev) => ({ ...prev, [name]: value, ...(name === "avatar_url" ? { avatar_media_id: null } : {}) }));
   };
 
   const updatePasswordField = (event) => {
@@ -177,6 +190,7 @@ export default function ProfileDrawer({
         method: "POST",
         body: JSON.stringify({
           avatar_url: contentForm.avatar_url,
+          avatar_media_id: contentForm.avatar_media_id || null,
           bio: contentForm.bio,
         }),
       });
@@ -300,6 +314,20 @@ export default function ProfileDrawer({
             <div className="profile-drawer-note">Đang có yêu cầu cập nhật hồ sơ chờ duyệt.</div>
           )}
 
+          <div className="profile-drawer-full">
+            <ImageUpload
+              label="Tải ảnh đại diện"
+              value={contentForm.avatar_url}
+              usageType="pending_avatar"
+              onUploadSuccess={(url, file) =>
+                setContentForm((prev) => ({
+                  ...prev,
+                  avatar_url: url,
+                  avatar_media_id: file?.mediaId || file?.media_id || null,
+                }))
+              }
+            />
+          </div>
           <label className="profile-drawer-full">
             <span>URL ảnh đại diện</span>
             <input name="avatar_url" value={contentForm.avatar_url} onChange={updateContentField} placeholder="https://example.com/avatar.jpg" />

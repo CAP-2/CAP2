@@ -420,3 +420,89 @@ button.top-icon-btn {
   border: 0;
   cursor: pointer;
 }
+
+/* Unified member sidebar avatar card to match manager style. */
+.member-sidebar .sidebar-user-profile {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+  width: 100%;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border: 1px solid rgba(214, 165, 54, 0.22);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 26px rgba(0, 0, 0, 0.12);
+  text-align: left;
+}
+
+.member-sidebar .sidebar-user-profile:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(214, 165, 54, 0.45);
+}
+
+.member-sidebar .profile-img-container {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 58px;
+  padding: 3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f6d36d 0%, #c99a2c 42%, #7f1d12 100%);
+  box-shadow: 0 8px 20px rgba(127, 29, 18, 0.28);
+}
+
+.member-sidebar .user-avatar-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 248, 224, 0.92);
+  object-fit: cover;
+  display: block;
+  background: radial-gradient(circle, #fff7df 0%, #e3bd62 100%);
+}
+
+.member-sidebar .user-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.member-sidebar .user-text h4 {
+  margin: 0 0 0.25rem;
+  color: #fff8e8;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-sidebar .role-text {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(201, 154, 44, 0.22);
+  color: #d6a536;
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.member-sidebar .status-indicator {
+  bottom: 3px;
+  right: 3px;
+  border-color: #4a1d12;
+}
+
+.sidebar-collapsed .member-sidebar .sidebar-user-profile {
+  justify-content: center;
+  padding: 0.75rem 0;
+  margin-bottom: 1.5rem;
+  border-radius: 18px;
+}
+
+.sidebar-collapsed .member-sidebar .profile-img-container {
+  width: 54px;
+  height: 54px;
+}

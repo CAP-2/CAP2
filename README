@@ -47,6 +47,7 @@ cd Frontend
 npm install
 npm run dev
 ```
+nếu có lỗi 
 
 =======
 
@@ -90,3 +91,5 @@ python app.py
 - Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
 - Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
 - Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.
+
+

@@ -8,6 +8,7 @@ const {
 const { createNotification } = require('../utils/notifications');
 const { deletePersonCompletely } = require('../utils/personDeletion');
 const { getTreeLayoutSettings, saveTreeLayoutSettings } = require('../utils/treeLayoutSettings');
+const { normalizeMediaId, extractMediaIdFromUrl, getMediaUrl } = require('../utils/media');
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
@@ -647,7 +648,10 @@ exports.getFamilyTree = async (req, res) => {
                 p.email,
                 p.address,
                 p.hometown,
-                p.avatar_url,
+                COALESCE(p.pending_avatar_url, p.avatar_url) AS avatar_url,
+                COALESCE(p.pending_avatar_media_id, p.avatar_media_id) AS avatar_media_id,
+                p.pending_avatar_url,
+                p.pending_avatar_media_id,
                 p.bio,
                 p.note,
                 p.tree_x,
@@ -1500,7 +1504,7 @@ exports.rejectUser = async (req, res) => {
 exports.getPendingPosts = async (req, res) => {
     try {
         let sql = `
-            SELECT p.id as post_id, p.description, p.content, p.image_url, p.created_at, author.display_name as author_name, author.email as author_email
+            SELECT p.id as post_id, p.description, p.content, p.image_url, p.image_media_id, p.created_at, author.display_name as author_name, author.email as author_email
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id
@@ -1574,11 +1578,11 @@ exports.rejectPost = async (req, res) => {
 exports.getMedia = async (req, res) => {
     try {
         let sql = `
-            SELECT p.id as post_id, p.description, p.content, p.image_url, p.created_at, author.display_name as author_name
+            SELECT p.id as post_id, p.description, p.content, p.image_url, p.image_media_id, p.created_at, author.display_name as author_name
             FROM posts p
             JOIN accounts a ON p.author_id = a.id
             JOIN people author ON a.person_id = author.id
-            WHERE p.image_url IS NOT NULL AND p.image_url != '' AND p.status != 'rejected'
+            WHERE ((p.image_url IS NOT NULL AND p.image_url != '') OR p.image_media_id IS NOT NULL) AND p.status != 'rejected'
         `;
         const params = [];
 
@@ -2023,7 +2027,7 @@ exports.completeTask = async (req, res) => {
 exports.getPendingProfileUpdates = async (req, res) => {
     try {
         let sql = `
-            SELECT id as person_id, display_name, surname, first_name, pending_bio, pending_avatar_url, bio as current_bio, avatar_url as current_avatar_url, clan_id
+            SELECT id as person_id, display_name, surname, first_name, pending_bio, pending_avatar_url, pending_avatar_media_id, bio as current_bio, avatar_url as current_avatar_url, avatar_media_id as current_avatar_media_id, clan_id
             FROM people
             WHERE moderation_status = 'pending'
         `;
@@ -2065,8 +2069,10 @@ exports.approveProfileUpdate = async (req, res) => {
             SET 
                 bio = COALESCE(pending_bio, bio), 
                 avatar_url = COALESCE(pending_avatar_url, avatar_url),
+                avatar_media_id = COALESCE(pending_avatar_media_id, avatar_media_id),
                 pending_bio = NULL,
                 pending_avatar_url = NULL,
+                pending_avatar_media_id = NULL,
                 moderation_status = 'none',
                 moderation_reason = NULL
             WHERE id = ?`, 
@@ -2134,6 +2140,7 @@ exports.createPerson = async (req, res) => {
             phone,
             email,
             avatar_url,
+            avatar_media_id,
             bio,
             note,
             tree_x,
@@ -2169,14 +2176,20 @@ exports.createPerson = async (req, res) => {
         const livingValue = is_living === undefined || is_living === null || is_living === '' ? 1 : Number(is_living) ? 1 : 0;
         const treeXValue = parseTreeInt(tree_x, 0);
         const treeYValue = parseTreeInt(tree_y, 0);
+        const avatarMediaIdValue = normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(avatar_url);
+        const avatarUrlValue = avatar_url != null && String(avatar_url).trim()
+            ? String(avatar_url).trim()
+            : avatarMediaIdValue
+                ? getMediaUrl(req, avatarMediaIdValue)
+                : null;
         const displayOrderValue = parseTreeInt(display_order, 0);
 
         const [personResult] = await db.query(
             `INSERT INTO people (
                 clan_id, display_name, first_name, middle_name, surname, gender, generation, branch,
-                birth_date, death_date, is_living, phone, email, address, hometown, avatar_url, bio, note,
+                birth_date, death_date, is_living, phone, email, address, hometown, avatar_url, avatar_media_id, bio, note,
                 tree_x, tree_y, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 clanId,
                 display || buildDisplayNameFromPartsMgr(sn, mid, fn),
@@ -2193,7 +2206,8 @@ exports.createPerson = async (req, res) => {
                 email != null ? String(email).trim() : null,
                 address != null ? String(address).trim() : null,
                 hometown != null ? String(hometown).trim() : null,
-                avatar_url != null ? String(avatar_url).trim() || null : null,
+                avatarUrlValue,
+                avatarMediaIdValue,
                 bio != null ? String(bio).trim() : null,
                 note != null ? String(note).trim() : null,
                 treeXValue,
@@ -2409,6 +2423,17 @@ exports.updateTreePerson = async (req, res) => {
             }
         }
 
+        let nextAvatarUrl = strOrKeep('avatar_url', current.avatar_url) || null;
+        let nextAvatarMediaId = current.avatar_media_id || null;
+        if (has('avatar_media_id')) {
+            nextAvatarMediaId = normalizeMediaId(body.avatar_media_id);
+        } else if (has('avatar_url')) {
+            nextAvatarMediaId = extractMediaIdFromUrl(nextAvatarUrl);
+        }
+        if (!nextAvatarUrl && nextAvatarMediaId) {
+            nextAvatarUrl = getMediaUrl(req, nextAvatarMediaId);
+        }
+
         const nextTreeX = has('tree_x') ? parseTreeInt(body.tree_x, current.tree_x || 0) : current.tree_x || 0;
         const nextTreeY = has('tree_y') ? parseTreeInt(body.tree_y, current.tree_y || 0) : current.tree_y || 0;
         const nextDisplayOrder = has('display_order')
@@ -2420,7 +2445,7 @@ exports.updateTreePerson = async (req, res) => {
                 clan_id = ?, display_name = ?, first_name = ?, middle_name = ?, surname = ?,
                 gender = ?, birth_date = ?, death_date = ?, is_living = ?, generation = ?, branch = ?,
                 hometown = ?, address = ?, phone = ?, email = ?, zalo = ?, facebook = ?,
-                avatar_url = ?, bio = ?, note = ?, tree_x = ?, tree_y = ?, display_order = ?
+                avatar_url = ?, avatar_media_id = ?, bio = ?, note = ?, tree_x = ?, tree_y = ?, display_order = ?
              WHERE id = ?`,
             [
                 nextClanId,
@@ -2440,7 +2465,8 @@ exports.updateTreePerson = async (req, res) => {
                 strOrKeep('email', current.email),
                 strOrKeep('zalo', current.zalo),
                 strOrKeep('facebook', current.facebook),
-                strOrKeep('avatar_url', current.avatar_url) || null,
+                nextAvatarUrl,
+                nextAvatarMediaId,
                 strOrKeep('bio', current.bio),
                 strOrKeep('note', current.note),
                 nextTreeX,

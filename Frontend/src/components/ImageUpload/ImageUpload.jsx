@@ -1,14 +1,47 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { uploadImage } from "../../api/memberService";
 import "./ImageUpload.css";
 
-const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disabled = false }) => {
+const AVATAR_OUTPUT_SIZE = 512;
+const CROP_VIEWPORT_SIZE = 280;
+const CROP_CIRCLE_INSET = 18;
+const CROP_AREA_SIZE = CROP_VIEWPORT_SIZE - CROP_CIRCLE_INSET * 2;
+
+const ImageUpload = ({
+  onUploadSuccess,
+  label = "Tải ảnh lên",
+  value = "",
+  disabled = false,
+  usageType = "other",
+  crop = undefined,
+}) => {
+  const avatarMode = useMemo(() => {
+    if (typeof crop === "boolean") return crop;
+    return String(usageType || "").toLowerCase().includes("avatar");
+  }, [crop, usageType]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [urlInput, setUrlInput] = useState("");
+  const [cropFile, setCropFile] = useState(null);
+  const [cropSource, setCropSource] = useState("");
+  const [cropImageSize, setCropImageSize] = useState({ width: 0, height: 0 });
+  const [cropScale, setCropScale] = useState(1);
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const [isCropping, setIsCropping] = useState(false);
   const fileInputRef = useRef(null);
+  const cropImageRef = useRef(null);
+  const dragRef = useRef(null);
+
+  const cropBaseScale = useMemo(() => {
+    if (!cropImageSize.width || !cropImageSize.height) return 1;
+    return Math.min(CROP_VIEWPORT_SIZE / cropImageSize.width, CROP_VIEWPORT_SIZE / cropImageSize.height);
+  }, [cropImageSize]);
+
+  const cropDisplayWidth = cropImageSize.width ? cropImageSize.width * cropBaseScale * cropScale : CROP_VIEWPORT_SIZE;
+  const cropDisplayHeight = cropImageSize.height ? cropImageSize.height * cropBaseScale * cropScale : CROP_VIEWPORT_SIZE;
 
   useEffect(() => {
     const nextValue = String(value || "").trim();
@@ -16,31 +49,65 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
     setPreview(nextValue || null);
   }, [value]);
 
-  const handleFile = async (file) => {
-    if (!file || disabled) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Vui long chon tep hinh anh (.jpg, .png, ...)");
-      return;
-    }
+  useEffect(() => {
+    return () => {
+      if (cropSource) URL.revokeObjectURL(cropSource);
+    };
+  }, [cropSource]);
 
+  const uploadSelectedFile = async (file, localPreviewUrl) => {
     setLoading(true);
     setError("");
-    const localUrl = URL.createObjectURL(file);
-    setPreview(localUrl);
+    setPreview(localPreviewUrl);
     setUrlInput("");
 
     try {
-      const result = await uploadImage(file);
+      const result = await uploadImage(file, { usageType });
       if (result.success) {
-        onUploadSuccess?.(result.url || result.imageUrl || "");
+        onUploadSuccess?.(result.url || result.imageUrl || "", result);
       } else {
-        setError(result.message || "Tai anh that bai");
+        setError(result.message || "Tải ảnh thất bại");
       }
     } catch (err) {
-      setError(err.message || "Loi khi tai anh len");
+      setError(err.message || "Lỗi khi tải ảnh lên");
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetCropState = () => {
+    if (cropSource) URL.revokeObjectURL(cropSource);
+    setCropFile(null);
+    setCropSource("");
+    setCropImageSize({ width: 0, height: 0 });
+    setCropScale(1);
+    setCropOffset({ x: 0, y: 0 });
+    setIsCropping(false);
+    dragRef.current = null;
+  };
+
+  const handleFile = async (file) => {
+    if (!file || disabled) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn tệp hình ảnh (.jpg, .png, .webp, ...)");
+      return;
+    }
+
+    setError("");
+    if (avatarMode) {
+      if (cropSource) URL.revokeObjectURL(cropSource);
+      const source = URL.createObjectURL(file);
+      setCropFile(file);
+      setCropSource(source);
+      setCropImageSize({ width: 0, height: 0 });
+      setCropScale(1);
+      setCropOffset({ x: 0, y: 0 });
+      setIsCropping(false);
+      return;
+    }
+
+    const localUrl = URL.createObjectURL(file);
+    await uploadSelectedFile(file, localUrl);
   };
 
   const handleUrlChange = (event) => {
@@ -48,10 +115,10 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
     setUrlInput(nextValue);
     if (nextValue.trim()) {
       setPreview(nextValue.trim());
-      onUploadSuccess?.(nextValue.trim());
+      onUploadSuccess?.(nextValue.trim(), { imageUrl: nextValue.trim(), url: nextValue.trim(), mediaId: null, media_id: null });
     } else {
       setPreview(null);
-      onUploadSuccess?.("");
+      onUploadSuccess?.("", { imageUrl: "", url: "", mediaId: null, media_id: null });
     }
   };
 
@@ -61,11 +128,101 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
     setUrlInput("");
     setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    onUploadSuccess?.("");
+    onUploadSuccess?.("", { imageUrl: "", url: "", mediaId: null, media_id: null });
+  };
+
+  const handleCropPointerDown = (event) => {
+    event.preventDefault();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: cropOffset.x,
+      offsetY: cropOffset.y,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleCropPointerMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setCropOffset({
+      x: drag.offsetX + event.clientX - drag.startX,
+      y: drag.offsetY + event.clientY - drag.startY,
+    });
+  };
+
+  const handleCropPointerUp = (event) => {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null;
+    }
+  };
+
+  const buildCroppedFile = async () => {
+    const image = cropImageRef.current;
+    if (!image || !cropFile || !cropImageSize.width || !cropImageSize.height) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = AVATAR_OUTPUT_SIZE;
+    canvas.height = AVATAR_OUTPUT_SIZE;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    const viewport = CROP_VIEWPORT_SIZE;
+    const outputScale = AVATAR_OUTPUT_SIZE / CROP_AREA_SIZE;
+    const baseScale = Math.min(viewport / cropImageSize.width, viewport / cropImageSize.height);
+    const drawScale = baseScale * cropScale;
+    const drawWidth = cropImageSize.width * drawScale;
+    const drawHeight = cropImageSize.height * drawScale;
+    const drawX = (viewport - drawWidth) / 2 + cropOffset.x;
+    const drawY = (viewport - drawHeight) / 2 + cropOffset.y;
+
+    // The visible avatar is the inner circular guide, not the whole square stage.
+    // Crop exactly the same inner area so the saved avatar matches what the user saw.
+    const cropLeft = CROP_CIRCLE_INSET;
+    const cropTop = CROP_CIRCLE_INSET;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, AVATAR_OUTPUT_SIZE, AVATAR_OUTPUT_SIZE);
+    ctx.drawImage(
+      image,
+      (drawX - cropLeft) * outputScale,
+      (drawY - cropTop) * outputScale,
+      drawWidth * outputScale,
+      drawHeight * outputScale
+    );
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    if (!blob) return null;
+
+    const baseName = cropFile.name?.replace(/\.[^.]+$/, "") || "avatar";
+    return new File([blob], `${baseName}-avatar.jpg`, { type: "image/jpeg" });
+  };
+
+  const confirmCrop = async () => {
+    if (disabled || loading || isCropping) return;
+    setIsCropping(true);
+    setError("");
+
+    try {
+      const croppedFile = await buildCroppedFile();
+      if (!croppedFile) {
+        setError("Không thể cắt ảnh này. Vui lòng chọn ảnh khác.");
+        setIsCropping(false);
+        return;
+      }
+      const localPreviewUrl = URL.createObjectURL(croppedFile);
+      resetCropState();
+      await uploadSelectedFile(croppedFile, localPreviewUrl);
+    } catch (err) {
+      setError(err.message || "Không thể cắt ảnh");
+      setIsCropping(false);
+    }
   };
 
   return (
-    <div className="image-upload-container">
+    <div className={`image-upload-container ${avatarMode ? "is-avatar-upload" : ""}`}>
       <div className="upload-options">
         <div
           className={`upload-dropzone ${isDragging ? "dragging" : ""} ${preview ? "has-preview" : ""}`}
@@ -92,12 +249,12 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
 
           {preview ? (
             <div className="preview-container">
-              <img src={preview} alt="" className="image-preview" onError={() => setError("URL anh khong hop le")} />
+              <img src={preview} alt="" className="image-preview" onError={() => setError("URL ảnh không hợp lệ")} />
               <div className="preview-overlay">
-                <span>Thay doi anh</span>
+                <span>{avatarMode ? "Đổi ảnh đại diện" : "Thay đổi ảnh"}</span>
               </div>
               <button className="preview-clear" type="button" onClick={clearImage} disabled={disabled || loading}>
-                Xoa
+                Xóa
               </button>
             </div>
           ) : (
@@ -108,15 +265,15 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
                 </svg>
               </div>
               <p>{label}</p>
-              <span className="upload-hint">Keo tha hoac nhap de chon file</span>
+              <span className="upload-hint">Kéo thả hoặc nhấn để chọn file</span>
             </div>
           )}
 
-          {loading && <div className="upload-loader">Dang tai...</div>}
+          {loading && <div className="upload-loader">Đang tải...</div>}
         </div>
 
         <div className="url-input-wrapper">
-          <span className="url-sep">hoac dan URL:</span>
+          <span className="url-sep">hoặc dán URL:</span>
           <input
             type="text"
             className="url-field"
@@ -128,6 +285,69 @@ const ImageUpload = ({ onUploadSuccess, label = "Tai anh len", value = "", disab
         </div>
       </div>
       {error && <p className="upload-error">{error}</p>}
+
+      {cropSource ? (
+        <div className="avatar-crop-backdrop" role="dialog" aria-modal="true" aria-label="Cắt ảnh đại diện">
+          <div className="avatar-crop-modal">
+            <div className="avatar-crop-header">
+              <div>
+                <strong>Cắt ảnh đại diện</strong>
+                <span>Vùng bên trong vòng tròn sẽ là ảnh lưu cuối cùng. Kéo ảnh và thu/phóng để căn đúng khuôn.</span>
+              </div>
+              <button type="button" className="avatar-crop-close" onClick={resetCropState} disabled={loading || isCropping}>
+                ×
+              </button>
+            </div>
+
+            <div
+              className="avatar-crop-stage"
+              onPointerDown={handleCropPointerDown}
+              onPointerMove={handleCropPointerMove}
+              onPointerUp={handleCropPointerUp}
+              onPointerCancel={handleCropPointerUp}
+            >
+              <img
+                ref={cropImageRef}
+                src={cropSource}
+                alt=""
+                draggable="false"
+                className="avatar-crop-image"
+                style={{
+                  width: `${cropDisplayWidth}px`,
+                  height: `${cropDisplayHeight}px`,
+                  transform: `translate(calc(-50% + ${cropOffset.x}px), calc(-50% + ${cropOffset.y}px))`,
+                }}
+                onLoad={(event) => {
+                  setCropImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
+                }}
+              />
+              <div className="avatar-crop-mask" aria-hidden="true" />
+              <div className="avatar-crop-circle" aria-hidden="true" />
+            </div>
+
+            <label className="avatar-crop-zoom">
+              <span>Thu/phóng</span>
+              <input
+                type="range"
+                min="1"
+                max="6"
+                step="0.01"
+                value={cropScale}
+                onChange={(event) => setCropScale(Number(event.target.value))}
+              />
+            </label>
+
+            <div className="avatar-crop-actions">
+              <button type="button" className="avatar-crop-cancel" onClick={resetCropState} disabled={loading || isCropping}>
+                Hủy
+              </button>
+              <button type="button" className="avatar-crop-confirm" onClick={confirmCrop} disabled={loading || isCropping}>
+                {isCropping || loading ? "Đang lưu..." : "Cắt và tải lên"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

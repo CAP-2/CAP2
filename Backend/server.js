@@ -54,18 +54,27 @@ const adminRoutes = require('./src/routes/adminRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const voiceRoutes = require('../voice/backendRoutes');
 const managerController = require('./src/controllers/managerController');
+const mediaRoutes = require('./src/routes/mediaRoutes');
+const {
+    MAX_IMAGE_SIZE_BYTES,
+    isAllowedImageMimeType,
+    getMediaUrl,
+    createMediaFile,
+    getUploadContext,
+} = require('./src/utils/media');
 const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
-// 5. Cấu hình lưu trữ ảnh (Multer) - Chỉ cần 1 lần
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
+// 5. Cấu hình upload ảnh: ảnh mới được lưu trực tiếp vào MySQL LONGBLOB
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
+    fileFilter: (req, file, cb) => {
+        if (!isAllowedImageMimeType(file.mimetype)) {
+            return cb(new Error('Chỉ cho phép upload ảnh JPG, PNG, WEBP hoặc GIF'));
+        }
+        cb(null, true);
     }
 });
-const upload = multer({ storage: storage });
 
 // 6. Logic Socket.io
 io.on('connection', (socket) => {
@@ -104,14 +113,49 @@ io.on('connection', (socket) => {
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: 'Backend is running' });
 });
-app.post('/api/upload', upload.single('image'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ success: false, message: 'Không có file được chọn!' });
-    }
-    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-    res.json({ success: true, imageUrl });
+app.post('/api/upload', verifyToken, (req, res) => {
+    upload.single('image')(req, res, async (uploadError) => {
+        if (uploadError) {
+            const isMulterLimit = uploadError?.code === 'LIMIT_FILE_SIZE';
+            return res.status(isMulterLimit ? 413 : 400).json({
+                success: false,
+                message: isMulterLimit ? 'Ảnh vượt quá dung lượng cho phép' : uploadError.message || 'File ảnh không hợp lệ'
+            });
+        }
+
+        try {
+            if (!req.file) {
+                return res.status(400).json({ success: false, message: 'Không có file được chọn!' });
+            }
+
+            const accountId = req.user?.id || req.user?.account_id || null;
+            const context = await getUploadContext(accountId);
+            const usageType = req.body?.usage_type || req.body?.usageType || 'other';
+
+            const mediaId = await createMediaFile({
+                ownerAccountId: accountId,
+                ownerPersonId: context.owner_person_id || context.ownerPersonId || req.user?.person_id || null,
+                clanId: context.clan_id || context.clanId || null,
+                usageType,
+                originalFilename: req.file.originalname,
+                mimeType: req.file.mimetype,
+                fileSizeBytes: req.file.size,
+                imageBuffer: req.file.buffer,
+            });
+
+            const imageUrl = getMediaUrl(req, mediaId);
+            return res.json({ success: true, mediaId, media_id: mediaId, imageUrl, url: imageUrl });
+        } catch (error) {
+            console.error('Upload image to database error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Không thể lưu ảnh vào database'
+            });
+        }
+    });
 });
 
+app.use('/api/media', mediaRoutes);
 app.use('/api/auth', authRoutes);
 app.get('/api/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
 app.patch('/api/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);

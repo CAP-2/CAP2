@@ -8,12 +8,14 @@ import {
   togglePostLike,
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
+import { resolveImageUrl } from "../../utils/media";
 import "./GeneralPosts.css";
 
 const emptyPostForm = {
   description: "",
   content: "",
   image_url: "",
+  image_media_id: null,
 };
 
 function formatDate(value) {
@@ -33,11 +35,12 @@ function buildPostDescription(post) {
 }
 
 function PostCard({ post, onOpen }) {
+  const imageUrl = resolveImageUrl({ mediaId: post.image_media_id, image_url: post.image_url });
   return (
     <button type="button" className="general-post-card" onClick={() => onOpen(post)}>
       <span className="general-post-thumb">
-        {post.image_url ? (
-          <img src={post.image_url} alt="" />
+        {imageUrl ? (
+          <img src={imageUrl} alt="" />
         ) : (
           <span className="general-post-thumb-empty">
             <span className="material-symbols-outlined">article</span>
@@ -99,7 +102,11 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
             value={form.image_url}
             disabled={submitting}
             label="Tải ảnh bài đăng"
-            onUploadSuccess={(url) => onChange("image_url", url)}
+            usageType="post_image"
+            onUploadSuccess={(url, file) => {
+              onChange("image_url", url);
+              onChange("image_media_id", file?.mediaId || file?.media_id || null);
+            }}
           />
 
           {(error || notice) && <div className={`post-form-message ${error ? "is-error" : "is-success"}`}>{error || notice}</div>}
@@ -132,6 +139,7 @@ function PostDetailModal({
   onCommentSubmit,
 }) {
   if (!post) return null;
+  const imageUrl = resolveImageUrl({ mediaId: post.image_media_id, image_url: post.image_url });
 
   return (
     <div className="post-modal-backdrop" onMouseDown={onClose}>
@@ -148,9 +156,9 @@ function PostDetailModal({
           </button>
         </header>
 
-        {post.image_url && (
+        {imageUrl && (
           <div className="post-detail-image">
-            <img src={post.image_url} alt="" />
+            <img src={imageUrl} alt="" />
           </div>
         )}
 
@@ -317,6 +325,7 @@ export default function GeneralPosts() {
         description,
         content: content || description,
         image_url: imageUrl,
+        image_media_id: form.image_media_id || null,
       });
       setForm(emptyPostForm);
       setFormNotice(result.message || "Đã gửi bài đăng.");

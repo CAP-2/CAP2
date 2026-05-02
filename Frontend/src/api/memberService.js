@@ -229,9 +229,12 @@ export const getMySubmissions = async () =>
     "Không thể tải danh sách đóng góp",
   );
 
-export const uploadImage = async (file) => {
+export const uploadImage = async (file, options = {}) => {
   const formData = new FormData();
   formData.append("image", file);
+  if (options.usageType || options.usage_type) {
+    formData.append("usage_type", options.usageType || options.usage_type);
+  }
 
   const res = await fetch("/api/upload", {
     method: "POST",
@@ -240,8 +243,13 @@ export const uploadImage = async (file) => {
   });
   const result = await parseResponse(res, "Không thể tải ảnh lên");
 
+  const mediaId = result.mediaId || result.media_id || null;
+  const imageUrl = result.url || result.imageUrl || (mediaId ? `/api/media/${mediaId}` : "");
   return {
     ...result,
-    url: result.url || result.imageUrl || "",
+    mediaId,
+    media_id: mediaId,
+    imageUrl,
+    url: imageUrl,
   };
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
+import { resolveImageUrl } from "../../utils/media";
 import NotificationBell from "./NotificationBell";
 import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./MemberLayout.css";
@@ -42,7 +43,11 @@ export default function MemberLayout() {
           email: profile.email || storedUser.email,
           role_id: profile.role_id || storedUser.role_id,
           status: profile.status || storedUser.status,
-          avatar_url: profile.avatar_url || storedUser.avatar_url || "",
+          avatar_url: resolveImageUrl({
+            mediaId: profile.pending_avatar_media_id || profile.avatar_media_id,
+            avatar_url: profile.pending_avatar_url || profile.avatar_url || storedUser.avatar_url || "",
+          }),
+          avatar_media_id: profile.pending_avatar_media_id || profile.avatar_media_id || storedUser.avatar_media_id || null,
         };
         localStorage.setItem("auth_user", JSON.stringify(nextUser));
         localStorage.setItem("user", JSON.stringify(nextUser));
@@ -88,7 +93,7 @@ export default function MemberLayout() {
 
         <button type="button" className="sidebar-user-profile" onClick={() => setProfileOpen(true)} title="Chỉnh sửa thông tin cá nhân">
           <div className="profile-img-container">
-            <img src={currentUser?.avatar_url || "/logo-giaphaviet.png"} alt="" className="user-avatar-circle" />
+            <img src={resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url, fallback: "/logo-giaphaviet.png" })} alt="" className="user-avatar-circle" />
             <div className="status-indicator online" />
           </div>
           <div className="user-text">

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { toBlob } from "html-to-image";
+import ImageUpload from "../ImageUpload/ImageUpload";
+import { resolveImageUrl } from "../../utils/media";
 import {
   createPersonAPI,
   deletePersonAPI,
@@ -974,6 +976,7 @@ function blankCreateForm(relation, selectedPerson, spouse) {
     branch: selectedPerson?.branch != null ? String(selectedPerson.branch) : "",
     hometown: selectedPerson?.hometown || "",
     avatar_url: "",
+    avatar_media_id: null,
     bio: "",
     note: "",
     tree_x: String(Math.round(x)),
@@ -998,7 +1001,8 @@ function personToForm(person) {
     address: person?.address || "",
     phone: person?.phone || "",
     email: person?.email || "",
-    avatar_url: person?.avatar_url || "",
+    avatar_url: resolveImageUrl({ mediaId: person?.avatar_media_id, avatar_url: person?.avatar_url || "" }),
+    avatar_media_id: person?.avatar_media_id || null,
     bio: person?.bio || "",
     note: person?.note || "",
   };
@@ -1025,6 +1029,7 @@ function PersonCard({
   const deathText = formatDisplayDate(person.death_date);
   const deceased = Number(person.is_living) === 0;
   const isClanChief = Number(person.role_id) === 2;
+  const avatarUrl = resolveImageUrl({ mediaId: person.avatar_media_id, avatar_url: person.avatar_url });
   const lifeParts = [];
   if (birthText) lifeParts.push(`Sinh: ${birthText}`);
   if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
@@ -1083,9 +1088,9 @@ function PersonCard({
         </div>
       ) : null}
       {isClanChief ? <div className="fte-chiefBadge">Tộc trưởng</div> : null}
-      <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
-        {person.avatar_url ? (
-          <img className="fte-mainPhoto" src={person.avatar_url} alt={name} draggable="false" />
+      <div className={`fte-ancestorIcon ${avatarUrl ? "has-photo" : ""}`} aria-hidden="true">
+        {avatarUrl ? (
+          <img className="fte-mainPhoto" src={avatarUrl} alt={name} draggable="false" />
         ) : (
           <span className="material-symbols-outlined">person</span>
         )}
@@ -1249,10 +1254,30 @@ function PersonInspector({
           Email
           <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
         </label>
-        <label className="is-wide">
-          Ảnh đại diện URL
-          <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
-        </label>
+        <div className="is-wide fte-avatarUploadField">
+          <span>Ảnh đại diện</span>
+          <ImageUpload
+            label="Tải ảnh đại diện từ máy"
+            value={form.avatar_url}
+            usageType="avatar"
+            disabled={!canEdit}
+            onUploadSuccess={(url, file) => {
+              setForm((current) => ({
+                ...current,
+                avatar_url: url,
+                avatar_media_id: file?.mediaId || file?.media_id || null,
+              }));
+            }}
+          />
+          <label className="fte-urlSubField">
+            Hoặc nhập URL ảnh đại diện
+            <input
+              value={form.avatar_url}
+              onChange={(event) => setForm((current) => ({ ...current, avatar_url: event.target.value, avatar_media_id: null }))}
+              disabled={!canEdit}
+            />
+          </label>
+        </div>
         <label className="is-wide">
           Giới thiệu
           <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
@@ -1350,7 +1375,7 @@ function RelationSelectDialog({
                   onClick={() => onChange(person.id)}
                 >
                   <span className="fte-relationAvatar">
-                    {person.avatar_url ? <img src={person.avatar_url} alt={fullName(person)} /> : fullName(person).charAt(0).toUpperCase()}
+                    {resolveImageUrl({ mediaId: person.avatar_media_id, avatar_url: person.avatar_url }) ? <img src={resolveImageUrl({ mediaId: person.avatar_media_id, avatar_url: person.avatar_url })} alt={fullName(person)} /> : fullName(person).charAt(0).toUpperCase()}
                   </span>
                   <span>
                     <strong>{fullName(person, `Người #${person.id}`)}</strong>
@@ -1467,10 +1492,28 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
             Quê quán
             <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} />
           </label>
-          <label className="is-wide">
-            Ảnh đại diện URL
-            <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} />
-          </label>
+          <div className="is-wide fte-avatarUploadField">
+            <span>Ảnh đại diện</span>
+            <ImageUpload
+              label="Tải ảnh đại diện từ máy"
+              value={form.avatar_url}
+              usageType="avatar"
+              onUploadSuccess={(url, file) =>
+                onChange({
+                  ...form,
+                  avatar_url: url,
+                  avatar_media_id: file?.mediaId || file?.media_id || null,
+                })
+              }
+            />
+            <label className="fte-urlSubField">
+              Hoặc nhập URL ảnh đại diện
+              <input
+                value={form.avatar_url}
+                onChange={(event) => onChange({ ...form, avatar_url: event.target.value, avatar_media_id: null })}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="fte-modalFooter">
