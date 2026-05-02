@@ -44,6 +44,8 @@
     // 1. Sự kiện và phân công công việc
     router.get('/events', verifyToken, checkRole(['admin', 'manager']), managerController.getManagerEvents);
     router.post('/events', verifyToken, checkRole(['admin', 'manager']), managerController.createManagerEvent);
+    router.put('/events/:id', verifyToken, checkRole(['admin', 'manager']), managerController.updateManagerEvent);
+    router.delete('/events/:id', verifyToken, checkRole(['admin', 'manager']), managerController.deleteManagerEvent);
     router.post('/events/:eventId/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.createTaskForEvent);
 
     router.post('/assign-task', verifyToken, checkRole(['admin', 'manager']), managerController.assignTask);

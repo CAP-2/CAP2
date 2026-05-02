@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  archiveMemberAPI,
   createMember,
-  deleteArchivedMemberAPI,
-  getArchivedMembersAPI,
   getMemberDetail,
   getMemberRelations,
   getMembers,
-  restoreArchivedMemberAPI,
   updateMemberRelations,
   updateMemberByManager,
 } from "../../api/managerService";
@@ -86,7 +82,6 @@ const idText = (value) => (value == null || value === "" ? "" : String(value));
 export default function AccountPage() {
   const currentUser = getStoredUser();
   const [members, setMembers] = useState([]);
-  const [archivedMembers, setArchivedMembers] = useState([]);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createOpen, setCreateOpen] = useState(true);
   const [relationOpen, setRelationOpen] = useState(true);
@@ -111,12 +106,8 @@ export default function AccountPage() {
     setLoading(true);
     setError("");
     try {
-      const [memberRows, archiveData] = await Promise.all([
-        getMembers(),
-        getArchivedMembersAPI().catch(() => ({ items: [] })),
-      ]);
+      const memberRows = await getMembers();
       setMembers(Array.isArray(memberRows) ? memberRows : []);
-      setArchivedMembers(Array.isArray(archiveData?.items) ? archiveData.items : []);
     } catch (err) {
       setError(err?.message || "Không thể tải thành viên từ database");
     } finally {
@@ -313,59 +304,12 @@ export default function AccountPage() {
     }
   };
 
-  const archiveMember = async () => {
-    if (!editAccountId) return;
-    const reason = window.prompt("Lý do lưu trữ thành viên:", "Xóa khỏi cây gia phả");
-    if (reason === null) return;
-    setSaving(true);
-    setError("");
-    try {
-      await archiveMemberAPI(editAccountId, reason);
-      setMessage("Đã chuyển thành viên vào kho lưu trữ.");
-      setEditAccountId(null);
-      await loadMembers();
-    } catch (err) {
-      setError(err?.message || "Không thể lưu trữ thành viên");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const restoreMember = async (archiveId) => {
-    setSaving(true);
-    setError("");
-    try {
-      await restoreArchivedMemberAPI(archiveId);
-      setMessage("Đã phục hồi thành viên.");
-      await loadMembers();
-    } catch (err) {
-      setError(err?.message || "Không thể phục hồi thành viên");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteArchived = async (archiveId) => {
-    if (!window.confirm("Xóa vĩnh viễn bản ghi lưu trữ này?")) return;
-    setSaving(true);
-    setError("");
-    try {
-      await deleteArchivedMemberAPI(archiveId);
-      setMessage("Đã xóa vĩnh viễn bản ghi lưu trữ.");
-      await loadMembers();
-    } catch (err) {
-      setError(err?.message || "Không thể xóa vĩnh viễn");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <section className="manager-data-page">
       <div className="manager-data-header">
         <div>
           <h2>Thành viên dòng họ</h2>
-          <p>Dữ liệu được tải trực tiếp từ bảng accounts, people và archived_members.</p>
+          <p>Quản lý thành viên trong dòng họ: tạo mới, tìm kiếm, chỉnh sửa hồ sơ và liên kết quan hệ.</p>
         </div>
         <button className="mgr-btnGhost" type="button" onClick={loadMembers} disabled={loading}>
           Tải lại
@@ -536,25 +480,6 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <div className="panel-card manager-archive-panel">
-        <h2>Kho lưu trữ ({archivedMembers.length})</h2>
-        {archivedMembers.map((item) => (
-          <div className="manager-member-row" key={item.id}>
-            <div>
-              <strong>{[item.surname, item.middle_name, item.first_name].filter(Boolean).join(" ") || item.email}</strong>
-              <span>{item.archived_reason || "Không có lý do"} · {item.archived_at}</span>
-            </div>
-            <button className="mgr-btnPrimary" type="button" onClick={() => restoreMember(item.id)} disabled={saving}>
-              Phục hồi
-            </button>
-            <button className="mgr-btnDanger" type="button" onClick={() => deleteArchived(item.id)} disabled={saving}>
-              Xóa vĩnh viễn
-            </button>
-          </div>
-        ))}
-        {!loading && archivedMembers.length === 0 && <div className="mgr-empty">Chưa có thành viên trong kho lưu trữ.</div>}
-      </div>
-
       {editAccountId && (
         <div className="mgr-modalOverlay" role="presentation" onClick={() => !saving && setEditAccountId(null)}>
           <div className="mgr-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -603,9 +528,6 @@ export default function AccountPage() {
             <div className="mgr-modalActions">
               <button className="mgr-btnPrimary" type="button" onClick={saveEdit} disabled={saving}>
                 Lưu thay đổi
-              </button>
-              <button className="mgr-btnDanger" type="button" onClick={archiveMember} disabled={saving}>
-                Lưu trữ
               </button>
               <button className="mgr-btnGhost" type="button" onClick={() => setEditAccountId(null)} disabled={saving}>
                 Đóng

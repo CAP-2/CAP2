@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getAdminClanTasks, getAdminClans, getAdminMembers } from "../../api/adminService";
-import { assignTaskAPI, createManagerEventAPI, getManagerEventsAPI, getMembers, getTasksAPI } from "../../api/managerService";
+import {
+  assignTaskAPI,
+  createManagerEventAPI,
+  deleteManagerEventAPI,
+  getManagerEventsAPI,
+  getMembers,
+  getTasksAPI,
+  updateManagerEventAPI,
+} from "../../api/managerService";
 import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
 import "./TaskManagementPage.css";
 
@@ -33,12 +41,27 @@ function formatDate(value, withTime = false) {
   return withTime ? date.toLocaleString("vi-VN") : date.toLocaleDateString("vi-VN");
 }
 
+function toDateInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
 function summarizeTasks(tasks) {
   return {
     total: tasks.length,
     open: tasks.filter((task) => task.status !== "completed").length,
     inProgress: tasks.filter((task) => task.status === "in_progress").length,
     completed: tasks.filter((task) => task.status === "completed").length,
+  };
+}
+
+function summarizeEvents(events) {
+  return {
+    total: events.length,
+    active: events.filter((event) => Number(event.assignment_count || 0) > Number(event.completed_assignment_count || 0)).length,
+    done: events.filter((event) => Number(event.assignment_count || 0) > 0 && Number(event.assignment_count || 0) === Number(event.completed_assignment_count || 0)).length,
   };
 }
 
@@ -60,9 +83,7 @@ function MemberCombobox({ members, value, onChange, disabled = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
@@ -70,9 +91,7 @@ function MemberCombobox({ members, value, onChange, disabled = false }) {
 
   const toggleMember = (accountId) => {
     const id = String(accountId);
-    const next = selectedIds.has(id)
-      ? value.filter((item) => String(item) !== id)
-      : [...value, id];
+    const next = selectedIds.has(id) ? value.filter((item) => String(item) !== id) : [...value, id];
     onChange(next);
   };
 
@@ -118,11 +137,7 @@ function MemberCombobox({ members, value, onChange, disabled = false }) {
               const id = String(member.account_id);
               return (
                 <label className="task-combobox-option" key={id}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(id)}
-                    onChange={() => toggleMember(id)}
-                  />
+                  <input type="checkbox" checked={selectedIds.has(id)} onChange={() => toggleMember(id)} />
                   <span>{fullName(member)}</span>
                   <small>#{member.account_id}</small>
                 </label>
@@ -161,20 +176,35 @@ export default function TaskManagementPage({ role = "member" }) {
   const [savingTaskId, setSavingTaskId] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [form, setForm] = useState({
-    event_id: "",
-    member_ids: [],
-    title: "",
-    description: "",
-    due_date: "",
-  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [form, setForm] = useState({ event_id: "", member_ids: [], title: "", description: "", due_date: "" });
   const [eventForm, setEventForm] = useState({ title: "", event_date: "", description: "" });
+  const [editEventForm, setEditEventForm] = useState({ title: "", event_date: "", description: "" });
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const isMember = role === "member";
   const canAssign = isManager || (isAdmin && clanId);
   const stats = useMemo(() => summarizeTasks(tasks), [tasks]);
+  const eventStats = useMemo(() => summarizeEvents(events), [events]);
+
+  const selectedEvent = useMemo(
+    () => events.find((item) => String(item.id) === String(selectedEventId)) || null,
+    [events, selectedEventId]
+  );
+
+  const selectedTasks = useMemo(() => {
+    if (!selectedEventId) return tasks;
+    return tasks.filter((task) => String(task.event_id || "") === String(selectedEventId));
+  }, [tasks, selectedEventId]);
+
+  const filteredEvents = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return events;
+    return events.filter((event) => `${event.title || ""} ${event.description || ""} ${event.clan_name || ""}`.toLowerCase().includes(q));
+  }, [events, searchTerm]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -243,21 +273,41 @@ export default function TaskManagementPage({ role = "member" }) {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!canAssign || !selectedEventId) return;
+    const stillExists = events.some((event) => String(event.id) === String(selectedEventId));
+    if (!stillExists) setSelectedEventId("");
+  }, [canAssign, events, selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEvent) {
+      setEditEventForm({ title: "", event_date: "", description: "" });
+      setForm((prev) => ({ ...prev, event_id: "" }));
+      return;
+    }
+    setEditEventForm({
+      title: selectedEvent.title || "",
+      event_date: toDateInput(selectedEvent.event_date),
+      description: selectedEvent.description || "",
+    });
+    setForm((prev) => ({ ...prev, event_id: String(selectedEvent.id) }));
+  }, [selectedEvent]);
+
   const submitTask = async (event) => {
     event.preventDefault();
     setError("");
     setMessage("");
     const memberIds = form.member_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+    if (!selectedEventId) {
+      setError("Vui lòng chọn sự kiện trước khi giao việc.");
+      return;
+    }
     if (!memberIds.length) {
       setError("Vui lòng chọn ít nhất một thành viên.");
       return;
     }
     if (!form.title.trim()) {
       setError("Vui lòng nhập tiêu đề công việc.");
-      return;
-    }
-    if (!form.event_id) {
-      setError("Vui lòng chọn sự kiện liên quan trước khi giao việc.");
       return;
     }
 
@@ -267,13 +317,13 @@ export default function TaskManagementPage({ role = "member" }) {
         ...form,
         title: form.title.trim(),
         description: form.description.trim(),
-        event_id: Number(form.event_id),
+        event_id: Number(selectedEventId),
         member_ids: memberIds,
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       };
       const result = await assignTaskAPI(payload);
       setMessage(`Đã giao việc cho ${result.assigned_count || memberIds.length} thành viên.`);
-      setForm({ event_id: form.event_id, member_ids: [], title: "", description: "", due_date: "" });
+      setForm({ event_id: String(selectedEventId), member_ids: [], title: "", description: "", due_date: "" });
       await loadData();
     } catch (err) {
       setError(err?.message || "Không thể giao công việc.");
@@ -298,14 +348,62 @@ export default function TaskManagementPage({ role = "member" }) {
         description: eventForm.description.trim(),
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       });
-      setMessage("Đã tạo sự kiện. Bạn có thể tạo công việc bên trong sự kiện này.");
+      const createdEventId = result?.event_id ? String(result.event_id) : "";
+      setMessage("Đã tạo sự kiện mới. Đang mở chi tiết để chỉnh sửa và giao việc.");
       setEventForm({ title: "", event_date: "", description: "" });
+      setShowCreateForm(false);
       await loadData();
-      if (result?.event_id) {
-        setForm((prev) => ({ ...prev, event_id: String(result.event_id) }));
+      if (createdEventId) {
+        setSelectedEventId(createdEventId);
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err) {
       setError(err?.message || "Không thể tạo sự kiện.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveEvent = async (event) => {
+    event.preventDefault();
+    if (!selectedEvent) return;
+    setError("");
+    setMessage("");
+    if (!editEventForm.title.trim()) {
+      setError("Tên sự kiện không được để trống.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateManagerEventAPI(selectedEvent.id, {
+        title: editEventForm.title.trim(),
+        event_date: editEventForm.event_date || null,
+        description: editEventForm.description.trim(),
+        ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
+      });
+      setMessage("Đã cập nhật sự kiện.");
+      await loadData();
+    } catch (err) {
+      setError(err?.message || "Không thể cập nhật sự kiện.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteEvent = async () => {
+    if (!selectedEvent) return;
+    const ok = window.confirm(`Xóa sự kiện "${selectedEvent.title}"? Các công việc đã giao sẽ được giữ lại nhưng không còn gắn với sự kiện này.`);
+    if (!ok) return;
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      await deleteManagerEventAPI(selectedEvent.id, isAdmin && clanId ? { clan_id: Number(clanId) } : {});
+      setMessage("Đã xóa sự kiện.");
+      setSelectedEventId("");
+      await loadData();
+    } catch (err) {
+      setError(err?.message || "Không thể xóa sự kiện.");
     } finally {
       setSaving(false);
     }
@@ -326,6 +424,13 @@ export default function TaskManagementPage({ role = "member" }) {
     }
   };
 
+  const openEvent = (eventId) => {
+    setSelectedEventId(String(eventId));
+    setMessage("");
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   if (loading) {
     return (
       <section className="task-page">
@@ -337,24 +442,17 @@ export default function TaskManagementPage({ role = "member" }) {
   if (isAdmin && !clanId) {
     return (
       <section className="task-page">
-        <header className="task-header">
+        <header className="task-hero task-hero-wide">
           <div>
             <span className="task-kicker">Admin</span>
             <h1>Phân công công việc theo dòng họ</h1>
-            <p>Chọn một cây gia phả để xem danh sách công việc và phân công trong phạm vi cây đó.</p>
+            <p>Chọn một cây gia phả để xem danh sách sự kiện, chỉnh sửa và phân công trong phạm vi cây đó.</p>
           </div>
         </header>
-
         {error && <div className="task-alert is-error">{error}</div>}
-
         <div className="task-clan-grid">
           {clans.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="task-clan-card"
-              onClick={() => navigate(`/dashboard/tasks/clan/${item.id}`)}
-            >
+            <button key={item.id} type="button" className="task-clan-card" onClick={() => navigate(`/dashboard/tasks/clan/${item.id}`)}>
               <span className="material-symbols-outlined">account_tree</span>
               <strong>{item.clan_name}</strong>
               <small>{item.owner_name || "Chưa có manager"}</small>
@@ -366,31 +464,138 @@ export default function TaskManagementPage({ role = "member" }) {
             </button>
           ))}
         </div>
-
         {!clans.length && <div className="task-card task-empty">Chưa có dòng họ nào.</div>}
       </section>
     );
   }
 
+  if (isMember) {
+    return (
+      <section className="task-page">
+        <header className="task-hero task-hero-wide">
+          <div>
+            <span className="task-kicker">Member</span>
+            <h1>Công việc được giao</h1>
+            <p>Bạn chỉ xem được các công việc được giao cho tài khoản của mình.</p>
+          </div>
+        </header>
+        {message && <div className="task-alert is-success">{message}</div>}
+        {error && <div className="task-alert is-error">{error}</div>}
+        <div className="task-stats">
+          <div className="task-stat"><span className="material-symbols-outlined">assignment</span><strong>{stats.total}</strong><small>Tổng việc</small></div>
+          <div className="task-stat"><span className="material-symbols-outlined">pending_actions</span><strong>{stats.open}</strong><small>Đang mở</small></div>
+          <div className="task-stat"><span className="material-symbols-outlined">sync</span><strong>{stats.inProgress}</strong><small>Đang làm</small></div>
+          <div className="task-stat"><span className="material-symbols-outlined">task_alt</span><strong>{stats.completed}</strong><small>Hoàn thành</small></div>
+        </div>
+        <TaskList tasks={tasks} isMember savingTaskId={savingTaskId} onUpdateStatus={updateTaskStatus} />
+      </section>
+    );
+  }
+
+  if (selectedEvent) {
+    return (
+      <section className="task-page task-page-manager">
+        <header className="task-hero task-hero-wide manager-hero">
+          <div>
+            <span className="task-kicker">{isAdmin ? "Admin" : "Manager"}</span>
+            <h1>{selectedEvent.title}</h1>
+            <p>{formatDate(selectedEvent.event_date)} • {selectedTasks.length} công việc trong sự kiện • Manager chỉ quản lý dữ liệu thuộc dòng họ của mình.</p>
+          </div>
+          <div className="task-hero-actions">
+            <button className="task-btn task-btn-ghost" type="button" onClick={() => setSelectedEventId("")}> 
+              <span className="material-symbols-outlined">arrow_back</span>
+              Danh sách sự kiện
+            </button>
+            {isAdmin && (
+              <Link className="task-btn task-btn-ghost" to="/dashboard/tasks">
+                <span className="material-symbols-outlined">account_tree</span>
+                Dòng họ
+              </Link>
+            )}
+          </div>
+        </header>
+
+        {message && <div className="task-alert is-success">{message}</div>}
+        {error && <div className="task-alert is-error">{error}</div>}
+
+        <div className="event-detail-layout">
+          <form className="task-card task-form event-edit-card" onSubmit={saveEvent}>
+            <div className="task-card-title">
+              <span className="material-symbols-outlined">edit_calendar</span>
+              <h2>Sửa sự kiện</h2>
+            </div>
+            <label>
+              <span>Tên sự kiện</span>
+              <input value={editEventForm.title} onChange={(event) => setEditEventForm((prev) => ({ ...prev, title: event.target.value }))} />
+            </label>
+            <label>
+              <span>Ngày sự kiện</span>
+              <input type="date" value={editEventForm.event_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
+            </label>
+            <label>
+              <span>Mô tả</span>
+              <textarea value={editEventForm.description} onChange={(event) => setEditEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={5} placeholder="Mô tả sự kiện" />
+            </label>
+            <div className="task-form-actions">
+              <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
+                <span className="material-symbols-outlined">save</span>
+                Lưu thay đổi
+              </button>
+              <button className="task-btn task-btn-danger" type="button" onClick={deleteEvent} disabled={saving}>
+                <span className="material-symbols-outlined">delete</span>
+                Xóa sự kiện
+              </button>
+            </div>
+          </form>
+
+          <form className="task-card task-form event-assign-card" onSubmit={submitTask}>
+            <div className="task-card-title">
+              <span className="material-symbols-outlined">assignment_add</span>
+              <h2>Giao công việc</h2>
+            </div>
+            <div className="selected-event-banner">
+              <span className="material-symbols-outlined">event</span>
+              <div>
+                <strong>{selectedEvent.title}</strong>
+                <small>Công việc tạo tại đây tự động gắn vào sự kiện này.</small>
+              </div>
+            </div>
+            <div className="task-field">
+              <span>Người thực hiện</span>
+              <MemberCombobox members={members} value={form.member_ids} disabled={saving || !members.length} onChange={(memberIds) => setForm((prev) => ({ ...prev, member_ids: memberIds }))} />
+            </div>
+            <label>
+              <span>Tiêu đề công việc</span>
+              <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ví dụ: Chuẩn bị mâm cúng" />
+            </label>
+            <label>
+              <span>Mô tả công việc</span>
+              <textarea value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Nội dung cần thực hiện" />
+            </label>
+            <label>
+              <span>Hạn chót</span>
+              <input type="date" value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
+            </label>
+            <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length}>
+              <span className="material-symbols-outlined">send</span>
+              {saving ? "Đang lưu..." : "Giao việc"}
+            </button>
+            {!members.length && <p className="task-note">Chưa có member active để giao việc trong dòng họ này.</p>}
+          </form>
+        </div>
+
+        <TaskList title="Công việc trong sự kiện" tasks={selectedTasks} />
+      </section>
+    );
+  }
+
   return (
-    <section className="task-page">
-      <header className="task-header">
+    <section className="task-page task-page-manager">
+      <header className="task-hero task-hero-wide manager-hero">
         <div>
-          <span className="task-kicker">
-            {isAdmin ? "Admin" : isManager ? "Manager" : "Member"}
-          </span>
-          <h1>
-            {isAdmin
-              ? `Công việc dòng họ ${clan?.clan_name || `#${clanId}`}`
-              : isManager
-                ? "Phân công công việc dòng họ"
-                : "Công việc được giao"}
-          </h1>
-          <p>
-            {isMember
-              ? "Bạn chỉ xem được các công việc được giao cho tài khoản của mình."
-              : "Danh sách này chỉ hiển thị công việc trong phạm vi cây gia phả đang quản lý."}
-          </p>
+          <span className="task-kicker">{isAdmin ? "Admin" : "Manager"}</span>
+          <h1>{isAdmin ? `Phân công công việc dòng họ ${clan?.clan_name || `#${clanId}`}` : "Phân công công việc dòng họ"}</h1>
+          <p>{isAdmin ? "Chọn sự kiện của dòng họ này để chỉnh sửa và phân công." : "Danh sách chỉ hiển thị các sự kiện trong dòng họ bạn đang quản lý."}</p>
         </div>
         {isAdmin && (
           <Link className="task-btn task-btn-ghost" to="/dashboard/tasks">
@@ -403,186 +608,140 @@ export default function TaskManagementPage({ role = "member" }) {
       {message && <div className="task-alert is-success">{message}</div>}
       {error && <div className="task-alert is-error">{error}</div>}
 
-      <div className="task-stats">
-        <div className="task-stat">
-          <span className="material-symbols-outlined">assignment</span>
-          <strong>{stats.total}</strong>
-          <small>Tổng việc</small>
+      <div className="event-toolbar">
+        <div className="event-search event-search-wide">
+          <span className="material-symbols-outlined">search</span>
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Tìm sự kiện theo tên hoặc mô tả..." />
         </div>
-        <div className="task-stat">
-          <span className="material-symbols-outlined">pending_actions</span>
-          <strong>{stats.open}</strong>
-          <small>Đang mở</small>
-        </div>
-        <div className="task-stat">
-          <span className="material-symbols-outlined">sync</span>
-          <strong>{stats.inProgress}</strong>
-          <small>Đang làm</small>
-        </div>
-        <div className="task-stat">
-          <span className="material-symbols-outlined">task_alt</span>
-          <strong>{stats.completed}</strong>
-          <small>Hoàn thành</small>
-        </div>
+        <button className="task-btn task-btn-primary" type="button" onClick={() => setShowCreateForm(true)}>
+          <span className="material-symbols-outlined">add</span>
+          Thêm sự kiện
+        </button>
       </div>
-      {isMember && <div className="task-scope-note">Thống kê chỉ tính công việc được giao cho tài khoản của bạn.</div>}
 
-      <div className={canAssign ? "task-layout" : "task-layout single"}>
-        {canAssign && (
-          <div className="task-side">
-          <form className="task-card task-form" onSubmit={submitEvent}>
-            <div className="task-card-title">
-              <span className="material-symbols-outlined">event</span>
-              <h2>Tạo sự kiện mới</h2>
+      {showCreateForm && (
+        <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowCreateForm(false)}>
+          <form
+            className="task-modal-card quick-event-form"
+            onSubmit={submitEvent}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-event-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="task-modal-head">
+              <div className="task-card-title">
+                <span className="material-symbols-outlined">event_upcoming</span>
+                <div>
+                  <h2 id="create-event-title">Tạo sự kiện mới</h2>
+                  <p>Điền thông tin sự kiện của dòng họ, sau đó mở sự kiện để chia công việc.</p>
+                </div>
+              </div>
+              <button className="task-icon-btn" type="button" onClick={() => setShowCreateForm(false)} aria-label="Đóng bảng thêm sự kiện">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
+
             <label>
               <span>Tên sự kiện</span>
               <input
                 value={eventForm.title}
                 onChange={(event) => setEventForm((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Ví dụ: Giỗ tổ năm nay"
+                placeholder="Ví dụ: Giỗ tổ, Đám đình, Họp mặt cuối năm"
+                autoFocus
               />
             </label>
             <label>
               <span>Ngày sự kiện</span>
-              <input
-                type="date"
-                value={eventForm.event_date}
-                onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))}
-              />
+              <input type="date" value={eventForm.event_date} onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
             </label>
             <label>
-              <span>Mô tả sự kiện</span>
-              <textarea
-                value={eventForm.description}
-                onChange={(event) => setEventForm((prev) => ({ ...prev, description: event.target.value }))}
-                rows={3}
-                placeholder="Thông tin chung về sự kiện"
-              />
+              <span>Mô tả ngắn</span>
+              <textarea value={eventForm.description} onChange={(event) => setEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Ghi chú địa điểm, nội dung chính hoặc yêu cầu chuẩn bị..." />
             </label>
-            <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
-              <span className="material-symbols-outlined">add</span>
-              Tạo sự kiện
-            </button>
-          </form>
 
-          <form className="task-card task-form" onSubmit={submitTask}>
-            <div className="task-card-title">
-              <span className="material-symbols-outlined">assignment_add</span>
-              <h2>Giao việc mới</h2>
+            <div className="task-form-actions task-modal-actions">
+              <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
+                <span className="material-symbols-outlined">add</span>
+                {saving ? "Đang lưu..." : "Lưu sự kiện"}
+              </button>
+              <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowCreateForm(false)}>
+                Hủy
+              </button>
             </div>
-            <label>
-              <span>Sự kiện liên quan</span>
-              <select
-                value={form.event_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, event_id: event.target.value }))}
-                disabled={saving || !events.length}
-              >
-                <option value="">Chọn sự kiện trước khi giao việc</option>
-                {events.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title} {item.event_date ? `- ${formatDate(item.event_date)}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="task-field">
-              <span>Người thực hiện</span>
-              <MemberCombobox
-                members={members}
-                value={form.member_ids}
-                disabled={saving || !members.length}
-                onChange={(memberIds) => setForm((prev) => ({ ...prev, member_ids: memberIds }))}
-              />
-            </div>
-            <label>
-              <span>Tiêu đề</span>
-              <input
-                value={form.title}
-                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Ví dụ: Chuẩn bị lễ giỗ tổ"
-              />
-            </label>
-            <label>
-              <span>Mô tả</span>
-              <textarea
-                value={form.description}
-                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                rows={4}
-                placeholder="Nội dung cần thực hiện"
-              />
-            </label>
-            <label>
-              <span>Hạn chót</span>
-              <input
-                type="date"
-                value={form.due_date}
-                onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))}
-              />
-            </label>
-            <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length || !events.length}>
-              <span className="material-symbols-outlined">send</span>
-              {saving ? "Đang giao..." : "Giao việc"}
-            </button>
-            {!events.length && <p className="task-note">Hãy tạo sự kiện trước, sau đó mới tạo công việc trong sự kiện.</p>}
-            {!members.length && <p className="task-note">Chưa có member active để giao việc trong dòng họ này.</p>}
           </form>
-          </div>
-        )}
-
-        <div className="task-card">
-          <div className="task-card-title">
-            <span className="material-symbols-outlined">view_list</span>
-            <h2>{isMember ? "Danh sách việc của tôi" : "Lịch sử phân công"}</h2>
-          </div>
-
-          <div className="task-list">
-            {tasks.map((task) => (
-              <article className="task-item" key={task.id}>
-                <div className="task-item-main">
-                  <div className="task-item-head">
-                    <h3>{task.title}</h3>
-                    <span className={`task-status status-${task.status}`}>
-                      {STATUS_LABELS[task.status] || task.status}
-                    </span>
-                  </div>
-                  {task.description && <p>{task.description}</p>}
-                  <div className="task-meta">
-                    {!isMember && <span>Người nhận: {fullName(task)}</span>}
-                    <span>Sự kiện: {task.event_title || "Chưa gắn sự kiện"}</span>
-                    <span>Người giao: {task.manager_name || "Manager"}</span>
-                    <span>Hạn: {formatDate(task.due_date)}</span>
-                    <span>Giao lúc: {formatDate(task.assigned_at || task.created_at, true)}</span>
-                    {task.completed_at && <span>Hoàn thành: {formatDate(task.completed_at, true)}</span>}
-                  </div>
-                </div>
-
-                {isMember && task.status !== "completed" && (
-                  <div className="task-actions">
-                    <button
-                      className="task-btn task-btn-ghost"
-                      type="button"
-                      disabled={savingTaskId === task.id || task.status === "in_progress"}
-                      onClick={() => updateTaskStatus(task.id, "in_progress")}
-                    >
-                      Đang làm
-                    </button>
-                    <button
-                      className="task-btn task-btn-primary"
-                      type="button"
-                      disabled={savingTaskId === task.id}
-                      onClick={() => updateTaskStatus(task.id, "completed")}
-                    >
-                      Hoàn thành
-                    </button>
-                  </div>
-                )}
-              </article>
-            ))}
-            {!tasks.length && <div className="task-empty">Chưa có công việc nào.</div>}
-          </div>
         </div>
+      )}
+
+      <div className="manager-event-grid">
+        {filteredEvents.map((event) => {
+          const assignmentCount = Number(event.assignment_count || 0);
+          const completedCount = Number(event.completed_assignment_count || 0);
+          const openCount = Math.max(assignmentCount - completedCount, 0);
+          return (
+            <button key={event.id} type="button" className="manager-event-card" onClick={() => openEvent(event.id)}>
+              <span className="manager-event-icon material-symbols-outlined">account_tree</span>
+              <strong>{event.title}</strong>
+              <small>{formatDate(event.event_date)}</small>
+              {event.description && <p>{event.description}</p>}
+              <div className="manager-event-metrics">
+                <span>{openCount} đang mở</span>
+                <span>{completedCount} hoàn thành</span>
+                <span>{Number(event.task_count || 0)} tổng việc</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
+
+      {!filteredEvents.length && (
+        <div className="task-card task-empty">
+          {events.length ? "Không tìm thấy sự kiện phù hợp." : "Dòng họ này chưa có sự kiện. Bấm Thêm sự kiện để tạo mới."}
+        </div>
+      )}
     </section>
+  );
+}
+
+function TaskList({ title = "Lịch sử phân công", tasks, isMember = false, savingTaskId = null, onUpdateStatus = () => {} }) {
+  return (
+    <div className="task-card task-history-card">
+      <div className="task-card-title">
+        <span className="material-symbols-outlined">view_list</span>
+        <h2>{title}</h2>
+      </div>
+      <div className="task-list">
+        {tasks.map((task) => (
+          <article className="task-item" key={task.id}>
+            <div className="task-item-main">
+              <div className="task-item-head">
+                <h3>{task.title}</h3>
+                <span className={`task-status status-${task.status}`}>{STATUS_LABELS[task.status] || task.status}</span>
+              </div>
+              {task.description && <p>{task.description}</p>}
+              <div className="task-meta">
+                {!isMember && <span>Người nhận: {fullName(task)}</span>}
+                <span>Sự kiện: {task.event_title || "Chưa gắn sự kiện"}</span>
+                <span>Người giao: {task.manager_name || "Manager"}</span>
+                <span>Hạn: {formatDate(task.due_date)}</span>
+                <span>Giao lúc: {formatDate(task.assigned_at || task.created_at, true)}</span>
+                {task.completed_at && <span>Hoàn thành: {formatDate(task.completed_at, true)}</span>}
+              </div>
+            </div>
+            {isMember && task.status !== "completed" && (
+              <div className="task-actions">
+                <button className="task-btn task-btn-ghost" type="button" disabled={savingTaskId === task.id || task.status === "in_progress"} onClick={() => onUpdateStatus(task.id, "in_progress")}>
+                  Đang làm
+                </button>
+                <button className="task-btn task-btn-primary" type="button" disabled={savingTaskId === task.id} onClick={() => onUpdateStatus(task.id, "completed")}>
+                  Hoàn thành
+                </button>
+              </div>
+            )}
+          </article>
+        ))}
+        {!tasks.length && <div className="task-empty">Chưa có công việc nào.</div>}
+      </div>
+    </div>
   );
 }

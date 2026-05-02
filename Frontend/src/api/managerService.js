@@ -354,3 +354,26 @@ export const createEventTaskAPI = (eventId, data) =>
     },
     "Tạo công việc trong sự kiện thất bại"
   );
+
+export const updateManagerEventAPI = (eventId, data) =>
+  request(
+    `/events/${eventId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+    "Cập nhật sự kiện thất bại"
+  );
+
+export const deleteManagerEventAPI = (eventId, params = {}) => {
+  const query = new URLSearchParams();
+  if (params.clan_id) query.set("clan_id", params.clan_id);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request(
+    `/events/${eventId}${suffix}`,
+    {
+      method: "DELETE",
+    },
+    "Xóa sự kiện thất bại"
+  );
+};
