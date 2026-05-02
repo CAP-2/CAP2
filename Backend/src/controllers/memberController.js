@@ -6,6 +6,7 @@ const {
   activateTreeEditSessionForAccount,
 } = require("../utils/treeEditPermissions");
 const { createNotification, ensureNotificationSchema } = require("../utils/notifications");
+const { getTreeLayoutSettings } = require("../utils/treeLayoutSettings");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -458,13 +459,13 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     `
     SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
            p.hometown, p.address, p.birth_date, p.death_date, p.is_living, p.gender,
-           p.phone, p.email, p.avatar_url, p.bio,
+           p.phone, p.email, p.avatar_url, p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
            a.id AS account_id,
            a.role_id
     FROM people p
     LEFT JOIN accounts a ON a.person_id = p.id
     WHERE p.clan_id = ?
-    ORDER BY p.generation, p.surname, p.first_name
+    ORDER BY p.generation, p.display_order, p.surname, p.first_name
   `,
     [cid]
   );
@@ -484,6 +485,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     [cid]
   );
 
+  const layoutSettings = await getTreeLayoutSettings(cid);
   const familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
   return { 
     clan, 
@@ -497,6 +499,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
       marriage_date: f.marriage_date ? String(f.marriage_date).slice(0, 10) : null,
     })),
     children: childRows,
+    layoutSettings,
     familyTree 
   };
 };
@@ -518,6 +521,7 @@ exports.getDashboard = async (req, res) => {
     let familyTree = { roots: [] };
     let families = [];
     let children = [];
+    let layoutSettings = { line_routes: {}, card_sizes: {} };
 
     if (clanId) {
       const [peopleRows] = await db.query(
@@ -559,6 +563,7 @@ exports.getDashboard = async (req, res) => {
         marriage_date: family.marriage_date ? String(family.marriage_date).slice(0, 10) : null,
       }));
       children = childRows;
+      layoutSettings = await getTreeLayoutSettings(clanId);
       familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
 
       const [eventRows] = await db.query(
@@ -676,6 +681,7 @@ exports.getDashboard = async (req, res) => {
       treeMembers,
       families,
       children,
+      layoutSettings,
       familyTree,
       discoverItems,
       reminders,

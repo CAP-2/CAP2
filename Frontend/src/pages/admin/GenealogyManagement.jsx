@@ -44,7 +44,7 @@ export default function GenealogyManagement() {
             setSelectedClanId(nextSelectedId);
             if (!nextSelectedId) {
                 setClanInfo(null);
-                setTreeData({ people: [], families: [], children: [] });
+                setTreeData({ people: [], families: [], children: [], layoutSettings: { line_routes: {}, card_sizes: {} } });
             }
         } catch (err) {
             console.error(err);
@@ -66,13 +66,14 @@ export default function GenealogyManagement() {
             setTreeData({
                 people: res.treeMembers || [],
                 families: res.families || [],
-                children: res.children || []
+                children: res.children || [],
+                layoutSettings: res.layoutSettings || { line_routes: {}, card_sizes: {} }
             });
             setClanInfo(res.clan);
         } catch (err) {
             console.error(err);
             setClanInfo(null);
-            setTreeData({ people: [], families: [], children: [] });
+            setTreeData({ people: [], families: [], children: [], layoutSettings: { line_routes: {}, card_sizes: {} } });
         } finally {
             setTreeLoading(false);
         }
@@ -233,6 +234,7 @@ export default function GenealogyManagement() {
                             people={treeData.people}
                             families={treeData.families}
                             children={treeData.children}
+                            layoutSettings={treeData.layoutSettings}
                             loading={treeLoading}
                             onReload={fetchTree}
                         />

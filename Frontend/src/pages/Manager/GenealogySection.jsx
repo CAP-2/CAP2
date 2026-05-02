@@ -7,6 +7,7 @@ export default function GenealogySection() {
   const [people, setPeople] = useState([]);
   const [families, setFamilies] = useState([]);
   const [children, setChildren] = useState([]);
+  const [layoutSettings, setLayoutSettings] = useState({ line_routes: {}, card_sizes: {} });
   const [clan, setClan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -43,9 +44,11 @@ export default function GenealogySection() {
       setPeople(Array.isArray(data.treeMembers) ? data.treeMembers : []);
       setFamilies(Array.isArray(data.families) ? data.families : []);
       setChildren(Array.isArray(data.children) ? data.children : []);
+      setLayoutSettings(data.layoutSettings || { line_routes: {}, card_sizes: {} });
       setClan(data.clan || null);
     } catch (err) {
       setError(err?.message || "Không thể tải cây gia phả từ database");
+      setLayoutSettings({ line_routes: {}, card_sizes: {} });
     } finally {
       setLoading(false);
     }
@@ -198,6 +201,7 @@ export default function GenealogySection() {
       children={children}
       loading={loading}
       onReload={loadTree}
+      layoutSettings={layoutSettings}
     />
   );
 

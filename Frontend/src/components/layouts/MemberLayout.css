@@ -390,3 +390,33 @@
     min-width: 0;
   }
 }
+
+
+/* Profile drawer trigger fixes */
+button.sidebar-user-profile {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+}
+
+button.sidebar-user-profile:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+}
+
+button.member-nav-item {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  text-align: left;
+}
+
+button.top-icon-btn {
+  border: 0;
+  cursor: pointer;
+}

@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
 import NotificationBell from "./NotificationBell";
+import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./MemberLayout.css";
 
 const menuItems = [
@@ -22,6 +23,7 @@ export default function MemberLayout() {
   const location = useLocation();
   const [currentUser, setCurrentUser] = useState(() => getStoredUser() || {});
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) return undefined;
@@ -85,7 +87,7 @@ export default function MemberLayout() {
           </Link>
         </div>
 
-        <div className="sidebar-user-profile">
+        <button type="button" className="sidebar-user-profile" onClick={() => setProfileOpen(true)} title="Chỉnh sửa thông tin cá nhân">
           <div className="profile-img-container">
             <img src={currentUser?.avatar_url || "/logo-giaphaviet.png"} alt="" className="user-avatar-circle" />
             <div className="status-indicator online" />
@@ -94,19 +96,31 @@ export default function MemberLayout() {
             <h4>{getUserName(currentUser)}</h4>
             <span className="role-text">Thành viên dòng họ</span>
           </div>
-        </div>
+        </button>
 
         <nav className="member-nav" aria-label="Điều hướng thành viên">
-          {menuItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`member-nav-item ${location.pathname === item.path ? "active" : ""}`}
-            >
-              <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {menuItems.map((item) =>
+            item.path === "/user/profile" ? (
+              <button
+                key={item.path}
+                type="button"
+                className={`member-nav-item ${location.pathname === item.path ? "active" : ""}`}
+                onClick={() => setProfileOpen(true)}
+              >
+                <span className="material-symbols-outlined">{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            ) : (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`member-nav-item ${location.pathname === item.path ? "active" : ""}`}
+              >
+                <span className="material-symbols-outlined">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            ),
+          )}
         </nav>
 
         <div className="member-sidebar-footer">
@@ -128,9 +142,9 @@ export default function MemberLayout() {
           <div className="member-topbar-actions">
             <NotificationBell role="member" buttonClassName="top-icon-btn glass-btn" />
             <div className="divider" />
-            <Link className="top-icon-btn glass-btn" to="/user/profile" title="Hồ sơ cá nhân">
+            <button type="button" className="top-icon-btn glass-btn" onClick={() => setProfileOpen(true)} title="Chỉnh sửa thông tin cá nhân">
               <span className="material-symbols-outlined">settings</span>
-            </Link>
+            </button>
           </div>
         </header>
 
@@ -138,6 +152,15 @@ export default function MemberLayout() {
           <Outlet />
         </section>
       </main>
+
+      <ProfileDrawer
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        currentUser={currentUser}
+        setCurrentUser={setCurrentUser}
+        roleLabel="Thành viên dòng họ"
+        title="Chỉnh sửa thông tin cá nhân"
+      />
     </div>
   );
 }

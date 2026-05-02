@@ -7,6 +7,7 @@ const {
 } = require('../utils/treeEditPermissions');
 const { createNotification } = require('../utils/notifications');
 const { deletePersonCompletely } = require('../utils/personDeletion');
+const { getTreeLayoutSettings, saveTreeLayoutSettings } = require('../utils/treeLayoutSettings');
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
@@ -680,6 +681,7 @@ exports.getFamilyTree = async (req, res) => {
             `,
             [clanId]
         );
+        const layoutSettings = await getTreeLayoutSettings(clanId);
 
         return res.json({
             success: true,
@@ -694,6 +696,7 @@ exports.getFamilyTree = async (req, res) => {
                 marriage_date: fmtSqlDate(f.marriage_date),
             })),
             children: childRows,
+            layoutSettings,
             familyTree: buildManagedFamilyTree(peopleRows, familyRows, childRows),
         });
     } catch (error) {
@@ -2562,7 +2565,13 @@ exports.saveTreeLayout = async (req, res) => {
         if (!permission.ok) {
             return res.status(permission.status).json({ success: false, message: permission.message });
         }
-        if (!people.length) return res.json({ success: true, updated: 0 });
+        const clanId = await resolveManagedClanId(req, req.body || {});
+        const lineRoutes = req.body?.line_routes ?? req.body?.lineRoutes;
+        const cardSizes = req.body?.card_sizes ?? req.body?.cardSizes;
+        const hasLineRoutes = lineRoutes && typeof lineRoutes === 'object' && !Array.isArray(lineRoutes);
+        const hasCardSizes = cardSizes && typeof cardSizes === 'object' && !Array.isArray(cardSizes);
+
+        if (!people.length && !(hasLineRoutes || hasCardSizes)) return res.json({ success: true, updated: 0 });
 
         let updated = 0;
         for (const item of people) {
@@ -2579,7 +2588,18 @@ exports.saveTreeLayout = async (req, res) => {
             updated += 1;
         }
 
-        res.json({ success: true, updated });
+        if (clanId != null && (hasLineRoutes || hasCardSizes)) {
+            await saveTreeLayoutSettings(
+                clanId,
+                {
+                    ...(hasLineRoutes ? { line_routes: lineRoutes } : {}),
+                    ...(hasCardSizes ? { card_sizes: cardSizes } : {}),
+                },
+                req.user?.id
+            );
+        }
+
+        res.json({ success: true, updated, layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)) });
     } catch (error) {
         console.error('saveTreeLayout error:', error);
         res.status(500).json({ success: false, message: 'Loi luu bo cuc cay' });
@@ -2695,5 +2715,75 @@ exports.deleteTreePerson = async (req, res) => {
     } catch (error) {
         console.error('deleteTreePerson error:', error);
         res.status(500).json({ success: false, message: 'Loi xoa nguoi khoi gia pha' });
+    }
+};
+
+exports.updateManagerEvent = async (req, res) => {
+    try {
+        await ensureTaskTables();
+        const eventId = parseOptionalPositiveInt(req.params.id);
+        const title = String(req.body.title || '').trim();
+        const description = req.body.description == null ? null : String(req.body.description).trim();
+        const eventDate = req.body.event_date || req.body.eventDate || null;
+        if (!eventId) return res.status(400).json({ success: false, message: 'ID sự kiện không hợp lệ' });
+        if (!title) return res.status(400).json({ success: false, message: 'Tên sự kiện không được để trống' });
+
+        let sql = 'UPDATE events SET title = ?, event_date = ?, description = ? WHERE id = ?';
+        const params = [title, eventDate || null, description || null, eventId];
+
+        if (req.user.role_id === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (clanId == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            sql += ' AND clan_id = ?';
+            params.push(clanId);
+        } else {
+            const clanId = parseOptionalPositiveInt(req.body.clan_id || req.query.clan_id);
+            if (clanId != null) {
+                sql += ' AND clan_id = ?';
+                params.push(clanId);
+            }
+        }
+
+        const [result] = await db.query(sql, params);
+        if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Không tìm thấy sự kiện trong phạm vi quản lý' });
+        return res.json({ success: true, message: 'Đã cập nhật sự kiện' });
+    } catch (error) {
+        console.error('updateManagerEvent error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi cập nhật sự kiện' });
+    }
+};
+
+exports.deleteManagerEvent = async (req, res) => {
+    const conn = await db.getConnection();
+    try {
+        await ensureTaskTables();
+        const eventId = parseOptionalPositiveInt(req.params.id);
+        if (!eventId) return res.status(400).json({ success: false, message: 'ID sự kiện không hợp lệ' });
+
+        let clanFilter = null;
+        if (req.user.role_id === 2) {
+            clanFilter = await getManagerClanId(req.user.id);
+            if (clanFilter == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+        } else {
+            clanFilter = parseOptionalPositiveInt(req.query.clan_id || req.body?.clan_id);
+        }
+
+        const [events] = await conn.query(
+            clanFilter != null ? 'SELECT id FROM events WHERE id = ? AND clan_id = ? LIMIT 1' : 'SELECT id FROM events WHERE id = ? LIMIT 1',
+            clanFilter != null ? [eventId, clanFilter] : [eventId]
+        );
+        if (!events.length) return res.status(404).json({ success: false, message: 'Không tìm thấy sự kiện trong phạm vi quản lý' });
+
+        await conn.beginTransaction();
+        await conn.query('UPDATE manager_tasks SET event_id = NULL WHERE event_id = ?', [eventId]);
+        await conn.query('DELETE FROM events WHERE id = ?', [eventId]);
+        await conn.commit();
+        return res.json({ success: true, message: 'Đã xóa sự kiện' });
+    } catch (error) {
+        try { await conn.rollback(); } catch (_) {}
+        console.error('deleteManagerEvent error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi xóa sự kiện' });
+    } finally {
+        conn.release();
     }
 };

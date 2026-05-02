@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
 import NotificationBell from "./NotificationBell";
+import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./ManagerLayout.css";
 
 const menuItems = [
@@ -131,7 +132,6 @@ export default function ManagerLayout() {
 
   const openAccountModal = () => {
     setAccountOpen(true);
-    loadAccountProfile();
   };
 
   const updateAccountField = (event) => {
@@ -307,67 +307,14 @@ export default function ManagerLayout() {
         </div>
       </main>
 
-      {accountOpen && (
-        <div className="manager-account-overlay" onClick={() => setAccountOpen(false)}>
-          <div className="manager-account-modal glass-effect" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="manager-account-head">
-              <div>
-                <h2>Sửa tài khoản quản lý</h2>
-                <p>{accountLoading ? "Đang tải dữ liệu..." : currentUser?.email || accountForm.email}</p>
-              </div>
-              <button type="button" className="manager-account-close" onClick={() => setAccountOpen(false)} aria-label="Đóng">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            {accountMessage && <div className="manager-account-message">{accountMessage}</div>}
-
-            <div className="manager-account-section">
-              <h3>Thông tin cơ bản</h3>
-              <div className="manager-account-grid">
-                <input name="surname" value={accountForm.surname} onChange={updateAccountField} placeholder="Họ" />
-                <input name="middle_name" value={accountForm.middle_name} onChange={updateAccountField} placeholder="Tên đệm" />
-                <input name="first_name" value={accountForm.first_name} onChange={updateAccountField} placeholder="Tên" />
-                <input name="email" type="email" value={accountForm.email} onChange={updateAccountField} placeholder="Email đăng nhập" />
-                <input name="hometown" value={accountForm.hometown} onChange={updateAccountField} placeholder="Quê quán" />
-                <input name="generation" type="number" min="1" value={accountForm.generation} onChange={updateAccountField} placeholder="Đời" />
-              </div>
-              <button className="manager-account-primary" type="button" onClick={saveAccountInfo} disabled={accountLoading || accountSaving}>
-                {accountSaving ? "Đang lưu..." : "Lưu thông tin cơ bản"}
-              </button>
-            </div>
-
-            <div className="manager-account-section">
-              <h3>Ảnh và tiểu sử</h3>
-              {accountForm.moderation_status === "pending" && (
-                <div className="manager-account-note">Đang có yêu cầu cập nhật hồ sơ chờ duyệt.</div>
-              )}
-              <input name="avatar_url" value={accountForm.avatar_url} onChange={updateAccountField} placeholder="URL ảnh đại diện" />
-              <textarea name="bio" value={accountForm.bio} onChange={updateAccountField} placeholder="Tiểu sử / giới thiệu" rows={3} />
-              <button
-                className="manager-account-secondary"
-                type="button"
-                onClick={submitProfileContent}
-                disabled={accountLoading || accountSaving || accountForm.moderation_status === "pending"}
-              >
-                Gửi duyệt ảnh và tiểu sử
-              </button>
-            </div>
-
-            <div className="manager-account-section">
-              <h3>Đổi mật khẩu</h3>
-              <div className="manager-account-grid">
-                <input name="current_password" type="password" value={passwordForm.current_password} onChange={updatePasswordField} placeholder="Mật khẩu hiện tại" />
-                <input name="new_password" type="password" value={passwordForm.new_password} onChange={updatePasswordField} placeholder="Mật khẩu mới" />
-                <input name="confirm_password" type="password" value={passwordForm.confirm_password} onChange={updatePasswordField} placeholder="Xác nhận mật khẩu mới" />
-              </div>
-              <button className="manager-account-primary" type="button" onClick={savePassword} disabled={passwordSaving}>
-                {passwordSaving ? "Đang lưu..." : "Đổi mật khẩu"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProfileDrawer
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        currentUser={currentUser}
+        setCurrentUser={setCurrentUser}
+        roleLabel="Quản trị viên dòng họ"
+        title="Chỉnh sửa thông tin cá nhân"
+      />
     </div>
   );
 }

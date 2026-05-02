@@ -233,6 +233,7 @@ export default function FamilyTreePage() {
                 people={treeMembers}
                 families={families}
                 children={children}
+                layoutSettings={dashboard?.layoutSettings}
                 loading={loading}
                 permission={permission}
               />

@@ -5,6 +5,7 @@ import {
   createPersonAPI,
   deletePersonAPI,
   linkRelationsAPI,
+  saveTreeLayoutAPI,
   updatePersonAPI,
   updatePersonPositionAPI,
 } from "../../api/managerService";
@@ -57,6 +58,36 @@ function getCardSizeStorageKey(clanId) {
   return `${CARD_SIZE_STORAGE_PREFIX}${clanId || "default"}`;
 }
 
+function normalizeLayoutObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeLayoutSettings(settings) {
+  return {
+    line_routes: normalizeLayoutObject(settings?.line_routes || settings?.lineRoutes),
+    card_sizes: normalizeLayoutObject(settings?.card_sizes || settings?.cardSizes),
+  };
+}
+
+function mergeManualAndAutoLayout(sourcePeople, families = [], childRows = []) {
+  const normalized = asArray(sourcePeople).map(normalizePerson);
+  if (!normalized.length) return [];
+
+  const hasAnyManualPosition = hasManualLayout(normalized);
+  if (!hasAnyManualPosition) {
+    return autoLayoutPeople(normalized, families, childRows);
+  }
+
+  const autoPeopleById = new Map(autoLayoutPeople(normalized, families, childRows).map((person) => [Number(person.id), person]));
+  const merged = normalized.map((person) => {
+    const hasManualPosition = toInt(person.tree_x, 0) !== 0 || toInt(person.tree_y, 0) !== 0;
+    if (hasManualPosition) return person;
+    const autoPerson = autoPeopleById.get(Number(person.id));
+    return autoPerson ? { ...person, tree_x: autoPerson.tree_x, tree_y: autoPerson.tree_y, display_order: autoPerson.display_order } : person;
+  });
+
+  return assignDisplayOrder(merged);
+}
 
 function normalizeCardSize(size) {
   const width = clamp(toInt(size?.width, CARD_WIDTH), MIN_CARD_WIDTH, MAX_CARD_WIDTH);
@@ -1463,6 +1494,7 @@ export default function FamilyTreeEditor({
   children: childRows = [],
   loading = false,
   onReload,
+  layoutSettings,
   permission,
   readOnly = false,
 }) {
@@ -1474,8 +1506,8 @@ export default function FamilyTreeEditor({
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [draggingLineId, setDraggingLineId] = useState(null);
-  const [lineRoutes, setLineRoutes] = useState(() => loadLineRoutes(clan?.id));
-  const [cardSizes, setCardSizes] = useState(() => loadCardSizes(clan?.id));
+  const [lineRoutes, setLineRoutes] = useState(() => ({ ...loadLineRoutes(clan?.id), ...normalizeLayoutSettings(layoutSettings).line_routes }));
+  const [cardSizes, setCardSizes] = useState(() => ({ ...loadCardSizes(clan?.id), ...normalizeLayoutSettings(layoutSettings).card_sizes }));
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
@@ -1484,9 +1516,10 @@ export default function FamilyTreeEditor({
   const [dialogSaving, setDialogSaving] = useState(false);
 
   useEffect(() => {
-    setLineRoutes(loadLineRoutes(clan?.id));
-    setCardSizes(loadCardSizes(clan?.id));
-  }, [clan?.id]);
+    const normalizedSettings = normalizeLayoutSettings(layoutSettings);
+    setLineRoutes({ ...loadLineRoutes(clan?.id), ...normalizedSettings.line_routes });
+    setCardSizes({ ...loadCardSizes(clan?.id), ...normalizedSettings.card_sizes });
+  }, [clan?.id, layoutSettings]);
   const resolvedPermission = useMemo(() => {
     if (permission) {
       return {
@@ -1515,8 +1548,7 @@ export default function FamilyTreeEditor({
   }, [initialPeople, families, childRows]);
 
   useEffect(() => {
-    const normalized = canonicalTree.people;
-    const nextPeople = autoLayoutPeople(normalized, canonicalTree.families, canonicalTree.childRows);
+    const nextPeople = mergeManualAndAutoLayout(canonicalTree.people, canonicalTree.families, canonicalTree.childRows);
     setPeople(nextPeople);
     setSelectedId((current) => (current && nextPeople.some((person) => person.id === current) ? current : null));
   }, [canonicalTree]);
@@ -1541,6 +1573,39 @@ export default function FamilyTreeEditor({
     () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes),
     [people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes],
   );
+
+  const persistFullLayout = useCallback(async (nextPeople = people, nextLineRoutes = lineRoutes, nextCardSizes = cardSizes) => {
+    if (!canEditAll) return false;
+    try {
+      await saveTreeLayoutAPI(nextPeople, clan?.id, {
+        lineRoutes: nextLineRoutes,
+        cardSizes: nextCardSizes,
+      });
+      saveLineRoutes(clan?.id, nextLineRoutes);
+      saveCardSizes(clan?.id, nextCardSizes);
+      return true;
+    } catch (error) {
+      setStatus(error?.message || "Không thể lưu bố cục cây vào database.");
+      return false;
+    }
+  }, [canEditAll, cardSizes, clan?.id, lineRoutes, people]);
+
+  const applyAutoLayoutAndSave = useCallback(async () => {
+    if (!canEditAll) return;
+    const ok = window.confirm("Tự động sắp xếp lại sẽ ghi đè vị trí thủ công hiện tại. Bạn có chắc muốn tiếp tục?");
+    if (!ok) return;
+    setSaving(true);
+    setStatus("");
+    const nextPeople = autoLayoutPeople(canonicalTree.people, canonicalTree.families, canonicalTree.childRows);
+    try {
+      setPeople(nextPeople);
+      const saved = await persistFullLayout(nextPeople, lineRoutes, cardSizes);
+      setStatus(saved ? "Đã tự động sắp xếp và lưu bố cục mới vào database." : "Không thể lưu bố cục mới.");
+      await onReload?.();
+    } finally {
+      setSaving(false);
+    }
+  }, [canEditAll, canonicalTree, persistFullLayout, lineRoutes, cardSizes, onReload]);
 
   const canvasSize = useMemo(() => {
     const maxX = Math.max(2400, ...people.map((person) => toInt(person.tree_x, 0) + getCardSize(cardSizes, person.id).width + CANVAS_PADDING));
@@ -1581,8 +1646,14 @@ export default function FamilyTreeEditor({
       if (!finalPosition) return;
       if (finalPosition.tree_x !== originX || finalPosition.tree_y !== originY) {
         try {
-          await updatePersonPositionAPI(person.id, finalPosition);
-          setStatus("Đã lưu vị trí.");
+          const nextPeople = people.map((item) => (Number(item.id) === Number(person.id) ? { ...item, ...finalPosition } : item));
+          if (canEditAll) {
+            await persistFullLayout(nextPeople, lineRoutes, cardSizes);
+            setStatus("Đã lưu vị trí và bố cục cây vào database.");
+          } else {
+            await updatePersonPositionAPI(person.id, finalPosition);
+            setStatus("Đã lưu vị trí.");
+          }
         } catch (error) {
           setStatus(error?.message || "Không thể lưu vị trí.");
         }
@@ -1591,7 +1662,7 @@ export default function FamilyTreeEditor({
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, []);
+  }, [canEditAll, cardSizes, lineRoutes, people, persistFullLayout]);
 
   const openPersonEditor = useCallback((person) => {
     if (!person) return;
@@ -1758,20 +1829,32 @@ export default function FamilyTreeEditor({
           [familyId]: { ...(current?.[familyId] || {}), [routeKey]: finalRoute?.value ?? originY },
         };
         saveLineRoutes(clan?.id, next);
+        if (canEditAll) {
+          persistFullLayout(people, next, cardSizes).then((saved) => {
+            setStatus(saved ? "Đã lưu đường liên kết vào database." : "Không thể lưu đường liên kết vào database.");
+          });
+        } else {
+          setStatus("Đã lưu vị trí đường liên kết trên trình duyệt.");
+        }
         return next;
       });
-      setStatus("Đã lưu vị trí đường liên kết trên trình duyệt.");
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, [canEditAll, clan?.id, lineRoutes]);
+  }, [canEditAll, clan?.id, lineRoutes, people, cardSizes, persistFullLayout]);
 
   const resetLineRoutes = useCallback(() => {
     setLineRoutes({});
     saveLineRoutes(clan?.id, {});
-    setStatus("Đã đưa đường liên kết về mặc định.");
-  }, [clan?.id]);
+    if (canEditAll) {
+      persistFullLayout(people, {}, cardSizes).then((saved) => {
+        setStatus(saved ? "Đã reset và lưu đường liên kết vào database." : "Không thể lưu reset đường liên kết.");
+      });
+    } else {
+      setStatus("Đã đưa đường liên kết về mặc định.");
+    }
+  }, [canEditAll, cardSizes, clan?.id, people, persistFullLayout]);
 
   const handleExport = async () => {
     if (!treeRef.current) return;
@@ -2074,14 +2157,20 @@ export default function FamilyTreeEditor({
       setCardSizes((current) => {
         const next = { ...current, [personId]: latest };
         saveCardSizes(clan?.id, next);
+        if (canEditAll) {
+          persistFullLayout(people, lineRoutes, next).then((saved) => {
+            setStatus(saved ? "Đã lưu kích thước ô vào database." : "Không thể lưu kích thước ô vào database.");
+          });
+        } else {
+          setStatus("Đã lưu kích thước ô thành viên trên trình duyệt.");
+        }
         return next;
       });
-      setStatus("Đã lưu kích thước ô thành viên trên trình duyệt.");
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, [canEditPerson, cardSizes, clan?.id]);
+  }, [canEditPerson, cardSizes, clan?.id, canEditAll, people, lineRoutes, persistFullLayout]);
 
   const selectedCanEdit = selectedPerson ? canEditPerson(selectedPerson.id) : false;
   const selectedNotice = selectedPerson
@@ -2140,10 +2229,16 @@ export default function FamilyTreeEditor({
               )}
               <div className="fte-toolbarGroup">
                 {canEditAll ? (
-                  <button type="button" onClick={resetLineRoutes} disabled={loading || saving} title="Đưa các đường liên kết về vị trí tự động">
-                    <span className="material-symbols-outlined">polyline</span>
-                    Reset đường nối
-                  </button>
+                  <>
+                    <button type="button" onClick={applyAutoLayoutAndSave} disabled={loading || saving} title="Tự động sắp xếp lại và lưu vào database">
+                      <span className="material-symbols-outlined">auto_fix_high</span>
+                      Tự sắp xếp
+                    </button>
+                    <button type="button" onClick={resetLineRoutes} disabled={loading || saving} title="Đưa các đường liên kết về vị trí tự động">
+                      <span className="material-symbols-outlined">polyline</span>
+                      Reset đường nối
+                    </button>
+                  </>
                 ) : null}
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
