@@ -7,12 +7,12 @@ import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./ManagerLayout.css";
 
 const menuItems = [
-  { icon: "assignment", label: "Công việc", path: "/manager/tasks" },
-  { icon: "post_add", label: "Bảng tin", path: "/manager/posts" },
   { icon: "dashboard", label: "Tổng quan", path: "/manager/dashboard" },
-  { icon: "account_tree", label: "Quản lý phả hệ", path: "/manager/genealogy" },
+  { icon: "account_tree", label: "Phả hệ dòng họ", path: "/manager/genealogy" },
+  { icon: "assignment", label: "Sự kiện dùng họ", path: "/manager/tasks" },
+  { icon: "post_add", label: "Bảng tin dòng họ", path: "/manager/posts" },
   { icon: "hourglass", label: "Viên nang thời gian", path: "/manager/time-capsule" },
-  { icon: "group", label: "Thành viên", path: "/manager/account" },
+  { icon: "group", label: "Thành viên dòng họ", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
 ];
 

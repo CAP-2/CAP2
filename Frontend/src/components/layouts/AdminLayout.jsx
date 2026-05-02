@@ -4,12 +4,13 @@ import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import "./AdminLayout.css";
 
 const menuItems = [
-  { icon: "assignment", label: "Công việc", path: "/dashboard/tasks" },
+ 
   { icon: "dashboard", label: "Tổng quan", path: "/dashboard" },
   { icon: "account_tree", label: "Quản lý phả hệ", path: "/dashboard/genealogy" },
+  { icon: "group", label: "Quản lý Tài khoản", path: "/dashboard/members" },
   { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
-  { icon: "group", label: "Thành viên", path: "/dashboard/members" },
-  { icon: "settings", label: "Cài đặt", path: "/dashboard/settings" },
+  { icon: "assignment", label: "Quản lý sự kiện ", path: "/dashboard/tasks" },
+  { icon: "settings", label: "Cài đặt Hệ thống", path: "/dashboard/settings" },
 ];
 
 export default function AdminLayout() {
@@ -85,7 +86,7 @@ export default function AdminLayout() {
       <main className="admin-main-content">
         <header className="admin-top-header glass-effect">
           <div className="header-context">
-            <h1>Hệ thống Quản trị Toàn quốc</h1>
+            <h1>Hệ thống Quản trị Gia Phả Việt</h1>
             <p>{currentTime.toLocaleTimeString('vi-VN')} | {new Date().toLocaleDateString('vi-VN', { weekday: 'long' })}</p>
           </div>
         </header>

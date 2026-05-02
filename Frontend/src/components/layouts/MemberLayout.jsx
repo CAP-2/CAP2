@@ -7,11 +7,10 @@ import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
 import "./MemberLayout.css";
 
 const menuItems = [
-  { icon: "assignment", label: "Công việc", path: "/user/tasks" },
-  { icon: "dashboard", label: "Tổng quan", path: "/user/dashboard" },
-  { icon: "account_tree", label: "Cây gia phả", path: "/user/family-tree" },
+  { icon: "assignment", label: "Sự kiện dòng họ", path: "/user/tasks" },
+  { icon: "account_tree", label: "Gia phả dòng họ", path: "/user/family-tree" },
   { icon: "hourglass", label: "Viên nang thời gian", path: "/user/time-capsule" },
-  { icon: "history_edu", label: "Bảng tin", path: "/user/posts" },
+  { icon: "history_edu", label: "Bảng tin dòng họ", path: "/user/posts" },
   { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
 ];
 
