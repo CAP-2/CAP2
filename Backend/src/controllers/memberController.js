@@ -34,7 +34,7 @@ const getAccountContext = async (accountId) => {
       a.email AS account_email,
       a.role_id,
       a.status,
-      a.person_id,
+      COALESCE(a.person_id, ac.person_id) AS person_id,
       p.display_name,
       p.first_name,
       p.middle_name,
@@ -53,8 +53,8 @@ const getAccountContext = async (accountId) => {
       c.clan_name,
       c.history AS clan_history
     FROM accounts a
-    LEFT JOIN people p ON a.person_id = p.id
     LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+    LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
     LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
     WHERE a.id = ?
     ORDER BY ac.id ASC
