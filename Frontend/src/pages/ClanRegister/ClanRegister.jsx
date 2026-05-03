@@ -15,6 +15,19 @@ const ClanRegister = () => {
   const [modalTitle, setModalTitle] = useState("");
   const [modalContent, setModalContent] = useState("");
 
+  const [managerForm, setManagerForm] = useState({
+    display_name: "",
+    first_name: "",
+    middle_name: "",
+    surname: "",
+    email: "",
+    password: "",
+    confirm_password: "",
+    birth_date: "",
+    hometown: "",
+    gender: "1",
+  });
+
   const openModal = (type) => {
     if (type === "terms") {
       setModalTitle("Điều khoản sử dụng");
@@ -31,18 +44,6 @@ const ClanRegister = () => {
     setModalTitle("");
     setModalContent("");
   };
-
-  const [managerForm, setManagerForm] = useState({
-    display_name: "",
-    first_name: "",
-    middle_name: "",
-    surname: "",
-    email: "",
-    password: "",
-    birth_date: "",
-    hometown: "",
-    gender: "1",
-  });
 
   const handleClanSubmit = (e) => {
     e.preventDefault();
@@ -63,7 +64,7 @@ const ClanRegister = () => {
 
   const handleFullNameChange = (e) => {
     const fullName = e.target.value;
-    const parts = fullName.trim().split(/\s+/); // Tách chuỗi dựa trên khoảng trắng
+    const parts = fullName.trim().split(/\s+/);
 
     let surname = "";
     let middle_name = "";
@@ -83,27 +84,34 @@ const ClanRegister = () => {
     setManagerForm((prev) => ({
       ...prev,
       display_name: fullName,
-      surname: surname,
-      middle_name: middle_name,
-      first_name: first_name
+      surname,
+      middle_name,
+      first_name,
     }));
   };
 
   const handleManagerSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
 
     if (!clanName || String(clanName).trim() === "") {
       setError("Tên dòng họ bị mất, vui lòng quay lại bước trước");
-      setLoading(false);
       return;
     }
 
+    if (managerForm.password !== managerForm.confirm_password) {
+      setError("Mật khẩu xác nhận không khớp");
+      return;
+    }
+
+    setLoading(true);
+
     try {
+      const { confirm_password, ...payload } = managerForm;
+
       const res = await registerClanManagerAPI({
         clan_name: clanName,
-        ...managerForm,
+        ...payload,
       });
 
       if (res.success) {
@@ -119,7 +127,10 @@ const ClanRegister = () => {
 
   return (
     <div className="clan-register-page">
-      <Link to="/" className="back-btn">← Về trang chủ </Link>
+      <Link to="/" className="back-btn">
+        ← Về trang chủ
+      </Link>
+
       <div className="clan-register-container">
         {step === 1 ? (
           <>
@@ -138,7 +149,7 @@ const ClanRegister = () => {
               />
 
               <button type="submit" className="submit-btn">
-                Tiếp theo: Đăng ký tài khoản 
+                Tiếp theo: Đăng ký tài khoản
               </button>
             </form>
 
@@ -148,20 +159,21 @@ const ClanRegister = () => {
           </>
         ) : (
           <>
-            <h2>Tạo tài khoản Trưởng họ cho dòng họ </h2>
-                 <h2>"{clanName}"</h2>
+            <h2>Tạo tài khoản Trưởng họ cho dòng họ</h2>
+            <h2>"{clanName}"</h2>
             <p className="subtitle">Người đăng ký sẽ được gán quyền "Trưởng họ" của dòng họ này.</p>
 
             {error && <div className="error-box">{error}</div>}
 
             <form onSubmit={handleManagerSubmit}>
-               <input
+              <input
                 name="display_name"
                 value={managerForm.display_name}
-                placeholder="Họ Tên đầy đủ"
+                placeholder="Họ tên đầy đủ"
                 onChange={handleFullNameChange}
                 required
               />
+
               <div className="input-row">
                 <input
                   name="surname"
@@ -185,8 +197,6 @@ const ClanRegister = () => {
                 />
               </div>
 
-              {/* 🌟 ĐÃ GẮN HÀM TÁCH TÊN VÀO Ô NÀY 🌟 */}
-             
               <div className="input-row">
                 <select name="gender" value={managerForm.gender} onChange={handleManagerChange} required>
                   <option value="1">Nam</option>
@@ -210,6 +220,7 @@ const ClanRegister = () => {
                 onChange={handleManagerChange}
                 required
               />
+
               <input
                 name="password"
                 value={managerForm.password}
@@ -218,32 +229,62 @@ const ClanRegister = () => {
                 onChange={handleManagerChange}
                 required
               />
-               <input
-                name="password"
-                value={managerForm.password}
+
+              <input
+                name="confirm_password"
+                value={managerForm.confirm_password}
                 type="password"
-                placeholder=" xác nhập mật khẩu"
+                placeholder="Xác nhận mật khẩu"
                 onChange={handleManagerChange}
                 required
               />
-             <div className="checkbox-group">
-              <input type="checkbox" id="terms" required />
-              <label htmlFor="terms">
-                Tôi đồng ý 
-                <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("terms"); }}> Điều khoản sử dụng</a>
-                và
-                <a href="#" className="policy-link" onClick={(e) => { e.preventDefault(); openModal("privacy"); }}>Chính sách bảo mật</a>
-              </label>
-            </div>
+
+              <input
+                name="hometown"
+                value={managerForm.hometown}
+                placeholder="Quê quán"
+                onChange={handleManagerChange}
+                required
+              />
+
+              <div className="checkbox-group">
+                <input type="checkbox" id="terms" required />
+                <label htmlFor="terms">
+                  Tôi đồng ý
+                  <a
+                    href="#"
+                    className="policy-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openModal("terms");
+                    }}
+                  >
+                    {" "}
+                    Điều khoản sử dụng
+                  </a>
+                  và
+                  <a
+                    href="#"
+                    className="policy-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openModal("privacy");
+                    }}
+                  >
+                    {" "}
+                    Chính sách bảo mật
+                  </a>
+                </label>
+              </div>
 
               <button type="submit" className="submit-btn" disabled={loading}>
-                {loading ? "Đang xử lý..." : "Hoàn tất đăng ký "}
+                {loading ? "Đang xử lý..." : "Hoàn tất đăng ký"}
               </button>
             </form>
 
             <p className="footer-link">
               <button type="button" className="link-button" onClick={() => setStep(1)}>
-               ←  Quay về bước trước
+                ← Quay về bước trước
               </button>
             </p>
 

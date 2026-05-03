@@ -379,7 +379,6 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
   }
 
   const childrenByParent = new Map();
-  /** Cha/mẹ “chính” nối con (ưu tiên cha) → id vợ/chồng còn lại trong cùng gia đình, để hiển thị cặp trên một nhánh */
   const spouseByPrimary = new Map();
   for (const fam of familyRows) {
     const kids = childrenByFamily.get(fam.id) || [];
@@ -443,7 +442,6 @@ const buildFamilyTree = (peopleRows, familyRows, childRows) => {
 
   return { roots: rootNodes };
 };
-
 /**
  * Cây gia phả + danh sách người cho một dòng họ (Admin).
  * Mỗi người có thể có `account_id` nếu đã liên kết tài khoản.
@@ -465,7 +463,8 @@ exports.loadClanTreeForAdmin = async (clanId) => {
            p.phone, p.email,
            COALESCE(p.pending_avatar_url, p.avatar_url) AS avatar_url,
            COALESCE(p.pending_avatar_media_id, p.avatar_media_id) AS avatar_media_id,
-           p.pending_avatar_url, p.pending_avatar_media_id,
+           p.pending_avatar_url,
+           p.pending_avatar_media_id,
            p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
            a.id AS account_id,
            a.role_id
@@ -538,7 +537,8 @@ exports.getDashboard = async (req, res) => {
                  p.phone, p.email,
                  COALESCE(p.pending_avatar_url, p.avatar_url) AS avatar_url,
                  COALESCE(p.pending_avatar_media_id, p.avatar_media_id) AS avatar_media_id,
-                 p.pending_avatar_url, p.pending_avatar_media_id,
+                 p.pending_avatar_url,
+                 p.pending_avatar_media_id,
                  p.bio, p.note, p.tree_x, p.tree_y, p.display_order,
                  a.id AS account_id,
                  a.role_id
@@ -626,19 +626,21 @@ exports.getDashboard = async (req, res) => {
       );
       assignedTasks = taskRows;
 
-      if (context.person_id) {
-        const [notificationRows] = await db.query(
-          `
-            SELECT id, type, title, message, is_read, link_url, created_at
-            FROM notifications
-            WHERE receiver_person_id = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 50
-          `,
-          [context.person_id]
-        );
-        notifications = notificationRows;
-      }
+      const [notificationRows] = await db.query(
+        `
+          SELECT id, type, title, message, is_read, link_url, created_at
+          FROM notifications
+          WHERE receiver_account_id = ?
+             OR (
+                  receiver_account_id IS NULL
+                  AND receiver_person_id = ?
+                )
+          ORDER BY created_at DESC, id DESC
+          LIMIT 50
+        `,
+        [accountId, context.person_id || 0]
+      );
+      notifications = notificationRows;
     }
 
     const discoverItems = [
@@ -710,19 +712,19 @@ exports.getDashboard = async (req, res) => {
 exports.getNotifications = async (req, res) => {
   try {
     const context = await getAccountContext(req.user.id);
-    if (!context?.person_id) {
-      return res.json({ success: true, notifications: [], unread_count: 0 });
-    }
-
     const [rows] = await db.query(
       `
         SELECT id, type, title, message, is_read, link_url, created_at
         FROM notifications
-        WHERE receiver_person_id = ?
+        WHERE receiver_account_id = ?
+           OR (
+                receiver_account_id IS NULL
+                AND receiver_person_id = ?
+              )
         ORDER BY created_at DESC, id DESC
         LIMIT 50
       `,
-      [context.person_id]
+      [req.user.id, context?.person_id || 0]
     );
 
     const unreadCount = rows.filter((row) => Number(row.is_read) === 0).length;
@@ -741,13 +743,21 @@ exports.markNotificationRead = async (req, res) => {
     }
 
     const context = await getAccountContext(req.user.id);
-    if (!context?.person_id) {
-      return res.status(404).json({ success: false, message: "Tai khoan chua lien ket ho so" });
-    }
 
     await db.query(
-      "UPDATE notifications SET is_read = 1 WHERE id = ? AND receiver_person_id = ?",
-      [notificationId, context.person_id]
+      `
+        UPDATE notifications
+        SET is_read = 1
+        WHERE id = ?
+          AND (
+            receiver_account_id = ?
+            OR (
+              receiver_account_id IS NULL
+              AND receiver_person_id = ?
+            )
+          )
+      `,
+      [notificationId, req.user.id, context?.person_id || 0]
     );
 
     return res.json({ success: true });
@@ -760,13 +770,18 @@ exports.markNotificationRead = async (req, res) => {
 exports.markAllNotificationsRead = async (req, res) => {
   try {
     const context = await getAccountContext(req.user.id);
-    if (!context?.person_id) {
-      return res.json({ success: true, updated: 0 });
-    }
 
     const [result] = await db.query(
-      "UPDATE notifications SET is_read = 1 WHERE receiver_person_id = ?",
-      [context.person_id]
+      `
+        UPDATE notifications
+        SET is_read = 1
+        WHERE receiver_account_id = ?
+           OR (
+                receiver_account_id IS NULL
+                AND receiver_person_id = ?
+              )
+      `,
+      [req.user.id, context?.person_id || 0]
     );
 
     return res.json({ success: true, updated: result.affectedRows || 0 });
@@ -876,16 +891,13 @@ exports.updateProfile = async (req, res) => {
         context.person_id,
       ]
     );
-
-    // Tìm family đang sở hữu (nếu có)
-    const [selfFamilyRows] = await db.query(
+        const [selfFamilyRows] = await db.query(
       "SELECT id FROM families WHERE father_id = ? OR mother_id = ? ORDER BY id ASC LIMIT 1",
       [context.person_id, context.person_id]
     );
     let selfFamilyId = selfFamilyRows[0]?.id || null;
     const isMale = Number(context.gender) === 1;
 
-    // Nếu có family_id: kiểm tra / tạo mới theo yêu cầu người dùng
     if (hasFamilyField && familyIdInput !== null) {
       const [existingFamily] = await db.query(
         "SELECT id, father_id, mother_id, clan_id FROM families WHERE id = ? LIMIT 1",
@@ -915,7 +927,6 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    // Chỉ tạo/sửa bản ghi families khi thực sự gửi vợ/chồng hoặc có ít nhất một ID con (tránh 400 khi client gửi children_ids rỗng)
     const needsNewOrUpdateFamilyRow =
       hasSpouseField || (hasChildrenField && childrenIds.length > 0);
     if (needsNewOrUpdateFamilyRow) {
@@ -1234,7 +1245,6 @@ exports.submitMaterial = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi gửi tư liệu" });
   }
 };
-
 exports.getGeneralPosts = async (req, res) => {
   try {
     const accountId = req.user.id;
@@ -1383,13 +1393,11 @@ exports.getMySubmissions = async (req, res) => {
     const accountId = req.user.id;
     const context = await getAccountContext(accountId);
     
-    // Get user's posts status
     const [posts] = await db.query(
       "SELECT description, content, image_url, image_media_id, status, rejection_reason, created_at FROM posts WHERE author_id = ? ORDER BY created_at DESC",
       [accountId]
     );
 
-    // Get user's profile update status
     const profileStatus = {
       moderation_status: context.moderation_status,
       moderation_reason: context.moderation_reason,
@@ -1500,21 +1508,26 @@ exports.updateTaskStatus = async (req, res) => {
     if (nextStatus === "completed") {
       const managerContext = await getAccountContext(task.manager_account_id);
       const memberContext = await getAccountContext(req.user.id);
-      if (managerContext?.person_id) {
+      if (managerContext?.account_id) {
         const memberName =
           memberContext?.display_name ||
           [memberContext?.surname, memberContext?.middle_name, memberContext?.first_name].filter(Boolean).join(" ") ||
           `Thanh vien #${task.member_account_id}`;
+
         await db.query(
-          "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+          `INSERT INTO notifications
+           (receiver_account_id, receiver_person_id, type, title, message, link_url)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [
-            managerContext.person_id,
+            task.manager_account_id,
+            managerContext.person_id || null,
             "task_completed",
             `Cong viec da hoan thanh: ${task.title}`,
             `${memberName} da hoan thanh cong viec "${task.title}".`,
             `/manager/tasks/${task.task_id}`,
           ]
         );
+
         await emitNotificationToAccount(req, task.manager_account_id, {
           type: "task_completed",
           title: "Cong viec da hoan thanh",

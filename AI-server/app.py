@@ -943,9 +943,6 @@ def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | No
     if intent in RELATION_INTENTS and not ctx.get("person_id"):
         return "Tài khoản của bạn chưa được liên kết với hồ sơ thành viên nên chưa thể tra cứu quan hệ gia đình."
 
-    if intent == "NOTIFICATIONS" and not ctx.get("person_id"):
-        return "Tai khoan cua ban chua lien ket voi ho so thanh vien nen chua the tra cuu thong bao ca nhan."
-
     return None
 
 
@@ -1100,11 +1097,14 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
         if intent == "NOTIFICATIONS":
             return (
                 """
-                SELECT n.id, n.receiver_person_id, p.clan_id, c.clan_name, n.type, n.title,
-                       n.message, n.is_read, n.link_url, n.created_at
+                SELECT n.id, n.receiver_account_id, n.receiver_person_id,
+                       related.clan_id, c.clan_name, n.type, n.title, n.message,
+                       n.is_read, n.link_url, n.created_at,
+                       a.email AS receiver_email, related.display_name AS related_person_name
                 FROM notifications n
-                JOIN people p ON p.id = n.receiver_person_id
-                LEFT JOIN clans c ON c.id = p.clan_id
+                LEFT JOIN accounts a ON a.id = n.receiver_account_id
+                LEFT JOIN people related ON related.id = n.receiver_person_id
+                LEFT JOIN clans c ON c.id = related.clan_id
                 ORDER BY n.created_at DESC, n.id DESC
                 """,
                 [],
@@ -1308,13 +1308,20 @@ def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tupl
     if intent == "NOTIFICATIONS":
         return (
             """
-            SELECT n.id, n.type, n.title, n.message, n.is_read, n.link_url, n.created_at
+            SELECT n.id, n.type, n.title, n.message, n.is_read, n.link_url, n.created_at,
+                   n.receiver_account_id, n.receiver_person_id,
+                   related.display_name AS related_person_name
             FROM notifications n
-            JOIN people receiver ON receiver.id = n.receiver_person_id
-            WHERE n.receiver_person_id = %s AND receiver.clan_id = %s
+            LEFT JOIN people related ON related.id = n.receiver_person_id
+            WHERE n.receiver_account_id = %s
+               OR (
+                    n.receiver_account_id IS NULL
+                    AND n.receiver_person_id = %s
+                    AND related.clan_id = %s
+                  )
             ORDER BY n.created_at DESC, n.id DESC
             """,
-            [person_id, clan_id],
+            [account_id, person_id, clan_id],
         )
 
     if intent == "EVENTS":
@@ -1688,6 +1695,45 @@ def create_app() -> Flask:
             }
         )
 
+    @app.post("/public/chat")
+    def public_chat():
+        body = request.get_json(silent=True) or {}
+        prompt = str(body.get("prompt") or "").strip()
+
+        if not prompt:
+            return jsonify({"success": False, "message": "Prompt không được để trống."}), 400
+
+        intent, confidence, _slots = detect_intent(prompt)
+        private_intents = DB_INTENTS | {"SENSITIVE_DATA"}
+        if intent in private_intents:
+            answer = "Bạn cần đăng nhập để tôi có thể tra cứu dữ liệu dòng họ và trả lời chính xác."
+            return jsonify(
+                {
+                    "success": True,
+                    "scope": "public",
+                    "intent": intent,
+                    "confidence": confidence,
+                    "prompt": prompt,
+                    "row_count": 0,
+                    "data": {},
+                    "answer": answer,
+                }
+            )
+
+        answer = public_answer(groq_client, MODEL_NAME, prompt)
+        return jsonify(
+            {
+                "success": True,
+                "scope": "public",
+                "intent": intent if intent != "UNKNOWN" else "PUBLIC",
+                "confidence": confidence,
+                "prompt": prompt,
+                "row_count": 0,
+                "data": {},
+                "answer": answer,
+            }
+        )
+
     @app.post("/ask-db")
     def ask():
         started_at = time.perf_counter()
@@ -1705,7 +1751,10 @@ def create_app() -> Flask:
         user_payload = context_user_payload(ctx)
 
         if public_scope or intent in GENERAL_INTENTS or intent == "UNKNOWN":
-            answer = answer_general(groq_client, MODEL_NAME, prompt)
+            if public_scope and intent in (DB_INTENTS | {"SENSITIVE_DATA"}):
+                answer = "Bạn cần đăng nhập để tôi có thể tra cứu dữ liệu dòng họ và trả lời chính xác."
+            else:
+                answer = public_answer(groq_client, MODEL_NAME, prompt) if public_scope else answer_general(groq_client, MODEL_NAME, prompt)
             write_ai_audit(
                 get_pool,
                 ctx,

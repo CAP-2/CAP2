@@ -1269,14 +1269,14 @@ exports.updateMemberByManager = async (req, res) => {
         if ((Number(req.user.role_id) === 1 || Number(req.user.role_id) === 2) && has('role_id')) {
             const rid = Number(body.role_id);
             if (rid !== 2 && rid !== 3) {
-                return res.status(400).json({ success: false, message: 'Vai trÃ² chá»‰ há»— trá»£ Manager hoáº·c Member' });
+                return res.status(400).json({ success: false, message: 'Vai trò chỉ hỗ trợ Manager hoặc Member' });
             }
             if (Number(req.user.role_id) === 2) {
                 if (targetAccountId === Number(req.user.id) && rid !== Number(full.role_id)) {
-                    return res.status(400).json({ success: false, message: 'Manager khÃ´ng thá»ƒ tá»± Ä‘á»•i vai trÃ² cá»§a chÃ­nh mÃ¬nh' });
+                    return res.status(400).json({ success: false, message: 'Manager không thể tự đổi vai trò của chính mình' });
                 }
                 if (rid === 3 && Number(full.role_id) !== 3) {
-                    return res.status(403).json({ success: false, message: 'Manager chá»‰ Ä‘Æ°á»£c chá»‰ Ä‘á»‹nh thÃ nh viÃªn lÃªn Manager, khÃ´ng Ä‘Æ°á»£c háº¡ vai trÃ² Manager khÃ¡c' });
+                    return res.status(403).json({ success: false, message: 'Manager chỉ được chỉ định thành viên lên Manager, không được hạ vai trò Manager khác' });
                 }
             }
             if (rid !== Number(full.role_id)) {
@@ -1894,15 +1894,18 @@ exports.assignTask = async (req, res) => {
                 [taskResult.insertId, member.account_id, member.person_id]
             );
             await db.query(
-                "INSERT INTO notifications (receiver_person_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
-                [
-                    member.person_id,
-                    "task_assigned",
-                    `Cong viec moi: ${title}`,
-                    `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
-                    `/member/tasks/${taskResult.insertId}`,
-                ]
-            );
+                `INSERT INTO notifications
+     (receiver_account_id, receiver_person_id, type, title, message, link_url)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+        member.account_id,
+        member.person_id,
+        "task_assigned",
+        `Cong viec moi: ${title}`,
+        `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
+        `/member/tasks/${taskResult.insertId}`,
+    ]
+);
             await emitNotificationToAccount(req, member.account_id, {
                 type: "task_assigned",
                 title: "Cong viec moi",

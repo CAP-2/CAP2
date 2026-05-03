@@ -116,7 +116,7 @@ const Register = () => {
               onChange={handleChange}
               required
             />
-            <small>Nhập ID dòng họ được cung cấp</small>
+            <small>Nhập ID dòng họ đã được cung cấp</small>
           </label>
 
           <div className="checkbox-group">

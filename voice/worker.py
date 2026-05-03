@@ -32,7 +32,7 @@ DELETE_WAV_ON_FAILED = os.getenv("VOICE_DELETE_WAV_ON_FAILED", "false").strip().
 
 def validate_python_executable():
     current = Path(sys.executable).resolve()
-    if EXPECTED_PYTHON.exists() and current != EXPECTED_PYTHON:
+    if current != EXPECTED_PYTHON:
         raise RuntimeError(
             "Voice worker phai chay bang .venv-whisper, khong dung AI-server\\.venv.\n"
             f"Expected: {EXPECTED_PYTHON}\n"
@@ -66,6 +66,13 @@ def load_whisper_model_class():
 
 
 def db_config() -> dict:
+    missing = [name for name in ("DB_HOST", "DB_USER", "DB_NAME") if not os.getenv(name)]
+    if missing:
+        raise RuntimeError(
+            "Thieu cau hinh database cho voice worker: "
+            + ", ".join(missing)
+            + ". Kiem tra Backend\\.env hoac .env truoc khi connect."
+        )
     return {
         "host": os.getenv("DB_HOST"),
         "port": int(os.getenv("DB_PORT") or 3306),
@@ -80,12 +87,46 @@ def connect():
     return mysql.connector.connect(**db_config())
 
 
+def split_sql_statements(sql: str) -> list[str]:
+    statements: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    escaped = False
+
+    for char in sql:
+        current.append(char)
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if char == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if char == ";" and not in_single and not in_double:
+            statement = "".join(current).strip().rstrip(";").strip()
+            if statement:
+                statements.append(statement)
+            current = []
+
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
 def ensure_schema():
     schema_sql = (REPO_ROOT / "voice" / "schema.sql").read_text(encoding="utf-8")
     conn = connect()
     cur = conn.cursor()
     try:
-        cur.execute(schema_sql)
+        for statement in split_sql_statements(schema_sql):
+            cur.execute(statement)
         cur.execute("SHOW COLUMNS FROM recordings")
         existing_columns = {row[0] for row in cur.fetchall()}
         migrations = [
@@ -125,7 +166,6 @@ def claim_recording():
             SELECT id, storage_path
             FROM recordings
             WHERE status = 'uploaded'
-               OR (status = 'failed' AND transcript IS NULL)
                OR (
                     status = 'transcribing'
                     AND processing_started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
@@ -206,9 +246,16 @@ def mark_failed(recording_id: int, error_message: str):
 
 
 def resolve_audio_path(storage_path: str) -> Path:
-    candidate = Path(storage_path)
+    raw_path = str(storage_path or "").strip().replace("/", os.sep)
+    candidate = Path(raw_path)
     if candidate.is_absolute():
-        return candidate
+        return candidate.resolve()
+
+    parts = candidate.parts
+    if parts and parts[0].lower() == "storage":
+        return (REPO_ROOT / "Backend" / candidate).resolve()
+    if len(parts) >= 2 and parts[0].lower() == "backend" and parts[1].lower() == "storage":
+        return (REPO_ROOT / candidate).resolve()
     return (STORAGE_ROOT / candidate).resolve()
 
 

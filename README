@@ -1,137 +1,125 @@
+# Hướng dẫn khởi động dự án CAP2
 
-- Frontend dev server mặc định chạy trên `http://localhost:5173`.
+## Yêu cầu
 
-**4) AI server (Flask + Groq)**
-- Tạo file `AI-server/.env` với ít nhất `GROQ_API_KEY` và cấu hình DB (`DB_HOST`, `DB_USER`, ...).
-- Chạy trên Windows (PowerShell) — ví dụ:
+Cài sẵn các công cụ sau:
 
-```powershell
-cd AI-server
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python app.py
+- Node.js v16+ và npm
+- Python 3.10+
+- Docker & Docker Compose nếu muốn chạy MySQL bằng Docker
+- MySQL client hoặc DBeaver để kiểm tra database nếu cần
+- FFmpeg nếu chạy chức năng voice/local STT
 
-- Mặc định AI server dùng `PORT=8001` (có thể set biến `PORT` hoặc `HOST`). Endpoint health: `/health`.
+---
 
-**5) Ghi chú ports mặc định**
-- Backend: `3000`
-- Frontend: `5173`
-- AI-server: `8001` (mặc định)
+nếu lần đầu chạy dự án hãy thực hiện các bước sau
 
+## 1. Khởi động MySQL bằng Docker
 
+Chuyển vào thư mục `docker`:
 
-**Tài khoản thử nghiệm**
-- admin@gmail.com
-- manager@gmail.com
-- user@gmail.com
-- mật khẩu mặc định: `1`
-
-- 0973018988a@gmail.com/123123        Tuanha@gmail.com/1    (manager)
-- dinhviet.user15@gmail.com/123123     quyet@gmail.com/123123       (member)
-
-
-
-**Voice worker (local STT, khong dung OpenAI API)**
-- Voice worker KHONG dung chung venv voi `AI-server`.
-- Python dung cho voice phai la `D:\cap2\.venv-whisper\Scripts\python.exe`.
-- Cai dependency rieng bang `D:\cap2\.venv-whisper\Scripts\python.exe -m pip install -r D:\cap2\voice\requirements.txt`.
-- Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
-- Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
-- Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.
-=======
-
-Hướng dẫn khởi động dự án
-
-**Yêu cầu:**
-- Node.js (v16+), npm
-- Python 3.10+ (để chạy `AI-server`)
-- Docker & Docker Compose (nếu muốn chạy DB bằng Docker)
-
-**1) Khởi động MySQL bằng Docker (khuyến nghị)**
-- Chuyển vào thư mục `docker` và chạy:
-
+```bash
 cd docker
 docker compose down -v
 docker compose up -d --build
 docker ps
-```
 
-**2) Backend (Node.js, Socket.io)**
-- Tạo file cấu hình môi trường `Backend/.env` (ví dụ: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `PORT` ...).
-- Cài đặt và chạy:
+---
+
+## 2. Khởi động backend
+tạo file Backend/.env
 
 ```bash
 cd Backend
 npm install
 npm run dev
 
-
-- Mặc định backend lắng nghe ở `http://localhost:3000` (port có thể thay đổi trong `.env`).
-
-**Chạy các migration (nếu cần):**
-
-```bash
-cd Backend
-node migration_people_moderation.js
-node migration_posts.js
-```
-**3) Frontend (Vite + React)**
-- Thiết lập biến môi trường cho frontend: tạo `Frontend/.env` với ví dụ
-
-```
-VITE_API_URL=http://localhost:3000
-```
-- Cài đặt và chạy:
+## 3. Khởi động frontend
+tạo file Frontend/.env
 
 ```bash
 cd Frontend
 npm install
 npm run dev
-```
-nếu có lỗi 
 
-=======
+## 4. Khởi động AI-Server
+tạo file AI-server/.env
 
-- Frontend dev server mặc định chạy trên `http://localhost:5173`.
-
-**4) AI server (Flask + Groq)**
-- Tạo file `AI-server/.env` với ít nhất `GROQ_API_KEY` và cấu hình DB (`DB_HOST`, `DB_USER`, ...).
-- Chạy trên Windows (PowerShell) — ví dụ:
-
-```powershell
-cd AI-server
+```bash
+cd D:\cap2\AI-server
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python app.py
 
-- Mặc định AI server dùng `PORT=8001` (có thể set biến `PORT` hoặc `HOST`). Endpoint health: `/health`.
+## 5. khởi động voice
+Voice worker dùng local STT, không dùng OpenAI API và không dùng chung virtual environment với AI-server.
 
-**5) Ghi chú ports mặc định**
-- Backend: `3000`
-- Frontend: `5173`
-- AI-server: `8001` (mặc định)
+Python đúng cho voice:
+D:\cap2\.venv-whisper\Scripts\python.exe
 
+Cài dependency riêng cho voice:
+D:\cap2\.venv-whisper\Scripts\python.exe -m pip install -r D:\cap2\voice\requirements.txt
 
+Cài FFmpeg và kiểm tra:
+ffmpeg -version
 
-**Tài khoản thử nghiệm**
-- admin@gmail.com
-- manager@gmail.com
-- user@gmail.com
-- mật khẩu mặc định: `1`
+```bash
+cd D:\cap2
+.\run_voice_worker.ps1
 
-- 0973018988a@gmail.com/123123        Tuanha@gmail.com/1    (manager)
-- dinhviet.user15@gmail.com/123123     quyet@gmail.com/123123       (member)
-
-
-
-**Voice worker (local STT, khong dung OpenAI API)**
-- Voice worker KHONG dung chung venv voi `AI-server`.
-- Python dung cho voice phai la `D:\cap2\.venv-whisper\Scripts\python.exe`.
-- Cai dependency rieng bang `D:\cap2\.venv-whisper\Scripts\python.exe -m pip install -r D:\cap2\voice\requirements.txt`.
-- Cai `ffmpeg` va dam bao `ffmpeg -version` chay duoc.
-- Chay worker an toan bang `.\run_voice_worker.ps1` tu `D:\cap2`.
-- Cau hinh khuyen nghi: `VOICE_WHISPER_MODEL=small`, `VOICE_WHISPER_DEVICE=cpu`, `VOICE_WHISPER_COMPUTE_TYPE=int8`, `VOICE_WHISPER_LANGUAGE=vi`.
+Nếu lỗi ở faster_whisper, av, hoặc ffmpeg, kiểm tra lại:
+D:\cap2\.venv-whisper\Scripts\python.exe -m pip show faster-whisper av
+ffmpeg -version
 
 
+cấu hình khuyên dùng 
+VOICE_WHISPER_MODEL=small
+VOICE_WHISPER_DEVICE=cpu
+VOICE_WHISPER_COMPUTE_TYPE=int8
+VOICE_WHISPER_LANGUAGE=vi
+
+
+
+####    nếu đây là lần thứ 2 trở đi khởi động dự án
+Bước 1:   Terminal 1: Database
+
+Nếu dùng Docker MySQL:
+```
+cd D:\cap2\docker
+docker compose up -d
+
+Nếu dùng database cloud thì bỏ qua bước này.
+
+Bước 2 : Terminal 2: Backend
+```
+cd D:\cap2\Backend
+npm run dev
+
+Bước 3:  Terminal 3: AI Server
+```
+cd D:\cap2\AI-server
+.\.venv\Scripts\Activate.ps1
+python app.py
+
+Bước 4:Terminal 4: Frontend
+```
+cd D:\cap2\Frontend
+npm run dev
+
+Bước 5: Terminal 5: Voice Worker nếu cần
+cd D:\cap2
+.\run_voice_worker.ps1
+
+Tài khoản Mẫu : tài khoản /mật khẩu
+## admin
+admin@gmail.com/1
+
+## manager:
+0973018988a@gmail.com/123123  (Dòng họ Đinh Viết)
+Tuanha@gmail.com/1             (Dòng họ Tuấn Hà)
+
+
+## Member:
+dinhviet.user15@gmail.com/1    (Dòng họ Đinh Viết)
+dinhvietquyet984@gmail.com/1  (Dòng Họ Tuấn Hà)

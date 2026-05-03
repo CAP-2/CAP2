@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getVoiceRecordingAudioUrl,
+  getVoiceRecipientOptions,
   getVoiceRecordings,
   retryVoiceRecording,
+  sendVoiceRecording,
   updateVoiceTranscript,
   uploadVoiceRecording,
 } from "../../api/voiceService";
@@ -48,6 +50,11 @@ export default function TimeCapsulePage({ role = "member" }) {
   const [transcriptDraft, setTranscriptDraft] = useState("");
   const [savingTranscriptId, setSavingTranscriptId] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
+  const [recipientOptions, setRecipientOptions] = useState([]);
+  const [selectedRecipientsByRecording, setSelectedRecipientsByRecording] = useState({});
+  const [scheduleModeByRecording, setScheduleModeByRecording] = useState({});
+  const [scheduledAtByRecording, setScheduledAtByRecording] = useState({});
+  const [sendingId, setSendingId] = useState(null);
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
@@ -70,6 +77,20 @@ export default function TimeCapsulePage({ role = "member" }) {
   useEffect(() => {
     loadRecordings();
   }, [loadRecordings]);
+
+  useEffect(() => {
+    let mounted = true;
+    getVoiceRecipientOptions()
+      .then((result) => {
+        if (mounted) setRecipientOptions(Array.isArray(result.recipients) ? result.recipients : []);
+      })
+      .catch(() => {
+        if (mounted) setRecipientOptions([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const hasPending = recordings.some((item) => item.status === "uploaded" || item.status === "transcribing");
@@ -228,6 +249,62 @@ export default function TimeCapsulePage({ role = "member" }) {
     }
   };
 
+  const recipientKey = (recipient) =>
+    recipient.account_id ? `account:${recipient.account_id}` : `person:${recipient.person_id}`;
+
+  const getSelectedRecipientObjects = (recordingId) => {
+    const selected = new Set(selectedRecipientsByRecording[recordingId] || []);
+    return recipientOptions.filter((recipient) => selected.has(recipientKey(recipient)));
+  };
+
+  const toggleRecipient = (recordingId, key) => {
+    setSelectedRecipientsByRecording((current) => {
+      const selected = new Set(current[recordingId] || []);
+      if (selected.has(key)) selected.delete(key);
+      else selected.add(key);
+      return { ...current, [recordingId]: [...selected] };
+    });
+  };
+
+  const sendRecording = async (recording) => {
+    const selected = getSelectedRecipientObjects(recording.id);
+    if (recording.status !== "completed" || !String(recording.transcript || "").trim()) {
+      setError("Chỉ có thể gửi bản ghi đã completed và có transcript.");
+      return;
+    }
+    if (selected.length === 0) {
+      setError("Vui lòng chọn ít nhất một người nhận.");
+      return;
+    }
+
+    const mode = scheduleModeByRecording[recording.id] || "now";
+    const scheduledValue = scheduledAtByRecording[recording.id] || "";
+    if (mode === "later" && !scheduledValue) {
+      setError("Vui lòng chọn ngày giờ gửi.");
+      return;
+    }
+
+    try {
+      setSendingId(recording.id);
+      setError("");
+      const payload = {
+        recipients: selected.map((recipient) =>
+          recipient.account_id ? { account_id: recipient.account_id } : { person_id: recipient.person_id }
+        ),
+        scheduled_at: mode === "later" ? scheduledValue.replace("T", " ") + ":00" : null,
+      };
+      const result = await sendVoiceRecording(recording.id, payload);
+      const sent = (result.recipients || []).filter((item) => item.send_status === "sent").length;
+      const pending = (result.recipients || []).filter((item) => item.send_status === "pending").length;
+      setStatus(`Đã lưu gửi kèm voice và bản chữ. Gửi ngay: ${sent}, chờ lịch: ${pending}.`);
+      setSelectedRecipientsByRecording((current) => ({ ...current, [recording.id]: [] }));
+    } catch (err) {
+      setError(err?.message || "Không thể gửi ghi âm.");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   const busy = recorderState === "recording" || recorderState === "uploading";
   const isManager = role === "manager";
 
@@ -310,6 +387,15 @@ export default function TimeCapsulePage({ role = "member" }) {
           <div className="time-capsule-items">
             {recordings.map((item) => (
               <article className="time-capsule-item" key={item.id}>
+                {(() => {
+                  const selectedRecipients = getSelectedRecipientObjects(item.id);
+                  const hasDeceasedRecipient = selectedRecipients.some(
+                    (recipient) => Number(recipient.is_living) === 0 || Boolean(recipient.death_date)
+                  );
+                  const canSend = item.status === "completed" && Boolean(String(item.transcript || "").trim());
+                  const scheduleMode = scheduleModeByRecording[item.id] || "now";
+                  return (
+                    <>
                 <div className="time-capsule-item-main">
                   <div className={`time-capsule-status-dot is-${item.status}`} />
                   <div>
@@ -365,6 +451,89 @@ export default function TimeCapsulePage({ role = "member" }) {
                     </button>
                   ) : null}
                 </div>
+                {canSend ? (
+                  <div className="time-capsule-send">
+                    <div className="time-capsule-send-head">
+                      <h5>Gửi voice kèm bản chữ</h5>
+                      <span>{selectedRecipients.length} người nhận</span>
+                    </div>
+                    <div className="time-capsule-recipient-grid">
+                      {recipientOptions.map((recipient) => {
+                        const key = recipientKey(recipient);
+                        const checked = selectedRecipientsByRecording[item.id]?.includes(key) || false;
+                        const deceased = Number(recipient.is_living) === 0 || Boolean(recipient.death_date);
+                        return (
+                          <label className={`time-capsule-recipient ${checked ? "is-selected" : ""}`} key={key}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleRecipient(item.id, key)}
+                            />
+                            <span>
+                              <strong>{recipient.display_name || `Person #${recipient.person_id}`}</strong>
+                              <small>
+                                {recipient.account_id ? `TK #${recipient.account_id}` : "Chưa có tài khoản"}
+                                {deceased ? " · đã mất" : ""}
+                              </small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {hasDeceasedRecipient ? (
+                      <div className="time-capsule-send-note">
+                        Người này đã mất, hệ thống sẽ lưu/gửi ngay vào hồ sơ liên quan, không chờ lịch hẹn.
+                      </div>
+                    ) : null}
+                    <div className="time-capsule-schedule">
+                      <label>
+                        <input
+                          type="radio"
+                          name={`schedule-${item.id}`}
+                          checked={scheduleMode === "now"}
+                          onChange={() => setScheduleModeByRecording((current) => ({ ...current, [item.id]: "now" }))}
+                        />
+                        Gửi ngay
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`schedule-${item.id}`}
+                          checked={scheduleMode === "later"}
+                          onChange={() =>
+                            setScheduleModeByRecording((current) => ({ ...current, [item.id]: "later" }))
+                          }
+                        />
+                        Hẹn ngày/giờ gửi
+                      </label>
+                      {scheduleMode === "later" ? (
+                        <input
+                          type="datetime-local"
+                          value={scheduledAtByRecording[item.id] || ""}
+                          onChange={(event) =>
+                            setScheduledAtByRecording((current) => ({ ...current, [item.id]: event.target.value }))
+                          }
+                        />
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="time-capsule-primary"
+                      onClick={() => sendRecording(item)}
+                      disabled={sendingId === item.id || selectedRecipients.length === 0}
+                    >
+                      <span className="material-symbols-outlined">send</span>
+                      {sendingId === item.id ? "Đang gửi..." : "Gửi bản ghi"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="time-capsule-send is-disabled">
+                    Chỉ bản ghi completed có transcript mới được gửi.
+                  </div>
+                )}
+                    </>
+                  );
+                })()}
               </article>
             ))}
           </div>

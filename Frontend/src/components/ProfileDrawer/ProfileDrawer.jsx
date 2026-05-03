@@ -381,9 +381,15 @@ export default function ProfileDrawer({
               <span>Mật khẩu mới</span>
               <input name="new_password" type="password" value={passwordForm.new_password} onChange={updatePasswordField} placeholder="Nhập mật khẩu mới" />
             </label>
-            <label>
+            <label className="profile-drawer-full">
               <span>Xác nhận mật khẩu mới</span>
-              <input name="confirm_password" type="password" value={passwordForm.confirm_password} onChange={updatePasswordField} placeholder="Nhập lại mật khẩu mới" />
+               <input
+                  name="confirm_password"
+                  type="password"
+                  value={passwordForm.confirm_password}
+                  onChange={updatePasswordField}
+                  placeholder="Nhập lại mật khẩu mới"
+                />
             </label>
           </div>
 

@@ -333,6 +333,118 @@
   gap: 0.55rem;
 }
 
+.time-capsule-send {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+
+.time-capsule-send.is-disabled {
+  color: #667085;
+  font-weight: 750;
+}
+
+.time-capsule-send-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.time-capsule-send-head h5 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.time-capsule-send-head span {
+  color: #667085;
+  font-weight: 750;
+}
+
+.time-capsule-recipient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.55rem;
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.time-capsule-recipient {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 54px;
+  padding: 0.6rem;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.time-capsule-recipient.is-selected {
+  border-color: #c99a2c;
+  background: #fff8e6;
+}
+
+.time-capsule-recipient input {
+  width: 16px;
+  height: 16px;
+}
+
+.time-capsule-recipient span {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.time-capsule-recipient strong,
+.time-capsule-recipient small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-capsule-recipient small {
+  color: #667085;
+}
+
+.time-capsule-send-note {
+  border: 1px solid #f8d39a;
+  border-radius: 10px;
+  background: #fff8e6;
+  color: #7a5600;
+  padding: 0.7rem;
+  font-weight: 750;
+}
+
+.time-capsule-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.time-capsule-schedule label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 750;
+}
+
+.time-capsule-schedule input[type="datetime-local"] {
+  min-height: 40px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  color: #24324a;
+  font: inherit;
+}
+
 .time-capsule-error {
   color: #9b1c1c !important;
   font-weight: 700;

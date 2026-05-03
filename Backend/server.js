@@ -109,10 +109,10 @@ io.on('connection', (socket) => {
 });
 
 // 7. Các Routes API
-
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: 'Backend is running' });
 });
+
 app.post('/api/upload', verifyToken, (req, res) => {
     upload.single('image')(req, res, async (uploadError) => {
         if (uploadError) {
@@ -156,6 +156,7 @@ app.post('/api/upload', verifyToken, (req, res) => {
 });
 
 app.use('/api/media', mediaRoutes);
+
 app.use('/api/auth', authRoutes);
 app.get('/api/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
 app.patch('/api/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
@@ -167,6 +168,7 @@ app.patch('/api/people/:id', verifyToken, checkRole(['admin', 'manager', 'member
 app.delete('/api/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.deleteTreePerson);
 app.post('/api/families', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createFamily);
 app.post('/api/families/:familyId/children', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.addFamilyChild);
+
 app.use('/api/manager', managerRoutes);
 app.use('/api/member', memberRoutes);
 app.use('/api/admin', adminRoutes);

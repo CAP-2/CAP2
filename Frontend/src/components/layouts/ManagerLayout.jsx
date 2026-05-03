@@ -268,11 +268,18 @@ export default function ManagerLayout() {
 
         <button type="button" className="sidebar-user-section" onClick={openAccountModal} title="Sửa tài khoản">
           <div className="manager-avatar-wrapper">
-            {resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url }) ? (
-              <img src={resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url })} alt="" className="manager-avatar-img" />
+           {(() => {
+            const avatarSrc = resolveImageUrl({
+              mediaId: currentUser?.avatar_media_id,
+              avatar_url: currentUser?.avatar_url,
+          });
+
+            return avatarSrc ? (
+              <img src={avatarSrc} alt="" className="manager-avatar-img" />
             ) : (
               <span className="material-symbols-outlined">manage_accounts</span>
-            )}
+            );
+        })()}
           </div>
           <div className="user-details">
             <strong>{currentUser?.name || currentUser?.display_name || "Manager"}</strong>

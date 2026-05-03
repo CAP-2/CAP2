@@ -73,6 +73,27 @@ export const retryVoiceRecording = async (id) => {
   return parseResponse(response, "Khong the xu ly lai ghi am.");
 };
 
+export const getVoiceRecipientOptions = async () => {
+  const response = await fetch(`${BASE_URL}/recordings/recipient-options`, {
+    headers: getAuthHeaders(),
+  });
+
+  return parseResponse(response, "Khong the tai danh sach nguoi nhan.");
+};
+
+export const sendVoiceRecording = async (id, payload) => {
+  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/send`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return parseResponse(response, "Khong the gui ghi am.");
+};
+
 export const getVoiceRecordingAudioUrl = (id) => {
   const token = getAuthToken();
   const query = token ? `?token=${encodeURIComponent(token)}` : "";

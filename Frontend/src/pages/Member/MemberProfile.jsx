@@ -236,9 +236,16 @@ export default function MemberProfile() {
           <h1>{personName(profile)}</h1>
           <p>Cập nhật thông tin cơ bản, quan hệ gia đình, ảnh đại diện và mật khẩu đăng nhập.</p>
         </div>
-        {resolveImageUrl({ mediaId: contentForm.avatar_media_id, avatar_url: contentForm.avatar_url }) && (
-          <img className="member-profile-avatar" src={resolveImageUrl({ mediaId: contentForm.avatar_media_id, avatar_url: contentForm.avatar_url })} alt="" />
-        )}
+        {(() => {
+  const avatarSrc = resolveImageUrl({
+    mediaId: contentForm.avatar_media_id,
+    avatar_url: contentForm.avatar_url,
+  });
+
+  return avatarSrc ? (
+    <img className="member-profile-avatar" src={avatarSrc} alt="" />
+  ) : null;
+})()}
       </section>
 
       <div className="member-content-grid">

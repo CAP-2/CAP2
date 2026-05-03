@@ -56,7 +56,7 @@ export const verifyTreeEditSession = async (key, options = {}) =>
       },
       body: JSON.stringify({ key, activate: options.activate !== false }),
     },
-    "KhÃ´ng thá»ƒ xÃ¡c thá»±c temporary edit key",
+    "Không thể xác thực temporary edit key",
   );
 
 export const updateMemberProfile = async (payload) =>
