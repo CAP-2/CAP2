@@ -758,3 +758,190 @@
     margin-top: 10px;
   }
 }
+
+/* Read-only clan information modal for members */
+.member-clan-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(22, 8, 5, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+.member-clan-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 44px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  border-radius: 28px;
+  border: 1px solid rgba(224, 188, 102, 0.72);
+  background: linear-gradient(145deg, #fffaf0, #f9ecd1);
+  box-shadow: 0 34px 95px rgba(0, 0, 0, 0.36);
+  padding: 22px;
+  color: #381307;
+}
+
+.member-clan-modalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  color: #fff8dc;
+  background: linear-gradient(135deg, #441207, #7f2215);
+}
+
+.member-clan-modalHead span {
+  display: block;
+  color: #f5d064;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.member-clan-modalHead h2 {
+  margin: 3px 0 5px;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+}
+
+.member-clan-modalHead p {
+  margin: 0;
+  color: rgba(255, 248, 220, 0.82);
+  font-weight: 700;
+}
+
+.member-clan-modalHead button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 248, 220, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff8dc;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.member-clan-infoGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.member-clan-infoGrid article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(203, 167, 86, 0.42);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.64);
+  padding: 16px;
+}
+
+.member-clan-infoGrid span {
+  color: #8c2417;
+  font-weight: 900;
+}
+
+.member-clan-infoGrid p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #4b2c15;
+  font-weight: 700;
+  line-height: 1.58;
+}
+
+.member-clan-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.member-clan-stats div {
+  display: grid;
+  gap: 3px;
+  place-items: center;
+  min-height: 82px;
+  border-radius: 18px;
+  border: 1px solid rgba(203, 167, 86, 0.45);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.member-clan-stats strong {
+  color: #8c2417;
+  font-size: 1.55rem;
+}
+
+.member-clan-stats span {
+  color: #6b4b28;
+  font-weight: 800;
+}
+
+.member-clan-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Member family tree viewer: keep the same tree experience as manager/admin, but read-only. */
+.member-tree-layout--viewer .member-tree-main {
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.member-tree-layout--viewer .member-tree-editorWrap {
+  width: 100%;
+  min-height: 820px;
+  padding: 0;
+}
+
+.member-tree-layout--viewer .fte-shell {
+  min-height: 820px;
+}
+
+.member-tree-layout--viewer .fte-workspace {
+  min-height: 760px;
+}
+
+.member-tree-layout--viewer .fte-viewport,
+.member-tree-layout--viewer .fte-transformWrapper {
+  min-height: 760px !important;
+  height: 760px !important;
+}
+
+.member-tree-layout--viewer .fte-shell.is-fullscreen .fte-viewport,
+.member-tree-layout--viewer .fte-shell.is-fullscreen .fte-transformWrapper {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.member-tree-layout--viewer .fte-toolbar {
+  position: relative;
+  z-index: 2;
+}
+
+/* Keep member tree controls reachable before opening fullscreen. */
+.member-tree-layout--viewer .fte-toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow: visible;
+}
+
+.member-tree-layout--viewer .fte-toolbarGroup--actions,
+.member-tree-layout--viewer .fte-toolbarGroup--icons {
+  margin-left: 0;
+}
+
+.member-tree-layout--viewer .fte-toolbarGroup--icons {
+  margin-left: auto;
+}
+
+.member-tree-layout--viewer .fte-shell.is-fullscreen .fte-toolbar {
+  flex-wrap: nowrap;
+}

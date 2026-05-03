@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree } from "../../api/managerService";
+import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
 import "./manager.css";
 
@@ -21,6 +21,11 @@ export default function GenealogySection() {
   const [activeKeys, setActiveKeys] = useState([]);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [activeKeysLoading, setActiveKeysLoading] = useState(false);
+  const [isClanInfoOpen, setIsClanInfoOpen] = useState(false);
+  const [clanForm, setClanForm] = useState({ clan_name: "", history: "", hall_address: "" });
+  const [clanSaving, setClanSaving] = useState(false);
+  const [clanMessage, setClanMessage] = useState("");
+  const [clanError, setClanError] = useState("");
 
   const formatPersonName = (person) =>
     person?.display_name ||
@@ -57,6 +62,14 @@ export default function GenealogySection() {
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  useEffect(() => {
+    setClanForm({
+      clan_name: clan?.clan_name || "",
+      history: clan?.history || "",
+      hall_address: clan?.hall_address || "",
+    });
+  }, [clan?.id, clan?.clan_name, clan?.history, clan?.hall_address]);
 
   const loadActiveKeys = useCallback(async () => {
     if (!clan?.id) return;
@@ -193,6 +206,82 @@ export default function GenealogySection() {
       </div>
     );
 
+  const openClanInfo = () => {
+    setClanError("");
+    setClanMessage("");
+    setClanForm({
+      clan_name: clan?.clan_name || "",
+      history: clan?.history || "",
+      hall_address: clan?.hall_address || "",
+    });
+    setIsClanInfoOpen(true);
+  };
+
+  const handleClanFormChange = (field, value) => {
+    setClanForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveClanInfo = async (event) => {
+    event.preventDefault();
+    setClanSaving(true);
+    setClanError("");
+    setClanMessage("");
+    try {
+      const response = await updateManagerClanInfo(clanForm);
+      setClan(response?.clan || { ...clan, ...clanForm });
+      setClanMessage(response?.message || "Đã lưu thông tin dòng họ.");
+      await loadTree();
+    } catch (err) {
+      setClanError(err?.message || "Không thể lưu thông tin dòng họ.");
+    } finally {
+      setClanSaving(false);
+    }
+  };
+
+  const renderClanInfoModal = () => (
+    <div className="clan-info-modalOverlay" role="dialog" aria-modal="true">
+      <form className="clan-info-modal" onSubmit={saveClanInfo}>
+        <div className="clan-info-modalHead">
+          <div>
+            <span>Thông tin dòng họ</span>
+            <h2>{clan?.clan_name || "Dòng họ"}</h2>
+            <p>Manager có thể chỉnh sửa tên dòng họ, lịch sử và địa chỉ nhà thờ/từ đường.</p>
+          </div>
+          <button className="clan-info-close" type="button" onClick={() => setIsClanInfoOpen(false)} aria-label="Đóng">
+            ×
+          </button>
+        </div>
+
+        {clanError ? <div className="manager-inline-error">{clanError}</div> : null}
+        {clanMessage ? <div className="manager-inline-success">{clanMessage}</div> : null}
+
+        <label className="clan-info-field">
+          <span>Tên dòng họ</span>
+          <input value={clanForm.clan_name} onChange={(event) => handleClanFormChange("clan_name", event.target.value)} placeholder="Ví dụ: Nguyễn Minh" />
+        </label>
+        <label className="clan-info-field">
+          <span>Lịch sử dòng họ</span>
+          <textarea value={clanForm.history} onChange={(event) => handleClanFormChange("history", event.target.value)} rows={6} placeholder="Ghi lại nguồn gốc, lịch sử, truyền thống của dòng họ..." />
+        </label>
+        <label className="clan-info-field">
+          <span>Địa chỉ nhà thờ / từ đường</span>
+          <textarea value={clanForm.hall_address} onChange={(event) => handleClanFormChange("hall_address", event.target.value)} rows={3} placeholder="Nhập địa chỉ nhà thờ họ, từ đường hoặc nơi sinh hoạt dòng họ..." />
+        </label>
+
+        <div className="clan-info-metaGrid">
+          <div><strong>{people.length}</strong><span>Thành viên</span></div>
+          <div><strong>{families.length}</strong><span>Gia đình</span></div>
+          <div><strong>{children.length}</strong><span>Liên kết con</span></div>
+        </div>
+
+        <div className="clan-info-actions">
+          <button className="mgr-btnGhost" type="button" onClick={() => setIsClanInfoOpen(false)}>Đóng</button>
+          <button className="mgr-btnPrimary" type="submit" disabled={clanSaving}>{clanSaving ? "Đang lưu..." : "Lưu thông tin dòng họ"}</button>
+        </div>
+      </form>
+    </div>
+  );
+
   const renderEditor = () => (
     <FamilyTreeEditor
       clan={clan}
@@ -284,6 +373,9 @@ export default function GenealogySection() {
           <p>Quan hệ cha, mẹ, vợ/chồng và con được lấy trực tiếp từ bảng people, families và children.</p>
         </div>
         <div className="tree-panel-actions">
+          <button className="mgr-btnGhost" type="button" onClick={openClanInfo}>
+            Thông tin dòng họ
+          </button>
           <div className="tree-action-popover">
             <button
               className={`mgr-btnGhost ${isKeyPanelOpen ? "is-active" : ""}`}
@@ -304,6 +396,7 @@ export default function GenealogySection() {
       </div>
 
       {error && <div className="manager-inline-error">{error}</div>}
+      {isClanInfoOpen ? renderClanInfoModal() : null}
 
       <div className="management-grid management-grid--single">
         <div className="panel-card tree-preview-panel">

@@ -9,6 +9,8 @@
     // Chỉ Admin (1) và Manager (2) mới được truy cập manager dashboard
     router.get('/stats', verifyToken, checkRole(['admin', 'manager']), managerController.getStats);
     router.get('/tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
+    router.get('/clan-info', verifyToken, checkRole(['admin', 'manager']), managerController.getClanInfo);
+    router.put('/clan-info', verifyToken, checkRole(['admin', 'manager']), managerController.updateClanInfo);
     router.get('/members', verifyToken, checkRole(['admin', 'manager']), managerController.getAllMembers);
     router.get('/tree-edit-keys', verifyToken, checkRole(['admin', 'manager']), managerController.getActiveTreeEditKeys);
     router.post('/tree-edit-keys', verifyToken, checkRole(['admin', 'manager']), managerController.createTemporaryTreeEditKey);

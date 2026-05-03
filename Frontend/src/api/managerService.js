@@ -46,14 +46,34 @@ export const getManagerTree = (clanId) => {
 
 export const getMembers = () => request("/members", {}, "Không thể lấy danh sách thành viên");
 
+export const getManagerClanInfo = () =>
+  request("/clan-info", {}, "Không thể lấy thông tin dòng họ");
+
+export const updateManagerClanInfo = (payload) =>
+  request(
+    "/clan-info",
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+    "Không thể cập nhật thông tin dòng họ"
+  );
+
 export const getActiveTreeEditKeysAPI = (clanId) => {
   const query = clanId ? `?clan_id=${encodeURIComponent(clanId)}` : "";
-  return request(`/tree-edit-keys${query}`, {}, "Khong the lay danh sach temporary edit key");
+  return request(`/tree-edit-keys${query}`, {}, "Không thể lấy danh sách temporary edit key");
 };
 
 export const createTreeEditKeyAPI = (memberAccountIds) => {
   const ids = Array.isArray(memberAccountIds) ? memberAccountIds : [memberAccountIds];
-  const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+
+  const uniqueIds = [
+    ...new Set(
+      ids
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    ),
+  ];
 
   return request(
     "/tree-edit-keys",
@@ -63,7 +83,7 @@ export const createTreeEditKeyAPI = (memberAccountIds) => {
       body: JSON.stringify(
         uniqueIds.length === 1
           ? { member_account_id: uniqueIds[0], member_account_ids: uniqueIds }
-          : { member_account_ids: uniqueIds },
+          : { member_account_ids: uniqueIds }
       ),
     },
     "Không thể tạo temporary edit key"
@@ -137,7 +157,8 @@ export const restoreArchivedMemberAPI = (archiveId) =>
     "Không thể phục hồi thành viên"
   );
 
-export const getPendingUsers = () => request("/pending", {}, "Không thể lấy người dùng chờ duyệt");
+export const getPendingUsers = () =>
+  request("/pending", {}, "Không thể lấy người dùng chờ duyệt");
 
 export const approveUserAPI = (id) =>
   request(
@@ -179,7 +200,8 @@ export const rejectPostAPI = (id, reason) =>
     "Từ chối bài viết thất bại"
   );
 
-export const getMediaAPI = () => request("/media", {}, "Không thể lấy dữ liệu thư viện");
+export const getMediaAPI = () =>
+  request("/media", {}, "Không thể lấy dữ liệu thư viện");
 
 export const getPendingReviewData = async () => {
   const [users, posts, profiles] = await Promise.all([
@@ -321,6 +343,7 @@ export const assignTaskAPI = (data) =>
 
 export const getTasksAPI = (params = {}) => {
   const query = new URLSearchParams();
+
   if (params.event_id) query.set("event_id", params.event_id);
   if (params.clan_id) query.set("clan_id", params.clan_id);
 
@@ -362,6 +385,7 @@ export const rejectProfileUpdateAPI = (id, reason) =>
 
 export const getManagerEventsAPI = (params = {}) => {
   const query = new URLSearchParams();
+
   if (params.clan_id) query.set("clan_id", params.clan_id);
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
@@ -401,6 +425,7 @@ export const updateManagerEventAPI = (eventId, data) =>
 
 export const deleteManagerEventAPI = (eventId, params = {}) => {
   const query = new URLSearchParams();
+
   if (params.clan_id) query.set("clan_id", params.clan_id);
 
   const suffix = query.toString() ? `?${query.toString()}` : "";

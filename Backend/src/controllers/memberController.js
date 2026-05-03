@@ -54,7 +54,8 @@ const getAccountContext = async (accountId) => {
       p.moderation_status,
       p.moderation_reason,
       c.clan_name,
-      c.history AS clan_history
+      c.history AS clan_history,
+      c.hall_address AS clan_hall_address
     FROM accounts a
     LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
     LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
@@ -692,6 +693,7 @@ exports.getDashboard = async (req, res) => {
         clan_id: context.clan_id,
         clan_name: context.clan_name,
         history: context.clan_history,
+        hall_address: context.clan_hall_address,
       },
       treeMembers,
       families,
