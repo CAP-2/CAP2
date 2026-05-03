@@ -10,6 +10,7 @@ const menuItems = [
   { icon: "group", label: "Quản lý Tài khoản", path: "/dashboard/members" },
   { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
   { icon: "assignment", label: "Quản lý sự kiện ", path: "/dashboard/tasks" },
+  { icon: "workspace_premium", label: "Gói sử dụng", path: "/dashboard/billing" },
   { icon: "settings", label: "Cài đặt Hệ thống", path: "/dashboard/settings" },
 ];
 

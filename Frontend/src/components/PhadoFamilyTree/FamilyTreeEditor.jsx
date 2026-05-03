@@ -1564,6 +1564,7 @@ export default function FamilyTreeEditor({
   const [lineRoutes, setLineRoutes] = useState(() => ({ ...loadLineRoutes(clan?.id), ...normalizeLayoutSettings(layoutSettings).line_routes }));
   const [cardSizes, setCardSizes] = useState(() => ({ ...loadCardSizes(clan?.id), ...normalizeLayoutSettings(layoutSettings).card_sizes }));
   const [status, setStatus] = useState("");
+  const [billingWarning, setBillingWarning] = useState(null);
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
@@ -2032,6 +2033,7 @@ export default function FamilyTreeEditor({
   };
 
   const openCreateDialog = (relation) => {
+    setBillingWarning(null);
     if (!canEditAll) {
       setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
       return;
@@ -2081,11 +2083,33 @@ export default function FamilyTreeEditor({
       setDialog(null);
       setStatus("Đã tạo thành viên mới.");
       await onReload?.();
-    } catch (error) {
-      setStatus(error?.message || "Không thể tạo thành viên.");
-    } finally {
-      setDialogSaving(false);
-    }
+    }  catch (error) {
+  const errorCode = error?.code || error?.data?.code;
+  const billing = error?.billing || error?.data?.billing;
+
+  if (errorCode === "PERSON_LIMIT_REACHED") {
+    const currentPeople = billing?.current_people;
+    const personLimit = billing?.person_limit;
+    const planName = billing?.plan_name || "gói hiện tại";
+
+    setStatus(
+      currentPeople != null && personLimit != null
+        ? `Dòng họ đã đạt giới hạn ${currentPeople}/${personLimit} người của ${planName}. Vui lòng nâng cấp gói để thêm tiếp.`
+        : "Dòng họ đã đạt giới hạn số người của gói hiện tại. Vui lòng nâng cấp gói để thêm tiếp."
+    );
+
+    return;
+  }
+
+  if (errorCode === "SUBSCRIPTION_EXPIRED") {
+    setStatus("Gói sử dụng đã hết hạn. Vui lòng gia hạn để tiếp tục thêm người.");
+    return;
+  }
+
+  setStatus(error?.message || "Không thể tạo thành viên.");
+} finally {
+  setDialogSaving(false);
+}
   };
 
   const submitRelationDialog = async () => {
@@ -2260,9 +2284,13 @@ export default function FamilyTreeEditor({
             <div className="fte-toolbar">
               {canEditAll ? (
                 <div className="fte-toolbarGroup">
-                  <button type="button" onClick={() => openCreateDialog("person")}>
+                  <button
+                    type="button"
+                    onClick={() => openCreateDialog("person")}
+                    title="Thêm người mới vào cây gia phả. Nếu đã đạt giới hạn gói, hệ thống sẽ yêu cầu nâng cấp."
+                  >
                     <span className="material-symbols-outlined">person_add</span>
-                    Thêm người
+  T                  hêm người vào cây
                   </button>
                   <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("spouse")}>
                     <span className="material-symbols-outlined">favorite</span>
@@ -2313,8 +2341,27 @@ export default function FamilyTreeEditor({
               </div>
             </div>
 
-            {status ? <div className="fte-status">{status}</div> : null}
-            {treeRelationPicker ? (
+            {billingWarning ? (
+  <div className="fte-billingWarning">
+    <div>
+      <strong>Đã đạt giới hạn gói sử dụng</strong>
+      <p>{billingWarning.message}</p>
+    </div>
+    <button
+      type="button"
+      onClick={() => {
+        window.location.href = "/manager/billing";
+      }}
+    >
+      <span className="material-symbols-outlined">workspace_premium</span>
+      Xem gói nâng cấp
+    </button>
+  </div>
+) : null}
+
+{status ? <div className="fte-status">{status}</div> : null}
+
+{treeRelationPicker ? (
               <div className="fte-treePickBanner">
                 <span className="material-symbols-outlined">account_tree</span>
                 <strong>Đang chọn {relationLabels[treeRelationPicker.relation] || "quan hệ"}</strong>

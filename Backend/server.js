@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
@@ -6,10 +7,9 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 
-// 1. Khởi tạo APP trước tất cả mọi thứ
 const app = express();
 
-// 2. Cấu hình Middlewares toàn cục (Phải đặt trước Routes)
+// 1. Cấu hình middleware toàn cục
 const allowedOrigins = [
     process.env.FRONTEND_URL,
     'http://localhost:5173',
@@ -31,11 +31,14 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 3. Khởi tạo HTTP Server và Socket.io (Dùng biến app đã tạo ở trên)
+// 2. Khởi tạo HTTP server + Socket.IO
 const server = http.createServer(app);
+
 const io = new Server(server, {
     cors: {
         origin: allowedOrigins,
@@ -43,18 +46,22 @@ const io = new Server(server, {
         credentials: true
     }
 });
+
 app.locals.io = io;
 app.locals.onlineUsers = {};
 
-// 4. Import Route Controllers
+// 3. Import routes/controllers sau khi app đã có middleware
 const authRoutes = require('./src/routes/authRoutes');
+const billingRoutes = require('./src/routes/billingRoutes');
 const managerRoutes = require('./src/routes/managerRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const voiceRoutes = require('../voice/backendRoutes');
-const managerController = require('./src/controllers/managerController');
 const mediaRoutes = require('./src/routes/mediaRoutes');
+
+const managerController = require('./src/controllers/managerController');
+
 const {
     MAX_IMAGE_SIZE_BYTES,
     isAllowedImageMimeType,
@@ -62,9 +69,10 @@ const {
     createMediaFile,
     getUploadContext,
 } = require('./src/utils/media');
+
 const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
-// 5. Cấu hình upload ảnh: ảnh mới được lưu trực tiếp vào MySQL LONGBLOB
+// 4. Cấu hình upload ảnh: ảnh mới được lưu trực tiếp vào MySQL LONGBLOB
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
@@ -76,7 +84,9 @@ const upload = multer({
     }
 });
 
-// 6. Logic Socket.io
+// 4.1. Đăng ký route thanh toán VNPAY
+const paymentRoutes = require('./src/routes/paymentRoutes');
+// 5. Socket.IO
 io.on('connection', (socket) => {
     socket.on('register_user', (userId) => {
         if (userId) {
@@ -88,18 +98,20 @@ io.on('connection', (socket) => {
     socket.on('send_task', (data) => {
         const { receiverId, title, senderName, dueDate } = data;
         const receiverSocketId = app.locals.onlineUsers[receiverId];
+
         if (receiverSocketId) {
             io.to(receiverSocketId).emit('new_notification', {
                 message: `Bạn có việc mới: "${title}" từ ${senderName}`,
-                dueDate: dueDate,
+                dueDate,
                 time: new Date().toLocaleTimeString()
             });
+
             console.log(`✅ Đã bắn thông báo tới User ${receiverId}`);
         }
     });
 
     socket.on('disconnect', () => {
-        for (let id in app.locals.onlineUsers) {
+        for (const id in app.locals.onlineUsers) {
             if (app.locals.onlineUsers[id] === socket.id) {
                 delete app.locals.onlineUsers[id];
                 break;
@@ -108,24 +120,34 @@ io.on('connection', (socket) => {
     });
 });
 
-// 7. Các Routes API
+// 6. Health check
 app.get('/api/health', (req, res) => {
-    res.json({ success: true, message: 'Backend is running' });
+    res.json({
+        success: true,
+        message: 'Backend is running'
+    });
 });
 
+// 7. Upload API
 app.post('/api/upload', verifyToken, (req, res) => {
     upload.single('image')(req, res, async (uploadError) => {
         if (uploadError) {
             const isMulterLimit = uploadError?.code === 'LIMIT_FILE_SIZE';
+
             return res.status(isMulterLimit ? 413 : 400).json({
                 success: false,
-                message: isMulterLimit ? 'Ảnh vượt quá dung lượng cho phép' : uploadError.message || 'File ảnh không hợp lệ'
+                message: isMulterLimit
+                    ? 'Ảnh vượt quá dung lượng cho phép'
+                    : uploadError.message || 'File ảnh không hợp lệ'
             });
         }
 
         try {
             if (!req.file) {
-                return res.status(400).json({ success: false, message: 'Không có file được chọn!' });
+                return res.status(400).json({
+                    success: false,
+                    message: 'Không có file được chọn!'
+                });
             }
 
             const accountId = req.user?.id || req.user?.account_id || null;
@@ -144,9 +166,17 @@ app.post('/api/upload', verifyToken, (req, res) => {
             });
 
             const imageUrl = getMediaUrl(req, mediaId);
-            return res.json({ success: true, mediaId, media_id: mediaId, imageUrl, url: imageUrl });
+
+            return res.json({
+                success: true,
+                mediaId,
+                media_id: mediaId,
+                imageUrl,
+                url: imageUrl
+            });
         } catch (error) {
             console.error('Upload image to database error:', error);
+
             return res.status(500).json({
                 success: false,
                 message: 'Không thể lưu ảnh vào database'
@@ -155,19 +185,82 @@ app.post('/api/upload', verifyToken, (req, res) => {
     });
 });
 
+// 8. Main API routes
 app.use('/api/media', mediaRoutes);
 
 app.use('/api/auth', authRoutes);
-app.get('/api/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
-app.patch('/api/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
-app.post('/api/people', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createPerson);
-app.patch('/api/people/layout', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.saveTreeLayout);
-app.patch('/api/people/link', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.linkRelations);
-app.patch('/api/people/:id/position', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.updatePersonPosition);
-app.patch('/api/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.updateTreePerson);
-app.delete('/api/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.deleteTreePerson);
-app.post('/api/families', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createFamily);
-app.post('/api/families/:familyId/children', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.addFamilyChild);
+app.use('/api/billing', billingRoutes);
+app.use('/api/payments', paymentRoutes);
+
+app.get(
+    '/api/clans/:clanId/family-tree',
+    verifyToken,
+    checkRole(['admin', 'manager']),
+    managerController.getFamilyTree
+);
+
+app.patch(
+    '/api/clans/:clanId/family-tree/layout',
+    verifyToken,
+    checkRole(['admin', 'manager']),
+    managerController.saveTreeLayout
+);
+
+app.post(
+    '/api/people',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.createPerson
+);
+
+app.patch(
+    '/api/people/layout',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.saveTreeLayout
+);
+
+app.patch(
+    '/api/people/link',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.linkRelations
+);
+
+app.patch(
+    '/api/people/:id/position',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.updatePersonPosition
+);
+
+app.patch(
+    '/api/people/:id',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.updateTreePerson
+);
+
+app.delete(
+    '/api/people/:id',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.deleteTreePerson
+);
+
+app.post(
+    '/api/families',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.createFamily
+);
+
+app.post(
+    '/api/families/:familyId/children',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.addFamilyChild
+);
 
 app.use('/api/manager', managerRoutes);
 app.use('/api/member', memberRoutes);
@@ -175,13 +268,16 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/voice', voiceRoutes);
 
-// 8. Xử lý lỗi 404
+// 9. 404 handler phải luôn nằm cuối routes
 app.use((req, res) => {
-    res.status(404).json({ message: "Đường dẫn không tồn tại!" });
+    res.status(404).json({
+        message: 'Đường dẫn không tồn tại!'
+    });
 });
 
-// 9. Khởi chạy Server
+// 10. Start server
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
     console.log(`
     🚀 SERVER IS RUNNING (REAL-TIME READY)!

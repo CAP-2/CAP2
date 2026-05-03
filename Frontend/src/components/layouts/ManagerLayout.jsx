@@ -15,6 +15,7 @@ const menuItems = [
   { icon: "hourglass", label: "Viên nang thời gian", path: "/manager/time-capsule" },
   { icon: "group", label: "Thành viên dòng họ", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
+  { icon: "payments", label: "Gói sử dụng", path: "/manager/billing" },
 ];
 
 export default function ManagerLayout() {

@@ -9,7 +9,31 @@ const request = async (endpoint, options = {}, fallbackError = "Yêu cầu API t
   try {
     return await apiRequest(`${BASE_URL}${endpoint}`, options);
   } catch (error) {
-    throw new Error(error?.message || fallbackError);
+    const normalizedError = new Error(error?.message || fallbackError);
+
+    normalizedError.code =
+      error?.code ||
+      error?.data?.code ||
+      error?.response?.data?.code ||
+      null;
+
+    normalizedError.data =
+      error?.data ||
+      error?.response?.data ||
+      null;
+
+    normalizedError.status =
+      error?.status ||
+      error?.response?.status ||
+      null;
+
+    normalizedError.billing =
+      error?.billing ||
+      error?.data?.billing ||
+      error?.response?.data?.billing ||
+      null;
+
+    throw normalizedError;
   }
 };
 
@@ -30,6 +54,7 @@ export const getActiveTreeEditKeysAPI = (clanId) => {
 export const createTreeEditKeyAPI = (memberAccountIds) => {
   const ids = Array.isArray(memberAccountIds) ? memberAccountIds : [memberAccountIds];
   const uniqueIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+
   return request(
     "/tree-edit-keys",
     {
@@ -41,7 +66,7 @@ export const createTreeEditKeyAPI = (memberAccountIds) => {
           : { member_account_ids: uniqueIds },
       ),
     },
-    "KhÃ´ng thá»ƒ táº¡o temporary edit key"
+    "Không thể tạo temporary edit key"
   );
 };
 
@@ -221,7 +246,7 @@ export const updatePersonAPI = (personId, data) =>
       headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
-    "Khong the cap nhat nguoi trong gia pha"
+    "Không thể cập nhật người trong gia phả"
   );
 
 export const updatePersonPositionAPI = (personId, data) =>
@@ -232,7 +257,7 @@ export const updatePersonPositionAPI = (personId, data) =>
       headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
-    "Khong the luu vi tri"
+    "Không thể lưu vị trí"
   );
 
 export const saveTreeLayoutAPI = (people = [], clanId, options = {}) =>
@@ -249,7 +274,7 @@ export const saveTreeLayoutAPI = (people = [], clanId, options = {}) =>
         card_sizes: options.cardSizes || options.card_sizes,
       }),
     },
-    "Khong the luu bo cuc cay"
+    "Không thể lưu bố cục cây"
   );
 
 export const deletePersonAPI = (personId) =>
@@ -259,7 +284,7 @@ export const deletePersonAPI = (personId) =>
       method: "DELETE",
       headers: getTreeEditKeyHeader(),
     },
-    "Khong the xoa nguoi khoi gia pha"
+    "Không thể xóa người khỏi gia phả"
   );
 
 export const createFamilyAPI = (data) =>
@@ -270,7 +295,7 @@ export const createFamilyAPI = (data) =>
       headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
-    "Khong the tao family"
+    "Không thể tạo family"
   );
 
 export const addFamilyChildAPI = (familyId, data) =>
@@ -281,7 +306,7 @@ export const addFamilyChildAPI = (familyId, data) =>
       headers: getTreeEditKeyHeader(),
       body: JSON.stringify(data),
     },
-    "Khong the them con vao family"
+    "Không thể thêm con vào family"
   );
 
 export const assignTaskAPI = (data) =>
@@ -298,7 +323,9 @@ export const getTasksAPI = (params = {}) => {
   const query = new URLSearchParams();
   if (params.event_id) query.set("event_id", params.event_id);
   if (params.clan_id) query.set("clan_id", params.clan_id);
+
   const suffix = query.toString() ? `?${query.toString()}` : "";
+
   return request(`/tasks${suffix}`, {}, "Lấy danh sách việc thất bại");
 };
 
@@ -333,11 +360,12 @@ export const rejectProfileUpdateAPI = (id, reason) =>
     "Từ chối hồ sơ thất bại"
   );
 
-
 export const getManagerEventsAPI = (params = {}) => {
   const query = new URLSearchParams();
   if (params.clan_id) query.set("clan_id", params.clan_id);
+
   const suffix = query.toString() ? `?${query.toString()}` : "";
+
   return request(`/events${suffix}`, {}, "Lấy danh sách sự kiện thất bại");
 };
 
@@ -374,7 +402,9 @@ export const updateManagerEventAPI = (eventId, data) =>
 export const deleteManagerEventAPI = (eventId, params = {}) => {
   const query = new URLSearchParams();
   if (params.clan_id) query.set("clan_id", params.clan_id);
+
   const suffix = query.toString() ? `?${query.toString()}` : "";
+
   return request(
     `/events/${eventId}${suffix}`,
     {

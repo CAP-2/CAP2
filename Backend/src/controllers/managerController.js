@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
+const { ensureCanAddPerson, ensureCanAddAccount } = require('../services/billingService');
 const {
     createTemporaryTreeEditKey: createTemporaryTreeEditKeyRecord,
     ensureMemberTreeEditKeysTable,
@@ -1138,7 +1139,7 @@ exports.createMember = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cần ít nhất họ hoặc tên' });
         }
 
-        let clanId;
+                let clanId;
         if (req.user.role_id === 2) {
             clanId = await getManagerClanId(req.user.id);
             if (clanId == null) {
@@ -1154,6 +1155,17 @@ exports.createMember = async (req, res) => {
                 return res.status(400).json({ success: false, message: 'clan_id không tồn tại' });
             }
             clanId = cid;
+        }
+
+        const accountLimitCheck = await ensureCanAddAccount(clanId);
+
+        if (!accountLimitCheck.ok) {
+            return res.status(accountLimitCheck.status).json({
+                success: false,
+                code: accountLimitCheck.code,
+                message: accountLimitCheck.message,
+                billing: accountLimitCheck.billing,
+            });
         }
 
         const genRaw = generation === undefined || generation === null || String(generation).trim() === '' ? 1 : Number(generation);
@@ -1259,9 +1271,23 @@ exports.updateMemberByManager = async (req, res) => {
             await db.query('UPDATE accounts SET email = ? WHERE id = ?', [em, targetAccountId]);
         }
 
-        if (has('status')) {
+                if (has('status')) {
             const st = String(body.status || '').trim();
+
             if (['pending', 'active', 'rejected'].includes(st)) {
+                if (st === 'active' && String(full.status) !== 'active') {
+                    const accountLimitCheck = await ensureCanAddAccount(full.clan_id);
+
+                    if (!accountLimitCheck.ok) {
+                        return res.status(accountLimitCheck.status).json({
+                            success: false,
+                            code: accountLimitCheck.code,
+                            message: accountLimitCheck.message,
+                            billing: accountLimitCheck.billing,
+                        });
+                    }
+                }
+
                 await db.query('UPDATE accounts SET status = ? WHERE id = ?', [st, targetAccountId]);
             }
         }
@@ -1453,26 +1479,91 @@ exports.getPendingUsers = async (req, res) => {
 
 exports.approveUser = async (req, res) => {
     const accountId = req.params.id;
+
     try {
+        const [accountRows] = await db.query(
+            `
+            SELECT 
+                a.id AS account_id,
+                a.status,
+                a.role_id,
+                a.person_id,
+                p.clan_id
+            FROM accounts a
+            JOIN people p ON a.person_id = p.id
+            WHERE a.id = ?
+            LIMIT 1
+            `,
+            [accountId]
+        );
+
+        if (!accountRows.length) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy tài khoản cần duyệt',
+            });
+        }
+
+        const target = accountRows[0];
+
+        if (!target.clan_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Tài khoản chưa liên kết với dòng họ',
+            });
+        }
+
+        if (String(target.status) === 'active') {
+            return res.json({
+                success: true,
+                message: 'Tài khoản đã được kích hoạt trước đó',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query(
-                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
-                [accountId]
-            );
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được duyệt thành viên cùng dòng họ' });
+
+            if (Number(target.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được duyệt thành viên cùng dòng họ',
+                });
             }
         }
-        const sql = "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?";
-        await db.query(sql, [accountId]);
-        res.json({ success: true, message: 'Phê duyệt thành công!' });
+
+        const accountLimitCheck = await ensureCanAddAccount(target.clan_id);
+
+        if (!accountLimitCheck.ok) {
+            return res.status(accountLimitCheck.status).json({
+                success: false,
+                code: accountLimitCheck.code,
+                message: accountLimitCheck.message,
+                billing: accountLimitCheck.billing,
+            });
+        }
+
+        await db.query(
+            "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?",
+            [accountId]
+        );
+
+        return res.json({
+            success: true,
+            message: 'Phê duyệt thành công!',
+        });
     } catch (error) {
         console.error('approveUser error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi phê duyệt' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi phê duyệt',
+        });
     }
 };
 
@@ -2126,7 +2217,10 @@ exports.createPerson = async (req, res) => {
             return res.status(permission.status).json({ success: false, message: permission.message });
         }
 
-        await ensurePeopleTreeLayoutColumns();
+                await ensurePeopleTreeLayoutColumns();
+
+        const body = req.body || {};
+
         const {
             display_name,
             surname,
@@ -2153,11 +2247,22 @@ exports.createPerson = async (req, res) => {
             parent_mother_id,
             father_person_id,
             mother_person_id,
-        } = req.body;
+        } = body;
 
-        const clanId = await resolveManagedClanId(req, req.body);
+        const clanId = await resolveManagedClanId(req, body);
         if (clanId == null) {
             return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+        }
+
+        const personLimitCheck = await ensureCanAddPerson(clanId);
+
+        if (!personLimitCheck.ok) {
+            return res.status(personLimitCheck.status).json({
+                success: false,
+                code: personLimitCheck.code,
+                message: personLimitCheck.message,
+                billing: personLimitCheck.billing,
+            });
         }
 
         const sn = surname != null ? String(surname).trim() : '';
