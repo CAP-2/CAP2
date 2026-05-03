@@ -70,7 +70,7 @@ const Register = () => {
 
   return (
     <div className="register-page">
-      <Link to="/" className="back-btn">← Back to Home</Link>
+      <Link to="/" className="back-btn">← Về trang chủ </Link>
       <div className="register-container">
         <h2>Tạo tài khoản mới</h2>
         <p className="subtitle">Vui lòng điền thông tin để tạo tài khoản mới</p>
@@ -116,7 +116,7 @@ const Register = () => {
               onChange={handleChange}
               required
             />
-            <small>Nhập ID do trưởng họ hoặc quản trị viên cung cấp để tài khoản được thêm vào cây gia phả.</small>
+            <small>Nhập ID dòng họ được cung cấp</small>
           </label>
 
           <div className="checkbox-group">

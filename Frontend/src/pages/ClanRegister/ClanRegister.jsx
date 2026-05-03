@@ -61,7 +61,6 @@ const ClanRegister = () => {
     setManagerForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  // --- 🌟 HÀM MỚI: TỰ ĐỘNG TÁCH HỌ TÊN KHI GÕ VÀO Ô "TÊN HIỂN THỊ ĐẦY ĐỦ" 🌟 ---
   const handleFullNameChange = (e) => {
     const fullName = e.target.value;
     const parts = fullName.trim().split(/\s+/); // Tách chuỗi dựa trên khoảng trắng
@@ -81,7 +80,6 @@ const ClanRegister = () => {
       middle_name = parts.slice(1, parts.length - 1).join(" ");
     }
 
-    // Cập nhật cả 4 ô (Tên đầy đủ, Họ, Tên đệm, Tên) cùng 1 lúc
     setManagerForm((prev) => ({
       ...prev,
       display_name: fullName,
@@ -109,7 +107,7 @@ const ClanRegister = () => {
       });
 
       if (res.success) {
-        alert("Đăng ký dòng họ và tài khoản Manager thành công!");
+        alert("Đăng ký dòng họ và tài khoản Trưởng họ thành công!");
         navigate("/login");
       }
     } catch (err) {
@@ -121,12 +119,12 @@ const ClanRegister = () => {
 
   return (
     <div className="clan-register-page">
-      <Link to="/" className="back-btn">← Back to Home</Link>
+      <Link to="/" className="back-btn">← Về trang chủ </Link>
       <div className="clan-register-container">
         {step === 1 ? (
           <>
             <h2>Tạo dòng họ mới</h2>
-            <p className="subtitle">Nhập tên dòng họ bạn muốn tạo.</p>
+            <p className="subtitle">Nhập tên dòng họ của bạn.</p>
 
             {error && <div className="error-box">{error}</div>}
 
@@ -140,7 +138,7 @@ const ClanRegister = () => {
               />
 
               <button type="submit" className="submit-btn">
-                Tiếp theo: Đăng ký tài khoản quản lý
+                Tiếp theo: Đăng ký tài khoản 
               </button>
             </form>
 
@@ -150,12 +148,20 @@ const ClanRegister = () => {
           </>
         ) : (
           <>
-            <h2>Tạo tài khoản Manager cho dòng họ "{clanName}"</h2>
-            <p className="subtitle">Người đăng ký sẽ được gán quyền Manager của dòng họ này.</p>
+            <h2>Tạo tài khoản Trưởng họ cho dòng họ </h2>
+                 <h2>"{clanName}"</h2>
+            <p className="subtitle">Người đăng ký sẽ được gán quyền "Trưởng họ" của dòng họ này.</p>
 
             {error && <div className="error-box">{error}</div>}
 
             <form onSubmit={handleManagerSubmit}>
+               <input
+                name="display_name"
+                value={managerForm.display_name}
+                placeholder="Họ Tên đầy đủ"
+                onChange={handleFullNameChange}
+                required
+              />
               <div className="input-row">
                 <input
                   name="surname"
@@ -180,14 +186,7 @@ const ClanRegister = () => {
               </div>
 
               {/* 🌟 ĐÃ GẮN HÀM TÁCH TÊN VÀO Ô NÀY 🌟 */}
-              <input
-                name="display_name"
-                value={managerForm.display_name}
-                placeholder="Tên hiển thị đầy đủ"
-                onChange={handleFullNameChange}
-                required
-              />
-
+             
               <div className="input-row">
                 <select name="gender" value={managerForm.gender} onChange={handleManagerChange} required>
                   <option value="1">Nam</option>
@@ -219,10 +218,11 @@ const ClanRegister = () => {
                 onChange={handleManagerChange}
                 required
               />
-              <input
-                name="hometown"
-                value={managerForm.hometown}
-                placeholder="Quê quán"
+               <input
+                name="password"
+                value={managerForm.password}
+                type="password"
+                placeholder=" xác nhập mật khẩu"
                 onChange={handleManagerChange}
                 required
               />
