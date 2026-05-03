@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import { createPortal } from "react-dom";
 import { toBlob } from "html-to-image";
 import {
   createPersonAPI,
@@ -1554,7 +1555,8 @@ export default function FamilyTreeEditor({
   readOnly = false,
 }) {
   const treeRef = useRef(null);
-  const scaleRef = useRef(0.75);
+  const scaleRef = useRef(0.85);
+  const [currentScale, setCurrentScale] = useState(0.85);
   const lastDragRef = useRef(null);
   const lineDragRef = useRef(null);
   const [people, setPeople] = useState([]);
@@ -2238,77 +2240,140 @@ export default function FamilyTreeEditor({
           : "Chế độ chỉ xem. Thành viên không có quyền chỉnh sửa cây gia phả."
     : "";
 
-  return (
-    <section className="fte-shell">
+  const [treeFullscreen, setTreeFullscreen] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle("fte-bodyFullscreen", treeFullscreen);
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setTreeFullscreen(false);
+      }
+    };
+
+    if (treeFullscreen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      document.body.classList.remove("fte-bodyFullscreen");
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [treeFullscreen]);
+
+  const treeEditorShell = (
+    <section className={`fte-shell ${treeFullscreen ? "is-fullscreen" : ""}`}>
       <TransformWrapper
-        initialScale={0.62}
-        initialPositionX={24}
-        initialPositionY={28}
-        minScale={0.25}
-        maxScale={2}
-        centerOnInit={false}
+        initialScale={0.85}
+        minScale={0.35}
+        maxScale={2.6}
+        centerOnInit={true}
         limitToBounds={false}
-        panning={{ disabled: draggingId !== null || draggingLineId !== null }}
+        panning={{ disabled: draggingId !== null || draggingLineId !== null, velocityDisabled: false }}
         doubleClick={{ disabled: true }}
-        wheel={{ step: 0.12 }}
+        wheel={{ step: 0.055, smoothStep: 0.004, wheelDisabled: false }}
+        pinch={{ step: 5 }}
+        velocityAnimation={{ sensitivity: 1.05, animationTime: 260 }}
+        alignmentAnimation={{ sizeX: 0, sizeY: 0, animationTime: 220 }}
+        onInit={(_, state) => {
+          const scale = state?.scale || 0.85;
+          scaleRef.current = scale;
+          setCurrentScale(scale);
+        }}
         onTransformed={(_, state) => {
-          scaleRef.current = state?.scale || 1;
+          const scale = state?.scale || 1;
+          scaleRef.current = scale;
+          setCurrentScale(scale);
         }}
       >
-        {({ zoomIn, zoomOut, resetTransform }) => (
+        {({ zoomIn, zoomOut, resetTransform, centerView }) => (
           <>
             <div className="fte-toolbar">
-              {canEditAll ? (
-                <div className="fte-toolbarGroup">
-                  <button type="button" onClick={() => openCreateDialog("person")}>
-                    <span className="material-symbols-outlined">person_add</span>
-                    Thêm người
-                  </button>
-                  <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("spouse")}>
-                    <span className="material-symbols-outlined">favorite</span>
-                    Chọn vợ/chồng
-                  </button>
-                  <button type="button" disabled={!selectedPerson} onClick={() => openCreateDialog("child")}>
-                    <span className="material-symbols-outlined">escalator_warning</span>
-                    Chọn con
-                  </button>
-                </div>
-              ) : canEditLimited ? (
-                <div className="fte-toolbarGroup">
+              <div className="fte-toolbarGroup fte-toolbarGroup--edit">
+                <button
+                  type="button"
+                  onClick={() => openCreateDialog("person")}
+                  disabled={!canEditAll || loading || saving}
+                  title={canEditAll ? "Thêm người vào cây gia phả" : "Chỉ quản trị viên dòng họ mới được thêm người"}
+                >
+                  <span className="material-symbols-outlined">person_add</span>
+                  Thêm người
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEditAll || !selectedPerson || loading || saving}
+                  onClick={() => openCreateDialog("spouse")}
+                  title={canEditAll ? "Chọn vợ/chồng cho người đang chọn" : "Thành viên chỉ được xem quan hệ"}
+                >
+                  <span className="material-symbols-outlined">favorite</span>
+                  Chọn vợ/chồng
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEditAll || !selectedPerson || loading || saving}
+                  onClick={() => openCreateDialog("child")}
+                  title={canEditAll ? "Chọn con cho người đang chọn" : "Thành viên chỉ được xem quan hệ"}
+                >
+                  <span className="material-symbols-outlined">escalator_warning</span>
+                  Chọn con
+                </button>
+              </div>
+              {canEditLimited ? (
+                <div className="fte-toolbarGroup fte-toolbarGroup--notice">
                   <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: đời hiện tại ±1</span>
                 </div>
-              ) : (
-                <div className="fte-toolbarGroup">
-                  <span className="fte-readOnlyBadge">Chế độ chỉ xem</span>
-                </div>
-              )}
-              <div className="fte-toolbarGroup">
-                {canEditAll ? (
-                  <>
-                    <button type="button" onClick={applyAutoLayoutAndSave} disabled={loading || saving} title="Tự động sắp xếp lại và lưu vào database">
-                      <span className="material-symbols-outlined">auto_fix_high</span>
-                      Tự sắp xếp
-                    </button>
-                    <button type="button" onClick={resetLineRoutes} disabled={loading || saving} title="Đưa các đường liên kết về vị trí tự động">
-                      <span className="material-symbols-outlined">polyline</span>
-                      Reset đường nối
-                    </button>
-                  </>
-                ) : null}
+              ) : null}
+              <div className="fte-toolbarGroup fte-toolbarGroup--actions">
+                <button
+                  type="button"
+                  onClick={applyAutoLayoutAndSave}
+                  disabled={!canEditAll || loading || saving}
+                  title={canEditAll ? "Tự động sắp xếp lại và lưu vào database" : "Thành viên chỉ được xem, không được tự sắp xếp"}
+                >
+                  <span className="material-symbols-outlined">auto_fix_high</span>
+                  Tự sắp xếp
+                </button>
+                <button
+                  type="button"
+                  onClick={resetLineRoutes}
+                  disabled={!canEditAll || loading || saving}
+                  title={canEditAll ? "Đưa các đường liên kết về vị trí tự động" : "Thành viên chỉ được xem, không được reset đường nối"}
+                >
+                  <span className="material-symbols-outlined">polyline</span>
+                  Reset đường nối
+                </button>
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
                   Export PNG
                 </button>
               </div>
               <div className="fte-toolbarGroup fte-toolbarGroup--icons">
-                <button type="button" onClick={() => zoomIn()} title="Zoom +">
+                <button type="button" onClick={() => zoomIn(0.16, 180)} title="Phóng to mượt">
                   <span className="material-symbols-outlined">zoom_in</span>
                 </button>
-                <button type="button" onClick={() => zoomOut()} title="Zoom -">
+                <span className="fte-zoomValue">{Math.round(currentScale * 100)}%</span>
+                <button type="button" onClick={() => zoomOut(0.16, 180)} title="Thu nhỏ mượt">
                   <span className="material-symbols-outlined">zoom_out</span>
                 </button>
-                <button type="button" onClick={() => resetTransform()} title="Reset view">
-                  <span className="material-symbols-outlined">center_focus_strong</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextFullscreen = !treeFullscreen;
+                    setTreeFullscreen(nextFullscreen);
+                    if (nextFullscreen) {
+                      window.setTimeout(() => {
+                        if (centerView) {
+                          centerView(0.95, 260);
+                        } else {
+                          resetTransform(260);
+                        }
+                      }, 80);
+                    }
+                  }}
+                  title={treeFullscreen ? "Thoát toàn màn hình" : "Phóng toàn màn hình cây"}
+                  className={treeFullscreen ? "is-active" : ""}
+                >
+                  <span className="material-symbols-outlined">{treeFullscreen ? "close_fullscreen" : "open_in_full"}</span>
                 </button>
               </div>
             </div>
@@ -2436,4 +2501,6 @@ export default function FamilyTreeEditor({
       />
     </section>
   );
+
+  return treeFullscreen ? createPortal(treeEditorShell, document.body) : treeEditorShell;
 }

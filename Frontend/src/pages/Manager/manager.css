@@ -1622,3 +1622,142 @@ select.mgr-search.mgr-selectMulti {
     display: grid;
   }
 }
+
+/* Clan info modal for manager genealogy */
+.clan-info-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(22, 8, 5, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.clan-info-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 44px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  border-radius: 28px;
+  border: 1px solid rgba(224, 188, 102, 0.72);
+  background: linear-gradient(145deg, #fffaf0, #f9ecd1);
+  box-shadow: 0 34px 95px rgba(0, 0, 0, 0.36);
+  padding: 22px;
+  color: #381307;
+}
+
+.clan-info-modalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  color: #fff8dc;
+  background: linear-gradient(135deg, #441207, #7f2215);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.clan-info-modalHead span {
+  display: block;
+  color: #f5d064;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.clan-info-modalHead h2 {
+  margin: 3px 0 5px;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+}
+
+.clan-info-modalHead p {
+  margin: 0;
+  color: rgba(255, 248, 220, 0.82);
+  font-weight: 700;
+}
+
+.clan-info-close {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 248, 220, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff8dc;
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.clan-info-field {
+  display: grid;
+  gap: 7px;
+  font-weight: 900;
+  color: #5b3012;
+}
+
+.clan-info-field input,
+.clan-info-field textarea {
+  width: 100%;
+  border: 1px solid rgba(203, 167, 86, 0.62);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #301106;
+  font: inherit;
+  font-weight: 700;
+  padding: 13px 15px;
+  outline: none;
+  resize: vertical;
+}
+
+.clan-info-field input:focus,
+.clan-info-field textarea:focus {
+  border-color: #b77a19;
+  box-shadow: 0 0 0 4px rgba(217, 169, 58, 0.17);
+}
+
+.clan-info-metaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.clan-info-metaGrid div {
+  display: grid;
+  gap: 3px;
+  place-items: center;
+  min-height: 82px;
+  border-radius: 18px;
+  border: 1px solid rgba(203, 167, 86, 0.45);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.clan-info-metaGrid strong {
+  color: #8c2417;
+  font-size: 1.55rem;
+}
+
+.clan-info-metaGrid span {
+  color: #6b4b28;
+  font-weight: 800;
+}
+
+.clan-info-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.manager-inline-success {
+  border: 1px solid rgba(38, 130, 72, 0.28);
+  background: rgba(232, 248, 236, 0.95);
+  color: #176235;
+  border-radius: 14px;
+  padding: 11px 14px;
+  font-weight: 800;
+}

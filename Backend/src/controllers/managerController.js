@@ -612,6 +612,74 @@ exports.updateMemberRelations = async (req, res) => {
     }
 };
 
+
+exports.getClanInfo = async (req, res) => {
+    try {
+        const clanId = await resolveManagedClanId(req);
+        if (clanId == null) {
+            return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+        }
+
+        const [rows] = await db.query(
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
+            [clanId]
+        );
+        if (!rows.length) {
+            return res.status(404).json({ success: false, message: 'Dòng họ không tồn tại' });
+        }
+
+        return res.json({ success: true, clan: rows[0] });
+    } catch (error) {
+        console.error('getClanInfo error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi lấy thông tin dòng họ' });
+    }
+};
+
+exports.updateClanInfo = async (req, res) => {
+    try {
+        const clanId = await resolveManagedClanId(req);
+        if (clanId == null) {
+            return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+        }
+
+        const clanName = String(req.body.clan_name || '').trim();
+        const history = req.body.history == null ? '' : String(req.body.history).trim();
+        const hallAddress = req.body.hall_address == null ? '' : String(req.body.hall_address).trim();
+
+        if (!clanName) {
+            return res.status(400).json({ success: false, message: 'Tên dòng họ không được để trống' });
+        }
+
+        const [exists] = await db.query('SELECT id FROM clans WHERE id = ? LIMIT 1', [clanId]);
+        if (!exists.length) {
+            return res.status(404).json({ success: false, message: 'Dòng họ không tồn tại' });
+        }
+
+        const [duplicate] = await db.query(
+            'SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) AND id <> ? LIMIT 1',
+            [clanName, clanId]
+        );
+        if (duplicate.length) {
+            return res.status(409).json({ success: false, message: 'Tên dòng họ này đã tồn tại' });
+        }
+
+        await db.query(
+            'UPDATE clans SET clan_name = ?, history = ?, hall_address = ? WHERE id = ?',
+            [clanName, history || null, hallAddress || null, clanId]
+        );
+
+        const [rows] = await db.query(
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
+            [clanId]
+        );
+
+        return res.json({ success: true, message: 'Đã cập nhật thông tin dòng họ', clan: rows[0] });
+    } catch (error) {
+        console.error('updateClanInfo error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi cập nhật thông tin dòng họ' });
+    }
+};
+
 exports.getFamilyTree = async (req, res) => {
     try {
         await ensureArchivedMembersTable();

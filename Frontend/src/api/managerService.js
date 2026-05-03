@@ -22,6 +22,20 @@ export const getManagerTree = (clanId) => {
 
 export const getMembers = () => request("/members", {}, "Không thể lấy danh sách thành viên");
 
+
+export const getManagerClanInfo = () => request('/clan-info', {}, 'Không thể lấy thông tin dòng họ');
+
+export const updateManagerClanInfo = (payload) =>
+  request(
+    '/clan-info',
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+    'Không thể cập nhật thông tin dòng họ'
+  );
+
+
 export const getActiveTreeEditKeysAPI = (clanId) => {
   const query = clanId ? `?clan_id=${encodeURIComponent(clanId)}` : "";
   return request(`/tree-edit-keys${query}`, {}, "Khong the lay danh sach temporary edit key");
