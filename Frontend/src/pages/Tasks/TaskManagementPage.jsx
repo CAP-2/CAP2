@@ -11,6 +11,7 @@ import {
   updateManagerEventAPI,
 } from "../../api/managerService";
 import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
+import { generateEventFormAI } from "../../api/aiServerService";
 import "./TaskManagementPage.css";
 
 const STATUS_LABELS = {
@@ -182,6 +183,9 @@ export default function TaskManagementPage({ role = "member" }) {
   const [form, setForm] = useState({ event_id: "", member_ids: [], title: "", description: "", due_date: "" });
   const [eventForm, setEventForm] = useState({ title: "", event_date: "", description: "" });
   const [editEventForm, setEditEventForm] = useState({ title: "", event_date: "", description: "" });
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiTaskSuggestions, setAiTaskSuggestions] = useState([]);
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
@@ -424,6 +428,112 @@ export default function TaskManagementPage({ role = "member" }) {
     }
   };
 
+  const getTodayInput = () => new Date().toISOString().slice(0, 10);
+
+  const normalizeAiTasks = (items = [], fallbackEventId = null) =>
+    asArray(items)
+      .map((item, index) => ({
+        id: `ai-${Date.now()}-${index}`,
+        event_id: item.event_id || fallbackEventId || null,
+        member_id: null,
+        title: String(item.title || "").trim(),
+        description: String(item.description || "").trim(),
+        due_date: item.due_date || "",
+        status: item.status || "assigned",
+      }))
+      .filter((item) => item.title);
+
+  const requestAiEventCreate = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt || aiLoading) return;
+    setError("");
+    setMessage("");
+    setAiLoading(true);
+    try {
+      const result = await generateEventFormAI({
+        mode: "event_create",
+        prompt,
+        today: getTodayInput(),
+        clan_id: isAdmin && clanId ? Number(clanId) : undefined,
+        current_event: null,
+        existing_tasks: [],
+      });
+
+      if (result.status !== "success") {
+        setError("AI chỉ hỗ trợ tạo sự kiện và công việc dòng họ. Vui lòng nhập nội dung liên quan đến sự kiện.");
+        return;
+      }
+
+      const aiEvent = result.event || {};
+      setEventForm({
+        title: aiEvent.title || "",
+        event_date: aiEvent.event_date || "",
+        description: aiEvent.description || "",
+      });
+      setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks));
+      setShowCreateForm(true);
+      setMessage("AI đã điền form sự kiện và tạo danh sách công việc gợi ý. Hãy kiểm tra trước khi lưu.");
+    } catch (err) {
+      setError(err?.message || "Không thể gọi AI tạo sự kiện.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const requestAiTaskCreate = async () => {
+    if (!selectedEvent || aiLoading) return;
+    const prompt = aiPrompt.trim() || "Gợi ý thêm các công việc còn thiếu cho sự kiện này";
+    setError("");
+    setMessage("");
+    setAiLoading(true);
+    try {
+      const result = await generateEventFormAI({
+        mode: "task_create",
+        prompt,
+        today: getTodayInput(),
+        clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
+        current_event: {
+          id: selectedEvent.id,
+          title: selectedEvent.title,
+          event_date: toDateInput(selectedEvent.event_date),
+          description: selectedEvent.description || "",
+          clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
+        },
+        existing_tasks: selectedTasks.map((task) => ({
+          id: task.task_id || task.id,
+          event_id: task.event_id || selectedEvent.id,
+          title: task.title,
+          description: task.description,
+          due_date: toDateInput(task.due_date),
+          status: task.status,
+        })),
+      });
+
+      if (result.status !== "success") {
+        setError("AI chỉ hỗ trợ gợi ý công việc liên quan đến sự kiện đang chọn.");
+        return;
+      }
+
+      setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks, selectedEvent.id));
+      setMessage("AI đã tạo danh sách công việc gợi ý. Chọn một công việc để đưa vào form giao việc.");
+    } catch (err) {
+      setError(err?.message || "Không thể gọi AI tạo công việc.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const useAiTaskSuggestion = (task) => {
+    setForm((prev) => ({
+      ...prev,
+      event_id: String(selectedEventId || task.event_id || ""),
+      title: task.title || "",
+      description: task.description || "",
+      due_date: task.due_date || "",
+    }));
+    setMessage("Đã đưa công việc AI gợi ý vào form. Hãy chọn người thực hiện rồi bấm Giao việc.");
+  };
+
   const openEvent = (eventId) => {
     setSelectedEventId(String(eventId));
     setMessage("");
@@ -517,6 +627,42 @@ export default function TaskManagementPage({ role = "member" }) {
 
         {message && <div className="task-alert is-success">{message}</div>}
         {error && <div className="task-alert is-error">{error}</div>}
+
+        <section className="task-card ai-event-card">
+          <div className="task-card-title">
+            <span className="material-symbols-outlined">auto_awesome</span>
+            <h2>AI gợi ý công việc cho sự kiện</h2>
+          </div>
+          <div className="ai-event-row">
+            <textarea
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+              rows={3}
+              placeholder="Ví dụ: Gợi ý thêm 5 việc còn thiếu cho giỗ tổ này"
+              disabled={aiLoading}
+            />
+            <button className="task-btn task-btn-primary" type="button" onClick={requestAiTaskCreate} disabled={aiLoading}>
+              <span className="material-symbols-outlined">auto_awesome</span>
+              {aiLoading ? "AI đang tạo..." : "Tạo công việc bằng AI"}
+            </button>
+          </div>
+          {!!aiTaskSuggestions.length && (
+            <div className="ai-suggestion-list">
+              {aiTaskSuggestions.map((task) => (
+                <article className="ai-suggestion-item" key={task.id}>
+                  <div>
+                    <strong>{task.title}</strong>
+                    {task.description && <p>{task.description}</p>}
+                    <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
+                  </div>
+                  <button className="task-btn task-btn-ghost" type="button" onClick={() => useAiTaskSuggestion(task)}>
+                    Đưa vào form
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="event-detail-layout">
           <form className="task-card task-form event-edit-card" onSubmit={saveEvent}>
@@ -619,6 +765,39 @@ export default function TaskManagementPage({ role = "member" }) {
         </button>
       </div>
 
+      <section className="task-card ai-event-card">
+        <div className="task-card-title">
+          <span className="material-symbols-outlined">auto_awesome</span>
+          <h2>AI tạo sự kiện và công việc</h2>
+        </div>
+        <div className="ai-event-row">
+          <textarea
+            value={aiPrompt}
+            onChange={(event) => setAiPrompt(event.target.value)}
+            rows={3}
+            placeholder="Ví dụ: Tạo sự kiện giỗ tổ ngày 10/11/2025, tụ họp con cháu ở từ đường"
+            disabled={aiLoading}
+          />
+          <button className="task-btn task-btn-primary" type="button" onClick={requestAiEventCreate} disabled={aiLoading || !aiPrompt.trim()}>
+            <span className="material-symbols-outlined">auto_awesome</span>
+            {aiLoading ? "AI đang tạo..." : "AI điền form"}
+          </button>
+        </div>
+        {!!aiTaskSuggestions.length && (
+          <div className="ai-suggestion-list">
+            {aiTaskSuggestions.map((task) => (
+              <article className="ai-suggestion-item" key={task.id}>
+                <div>
+                  <strong>{task.title}</strong>
+                  {task.description && <p>{task.description}</p>}
+                  <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
       {showCreateForm && (
         <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowCreateForm(false)}>
           <form
@@ -659,6 +838,24 @@ export default function TaskManagementPage({ role = "member" }) {
               <span>Mô tả ngắn</span>
               <textarea value={eventForm.description} onChange={(event) => setEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Ghi chú địa điểm, nội dung chính hoặc yêu cầu chuẩn bị..." />
             </label>
+
+            {!!aiTaskSuggestions.length && (
+              <div className="ai-modal-suggestions">
+                <strong>Công việc AI đề xuất</strong>
+                <p>Sau khi lưu sự kiện, mở sự kiện để chọn người thực hiện và giao các công việc này.</p>
+                <div className="ai-suggestion-list">
+                  {aiTaskSuggestions.map((task) => (
+                    <article className="ai-suggestion-item" key={task.id}>
+                      <div>
+                        <strong>{task.title}</strong>
+                        {task.description && <p>{task.description}</p>}
+                        <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="task-form-actions task-modal-actions">
               <button className="task-btn task-btn-primary" type="submit" disabled={saving}>

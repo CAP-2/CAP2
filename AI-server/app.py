@@ -1671,6 +1671,399 @@ def write_ai_audit(
             conn.close()
 
 
+
+
+EVENT_FORM_SYSTEM_PROMPT = """
+Bạn là AI chuyên phân tích yêu cầu tiếng Việt và sinh JSON để điền form tạo sự kiện dòng họ/gia đình.
+
+Bạn không phải chatbot hỏi đáp.
+Không giải thích.
+Không markdown.
+Chỉ trả JSON hợp lệ.
+
+Nhiệm vụ:
+- Đọc prompt của người dùng.
+- Tự suy luận chủ đề sự kiện, địa điểm, thời gian, người tham gia, mục đích.
+- Sinh dữ liệu event cho bảng events.
+- Sinh danh sách công việc thực tế cho bảng manager_tasks.
+- Công việc phải phù hợp với chính chủ đề người dùng đưa ra, không dùng một template chung.
+
+Schema output bắt buộc:
+{
+  "status": "success | unsupported",
+  "mode": "event_create | task_create",
+  "event": {
+    "title": "",
+    "event_date": null,
+    "description": "",
+    "clan_id": null
+  },
+  "manager_tasks": [
+    {
+      "event_id": null,
+      "member_id": null,
+      "title": "",
+      "description": "",
+      "due_date": null,
+      "status": "assigned"
+    }
+  ]
+}
+
+Quy tắc:
+1. Chỉ hỗ trợ yêu cầu liên quan sự kiện, nghi lễ, sinh hoạt, họp mặt, cưới hỏi, mừng thọ, cúng giỗ, tu sửa, hoạt động gia đình hoặc dòng họ.
+2. Nếu không liên quan, trả status = "unsupported" và manager_tasks = [].
+3. mode = "event_create": tạo event mới, manager_tasks[*].event_id = null.
+4. mode = "task_create": dựa vào current_event và existing_tasks để tạo thêm công việc mới, manager_tasks[*].event_id = current_event.id.
+5. clan_id lấy từ input clan_id hoặc current_event.clan_id.
+6. member_id luôn null.
+7. task.status luôn là "assigned".
+8. Không tạo task trùng existing_tasks.
+9. Tên sự kiện phải ngắn gọn, tự nhiên, không copy nguyên prompt.
+10. Mô tả phải tóm tắt đúng yêu cầu người dùng.
+11. event_date dùng YYYY-MM-DD.
+12. Nếu prompt chỉ có tháng, ví dụ "tháng 8", chọn ngày 01 của tháng đó theo năm trong today.
+13. Nếu prompt nói "cuối năm" nhưng không có ngày/tháng, chọn 31/12 theo năm trong today.
+14. Nếu prompt có cả "cuối năm" và tháng cụ thể, ưu tiên tháng cụ thể.
+15. Nếu có event_date thì mỗi task phải có due_date.
+16. due_date phải trước hoặc đúng event_date, trừ task tổng kết/hậu cần sau sự kiện có thể bằng event_date.
+17. Sinh 5 đến 10 task tùy độ phức tạp.
+18. Task phải cụ thể, giao được cho một người thực hiện.
+19. Nếu prompt có địa điểm như "nhà bác Quân", "nhà thờ tổ", "từ đường", phải đưa địa điểm đó vào description của task liên quan.
+20. Nếu chủ đề lạ, hãy tự suy luận các việc cần làm theo logic tổ chức sự kiện: chuẩn bị, thông báo, hậu cần, điều phối, ghi nhận chi phí, tổng kết.
+"""
+def strip_json_block(text: str) -> str:
+    raw = str(text or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\s*```$", "", raw)
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        return raw[start : end + 1]
+    return raw
+
+
+def parse_iso_date_from_text(text: str, today: str | None = None) -> str | None:
+    raw = str(text or "")
+    normalized = normalize_vietnamese(raw)
+
+    base_year = datetime.now().year
+    if today:
+        try:
+            base_year = datetime.strptime(str(today)[:10], "%Y-%m-%d").year
+        except Exception:
+            base_year = datetime.now().year
+
+    # dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy
+    m = re.search(r"\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b", raw)
+    if m:
+        d, mo, y = m.groups()
+        try:
+            return date(int(y), int(mo), int(d)).isoformat()
+        except ValueError:
+            return None
+
+    # yyyy-mm-dd
+    m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", raw)
+    if m:
+        y, mo, d = m.groups()
+        try:
+            return date(int(y), int(mo), int(d)).isoformat()
+        except ValueError:
+            return None
+
+    # dd/mm không có năm -> lấy năm hiện tại
+    m = re.search(r"\b(\d{1,2})[\/\-.](\d{1,2})\b", raw)
+    if m:
+        d, mo = m.groups()
+        try:
+            return date(base_year, int(mo), int(d)).isoformat()
+        except ValueError:
+            return None
+
+    # "tháng 8", "thang 8" -> chọn ngày 01 của tháng đó
+    m = re.search(r"\bthang\s+(\d{1,2})\b", normalized)
+    if m:
+        month = int(m.group(1))
+        if 1 <= month <= 12:
+            return date(base_year, month, 1).isoformat()
+
+    # "cuối năm" nếu không có tháng cụ thể
+    if "cuoi nam" in normalized:
+        return date(base_year, 12, 31).isoformat()
+
+    return None
+
+
+def date_add_days(iso_date: str | None, days: int) -> str | None:
+    if not iso_date:
+        return None
+    try:
+        value = datetime.strptime(iso_date, "%Y-%m-%d").date()
+        from datetime import timedelta
+        return (value + timedelta(days=days)).isoformat()
+    except Exception:
+        return None
+
+def fill_missing_task_due_dates(tasks: list[dict[str, Any]], event_date: str | None) -> list[dict[str, Any]]:
+    if not event_date:
+        return tasks
+
+    offsets = [-7, -5, -3, -2, -1, 0, 0, 0]
+
+    fixed = []
+    for index, task in enumerate(tasks or []):
+        if not isinstance(task, dict):
+            continue
+
+        item = dict(task)
+        if not item.get("due_date"):
+            offset = offsets[index] if index < len(offsets) else 0
+            item["due_date"] = date_add_days(event_date, offset)
+
+        fixed.append(item)
+
+    return fixed
+
+def make_task(event_id: int | None, title: str, description: str, due_date: str | None) -> dict[str, Any]:
+    return {
+        "event_id": event_id,
+        "member_id": None,
+        "title": title,
+        "description": description,
+        "due_date": due_date,
+        "status": "assigned",
+    }
+
+
+def default_event_title(prompt: str) -> str:
+    p = normalize_vietnamese(prompt)
+
+    if "gio to" in p:
+        return "Giỗ tổ"
+
+    if "gap mat cuoi nam" in p or ("gap mat" in p and "cuoi nam" in p):
+        return "Gặp mặt cuối năm"
+
+    if "gap mat" in p or "hop mat" in p or "hop ho" in p or "tu hop" in p:
+        return "Gặp mặt dòng họ"
+
+    if "mung tho" in p:
+        return "Mừng thọ"
+
+    if "le to tien" in p or "cung to tien" in p:
+        return "Lễ tưởng nhớ tổ tiên"
+
+    if "tu sua" in p or "sua chua" in p or "nha tho ho" in p or "tu duong" in p or "nha tho to" in p:
+        return "Tu sửa nhà thờ tổ"
+
+    cleaned = str(prompt or "").strip()
+
+    # bỏ các từ lệnh đầu câu
+    cleaned = re.sub(
+        r"^(tạo|tao|thêm|them|lập|lap)\s+(một\s+|mot\s+)?(sự kiện|su kien)\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    # cắt phần ngày/tháng khỏi title
+    cleaned = re.sub(r",?\s*ngày\s+\d{1,2}[\/\-.]\d{1,2}([\/\-.]\d{4})?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r",?\s*tháng\s+\d{1,2}", "", cleaned, flags=re.IGNORECASE)
+
+    # chỉ lấy mệnh đề đầu làm title
+    cleaned = re.split(r",|\.|\n", cleaned)[0].strip()
+
+    return cleaned[:80].strip() or "Sự kiện dòng họ"
+
+
+def default_tasks_for_event(
+    title: str,
+    event_date: str | None,
+    event_id: int | None,
+    existing_tasks: list[dict[str, Any]] | None = None,
+    description: str = "",
+) -> list[dict[str, Any]]:
+    text = normalize_vietnamese(f"{title} {description}")
+    existing = {
+        normalize_vietnamese(str(item.get("title") or ""))
+        for item in (existing_tasks or [])
+        if isinstance(item, dict)
+    }
+
+    before_7 = date_add_days(event_date, -7)
+    before_3 = date_add_days(event_date, -3)
+    before_1 = date_add_days(event_date, -1)
+    same_day = event_date
+
+    if "gio to" in text:
+        rows = [
+            ("Lập danh sách con cháu tham dự", "Tổng hợp số lượng thành viên tham dự để chuẩn bị lễ và tiếp đón.", before_7),
+            ("Thông báo thời gian giỗ tổ", "Gửi thông báo ngày giờ, địa điểm và nội dung buổi giỗ tổ cho các nhánh trong dòng họ.", before_7),
+            ("Chuẩn bị mâm cúng tổ tiên", "Chuẩn bị lễ vật, hương hoa, trái cây, xôi chè và các vật phẩm thờ cúng.", before_1),
+            ("Dọn dẹp nhà thờ tổ", "Vệ sinh bàn thờ, sân nhà thờ tổ, khu vực tiếp khách và lối đi.", before_1),
+            ("Phân công đón tiếp con cháu", "Sắp xếp người đón khách, hướng dẫn chỗ ngồi và hỗ trợ người lớn tuổi.", same_day),
+            ("Ghi nhận đóng góp và chi phí", "Tổng hợp khoản đóng góp, khoản chi và lưu lại để báo cáo sau sự kiện.", same_day),
+        ]
+
+    elif "gap mat" in text or "hop mat" in text or "tu hop" in text or "cuoi nam" in text:
+        rows = [
+            ("Chốt danh sách con cháu tham dự", "Liên hệ các nhánh gia đình để xác nhận số lượng người tham gia buổi gặp mặt.", before_7),
+            ("Thông báo lịch gặp mặt cuối năm", "Gửi thông báo về thời gian, địa điểm nhà thờ tổ và nội dung chương trình.", before_7),
+            ("Chuẩn bị nhà thờ tổ", "Dọn dẹp, sắp xếp bàn ghế, kiểm tra điện nước và khu vực sinh hoạt chung.", before_3),
+            ("Xây dựng chương trình gặp mặt", "Lên thứ tự hoạt động: chào hỏi, báo cáo dòng họ, dùng bữa, chụp ảnh lưu niệm.", before_3),
+            ("Chuẩn bị mâm cơm thân mật", "Dự trù thực đơn, số mâm, nước uống và phân công người phụ trách hậu cần.", before_1),
+            ("Phân công đón tiếp và hướng dẫn", "Bố trí người đón con cháu, hướng dẫn để xe, chỗ ngồi và hỗ trợ người lớn tuổi.", same_day),
+            ("Ghi hình và chụp ảnh lưu niệm", "Phân công người chụp ảnh, quay video và lưu lại tư liệu cho dòng họ.", same_day),
+            ("Tổng kết đóng góp sau sự kiện", "Ghi nhận đóng góp, chi phí tổ chức và báo cáo lại cho manager.", same_day),
+        ]
+
+    elif "mung tho" in text:
+        rows = [
+            ("Xác nhận danh sách khách mừng thọ", "Tổng hợp con cháu, họ hàng và khách mời tham dự lễ mừng thọ.", before_7),
+            ("Chuẩn bị quà và lời chúc", "Chuẩn bị quà mừng thọ, thiệp chúc và đại diện phát biểu.", before_3),
+            ("Trang trí khu vực tổ chức", "Sắp xếp phông nền, bàn ghế, hoa và khu vực chụp ảnh.", before_1),
+            ("Chuẩn bị tiệc mừng thọ", "Dự trù số mâm, thực đơn, nước uống và người phụ trách hậu cần.", before_1),
+            ("Chụp ảnh và lưu niệm", "Ghi lại hình ảnh buổi lễ để lưu trữ trong dòng họ.", same_day),
+        ]
+
+    elif "tu sua" in text or "sua chua" in text or "nha tho to" in text or "nha tho ho" in text or "tu duong" in text:
+        rows = [
+            ("Khảo sát hiện trạng nhà thờ tổ", "Kiểm tra mái, tường, sân, bàn thờ, hệ thống điện nước và các hạng mục cần sửa.", before_7),
+            ("Lập danh sách hạng mục tu sửa", "Ghi rõ từng hạng mục, mức độ ưu tiên và người phụ trách theo dõi.", before_7),
+            ("Lập dự toán kinh phí", "Tổng hợp vật tư, nhân công, chi phí phát sinh và dự toán tổng ngân sách.", before_3),
+            ("Liên hệ đội thợ sửa chữa", "Tìm thợ phù hợp, thống nhất thời gian, chi phí và phạm vi công việc.", before_3),
+            ("Thông báo kế hoạch đóng góp", "Gửi kế hoạch tu sửa và kêu gọi đóng góp minh bạch từ các thành viên.", before_1),
+            ("Theo dõi nghiệm thu công việc", "Kiểm tra tiến độ, chất lượng thi công và xác nhận hoàn thành từng hạng mục.", same_day),
+        ]
+
+    else:
+        rows = [
+            ("Làm rõ nội dung sự kiện", "Xác định mục đích, thời gian, địa điểm và số lượng người dự kiến tham gia.", before_7),
+            ("Lập danh sách người tham dự", "Tổng hợp danh sách thành viên, khách mời và các nhánh gia đình liên quan.", before_7),
+            ("Thông báo sự kiện cho dòng họ", "Gửi thông báo chính thức về thời gian, địa điểm và nội dung sự kiện.", before_3),
+            ("Chuẩn bị địa điểm tổ chức", "Sắp xếp không gian, bàn ghế, âm thanh, nước uống và khu vực tiếp đón.", before_1),
+            ("Phân công hậu cần", "Chia nhiệm vụ chuẩn bị đồ dùng, tiếp khách, vệ sinh và hỗ trợ trong ngày diễn ra.", before_1),
+            ("Tổng kết sau sự kiện", "Ghi nhận kết quả, chi phí, đóng góp và các việc cần rút kinh nghiệm.", same_day),
+        ]
+
+    return [
+        make_task(event_id, task_title, desc, due)
+        for task_title, desc, due in rows
+        if normalize_vietnamese(task_title) not in existing
+    ]
+
+def fallback_event_form(body: dict[str, Any]) -> dict[str, Any]:
+    mode = "task_create" if body.get("mode") == "task_create" else "event_create"
+    prompt = str(body.get("prompt") or "").strip()
+    today = str(body.get("today") or "")
+    event_date = parse_iso_date_from_text(prompt, today)
+
+    current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
+
+    if mode == "task_create":
+        event_id = parse_int(current_event.get("id"))
+        if not event_id:
+            return {
+                "status": "unsupported",
+                "mode": mode,
+                "event": {"title": "", "event_date": None, "description": "", "clan_id": None},
+                "manager_tasks": [],
+            }
+
+        title = str(current_event.get("title") or "Sự kiện dòng họ").strip()
+        event_date = parse_iso_date_from_text(str(current_event.get("event_date") or ""), today)
+        description = str(current_event.get("description") or prompt).strip()
+
+        return {
+            "status": "success",
+            "mode": mode,
+            "event": {
+                "title": title,
+                "event_date": event_date,
+                "description": description,
+                "clan_id": current_event.get("clan_id") or body.get("clan_id"),
+            },
+            "manager_tasks": [
+                make_task(event_id, "Làm rõ công việc cần bổ sung", "Xác nhận đầu việc cần thêm cho sự kiện hiện tại.", date_add_days(event_date, -3)),
+                make_task(event_id, "Phân công người phụ trách", "Chọn người thực hiện và thống nhất thời hạn hoàn thành.", date_add_days(event_date, -2)),
+                make_task(event_id, "Kiểm tra hoàn tất trước sự kiện", "Rà soát công việc đã giao trước ngày diễn ra sự kiện.", date_add_days(event_date, -1)),
+            ],
+        }
+
+    return {
+        "status": "success",
+        "mode": mode,
+        "event": {
+            "title": default_event_title(prompt),
+            "event_date": event_date,
+            "description": prompt,
+            "clan_id": body.get("clan_id"),
+        },
+        "manager_tasks": [
+            make_task(None, "Làm rõ kế hoạch sự kiện", "Xác nhận nội dung, thời gian, địa điểm và số lượng người tham gia.", date_add_days(event_date, -7)),
+            make_task(None, "Phân công người phụ trách", "Chọn người phụ trách chính và các đầu việc cần chuẩn bị.", date_add_days(event_date, -5)),
+            make_task(None, "Chuẩn bị trước ngày diễn ra", "Chuẩn bị các vật dụng, địa điểm và thông báo cần thiết.", date_add_days(event_date, -1)),
+        ],
+    }
+
+def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    mode = "task_create" if result.get("mode") == "task_create" or body.get("mode") == "task_create" else "event_create"
+
+    if result.get("status") == "unsupported":
+        return {
+            "status": "unsupported",
+            "mode": mode,
+            "event": {"title": "", "event_date": None, "description": "", "clan_id": None},
+            "manager_tasks": [],
+        }
+
+    event = result.get("event") if isinstance(result.get("event"), dict) else {}
+    tasks = (
+        result.get("manager_tasks")
+        if isinstance(result.get("manager_tasks"), list)
+        else result.get("tasks")
+        if isinstance(result.get("tasks"), list)
+        else []
+    )
+
+    current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
+    event_id = parse_int(current_event.get("id")) if mode == "task_create" else None
+
+    normalized_event = {
+        "title": str(event.get("title") or current_event.get("title") or "").strip(),
+        "event_date": event.get("event_date")
+        or parse_iso_date_from_text(str(current_event.get("event_date") or ""))
+        or parse_iso_date_from_text(str(body.get("prompt") or ""), str(body.get("today") or "")),
+        "description": str(event.get("description") or current_event.get("description") or "").strip(),
+        "clan_id": event.get("clan_id") or current_event.get("clan_id") or body.get("clan_id"),
+    }
+
+    normalized_tasks = [
+        {
+            "event_id": None if mode == "event_create" else event_id,
+            "member_id": None,
+            "title": str(task.get("title") or "").strip(),
+            "description": str(task.get("description") or "").strip(),
+            "due_date": task.get("due_date") or None,
+            "status": "assigned",
+        }
+        for task in tasks
+        if isinstance(task, dict) and str(task.get("title") or "").strip()
+    ]
+
+    normalized_tasks = fill_missing_task_due_dates(
+        normalized_tasks,
+        normalized_event.get("event_date"),
+    )
+
+    return {
+        "status": "success",
+        "mode": mode,
+        "event": normalized_event,
+        "manager_tasks": normalized_tasks,
+    }
+
 def create_app() -> Flask:
     app = Flask(__name__)
 
@@ -1695,6 +2088,84 @@ def create_app() -> Flask:
             }
         )
 
+
+    @app.post("/event-form/generate")
+    def event_form_generate():
+        body = request.get_json(silent=True) or {}
+        prompt = str(body.get("prompt") or "").strip()
+
+        if not prompt:
+            return jsonify({
+                "success": False,
+                "message": "Prompt không được để trống"
+            }), 400
+
+        fallback = fallback_event_form(body)
+
+        if groq_client is None:
+            return jsonify({"success": True, **fallback})
+
+        user_payload = {
+            "mode": body.get("mode") or "event_create",
+            "prompt": prompt,
+            "today": body.get("today") or datetime.now().date().isoformat(),
+            "clan_id": body.get("clan_id"),
+            "current_event": body.get("current_event"),
+            "existing_tasks": body.get("existing_tasks") or [],
+        }
+
+        try:
+            res = groq_client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": EVENT_FORM_SYSTEM_PROMPT,
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(user_payload, ensure_ascii=False),
+                    },
+                ],
+                temperature=0.6,
+                max_tokens=1800,
+            )
+
+            content = res.choices[0].message.content or "{}"
+            app.logger.info("EVENT_FORM_AI_RAW=%s", content)
+
+            parsed = json.loads(strip_json_block(content))
+            normalized = normalize_event_form_result(parsed, body)
+
+            if normalized.get("status") == "success":
+                normalized_event = normalized.setdefault("event", {})
+
+                if not normalized_event.get("title"):
+                    normalized_event["title"] = fallback["event"]["title"]
+
+                if not normalized_event.get("event_date"):
+                    normalized_event["event_date"] = fallback["event"]["event_date"]
+
+                if not normalized_event.get("description"):
+                    normalized_event["description"] = fallback["event"]["description"]
+
+                normalized["manager_tasks"] = fill_missing_task_due_dates(
+                    normalized.get("manager_tasks") or [],
+                    normalized_event.get("event_date"),
+                )
+
+                # Chỉ dùng fallback task nếu AI không sinh được task nào.
+                if not normalized["manager_tasks"]:
+                    normalized["manager_tasks"] = fallback["manager_tasks"]
+
+                return jsonify({"success": True, **normalized})
+
+            return jsonify({"success": True, **fallback})
+
+        except Exception:
+            app.logger.exception("AI event form generation failed")
+            return jsonify({"success": True, **fallback})
+        
     @app.post("/public/chat")
     def public_chat():
         body = request.get_json(silent=True) or {}
