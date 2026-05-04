@@ -13,7 +13,7 @@ const { normalizeMediaId, extractMediaIdFromUrl, getMediaUrl } = require('../uti
 let hasEnsuredArchivedMembersTable = false;
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
-const ensureArchivedMembersTable = async () => {
+const ensureArchivedMembersTable = async() => {
     if (hasEnsuredArchivedMembersTable) return;
     await db.query(`
         CREATE TABLE IF NOT EXISTS archived_members (
@@ -31,7 +31,7 @@ const ensureArchivedMembersTable = async () => {
     hasEnsuredArchivedMembersTable = true;
 };
 
-const ensurePeopleTreeLayoutColumns = async () => {
+const ensurePeopleTreeLayoutColumns = async() => {
     if (hasEnsuredPeopleTreeLayoutColumns) return;
 
     const [columns] = await db.query(
@@ -71,9 +71,9 @@ const parseChildrenIds = (value) => {
         return [
             ...new Set(
                 value
-                    .split(',')
-                    .map((v) => Number(v.trim()))
-                    .filter((v) => Number.isFinite(v))
+                .split(',')
+                .map((v) => Number(v.trim()))
+                .filter((v) => Number.isFinite(v))
             ),
         ];
     }
@@ -85,14 +85,14 @@ const parseTreeInt = (value, fallback = 0) => {
     return Number.isFinite(n) ? Math.round(n) : fallback;
 };
 
-const ensurePeopleExist = async (ids) => {
+const ensurePeopleExist = async(ids) => {
     if (!ids || ids.length === 0) return true;
     const placeholders = ids.map(() => '?').join(',');
     const [rows] = await db.query(`SELECT id FROM people WHERE id IN (${placeholders})`, ids);
     return rows.length === ids.length;
 };
 
-const getOwnedFamilyRelations = async (personId) => {
+const getOwnedFamilyRelations = async(personId) => {
     if (!personId) {
         return { family_id: null, spouse_id: null, children_ids: [] };
     }
@@ -104,8 +104,7 @@ const getOwnedFamilyRelations = async (personId) => {
       WHERE father_id = ? OR mother_id = ?
       ORDER BY id ASC
       LIMIT 1
-    `,
-        [personId, personId]
+    `, [personId, personId]
     );
 
     const family = familyRows[0] || null;
@@ -115,8 +114,7 @@ const getOwnedFamilyRelations = async (personId) => {
 
     const spouseId = family.father_id === personId ? family.mother_id : family.father_id;
     const [childrenRows] = await db.query(
-        'SELECT person_id FROM children WHERE family_id = ? ORDER BY id ASC',
-        [family.id]
+        'SELECT person_id FROM children WHERE family_id = ? ORDER BY id ASC', [family.id]
     );
 
     return {
@@ -126,7 +124,7 @@ const getOwnedFamilyRelations = async (personId) => {
     };
 };
 
-const getChildBloodline = async (personId) => {
+const getChildBloodline = async(personId) => {
     if (!personId) return null;
     const [rows] = await db.query(
         `
@@ -136,8 +134,7 @@ const getChildBloodline = async (personId) => {
       WHERE c.person_id = ?
       ORDER BY c.id ASC
       LIMIT 1
-    `,
-        [personId]
+    `, [personId]
     );
     return rows[0] || null;
 };
@@ -153,7 +150,7 @@ const buildPersonLabelFromRow = (row) => {
     return name || (row.id != null ? `Hồ sơ #${row.id}` : null);
 };
 
-const fetchPeopleLabelsMap = async (ids) => {
+const fetchPeopleLabelsMap = async(ids) => {
     const unique = [...new Set((ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0))];
     if (!unique.length) return new Map();
     const [rows] = await db.query(
@@ -167,7 +164,7 @@ const fetchPeopleLabelsMap = async (ids) => {
     return m;
 };
 
-const getTargetAccountContext = async (accountId) => {
+const getTargetAccountContext = async(accountId) => {
     const sql = `
     SELECT 
       a.id AS account_id,
@@ -193,7 +190,7 @@ const fmtSqlDate = (d) => {
     return s.length >= 10 ? s.slice(0, 10) : s || null;
 };
 
-const getManagedMemberFullContext = async (accountId) => {
+const getManagedMemberFullContext = async(accountId) => {
     const sql = `
     SELECT 
       a.id AS account_id,
@@ -230,7 +227,7 @@ const getManagedMemberFullContext = async (accountId) => {
     return rows[0] || null;
 };
 
-const assertCanManageAccount = async (req, targetAccountId) => {
+const assertCanManageAccount = async(req, targetAccountId) => {
     const ctx = await getTargetAccountContext(targetAccountId);
     if (!ctx || !ctx.person_id) {
         return { ok: false, status: 400, message: 'Tài khoản không có hồ sơ người (person) trong hệ thống' };
@@ -247,40 +244,60 @@ const assertCanManageAccount = async (req, targetAccountId) => {
     return { ok: true, context: ctx };
 };
 
-const getManagerClanId = async (accountId) => {
+const getManagerClanId = async(accountId) => {
     const [accountRows] = await db.query(
-        `SELECT p.clan_id FROM accounts a LEFT JOIN people p ON a.person_id = p.id WHERE a.id = ? LIMIT 1`,
-        [accountId]
+        `
+        SELECT p.clan_id
+        FROM accounts a
+        LEFT JOIN people p ON a.person_id = p.id
+        WHERE a.id = ?
+        LIMIT 1
+        `, [accountId]
     );
-    if (accountRows?.[0]?.clan_id != null) return accountRows[0].clan_id;
+
+    if (accountRows?.[0]?.clan_id != null) {
+        return accountRows[0].clan_id;
+    }
 
     try {
         const [membershipRows] = await db.query(
-            `SELECT clan_id FROM account_clans WHERE account_id = ? AND status = 'active' ORDER BY id ASC LIMIT 1`,
-            [accountId]
+            `
+            SELECT clan_id
+            FROM account_clans
+            WHERE account_id = ?
+              AND status = 'active'
+            ORDER BY id ASC
+            LIMIT 1
+            `, [accountId]
         );
-        if (membershipRows?.[0]?.clan_id != null) return membershipRows[0].clan_id;
+
+        if (membershipRows?.[0]?.clan_id != null) {
+            return membershipRows[0].clan_id;
+        }
     } catch (error) {
-        if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+        if (error?.code !== 'ER_NO_SUCH_TABLE') {
+            throw error;
+        }
     }
 
     return null;
 };
 
-const assertClanExists = async (clanId) => {
+const assertClanExists = async(clanId) => {
     const cid = Number(clanId);
     if (!Number.isFinite(cid)) return false;
     const [rows] = await db.query('SELECT id FROM clans WHERE id = ? LIMIT 1', [cid]);
     return rows.length > 0;
 };
 
-const resolveManagedClanId = async (req, source = {}) => {
-    if (req.user.role_id === 2) {
+const resolveManagedClanId = async(req, source = {}) => {
+    if (Number(req.user.role_id) === 2) {
         return await getManagerClanId(req.user.id);
     }
 
     const rawClanId = source.clan_id ?? req.params?.clanId ?? req.query?.clan_id;
     const requestedClanId = Number(rawClanId);
+
     if (Number.isFinite(requestedClanId)) {
         return (await assertClanExists(requestedClanId)) ? requestedClanId : null;
     }
@@ -289,7 +306,7 @@ const resolveManagedClanId = async (req, source = {}) => {
     return rows[0]?.id ?? null;
 };
 
-const assertCanManagePersonId = async (req, personId) => {
+const assertCanManagePersonId = async(req, personId) => {
     const pid = Number(personId);
     if (!Number.isFinite(pid) || pid <= 0) {
         return { ok: false, status: 400, message: 'person_id khong hop le' };
@@ -375,41 +392,75 @@ const buildManagedFamilyTree = (peopleRows, familyRows, childRows) => {
     return { roots };
 };
 
-async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, parentMotherId) {
+async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, parentMotherId, connection = db) {
     if (!parentFatherId && !parentMotherId) {
-        return { ok: false, message: 'Chỉ định huyết thống cần ít nhất ID cha hoặc mẹ (people.id)' };
+        return {
+            ok: false,
+            message: 'Chỉ định huyết thống cần ít nhất ID cha hoặc mẹ (people.id)',
+        };
     }
+
     if (targetPersonId === parentFatherId || targetPersonId === parentMotherId) {
-        return { ok: false, message: 'Thành viên không thể là cha/mẹ của chính mình' };
+        return {
+            ok: false,
+            message: 'Thành viên không thể là cha/mẹ của chính mình',
+        };
     }
-    const parentIds = [parentFatherId, parentMotherId].filter((v) => v !== null);
-    const [clanRows] = await db.query(
-        `SELECT id FROM people WHERE id IN (${parentIds.map(() => '?').join(',')}) AND clan_id = ?`,
-        [...parentIds, clanId]
+
+    const parentIds = [parentFatherId, parentMotherId].filter((value) => value !== null);
+
+    const [clanRows] = await connection.query(
+        `
+        SELECT id
+        FROM people
+        WHERE id IN (${parentIds.map(() => '?').join(',')})
+          AND clan_id = ?
+        `, [...parentIds, clanId]
     );
+
     if (clanRows.length !== parentIds.length) {
-        return { ok: false, message: 'Cha/mẹ phải là người trong cùng dòng họ (hoặc ID không tồn tại)' };
+        return {
+            ok: false,
+            message: 'Cha/mẹ phải là người trong cùng dòng họ hoặc ID không tồn tại',
+        };
     }
 
-    await db.query('DELETE FROM children WHERE person_id = ?', [targetPersonId]);
-
-    const [existing] = await db.query(
-        `SELECT id FROM families WHERE clan_id = ? AND (father_id <=> ?) AND (mother_id <=> ?) LIMIT 1`,
-        [clanId, parentFatherId, parentMotherId]
+    await connection.query(
+        'DELETE FROM children WHERE person_id = ?', [targetPersonId]
     );
 
-    let famId;
+    const [existing] = await connection.query(
+        `
+        SELECT id
+        FROM families
+        WHERE clan_id = ?
+          AND (father_id <=> ?)
+          AND (mother_id <=> ?)
+        LIMIT 1
+        `, [clanId, parentFatherId, parentMotherId]
+    );
+
+    let familyId;
+
     if (existing.length > 0) {
-        famId = existing[0].id;
+        familyId = existing[0].id;
     } else {
-        const [ins] = await db.query(
-            'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)',
-            [clanId, parentFatherId, parentMotherId]
+        const [insertResult] = await connection.query(
+            `
+            INSERT INTO families (clan_id, father_id, mother_id)
+            VALUES (?, ?, ?)
+            `, [clanId, parentFatherId, parentMotherId]
         );
-        famId = ins.insertId;
+
+        familyId = insertResult.insertId;
     }
 
-    await db.query('INSERT INTO children (family_id, person_id, sort_order) VALUES (?, ?, 0)', [famId, targetPersonId]);
+    await connection.query(
+        `
+        INSERT INTO children (family_id, person_id, sort_order)
+        VALUES (?, ?, 0)
+        `, [familyId, targetPersonId]
+    );
 
     return { ok: true };
 }
@@ -449,24 +500,21 @@ async function applyMarriageRelationsForPerson(context, body) {
 
     const personId = context.person_id;
     const [selfFamilyRows] = await db.query(
-        'SELECT id FROM families WHERE father_id = ? OR mother_id = ? ORDER BY id ASC LIMIT 1',
-        [personId, personId]
+        'SELECT id FROM families WHERE father_id = ? OR mother_id = ? ORDER BY id ASC LIMIT 1', [personId, personId]
     );
     let selfFamilyId = selfFamilyRows[0]?.id || null;
     const isMale = Number(context.gender) === 1;
 
     if (hasFamilyField && familyIdInput !== null) {
         const [existingFamily] = await db.query(
-            'SELECT id, father_id, mother_id, clan_id FROM families WHERE id = ? LIMIT 1',
-            [familyIdInput]
+            'SELECT id, father_id, mother_id, clan_id FROM families WHERE id = ? LIMIT 1', [familyIdInput]
         );
         if (existingFamily.length === 0) {
             if (!context.clan_id) {
                 return { ok: false, message: 'Tài khoản chưa liên kết dòng họ nên không thể tạo families mới' };
             }
             await db.query(
-                'INSERT INTO families (id, clan_id, father_id, mother_id) VALUES (?, ?, ?, ?)',
-                [familyIdInput, context.clan_id, isMale ? personId : spouseId, isMale ? spouseId : personId]
+                'INSERT INTO families (id, clan_id, father_id, mother_id) VALUES (?, ?, ?, ?)', [familyIdInput, context.clan_id, isMale ? personId : spouseId, isMale ? spouseId : personId]
             );
             selfFamilyId = familyIdInput;
         } else {
@@ -485,8 +533,7 @@ async function applyMarriageRelationsForPerson(context, body) {
                 return { ok: false, message: 'Tài khoản chưa liên kết dòng họ nên chưa thể khai báo quan hệ vợ/chồng/con' };
             }
             const [createdFamily] = await db.query(
-                'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)',
-                [context.clan_id, isMale ? personId : spouseId, isMale ? spouseId : personId]
+                'INSERT INTO families (clan_id, father_id, mother_id) VALUES (?, ?, ?)', [context.clan_id, isMale ? personId : spouseId, isMale ? spouseId : personId]
             );
             selfFamilyId = createdFamily.insertId;
         } else {
@@ -511,7 +558,7 @@ async function applyMarriageRelationsForPerson(context, body) {
     return { ok: true };
 }
 
-exports.getMemberRelations = async (req, res) => {
+exports.getMemberRelations = async(req, res) => {
     try {
         const targetAccountId = Number(req.params.id);
         const gate = await assertCanManageAccount(req, targetAccountId);
@@ -527,19 +574,16 @@ exports.getMemberRelations = async (req, res) => {
         if (Array.isArray(marriage.children_ids)) labelIds.push(...marriage.children_ids);
         const labelMap = await fetchPeopleLabelsMap(labelIds);
 
-        const bloodlineOut = bloodline
-            ? {
-                  family_id: bloodline.family_id,
-                  parent_father_id: bloodline.parent_father_id,
-                  parent_mother_id: bloodline.parent_mother_id,
-                  parent_father_name: bloodline.parent_father_id
-                      ? labelMap.get(bloodline.parent_father_id) || null
-                      : null,
-                  parent_mother_name: bloodline.parent_mother_id
-                      ? labelMap.get(bloodline.parent_mother_id) || null
-                      : null,
-              }
-            : null;
+        const bloodlineOut = bloodline ? {
+                family_id: bloodline.family_id,
+                parent_father_id: bloodline.parent_father_id,
+                parent_mother_id: bloodline.parent_mother_id,
+                parent_father_name: bloodline.parent_father_id ?
+                    labelMap.get(bloodline.parent_father_id) || null : null,
+                parent_mother_name: bloodline.parent_mother_id ?
+                    labelMap.get(bloodline.parent_mother_id) || null : null,
+            } :
+            null;
 
         const children_ids = marriage.children_ids || [];
         const children = children_ids.map((cid) => ({
@@ -569,7 +613,7 @@ exports.getMemberRelations = async (req, res) => {
     }
 };
 
-exports.updateMemberRelations = async (req, res) => {
+exports.updateMemberRelations = async(req, res) => {
     try {
         const targetAccountId = Number(req.params.id);
         const mode = String(req.body.mode || '').toLowerCase();
@@ -594,13 +638,11 @@ exports.updateMemberRelations = async (req, res) => {
         return res.json({
             success: true,
             message: 'Đã lưu quan hệ',
-            bloodline: bloodline
-                ? {
-                      family_id: bloodline.family_id,
-                      parent_father_id: bloodline.parent_father_id,
-                      parent_mother_id: bloodline.parent_mother_id,
-                  }
-                : null,
+            bloodline: bloodline ? {
+                family_id: bloodline.family_id,
+                parent_father_id: bloodline.parent_father_id,
+                parent_mother_id: bloodline.parent_mother_id,
+            } : null,
             marriage: {
                 family_id: marriage.family_id,
                 spouse_id: marriage.spouse_id,
@@ -614,7 +656,7 @@ exports.updateMemberRelations = async (req, res) => {
 };
 
 
-exports.getClanInfo = async (req, res) => {
+exports.getClanInfo = async(req, res) => {
     try {
         const clanId = await resolveManagedClanId(req);
         if (clanId == null) {
@@ -622,8 +664,7 @@ exports.getClanInfo = async (req, res) => {
         }
 
         const [rows] = await db.query(
-            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
-            [clanId]
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1', [clanId]
         );
         if (!rows.length) {
             return res.status(404).json({ success: false, message: 'Dòng họ không tồn tại' });
@@ -636,7 +677,7 @@ exports.getClanInfo = async (req, res) => {
     }
 };
 
-exports.updateClanInfo = async (req, res) => {
+exports.updateClanInfo = async(req, res) => {
     try {
         const clanId = await resolveManagedClanId(req);
         if (clanId == null) {
@@ -657,21 +698,18 @@ exports.updateClanInfo = async (req, res) => {
         }
 
         const [duplicate] = await db.query(
-            'SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) AND id <> ? LIMIT 1',
-            [clanName, clanId]
+            'SELECT id FROM clans WHERE LOWER(clan_name) = LOWER(?) AND id <> ? LIMIT 1', [clanName, clanId]
         );
         if (duplicate.length) {
             return res.status(409).json({ success: false, message: 'Tên dòng họ này đã tồn tại' });
         }
 
         await db.query(
-            'UPDATE clans SET clan_name = ?, history = ?, hall_address = ? WHERE id = ?',
-            [clanName, history || null, hallAddress || null, clanId]
+            'UPDATE clans SET clan_name = ?, history = ?, hall_address = ? WHERE id = ?', [clanName, history || null, hallAddress || null, clanId]
         );
 
         const [rows] = await db.query(
-            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
-            [clanId]
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1', [clanId]
         );
 
         return res.json({ success: true, message: 'Đã cập nhật thông tin dòng họ', clan: rows[0] });
@@ -681,7 +719,7 @@ exports.updateClanInfo = async (req, res) => {
     }
 };
 
-exports.getFamilyTree = async (req, res) => {
+exports.getFamilyTree = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         await ensurePeopleTreeLayoutColumns();
@@ -691,8 +729,7 @@ exports.getFamilyTree = async (req, res) => {
         }
 
         const [clanRows] = await db.query(
-            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1',
-            [clanId]
+            'SELECT id, clan_name, history, hall_address, created_at FROM clans WHERE id = ? LIMIT 1', [clanId]
         );
         if (!clanRows.length) {
             return res.status(404).json({ success: false, message: 'Dòng họ không tồn tại' });
@@ -736,13 +773,11 @@ exports.getFamilyTree = async (req, res) => {
             WHERE p.clan_id = ?
               AND am.id IS NULL
             ORDER BY p.generation, p.display_order, p.surname, p.middle_name, p.first_name, p.id
-            `,
-            [clanId]
+            `, [clanId]
         );
 
         const [familyRows] = await db.query(
-            'SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC',
-            [clanId]
+            'SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC', [clanId]
         );
         const [childRows] = await db.query(
             `
@@ -751,8 +786,7 @@ exports.getFamilyTree = async (req, res) => {
             INNER JOIN families f ON c.family_id = f.id
             WHERE f.clan_id = ?
             ORDER BY c.family_id, c.sort_order, c.id
-            `,
-            [clanId]
+            `, [clanId]
         );
         const layoutSettings = await getTreeLayoutSettings(clanId);
 
@@ -778,7 +812,7 @@ exports.getFamilyTree = async (req, res) => {
     }
 };
 
-exports.getStats = async (req, res) => {
+exports.getStats = async(req, res) => {
     try {
         let totalMembersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id IN (2,3) AND a.status = 'active'";
         let totalManagersSql = "SELECT COUNT(*) AS cnt FROM accounts WHERE role_id = 2 AND status = 'active'";
@@ -822,7 +856,7 @@ exports.getStats = async (req, res) => {
     }
 };
 
-exports.getAllMembers = async (req, res) => {
+exports.getAllMembers = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         let sql = `
@@ -865,20 +899,18 @@ exports.getAllMembers = async (req, res) => {
 };
 
 const normalizeTreeEditKeyMemberIds = (body = {}) => {
-    const raw = Array.isArray(body.member_account_ids)
-        ? body.member_account_ids
-        : Array.isArray(body.member_ids)
-          ? body.member_ids
-          : [body.member_account_id];
+    const raw = Array.isArray(body.member_account_ids) ?
+        body.member_account_ids :
+        Array.isArray(body.member_ids) ?
+        body.member_ids : [body.member_account_id];
     return [...new Set(raw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0))];
 };
 
 const buildTreeEditMemberName = (row) =>
-    row?.display_name ||
-    [row?.surname, row?.middle_name, row?.first_name].filter(Boolean).join(' ').trim() ||
+    row?.display_name || [row?.surname, row?.middle_name, row?.first_name].filter(Boolean).join(' ').trim() ||
     `Member #${row?.account_id}`;
 
-const loadTreeEditKeyTargets = async (req, memberAccountIds) => {
+const loadTreeEditKeyTargets = async(req, memberAccountIds) => {
     const placeholders = memberAccountIds.map(() => '?').join(',');
     const [rows] = await db.query(
         `
@@ -928,7 +960,7 @@ const loadTreeEditKeyTargets = async (req, memberAccountIds) => {
     return { ok: true, targets };
 };
 
-exports.createTemporaryTreeEditKey = async (req, res) => {
+exports.createTemporaryTreeEditKey = async(req, res) => {
     try {
         const memberAccountIds = normalizeTreeEditKeyMemberIds(req.body);
         if (!memberAccountIds.length) {
@@ -976,7 +1008,7 @@ exports.createTemporaryTreeEditKey = async (req, res) => {
     }
 };
 
-exports.getActiveTreeEditKeys = async (req, res) => {
+exports.getActiveTreeEditKeys = async(req, res) => {
     try {
         await ensureMemberTreeEditKeysTable();
         const clanId = await resolveManagedClanId(req);
@@ -1004,8 +1036,7 @@ exports.getActiveTreeEditKeys = async (req, res) => {
             WHERE k.clan_id = ?
               AND k.expires_at > NOW()
             ORDER BY k.created_at DESC, k.id DESC
-            `,
-            [clanId]
+            `, [clanId]
         );
 
         return res.json({
@@ -1014,7 +1045,7 @@ exports.getActiveTreeEditKeys = async (req, res) => {
                 id: row.id,
                 member_account_id: row.member_account_id,
                 member_person_id: row.member_person_id,
-                member_name: buildTreeEditMemberName({ ...row, account_id: row.member_account_id }),
+                member_name: buildTreeEditMemberName({...row, account_id: row.member_account_id }),
                 key: row.raw_key || '',
                 expires_at: row.expires_at,
                 created_at: row.created_at,
@@ -1027,7 +1058,7 @@ exports.getActiveTreeEditKeys = async (req, res) => {
     }
 };
 
-exports.getArchivedMembers = async (req, res) => {
+exports.getArchivedMembers = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         let sql = `
@@ -1056,7 +1087,7 @@ exports.getArchivedMembers = async (req, res) => {
     }
 };
 
-exports.archiveMember = async (req, res) => {
+exports.archiveMember = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         const targetAccountId = Number(req.params.id);
@@ -1084,8 +1115,7 @@ exports.archiveMember = async (req, res) => {
                 archived_reason = VALUES(archived_reason),
                 account_json = VALUES(account_json),
                 person_json = VALUES(person_json),
-                archived_at = CURRENT_TIMESTAMP`,
-            [
+                archived_at = CURRENT_TIMESTAMP`, [
                 targetAccountId,
                 req.user.id,
                 context.clan_id ?? null,
@@ -1102,7 +1132,7 @@ exports.archiveMember = async (req, res) => {
     }
 };
 
-exports.deleteArchivedMemberPermanently = async (req, res) => {
+exports.deleteArchivedMemberPermanently = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         const archiveId = Number(req.params.id);
@@ -1141,7 +1171,7 @@ exports.deleteArchivedMemberPermanently = async (req, res) => {
     }
 };
 
-exports.restoreArchivedMember = async (req, res) => {
+exports.restoreArchivedMember = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         const archiveId = Number(req.params.id);
@@ -1188,7 +1218,7 @@ const buildDisplayNameFromPartsMgr = (surname, middleName, firstName) => {
     return [s, m, f].filter(Boolean).join(' ').trim();
 };
 
-exports.createMember = async (req, res) => {
+exports.createMember = async(req, res) => {
     try {
         const { email, password, surname, middle_name, first_name, gender, birth_date, hometown, generation, clan_id: bodyClanId, } = req.body;
 
@@ -1207,7 +1237,7 @@ exports.createMember = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cần ít nhất họ hoặc tên' });
         }
 
-                let clanId;
+        let clanId;
         if (req.user.role_id === 2) {
             clanId = await getManagerClanId(req.user.id);
             if (clanId == null) {
@@ -1252,14 +1282,12 @@ exports.createMember = async (req, res) => {
         const hashedPassword = await bcrypt.hash(pwd, 10);
 
         const [personResult] = await db.query(
-            `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [clanId, displayName, fn, mid, sn, gVal, bd, ht, gen]
+            `INSERT INTO people (clan_id, display_name, first_name, middle_name, surname, gender, birth_date, hometown, generation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [clanId, displayName, fn, mid, sn, gVal, bd, ht, gen]
         );
         const personId = personResult.insertId;
 
         const [accResult] = await db.query(
-            `INSERT INTO accounts (email, password, person_id, role_id, status) VALUES (?, ?, ?, 3, 'active')`,
-            [emailTrim, hashedPassword, personId]
+            `INSERT INTO accounts (email, password, person_id, role_id, status) VALUES (?, ?, ?, 3, 'active')`, [emailTrim, hashedPassword, personId]
         );
 
         return res.status(201).json({
@@ -1277,7 +1305,7 @@ exports.createMember = async (req, res) => {
     }
 };
 
-exports.getMemberDetail = async (req, res) => {
+exports.getMemberDetail = async(req, res) => {
     try {
         const targetAccountId = Number(req.params.id);
         if (!Number.isFinite(targetAccountId)) {
@@ -1310,7 +1338,7 @@ exports.getMemberDetail = async (req, res) => {
     }
 };
 
-exports.updateMemberByManager = async (req, res) => {
+exports.updateMemberByManager = async(req, res) => {
     try {
         const targetAccountId = Number(req.params.id);
         if (!Number.isFinite(targetAccountId)) {
@@ -1339,7 +1367,7 @@ exports.updateMemberByManager = async (req, res) => {
             await db.query('UPDATE accounts SET email = ? WHERE id = ?', [em, targetAccountId]);
         }
 
-                if (has('status')) {
+        if (has('status')) {
             const st = String(body.status || '').trim();
 
             if (['pending', 'active', 'rejected'].includes(st)) {
@@ -1467,8 +1495,7 @@ exports.updateMemberByManager = async (req, res) => {
         gender = ?, birth_date = ?, death_date = ?, is_living = ?, generation = ?, branch = ?,
         hometown = ?, address = ?, phone = ?, email = ?, zalo = ?, facebook = ?,
         avatar_url = ?, bio = ?, note = ?
-      WHERE id = ?`,
-            [
+      WHERE id = ?`, [
                 nextClanId, nextDisplay, nextFirst, nextMiddle, nextSurname, nextGender, nextBirth, nextDeath, nextLiving, nextGen, nextBranch,
                 nextHometown, nextAddress, nextPhone, nextPeopleEmail, nextZalo, nextFacebook, nextAvatar || null, nextBio, nextNote, full.person_id,
             ]
@@ -1518,7 +1545,7 @@ exports.updateMemberByManager = async (req, res) => {
     }
 };
 
-exports.getPendingUsers = async (req, res) => {
+exports.getPendingUsers = async(req, res) => {
     try {
         let sql = `
             SELECT a.id as account_id, a.role_id, a.status, p.first_name, p.surname, a.email, p.birth_date, p.clan_id 
@@ -1545,7 +1572,7 @@ exports.getPendingUsers = async (req, res) => {
     }
 };
 
-exports.approveUser = async (req, res) => {
+exports.approveUser = async(req, res) => {
     const accountId = req.params.id;
 
     try {
@@ -1561,8 +1588,7 @@ exports.approveUser = async (req, res) => {
             JOIN people p ON a.person_id = p.id
             WHERE a.id = ?
             LIMIT 1
-            `,
-            [accountId]
+            `, [accountId]
         );
 
         if (!accountRows.length) {
@@ -1618,8 +1644,7 @@ exports.approveUser = async (req, res) => {
         }
 
         await db.query(
-            "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?",
-            [accountId]
+            "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?", [accountId]
         );
 
         return res.json({
@@ -1635,7 +1660,7 @@ exports.approveUser = async (req, res) => {
     }
 };
 
-exports.rejectUser = async (req, res) => {
+exports.rejectUser = async(req, res) => {
     const accountId = req.params.id;
     try {
         if (req.user.role_id === 2) {
@@ -1644,8 +1669,7 @@ exports.rejectUser = async (req, res) => {
                 return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
             }
             const [rows] = await db.query(
-                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`,
-                [accountId]
+                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`, [accountId]
             );
             if (!rows.length || rows[0].clan_id !== managerClanId) {
                 return res.status(403).json({ success: false, message: 'Chỉ được từ chối thành viên cùng dòng họ' });
@@ -1660,7 +1684,7 @@ exports.rejectUser = async (req, res) => {
     }
 };
 
-exports.getPendingPosts = async (req, res) => {
+exports.getPendingPosts = async(req, res) => {
     try {
         let sql = `
             SELECT p.id as post_id, p.description, p.content, p.image_url, p.image_media_id, p.created_at, author.display_name as author_name, author.email as author_email
@@ -1689,7 +1713,7 @@ exports.getPendingPosts = async (req, res) => {
     }
 };
 
-exports.approvePost = async (req, res) => {
+exports.approvePost = async(req, res) => {
     const postId = req.params.id;
     try {
         if (req.user.role_id === 2) {
@@ -1711,7 +1735,7 @@ exports.approvePost = async (req, res) => {
     }
 };
 
-exports.rejectPost = async (req, res) => {
+exports.rejectPost = async(req, res) => {
     const postId = req.params.id;
     const { reason } = req.body;
     try {
@@ -1734,7 +1758,7 @@ exports.rejectPost = async (req, res) => {
     }
 };
 
-exports.getMedia = async (req, res) => {
+exports.getMedia = async(req, res) => {
     try {
         let sql = `
             SELECT p.id as post_id, p.description, p.content, p.image_url, p.image_media_id, p.created_at, author.display_name as author_name
@@ -1765,7 +1789,7 @@ exports.getMedia = async (req, res) => {
 
 let hasEnsuredTaskTables = false;
 
-const ensureManagerTaskEventLink = async () => {
+const ensureManagerTaskEventLink = async() => {
     const [cols] = await db.query(`
         SELECT COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
@@ -1806,7 +1830,7 @@ const ensureManagerTaskEventLink = async () => {
     }
 };
 
-const ensureTaskTables = async () => {
+const ensureTaskTables = async() => {
     if (hasEnsuredTaskTables) return;
     await db.query(`
         CREATE TABLE IF NOT EXISTS manager_tasks (
@@ -1844,7 +1868,7 @@ const ensureTaskTables = async () => {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
     await ensureManagerTaskEventLink();
-  hasEnsuredTaskTables = true;
+    hasEnsuredTaskTables = true;
 };
 
 const normalizeTaskMemberIds = (body) => {
@@ -1852,12 +1876,13 @@ const normalizeTaskMemberIds = (body) => {
     return [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
 };
 
-const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
+const emitNotificationToAccount = async(req, receiverAccountId, payload) => {
     const onlineUsers = req.app?.locals?.onlineUsers || {};
     const io = req.app?.locals?.io;
     const socketId = onlineUsers[receiverAccountId];
+
     if (io && socketId) {
-        io.to(socketId).emit("new_notification", {
+        io.to(socketId).emit('new_notification', {
             ...payload,
             time: new Date().toLocaleTimeString(),
         });
@@ -1871,10 +1896,12 @@ const parseOptionalPositiveInt = (value) => {
     return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const resolveTaskClanAndEvent = async (req, memberRows = []) => {
+const resolveTaskClanAndEvent = async(req, memberRows = []) => {
     let managerClanId = null;
-    if (req.user.role_id === 2) {
+
+    if (Number(req.user.role_id) === 2) {
         managerClanId = await getManagerClanId(req.user.id);
+
         if (managerClanId == null) {
             const err = new Error('Không xác định được clan của manager');
             err.status = 404;
@@ -1888,20 +1915,28 @@ const resolveTaskClanAndEvent = async (req, memberRows = []) => {
 
     if (requestedEventId != null) {
         const [events] = await db.query(
-            'SELECT id, clan_id, title, event_date, description FROM events WHERE id = ? LIMIT 1',
-            [requestedEventId]
+            `
+            SELECT id, clan_id, title, event_date, description
+            FROM events
+            WHERE id = ?
+            LIMIT 1
+            `, [requestedEventId]
         );
+
         eventRow = events[0] || null;
+
         if (!eventRow) {
             const err = new Error('Không tìm thấy sự kiện được chọn');
             err.status = 404;
             throw err;
         }
+
         if (managerClanId != null && Number(eventRow.clan_id) !== Number(managerClanId)) {
             const err = new Error('Manager chỉ được tạo công việc trong sự kiện thuộc dòng họ của mình');
             err.status = 403;
             throw err;
         }
+
         if (requestedClanId != null && Number(eventRow.clan_id) !== Number(requestedClanId)) {
             const err = new Error('Sự kiện không thuộc dòng họ đã chọn');
             err.status = 400;
@@ -1909,14 +1944,20 @@ const resolveTaskClanAndEvent = async (req, memberRows = []) => {
         }
     }
 
-    if (managerClanId != null && memberRows.some((m) => Number(m.clan_id) !== Number(managerClanId))) {
+    if (managerClanId != null && memberRows.some((member) => Number(member.clan_id) !== Number(managerClanId))) {
         const err = new Error('Manager chỉ được giao việc cho thành viên cùng dòng họ');
         err.status = 403;
         throw err;
     }
 
-    const taskClanId = managerClanId ?? requestedClanId ?? eventRow?.clan_id ?? memberRows[0]?.clan_id ?? null;
-    if (taskClanId != null && memberRows.some((m) => Number(m.clan_id) !== Number(taskClanId))) {
+    const taskClanId =
+        managerClanId ??
+        requestedClanId ??
+        eventRow?.clan_id ??
+        memberRows[0]?.clan_id ??
+        null;
+
+    if (taskClanId != null && memberRows.some((member) => Number(member.clan_id) !== Number(taskClanId))) {
         const err = new Error('Chỉ được giao việc cho thành viên trong cùng dòng họ với sự kiện');
         err.status = 403;
         throw err;
@@ -1928,10 +1969,14 @@ const resolveTaskClanAndEvent = async (req, memberRows = []) => {
         throw err;
     }
 
-    return { taskClanId, eventId: eventRow ? eventRow.id : requestedEventId, eventRow };
+    return {
+        taskClanId,
+        eventId: eventRow ? eventRow.id : requestedEventId,
+        eventRow,
+    };
 };
 
-exports.getManagerEvents = async (req, res) => {
+exports.getManagerEvents = async(req, res) => {
     try {
         await ensureTaskTables();
         let sql = `
@@ -1973,7 +2018,7 @@ exports.getManagerEvents = async (req, res) => {
     }
 };
 
-exports.createManagerEvent = async (req, res) => {
+exports.createManagerEvent = async(req, res) => {
     try {
         await ensureTaskTables();
         const title = String(req.body.title || '').trim();
@@ -1991,8 +2036,7 @@ exports.createManagerEvent = async (req, res) => {
         }
 
         const [result] = await db.query(
-            'INSERT INTO events (clan_id, title, event_date, description) VALUES (?, ?, ?, ?)',
-            [clanId, title, eventDate || null, description || null]
+            'INSERT INTO events (clan_id, title, event_date, description) VALUES (?, ?, ?, ?)', [clanId, title, eventDate || null, description || null]
         );
         return res.json({ success: true, message: 'Đã tạo sự kiện', event_id: result.insertId });
     } catch (error) {
@@ -2001,67 +2045,64 @@ exports.createManagerEvent = async (req, res) => {
     }
 };
 
-exports.createTaskForEvent = async (req, res) => {
+exports.createTaskForEvent = async(req, res) => {
     req.body.event_id = req.params.eventId;
     return exports.assignTask(req, res);
 };
 
-exports.assignTask = async (req, res) => {
-    const title = String(req.body.title || "").trim();
-    const description = String(req.body.description || "").trim();
-    const dueDate = req.body.due_date || null;
-    const eventIdFromBody = req.body.event_id ?? req.body.eventId ?? null;
-    const memberIds = normalizeTaskMemberIds(req.body);
+exports.assignTask = async(req, res) => {
+        const title = String(req.body.title || "").trim();
+        const description = String(req.body.description || "").trim();
+        const dueDate = req.body.due_date || null;
+        const eventIdFromBody = req.body.event_id ?? req.body.eventId ?? null;
+        const memberIds = normalizeTaskMemberIds(req.body);
 
-    try {
-        await ensureTaskTables();
-        if (!title) {
-            return res.status(400).json({ success: false, message: "Tiêu đề công việc không được để trống" });
-        }
-        if (!memberIds.length) {
-            return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một thành viên" });
-        }
+        try {
+            await ensureTaskTables();
+            if (!title) {
+                return res.status(400).json({ success: false, message: "Tiêu đề công việc không được để trống" });
+            }
+            if (!memberIds.length) {
+                return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một thành viên" });
+            }
 
-        const placeholders = memberIds.map(() => "?").join(",");
-        const [memberRows] = await db.query(
-            `
+            const placeholders = memberIds.map(() => "?").join(",");
+            const [memberRows] = await db.query(
+                `
             SELECT a.id AS account_id, a.person_id, p.clan_id, p.display_name, p.surname, p.first_name
             FROM accounts a
             INNER JOIN people p ON p.id = a.person_id
             WHERE a.id IN (${placeholders}) AND a.role_id = 3 AND a.status = 'active'
             `,
-            memberIds
-        );
-        if (memberRows.length !== memberIds.length) {
-            return res.status(400).json({ success: false, message: "Một hoặc nhiều thành viên không hợp lệ hoặc chưa kích hoạt" });
-        }
-        let taskContext;
-        try {
-            taskContext = await resolveTaskClanAndEvent(req, memberRows);
-        } catch (err) {
-            return res.status(err.status || 400).json({ success: false, message: err.message });
-        }
-
-        const [taskResult] = await db.query(
-            "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?)",
-            [req.user.id, taskContext.taskClanId, title, description || null, dueDate || null, taskContext.eventId || null]
-        );
-
-        for (const member of memberRows) {
-            await db.query(
-                "INSERT INTO manager_task_assignments (task_id, member_account_id, member_person_id) VALUES (?, ?, ?)",
-                [taskResult.insertId, member.account_id, member.person_id]
+                memberIds
             );
-            await db.query(
-                `INSERT INTO notifications
+            if (memberRows.length !== memberIds.length) {
+                return res.status(400).json({ success: false, message: "Một hoặc nhiều thành viên không hợp lệ hoặc chưa kích hoạt" });
+            }
+            let taskContext;
+            try {
+                taskContext = await resolveTaskClanAndEvent(req, memberRows);
+            } catch (err) {
+                return res.status(err.status || 400).json({ success: false, message: err.message });
+            }
+
+            const [taskResult] = await db.query(
+                "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?)", [req.user.id, taskContext.taskClanId, title, description || null, dueDate || null, taskContext.eventId || null]
+            );
+
+            for (const member of memberRows) {
+                await db.query(
+                    "INSERT INTO manager_task_assignments (task_id, member_account_id, member_person_id) VALUES (?, ?, ?)", [taskResult.insertId, member.account_id, member.person_id]
+                );
+                await db.query(
+                        `INSERT INTO notifications
      (receiver_account_id, receiver_person_id, type, title, message, link_url)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-        member.account_id,
-        member.person_id,
-        "task_assigned",
-        `Cong viec moi: ${title}`,
-        `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
+     VALUES (?, ?, ?, ?, ?, ?)`, [
+                            member.account_id,
+                            member.person_id,
+                            "task_assigned",
+                            `Cong viec moi: ${title}`,
+                            `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
         `/member/tasks/${taskResult.insertId}`,
     ]
 );
@@ -2277,15 +2318,21 @@ exports.rejectProfileUpdate = async (req, res) => {
     }
 };
 exports.createPerson = async (req, res) => {
+    let connection;
+
     try {
         const permission = await assertTreeMutationPermission(req, {
             action: 'create_person',
         });
+
         if (!permission.ok) {
-            return res.status(permission.status).json({ success: false, message: permission.message });
+            return res.status(permission.status).json({
+                success: false,
+                message: permission.message,
+            });
         }
 
-                await ensurePeopleTreeLayoutColumns();
+        await ensurePeopleTreeLayoutColumns();
 
         const body = req.body || {};
 
@@ -2315,11 +2362,17 @@ exports.createPerson = async (req, res) => {
             parent_mother_id,
             father_person_id,
             mother_person_id,
+            account_email,
+            account_password,
         } = body;
 
         const clanId = await resolveManagedClanId(req, body);
+
         if (clanId == null) {
-            return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
+            return res.status(404).json({
+                success: false,
+                message: 'Không xác định được dòng họ cần quản lý',
+            });
         }
 
         const personLimitCheck = await ensureCanAddPerson(clanId);
@@ -2333,53 +2386,142 @@ exports.createPerson = async (req, res) => {
             });
         }
 
-        const sn = surname != null ? String(surname).trim() : '';
-        const mid = middle_name != null ? String(middle_name).trim() : '';
-        const fn = first_name != null ? String(first_name).trim() : '';
-        const display = String(display_name || buildDisplayNameFromPartsMgr(sn, mid, fn)).trim();
-        if (!display && !sn && !fn) {
-            return res.status(400).json({ success: false, message: 'Cần nhập họ tên thành viên' });
+        const surnameValue = surname != null ? String(surname).trim() : '';
+        const middleNameValue = middle_name != null ? String(middle_name).trim() : '';
+        const firstNameValue = first_name != null ? String(first_name).trim() : '';
+        const displayNameValue = String(
+            display_name || buildDisplayNameFromPartsMgr(surnameValue, middleNameValue, firstNameValue)
+        ).trim();
+
+        if (!displayNameValue && !surnameValue && !firstNameValue) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cần nhập họ tên thành viên',
+            });
         }
 
         let genderValue = null;
+
         if (gender !== undefined && gender !== null && String(gender).trim() !== '') {
-            const g = Number(gender);
-            genderValue = g === 1 || g === 2 ? g : null;
+            const parsedGender = Number(gender);
+            genderValue = parsedGender === 1 || parsedGender === 2 ? parsedGender : null;
         }
 
-        const generationValue = Number(generation);
-        const branchValue = branch === undefined || branch === null || branch === '' ? null : Number(branch);
-        const livingValue = is_living === undefined || is_living === null || is_living === '' ? 1 : Number(is_living) ? 1 : 0;
+        const generationNumber = Number(generation);
+        const branchNumber =
+            branch === undefined || branch === null || branch === ''
+                ? null
+                : Number(branch);
+
+        const livingValue =
+            is_living === undefined || is_living === null || is_living === ''
+                ? 1
+                : Number(is_living)
+                    ? 1
+                    : 0;
+
+        const shouldCreateAccount = livingValue === 1;
+        const accountEmail = String(account_email || email || '').trim().toLowerCase();
+        const accountPassword = String(account_password || '');
+
+        if (shouldCreateAccount) {
+            if (!accountEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Người còn sống cần có email để tạo tài khoản',
+                });
+            }
+
+            if (!accountPassword || accountPassword.length < 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Mật khẩu tài khoản tối thiểu 6 ký tự',
+                });
+            }
+
+            const [emailRows] = await db.query(
+                'SELECT id FROM accounts WHERE email = ? LIMIT 1',
+                [accountEmail]
+            );
+
+            if (emailRows.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Email này đã tồn tại trong hệ thống',
+                });
+            }
+
+            const accountLimitCheck = await ensureCanAddAccount(clanId);
+
+            if (!accountLimitCheck.ok) {
+                return res.status(accountLimitCheck.status).json({
+                    success: false,
+                    code: accountLimitCheck.code,
+                    message: accountLimitCheck.message,
+                    billing: accountLimitCheck.billing,
+                });
+            }
+        }
+
         const treeXValue = parseTreeInt(tree_x, 0);
         const treeYValue = parseTreeInt(tree_y, 0);
-        const avatarMediaIdValue = normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(avatar_url);
-        const avatarUrlValue = avatar_url != null && String(avatar_url).trim()
-            ? String(avatar_url).trim()
-            : avatarMediaIdValue
-                ? getMediaUrl(req, avatarMediaIdValue)
-                : null;
         const displayOrderValue = parseTreeInt(display_order, 0);
 
-        const [personResult] = await db.query(
-            `INSERT INTO people (
-                clan_id, display_name, first_name, middle_name, surname, gender, generation, branch,
-                birth_date, death_date, is_living, phone, email, address, hometown, avatar_url, avatar_media_id, bio, note,
-                tree_x, tree_y, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        const avatarMediaIdValue =
+            normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(avatar_url);
+
+        const avatarUrlValue =
+            avatar_url != null && String(avatar_url).trim()
+                ? String(avatar_url).trim()
+                : avatarMediaIdValue
+                    ? getMediaUrl(req, avatarMediaIdValue)
+                    : null;
+
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        const [personResult] = await connection.query(
+            `
+            INSERT INTO people (
+                clan_id,
+                display_name,
+                first_name,
+                middle_name,
+                surname,
+                gender,
+                generation,
+                branch,
+                birth_date,
+                death_date,
+                is_living,
+                phone,
+                email,
+                address,
+                hometown,
+                avatar_url,
+                avatar_media_id,
+                bio,
+                note,
+                tree_x,
+                tree_y,
+                display_order
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
             [
                 clanId,
-                display || buildDisplayNameFromPartsMgr(sn, mid, fn),
-                fn,
-                mid,
-                sn,
+                displayNameValue || buildDisplayNameFromPartsMgr(surnameValue, middleNameValue, firstNameValue),
+                firstNameValue,
+                middleNameValue,
+                surnameValue,
                 genderValue,
-                Number.isFinite(generationValue) && generationValue > 0 ? generationValue : 1,
-                Number.isFinite(branchValue) ? branchValue : null,
+                Number.isFinite(generationNumber) && generationNumber > 0 ? generationNumber : 1,
+                Number.isFinite(branchNumber) ? branchNumber : null,
                 birth_date ? String(birth_date).trim() : null,
-                death_date ? String(death_date).trim() : null,
+                livingValue === 1 ? null : death_date ? String(death_date).trim() : null,
                 livingValue,
                 phone != null ? String(phone).trim() : null,
-                email != null ? String(email).trim() : null,
+                accountEmail || (email != null ? String(email).trim() : null),
                 address != null ? String(address).trim() : null,
                 hometown != null ? String(hometown).trim() : null,
                 avatarUrlValue,
@@ -2393,24 +2535,92 @@ exports.createPerson = async (req, res) => {
         );
 
         const personId = personResult.insertId;
+        let accountId = null;
+
+        if (shouldCreateAccount) {
+            const hashedPassword = await bcrypt.hash(accountPassword, 10);
+
+            const [accountResult] = await connection.query(
+                `
+                INSERT INTO accounts (
+                    email,
+                    password,
+                    person_id,
+                    role_id,
+                    status
+                )
+                VALUES (?, ?, ?, 3, 'active')
+                `,
+                [accountEmail, hashedPassword, personId]
+            );
+
+            accountId = accountResult.insertId;
+
+            await connection.query(
+                `
+                INSERT INTO account_clans (
+                    account_id,
+                    clan_id,
+                    person_id,
+                    status
+                )
+                VALUES (?, ?, ?, 'active')
+                `,
+                [accountId, clanId, personId]
+            );
+        }
+
         const fatherId = parseNullableId(parent_father_id ?? father_person_id);
         const motherId = parseNullableId(parent_mother_id ?? mother_person_id);
+
         if (fatherId || motherId) {
-            const relation = await applyBloodlineForPerson(personId, clanId, fatherId, motherId);
+            const relation = await applyBloodlineForPerson(
+                personId,
+                clanId,
+                fatherId,
+                motherId,
+                connection
+            );
+
             if (!relation.ok) {
-                await db.query('DELETE FROM people WHERE id = ?', [personId]);
-                return res.status(400).json({ success: false, message: relation.message });
+                throw new Error(relation.message);
             }
         }
 
+        await connection.commit();
+
         return res.status(201).json({
             success: true,
-            message: 'Đã tạo người trong gia phả',
+            message: shouldCreateAccount
+                ? 'Đã tạo người trong gia phả và tài khoản đăng nhập'
+                : 'Đã tạo người đã mất trong gia phả',
             person_id: personId,
+            account_id: accountId,
         });
     } catch (error) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (_) {}
+        }
+
         console.error('createPerson error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi tạo người trong gia phả' });
+
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({
+                success: false,
+                message: 'Email hoặc liên kết tài khoản đã tồn tại',
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Lỗi tạo người trong gia phả',
+        });
+    } finally {
+        if (connection) {
+            connection.release();
+        }
     }
 };
 
