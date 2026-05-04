@@ -11,7 +11,7 @@ export default function MemberFundPage() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [showGeneralForm, setShowGeneralForm] = useState(false);
   
-  const [formData, setFormData] = useState({ amount: "", note: "", method: "Tiền mặt", evidence_media_id: null });
+  const [formData, setFormData] = useState({ amount: "", note: "", method: "Chuyển khoản", evidence_media_id: null });
   const [generalData, setGeneralData] = useState({ amount: "", note: "", method: "Tiền mặt" });
   
   const [submitting, setSubmitting] = useState(false);
@@ -125,7 +125,7 @@ export default function MemberFundPage() {
   return (
     <div className="fund-container glass-bg">
       {/* Hero Header */}
-      <header className="glass-card mb-4" style={{textAlign: 'center', borderBottom: '2px solid rgba(255,255,255,0.1)'}}>
+      <header className="glass-card mb-4" style={{textAlign: 'center', background: 'rgba(17, 20, 32, 0.6)'}}>
         <h1 style={{color: '#fff', fontSize: '2.5rem', marginBottom: '0.5rem'}}>Quỹ Dòng Họ</h1>
         <p style={{fontSize: '1.1rem', color: 'rgba(255,255,255,0.6)', maxWidth: '600px', margin: '0 auto 1.5rem'}}>
           Góp sức xây dựng dòng họ vững mạnh qua các hoạt động đóng góp minh bạch.
@@ -170,7 +170,7 @@ export default function MemberFundPage() {
         {/* Global Ledger (Transparency) */}
         <section>
           <h2 className="section-title">Minh Bạch Thu Chi</h2>
-          <div className="glass-card ledger-box" style={{padding: '1rem'}}>
+          <div className="glass-card ledger-box" style={{padding: '1rem', background: 'rgba(17, 20, 32, 0.6)'}}>
             <div className="tx-scroller" style={{maxHeight: '600px', overflowY: 'auto'}}>
               {transactions.map(tx => (
                 <div key={`${tx.type}-${tx.id}`} className={`tx-card-v2 ${tx.type}`}>
@@ -194,7 +194,7 @@ export default function MemberFundPage() {
       {/* Payment Modal */}
       {showPayModal && selectedCampaign && (
         <div className="fund-modal-v2" onClick={() => setShowPayModal(false)}>
-          <div className="modal-glass" style={{maxWidth: '800px'}} onClick={e => e.stopPropagation()}>
+          <div className="modal-glass" style={{maxWidth: '850px'}} onClick={e => e.stopPropagation()}>
             <div className="modal-header-v2">
               <h3>Xác Nhận Đóng Quỹ</h3>
               <button onClick={() => setShowPayModal(false)} className="close-btn">&times;</button>
@@ -207,41 +207,72 @@ export default function MemberFundPage() {
                   <p>{successMsg}</p>
                 </div>
               ) : (
-                <div className="pay-layout">
-                  <div className="bank-details-v2">
-                    <h4>Thông tin thanh toán</h4>
-                    <div className="bank-card-v2">
-                      <div className="bank-row"><label>Ngân hàng:</label> <span>{selectedCampaign.campaign.bank_name}</span></div>
-                      <div className="bank-row"><label>STK:</label> <strong>{selectedCampaign.campaign.bank_account}</strong></div>
-                      <div className="bank-row"><label>Chủ TK:</label> <span>{selectedCampaign.campaign.bank_owner}</span></div>
-                      <div className="bank-row" style={{marginTop: '1rem', borderTop: '1px dashed rgba(255,255,255,0.2)', paddingTop: '1rem'}}>
-                        <label>Số tiền:</label> <strong style={{fontSize: '1.2rem', color: '#ff7675'}}>{formatCurrency(selectedCampaign.campaign.amount_per_dinh)}</strong>
+                <div className="pay-container-v3">
+                  {/* Method Switcher */}
+                  <div className="method-switcher-v3">
+                    <label className={formData.method === 'Chuyển khoản' ? 'active' : ''}>
+                       <input type="radio" value="Chuyển khoản" checked={formData.method === 'Chuyển khoản'} onChange={e => setFormData({...formData, method: e.target.value})} />
+                       <span className="material-symbols-outlined">account_balance</span> Chuyển khoản
+                    </label>
+                    <label className={formData.method === 'Tiền mặt' ? 'active' : ''}>
+                       <input type="radio" value="Tiền mặt" checked={formData.method === 'Tiền mặt'} onChange={e => setFormData({...formData, method: e.target.value})} />
+                       <span className="material-symbols-outlined">payments</span> Tiền mặt
+                    </label>
+                  </div>
+
+                  <div className="pay-layout-v3">
+                    {formData.method === 'Chuyển khoản' ? (
+                      <div className="bank-details-v3">
+                        <div className="bank-card-v3">
+                          <div className="bank-row"><label>Ngân hàng:</label> <span>{selectedCampaign.campaign.bank_name}</span></div>
+                          <div className="bank-row"><label>STK:</label> <strong>{selectedCampaign.campaign.bank_account}</strong></div>
+                          <div className="bank-row"><label>Chủ TK:</label> <span>{selectedCampaign.campaign.bank_owner}</span></div>
+                          <div className="bank-row total-row">
+                            <label>Số tiền:</label> <strong>{formatCurrency(selectedCampaign.campaign.amount_per_dinh)}</strong>
+                          </div>
+                        </div>
+                        {selectedCampaign.campaign.qr_code_media_id && (
+                          <div className="qr-box-v3">
+                            <img src={resolveImageUrl({mediaId: selectedCampaign.campaign.qr_code_media_id})} alt="QR Code" />
+                            <p>Quét mã QR để thanh toán nhanh</p>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    {selectedCampaign.campaign.qr_code_media_id && (
-                      <div className="qr-box-v2">
-                        <img src={resolveImageUrl({mediaId: selectedCampaign.campaign.qr_code_media_id})} alt="QR Code" />
-                        <p>Quét để chuyển khoản nhanh</p>
+                    ) : (
+                      <div className="cash-info-v3">
+                         <div className="cash-card-v3">
+                            <span className="material-symbols-outlined large-icon">info</span>
+                            <h4>Thanh toán tiền mặt</h4>
+                            <p>Vui lòng nộp tiền trực tiếp cho Trưởng họ hoặc người phụ trách ngân quỹ.</p>
+                            <p>Sau khi nộp, hãy gửi báo cáo này để Trưởng họ xác nhận vào sổ quỹ.</p>
+                         </div>
                       </div>
                     )}
+
+                    <form onSubmit={handleSubmit} className="premium-form">
+                      <h4>Báo cáo đóng góp</h4>
+                      <div className="form-group"><label>Số tiền đóng</label><input type="number" required value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} /></div>
+                      
+                      {formData.method === 'Chuyển khoản' && (
+                        <div className="form-group">
+                          <label>Ảnh Bill chuyển khoản</label>
+                          <div className="upload-box-v2">
+                            <input type="file" onChange={handleUploadBill} id="bill-upload" hidden />
+                            <label htmlFor="bill-upload" className="upload-label-v3">
+                              <span className="material-symbols-outlined">image</span>
+                              {formData.evidence_media_id ? "Đã đính kèm ảnh" : "Tải ảnh bill"}
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="form-group"><label>Ghi chú</label><textarea value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="Nhập ghi chú nếu có..."></textarea></div>
+                      
+                      <button type="submit" className="btn-premium btn-green" style={{width: '100%', marginTop: '1rem'}} disabled={submitting || (formData.method === 'Chuyển khoản' && !formData.evidence_media_id)}>
+                        Gửi Báo Cáo
+                      </button>
+                    </form>
                   </div>
-                  <form onSubmit={handleSubmit} className="premium-form">
-                    <h4>Báo cáo chuyển khoản</h4>
-                    <div className="form-group"><label>Số tiền đã chuyển</label><input type="number" required value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} /></div>
-                    <div className="form-group">
-                      <label>Ảnh chụp Bill</label>
-                      <div className="upload-box-v2">
-                        <input type="file" onChange={handleUploadBill} id="bill-upload" hidden />
-                        <label htmlFor="bill-upload" className="upload-label">
-                          <span className="material-symbols-outlined">image</span>
-                          {formData.evidence_media_id ? "Đã chọn ảnh" : "Tải ảnh bill"}
-                        </label>
-                      </div>
-                    </div>
-                    <button type="submit" className="btn-premium btn-green" style={{width: '100%'}} disabled={submitting || !formData.evidence_media_id}>
-                      Tôi Đã Chuyển Khoản
-                    </button>
-                  </form>
                 </div>
               )}
             </div>
@@ -282,13 +313,28 @@ export default function MemberFundPage() {
         .tx-note { font-weight: 600; font-size: 0.95rem; color: #fff; }
         .tx-meta { font-size: 0.75rem; color: rgba(255,255,255,0.4); }
         .pending-label { font-size: 0.65rem; color: var(--fund-gold); font-style: italic; display: block; }
-        .pay-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
-        .bank-card-v2 { background: rgba(0, 0, 0, 0.3); padding: 1.5rem; border-radius: 16px; margin-top: 1rem; border: 1px solid rgba(255,255,255,0.05); color: #fff; }
+        
+        .method-switcher-v3 { display: flex; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 12px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.1); }
+        .method-switcher-v3 label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 1rem; cursor: pointer; border-radius: 10px; color: rgba(255,255,255,0.5); transition: 0.3s; }
+        .method-switcher-v3 label.active { background: rgba(255,255,255,0.1); color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .method-switcher-v3 input { display: none; }
+        
+        .pay-layout-v3 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+        .bank-card-v3 { background: rgba(0, 0, 0, 0.3); padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); color: #fff; }
         .bank-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .qr-box-v2 { text-align: center; margin-top: 1.5rem; }
-        .qr-box-v2 img { max-width: 150px; border: 4px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        .upload-label { display: flex; flex-direction: column; align-items: center; padding: 1.5rem; border: 2px dashed rgba(255,255,255,0.1); border-radius: 16px; cursor: pointer; transition: 0.3s; color: rgba(255,255,255,0.4); }
-        .upload-label:hover { border-color: var(--fund-gold); background: rgba(255,255,255,0.05); color: #fff; }
+        .total-row { border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 1rem; margin-top: 1rem; }
+        .total-row strong { color: #ff7675; font-size: 1.1rem; }
+        
+        .qr-box-v3 { text-align: center; margin-top: 1.5rem; }
+        .qr-box-v3 img { max-width: 180px; border: 5px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .qr-box-v3 p { font-size: 0.85rem; color: rgba(255,255,255,0.4); margin-top: 0.8rem; }
+        
+        .cash-card-v3 { background: rgba(255,255,255,0.03); padding: 2rem; border-radius: 20px; border: 1px dashed rgba(255,255,255,0.2); text-align: center; color: #fff; }
+        .large-icon { font-size: 3rem; color: var(--fund-gold); margin-bottom: 1rem; }
+        
+        .upload-label-v3 { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 1rem; border: 2px dashed rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; transition: 0.3s; color: rgba(255,255,255,0.4); }
+        .upload-label-v3:hover { border-color: var(--fund-gold); color: #fff; background: rgba(255,255,255,0.05); }
+        
         .success-screen { text-align: center; padding: 2rem; color: #fff; }
         .success-screen span { font-size: 4rem; color: #2ecc71; }
         .close-btn { background: none; border: none; color: #fff; font-size: 2.2rem; cursor: pointer; opacity: 0.5; transition: 0.3s; }
@@ -296,7 +342,7 @@ export default function MemberFundPage() {
         .premium-form label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: rgba(255,255,255,0.7); }
         .premium-form input, .premium-form textarea { width: 100%; padding: 0.8rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; outline: none; background: rgba(0, 0, 0, 0.2); color: #fff; }
         .premium-form input:focus { border-color: var(--fund-gold); background: rgba(0, 0, 0, 0.4); }
-        @media (max-width: 768px) { .pay-layout { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .pay-layout-v3 { grid-template-columns: 1fr; } }
       `}} />
     </div>
   );

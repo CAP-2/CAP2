@@ -6,6 +6,7 @@ import FundAnalytics from "./FundAnalytics";
 
 export default function ClanFundPage() {
   const [campaigns, setCampaigns] = useState([]);
+  const [members, setMembers] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,9 @@ export default function ClanFundPage() {
   });
 
   const [generalTx, setGeneralTx] = useState({
-    type: "income", amount: "", note: "", method: "Tiền mặt", date: new Date().toISOString().split('T')[0], category: "Khác"
+    type: "income", amount: "", note: "", method: "Tiền mặt", 
+    date: new Date().toISOString().split('T')[0], category: "Khác",
+    person_id: "", campaign_id: ""
   });
 
   const [approvalData, setApprovalData] = useState({ transaction_id: null, status: 'approved', manager_note: '', evidence_media_id: null, person_name: '', amount: 0 });
@@ -31,10 +34,14 @@ export default function ClanFundPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const campData = await apiRequest("/api/manager/fund/campaigns");
+      const [campData, txData, memData] = await Promise.all([
+        apiRequest("/api/manager/fund/campaigns"),
+        apiRequest("/api/manager/fund/transactions"),
+        apiRequest("/api/manager/members")
+      ]);
       setCampaigns(campData.campaigns);
-      const txData = await apiRequest("/api/manager/fund/transactions");
       setTransactions(txData.transactions);
+      setMembers(memData.members || []);
     } catch (error) {
       console.error("Error loading fund data:", error);
     } finally {
@@ -67,6 +74,25 @@ export default function ClanFundPage() {
       alert("Lỗi khi nhập Excel: " + error.message);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleQRUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const uploadData = new FormData();
+    uploadData.append("image", file);
+    uploadData.append("usage_type", "other");
+
+    try {
+      const res = await apiRequest("/api/upload", {
+        method: "POST",
+        body: uploadData,
+        headers: {}
+      });
+      setFormData(prev => ({ ...prev, qr_code_media_id: res.mediaId }));
+    } catch (error) {
+      alert("Lỗi khi tải mã QR lên");
     }
   };
 
@@ -130,9 +156,20 @@ export default function ClanFundPage() {
     setSubmitting(true);
     try {
       const endpoint = generalTx.type === "income" ? "/api/manager/fund/income" : "/api/manager/fund/expense";
-      await apiRequest(endpoint, { method: "POST", body: JSON.stringify(generalTx) });
+      await apiRequest(endpoint, { 
+        method: "POST", 
+        body: JSON.stringify({
+          ...generalTx,
+          person_id: generalTx.person_id || null,
+          campaign_id: generalTx.campaign_id || null
+        }) 
+      });
       setShowGeneralForm(false);
-      setGeneralTx({ type: "income", amount: "", note: "", method: "Tiền mặt", date: new Date().toISOString().split('T')[0], category: "Khác" });
+      setGeneralTx({ 
+        type: "income", amount: "", note: "", method: "Tiền mặt", 
+        date: new Date().toISOString().split('T')[0], category: "Khác",
+        person_id: "", campaign_id: ""
+      });
       loadData();
     } catch (error) {
       alert(error.message || "Lỗi khi ghi nhận giao dịch");
@@ -215,11 +252,14 @@ export default function ClanFundPage() {
             <table className="fund-table-v3">
               <thead><tr><th>Giao dịch</th><th>Số tiền</th><th>Loại</th></tr></thead>
               <tbody>
-                {transactions.slice(0, 10).map(tx => (
+                {transactions.slice(0, 15).map(tx => (
                   <tr key={`${tx.type}-${tx.id}`}>
                     <td>
                       <div className="tx-name">{tx.note || 'Chi chung'}</div>
-                      <div className="tx-date">{new Date(tx.date).toLocaleDateString('vi-VN')}</div>
+                      <div className="tx-date">
+                        {tx.person_name && <span className="tx-person-pill">{tx.person_name}</span>}
+                        {new Date(tx.date).toLocaleDateString('vi-VN')}
+                      </div>
                     </td>
                     <td className={`tx-val ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}</td>
                     <td><span className={`method-pill`}>{tx.method}</span></td>
@@ -251,6 +291,26 @@ export default function ClanFundPage() {
                   <div className="form-group"><label>Số tiền / Đinh</label><input type="number" required placeholder="50000" onChange={e => setFormData({...formData, amount_per_dinh: e.target.value})} /></div>
                   <div className="form-group"><label>Hạn đóng</label><input type="date" required onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
                 </div>
+                
+                <h4 className="sub-title-v3">Thông tin nhận tiền</h4>
+                <div className="form-row-2">
+                   <div className="form-group"><label>Ngân hàng</label><input type="text" placeholder="Vietcombank" onChange={e => setFormData({...formData, bank_name: e.target.value})} /></div>
+                   <div className="form-group"><label>Số tài khoản</label><input type="text" placeholder="10293..." onChange={e => setFormData({...formData, bank_account: e.target.value})} /></div>
+                </div>
+                <div className="form-row-2">
+                   <div className="form-group"><label>Chủ tài khoản</label><input type="text" placeholder="NGUYEN VAN A" onChange={e => setFormData({...formData, bank_owner: e.target.value})} /></div>
+                   <div className="form-group">
+                     <label>Tải lên Mã QR</label>
+                     <div className="upload-box-v2">
+                        <input type="file" hidden id="qr-upload" onChange={handleQRUpload} />
+                        <label htmlFor="qr-upload" className="upload-label-v3">
+                           <span className="material-symbols-outlined">qr_code_2</span>
+                           {formData.qr_code_media_id ? "Đã có QR" : "Chọn ảnh QR"}
+                        </label>
+                     </div>
+                   </div>
+                </div>
+
                 <div className="form-group">
                   <label>Định nghĩa "Đinh"</label>
                   <select onChange={e => setFormData({...formData, dinh_definition: e.target.value})}>
@@ -304,6 +364,14 @@ export default function ClanFundPage() {
                     <span>VNĐ / Đinh</span>
                   </div>
                 </div>
+                {selectedCampaign.campaign.qr_code_media_id && (
+                  <div className="mgmt-item">
+                    <label>QR Nhận tiền</label>
+                    <div className="mini-qr">
+                       <img src={resolveImageUrl({mediaId: selectedCampaign.campaign.qr_code_media_id})} alt="QR" onClick={() => window.open(resolveImageUrl({mediaId: selectedCampaign.campaign.qr_code_media_id}), '_blank')} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="ledger-stats-v3">
@@ -387,22 +455,48 @@ export default function ClanFundPage() {
         </div>
       )}
 
-      {/* Modal 3: General Tx */}
+      {/* Modal 3: General Tx (Manual Cash Payment) */}
       {showGeneralForm && (
         <div className="fund-modal-v2" onClick={() => setShowGeneralForm(false)}>
            <div className="modal-glass" style={{maxWidth: '500px'}} onClick={e => e.stopPropagation()}>
              <div className="modal-header-v2"><h3>Ghi nhận Thu/Chi</h3><button onClick={() => setShowGeneralForm(false)} className="close-btn">&times;</button></div>
              <div className="modal-body-v2">
                 <form onSubmit={handleGeneralTx} className="premium-form">
-                   <div className="form-group"><label>Loại</label>
+                   <div className="form-group"><label>Loại giao dịch</label>
                       <div className="radio-toggle">
                         <label className={generalTx.type === 'income' ? 'active' : ''}><input type="radio" value="income" checked={generalTx.type === 'income'} onChange={e => setGeneralTx({...generalTx, type: e.target.value})} /> Thu vào</label>
                         <label className={generalTx.type === 'expense' ? 'active' : ''}><input type="radio" value="expense" checked={generalTx.type === 'expense'} onChange={e => setGeneralTx({...generalTx, type: e.target.value})} /> Chi ra</label>
                       </div>
                    </div>
-                   <div className="form-group"><label>Số tiền</label><input type="number" required value={generalTx.amount} onChange={e => setGeneralTx({...generalTx, amount: e.target.value})} /></div>
-                   <div className="form-group"><label>Nội dung</label><textarea required value={generalTx.note} onChange={e => setGeneralTx({...generalTx, note: e.target.value})} rows="3"></textarea></div>
-                   <button type="submit" className="btn-premium btn-green" style={{width: '100%', marginTop: '1rem'}}>Lưu Giao Dịch</button>
+                   
+                   <div className="form-group">
+                     <label>Đợt thu (tùy chọn)</label>
+                     <select value={generalTx.campaign_id} onChange={e => setGeneralTx({...generalTx, campaign_id: e.target.value})}>
+                       <option value="">-- Không thuộc đợt nào --</option>
+                       {campaigns.map(c => <option key={c.id} value={c.id}>{c.name} ({c.year})</option>)}
+                     </select>
+                   </div>
+
+                   {generalTx.type === 'income' && (
+                     <div className="form-group">
+                       <label>Người nộp (Thành viên họ)</label>
+                       <select required value={generalTx.person_id} onChange={e => setGeneralTx({...generalTx, person_id: e.target.value})}>
+                         <option value="">-- Chọn thành viên --</option>
+                         {members.map(m => <option key={m.id} value={m.id}>{m.display_name}</option>)}
+                       </select>
+                     </div>
+                   )}
+
+                   <div className="form-row-2">
+                     <div className="form-group"><label>Số tiền</label><input type="number" required value={generalTx.amount} onChange={e => setGeneralTx({...generalTx, amount: e.target.value})} /></div>
+                     <div className="form-group"><label>Ngày</label><input type="date" required value={generalTx.date} onChange={e => setGeneralTx({...generalTx, date: e.target.value})} /></div>
+                   </div>
+
+                   <div className="form-group"><label>Nội dung / Ghi chú</label><textarea required value={generalTx.note} onChange={e => setGeneralTx({...generalTx, note: e.target.value})} rows="2" placeholder="Ví dụ: Đóng quỹ khuyến học bằng tiền mặt..."></textarea></div>
+                   
+                   <button type="submit" className="btn-premium btn-green" style={{width: '100%', marginTop: '1rem'}} disabled={submitting}>
+                     Lưu Giao Dịch
+                   </button>
                 </form>
              </div>
            </div>
@@ -418,7 +512,7 @@ export default function ClanFundPage() {
         .header-actions { display: flex; gap: 1rem; }
         .fund-main-grid { display: grid; grid-template-columns: 1fr 450px; gap: 2.5rem; margin-top: 3rem; }
         .campaign-grid-v3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
-        .campaign-card-v3 { padding: 1.5rem; position: relative; border-left: 6px solid var(--fund-gold); background: rgba(255, 255, 255, 0.03); cursor: pointer; transition: 0.3s; }
+        .campaign-card-v3 { padding: 1.5rem; position: relative; border-left: 6px solid var(--fund-gold); background: rgba(17, 20, 32, 0.5); cursor: pointer; transition: 0.3s; }
         .campaign-card-v3:hover { background: rgba(255, 255, 255, 0.08); transform: translateY(-5px); }
         .card-top { display: flex; justify-content: space-between; margin-bottom: 1rem; }
         .year-pill { background: rgba(255, 255, 255, 0.1); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; }
@@ -430,12 +524,13 @@ export default function ClanFundPage() {
         .card-bottom { display: flex; justify-content: space-between; font-weight: bold; color: #fff; }
         .target-text { opacity: 0.5; font-size: 0.8rem; }
         .completion-rate { position: absolute; top: 1.5rem; right: 1.5rem; font-size: 1.2rem; font-weight: 800; color: var(--fund-gold); }
-        .ledger-box { background: rgba(255, 255, 255, 0.02); }
+        .ledger-box { background: rgba(17, 20, 32, 0.5); }
         .fund-table-v3 { width: 100%; border-collapse: collapse; }
         .fund-table-v3 th { text-align: left; padding: 1rem; color: rgba(255, 255, 255, 0.5); font-size: 0.8rem; text-transform: uppercase; }
         .fund-table-v3 td { padding: 1.2rem 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
         .tx-name { font-weight: 600; color: #fff; }
-        .tx-date { font-size: 0.75rem; color: rgba(255, 255, 255, 0.4); }
+        .tx-date { font-size: 0.75rem; color: rgba(255, 255, 255, 0.4); display: flex; align-items: center; gap: 8px; }
+        .tx-person-pill { background: var(--fund-gold); color: #000; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
         .tx-val.income { color: #2ecc71; }
         .tx-val.expense { color: #ff7675; }
         .method-pill { font-size: 0.7rem; background: rgba(255, 255, 255, 0.05); padding: 2px 6px; border-radius: 4px; color: rgba(255, 255, 255, 0.6); }
@@ -446,6 +541,11 @@ export default function ClanFundPage() {
         .premium-form label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); }
         .premium-form input, .premium-form select, .premium-form textarea { width: 100%; padding: 0.8rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; outline: none; background: rgba(0, 0, 0, 0.2); color: #fff; }
         .premium-form input:focus { border-color: var(--fund-gold); background: rgba(0, 0, 0, 0.4); }
+        .sub-title-v3 { color: var(--fund-gold); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; margin: 1.5rem 0 1rem; font-size: 1rem; }
+        .upload-label-v3 { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 0.8rem; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.2); cursor: pointer; color: rgba(255,255,255,0.6); transition: 0.3s; }
+        .upload-label-v3:hover { background: rgba(255,255,255,0.1); border-color: var(--fund-gold); color: #fff; }
+        .mini-qr img { width: 40px; height: 40px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: 0.3s; }
+        .mini-qr img:hover { transform: scale(1.2); }
         .mgmt-toolbar { display: flex; gap: 2rem; padding: 1.2rem; margin-bottom: 2rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
         .mgmt-item label { display: block; font-size: 0.8rem; color: rgba(255, 255, 255, 0.4); margin-bottom: 0.4rem; }
         .input-with-btn { display: flex; align-items: center; gap: 0.5rem; }
