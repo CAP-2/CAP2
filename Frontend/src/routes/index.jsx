@@ -28,6 +28,8 @@ import GenealogySection from "../pages/Manager/GenealogySection";
 import ManagerDashboard from "../pages/Manager/ManagerDashboard";
 import PendingApprovals from "../pages/Manager/PendingApprovals";
 import BillingPage from "../pages/Manager/BillingPage";
+import ClanFundPage from "../pages/Manager/ClanFundPage";
+import MemberFundPage from "../pages/Member/MemberFundPage";
 
 import FamilyTreePage from "../pages/user/FamilyTreePage";
 import MemberDashboard from "../pages/Member/MemberDashboard";
@@ -68,6 +70,7 @@ export default function AppRoutes() {
           <Route path="/member/tasks/:taskId" element={<Navigate to="/user/tasks" replace />} />
           <Route path="/user/submissions" element={<MemberSubmissions />} />
           <Route path="/user/profile" element={<MemberProfile />} />
+          <Route path="/user/fund" element={<MemberFundPage />} />
         </Route>
       </Route>
 
@@ -85,6 +88,7 @@ export default function AppRoutes() {
           <Route path="/manager/pending" element={<PendingApprovals />} />
           <Route path="/manager/media" element={<Navigate to="/manager/posts" replace />} />
           <Route path="/manager/billing" element={<BillingPage />} />
+          <Route path="/manager/fund" element={<ClanFundPage />} />
         </Route>
       </Route>
 

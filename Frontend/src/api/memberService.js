@@ -253,3 +253,35 @@ export const uploadImage = async (file, options = {}) => {
     url: imageUrl,
   };
 };
+
+export const getFundOverview = async () =>
+  requestJson(
+    "/fund/overview",
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải tổng quan quỹ",
+  );
+
+export const getFundTransactions = async () =>
+  requestJson(
+    "/fund/transactions",
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải lịch sử giao dịch quỹ",
+  );
+
+export const submitFundContribution = async (payload) =>
+  requestJson(
+    "/fund/contribute",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    },
+    "Không thể gửi thông báo đóng góp",
+  );

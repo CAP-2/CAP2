@@ -29,5 +29,14 @@ router.post("/posts/:id/comments", verifyToken, checkRole(["admin", "manager", "
 router.post("/posts/:id/like", verifyToken, checkRole(["admin", "manager", "member"]), memberController.togglePostLike);
 router.get("/submissions", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getMySubmissions);
 
-module.exports = router;
+// --- 💰 QUẢN LÝ QUỸ DÒNG HỌ (CLAN FUND) 💰 ---
+const fundController = require("../controllers/fundController");
+router.get("/fund/campaigns", verifyToken, checkRole(["admin", "manager", "member"]), fundController.getCampaigns);
+router.get("/fund/transactions", verifyToken, checkRole(["admin", "manager", "member"]), fundController.getTransactions);
+router.get("/fund/campaigns/:id", verifyToken, checkRole(["admin", "manager", "member"]), fundController.getCampaignDetails);
+router.post("/fund/report-payment", verifyToken, checkRole(["admin", "manager", "member"]), fundController.reportPayment);
+router.get("/fund/stats", verifyToken, checkRole(["admin", "manager", "member"]), fundController.getFundStats);
+router.post("/fund/income", verifyToken, checkRole(["admin", "manager", "member"]), fundController.addIncome);
+router.post("/fund/expense", verifyToken, checkRole(["admin", "manager", "member"]), fundController.addExpense);
 
+module.exports = router;

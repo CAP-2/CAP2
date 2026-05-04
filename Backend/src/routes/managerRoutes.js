@@ -1,5 +1,7 @@
     const express = require('express');
     const router = express.Router();
+    const multer = require('multer');
+    const upload = multer({ storage: multer.memoryStorage() });
     const managerController = require('../controllers/managerController');
     const {
         verifyToken,
@@ -66,5 +68,20 @@
     router.post('/families', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createFamily);
     router.post('/families/:familyId/children', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.addFamilyChild);
     router.delete('/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.deleteTreePerson);
+    
+    // --- 💰 QUẢN LÝ QUỸ DÒNG HỌ (CLAN FUND) 💰 ---
+    const fundController = require('../controllers/fundController');
+    router.get('/fund/overview', verifyToken, checkRole(['admin', 'manager']), fundController.getFundOverview || ((req,res)=>res.json({success:true}))); // Placeholder for old overview if needed
+    router.get('/fund/campaigns', verifyToken, checkRole(['admin', 'manager']), fundController.getCampaigns);
+    router.get('/fund/transactions', verifyToken, checkRole(['admin', 'manager']), fundController.getTransactions);
+    router.get('/fund/export', verifyToken, checkRole(['admin', 'manager']), fundController.exportFundExcel);
+    router.post('/fund/import', verifyToken, checkRole(['admin', 'manager']), upload.single('file'), fundController.importFundExcel);
+    router.post('/fund/campaigns', verifyToken, checkRole(['admin', 'manager']), fundController.createCampaign);
+    router.patch('/fund/campaigns/:id', verifyToken, checkRole(['admin', 'manager']), fundController.updateCampaign);
+    router.get('/fund/campaigns/:id', verifyToken, checkRole(['admin', 'manager']), fundController.getCampaignDetails);
+    router.post('/fund/approve', verifyToken, checkRole(['admin', 'manager']), fundController.approvePayment);
+    router.get('/fund/stats', verifyToken, checkRole(['admin', 'manager']), fundController.getFundStats);
+    router.post('/fund/income', verifyToken, checkRole(['admin', 'manager']), fundController.addIncome);
+    router.post('/fund/expense', verifyToken, checkRole(['admin', 'manager']), fundController.addExpense);
 
     module.exports = router;

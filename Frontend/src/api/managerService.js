@@ -90,6 +90,32 @@ export const createTreeEditKeyAPI = (memberAccountIds) => {
   );
 };
 
+export const getFundOverviewAPI = () =>
+  request("/fund/overview", {}, "Không thể lấy tổng quan quỹ");
+
+export const getFundTransactionsAPI = () =>
+  request("/fund/transactions", {}, "Không thể lấy lịch sử giao dịch quỹ");
+
+export const addFundIncomeAPI = (payload) =>
+  request(
+    "/fund/income",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Không thể thêm khoản thu"
+  );
+
+export const addFundExpenseAPI = (payload) =>
+  request(
+    "/fund/expense",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Không thể thêm khoản chi"
+  );
+
 export const createMember = (payload) =>
   request(
     "/members",
