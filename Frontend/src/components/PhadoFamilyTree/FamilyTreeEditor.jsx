@@ -958,23 +958,26 @@ function blankCreateForm(relation, selectedPerson, spouse) {
           : CANVAS_PADDING;
 
   return {
-    display_name: "",
-    surname: selectedPerson?.surname || spouse?.surname || "",
-    middle_name: "",
-    first_name: "",
-    gender: relationGender,
-    birth_date: "",
-    death_date: "",
-    is_living: "1",
-    generation: String(generation),
-    branch: selectedPerson?.branch != null ? String(selectedPerson.branch) : "",
-    hometown: selectedPerson?.hometown || "",
-    avatar_url: "",
-    bio: "",
-    note: "",
-    tree_x: String(Math.round(x)),
-    tree_y: String(Math.round(y)),
-  };
+  display_name: "",
+  surname: selectedPerson?.surname || spouse?.surname || "",
+  middle_name: "",
+  first_name: "",
+  gender: relationGender,
+  birth_date: "",
+  death_date: "",
+  is_living: "1",
+  generation: String(generation),
+  branch: selectedPerson?.branch != null ? String(selectedPerson.branch) : "",
+  hometown: selectedPerson?.hometown || "",
+  avatar_url: "",
+  bio: "",
+  note: "",
+  tree_x: String(Math.round(x)),
+  tree_y: String(Math.round(y)),
+
+  account_email: "",
+  account_password: "",
+};
 }
 
 function personToForm(person) {
@@ -1000,6 +1003,27 @@ function personToForm(person) {
   };
 }
 
+function extractCreatedPersonId(response) {
+  const candidates = [
+    response?.id,
+    response?.person_id,
+    response?.person?.id,
+    response?.data?.id,
+    response?.data?.person_id,
+    response?.data?.person?.id,
+    response?.result?.id,
+    response?.result?.person_id,
+    response?.result?.person?.id,
+  ];
+
+  for (const value of candidates) {
+    const id = Number(value);
+    if (Number.isFinite(id) && id > 0) return id;
+  }
+
+  return null;
+}
+
 function PersonCard({
   person,
   selected,
@@ -1014,13 +1038,21 @@ function PersonCard({
   onResizePointerDown,
   onEdit,
   onDelete,
+  onQuickCreate,
 }) {
   const name = fullName(person, `Người #${person.id}`);
-  const genderClass = Number(person.gender) === 1 ? "is-male" : Number(person.gender) === 2 ? "is-female" : "is-unknown";
+  const genderClass =
+    Number(person.gender) === 1
+      ? "is-male"
+      : Number(person.gender) === 2
+      ? "is-female"
+      : "is-unknown";
+
   const birthText = formatDisplayDate(person.birth_date);
   const deathText = formatDisplayDate(person.death_date);
   const deceased = Number(person.is_living) === 0;
   const isClanChief = Number(person.role_id) === 2;
+
   const lifeParts = [];
   if (birthText) lifeParts.push(`Sinh: ${birthText}`);
   if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
@@ -1033,7 +1065,9 @@ function PersonCard({
 
   return (
     <div
-      className={`fte-personCard ${genderClass} ${founder ? "is-founder" : ""} ${deceased ? "is-deceased" : ""} ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
+      className={`fte-personCard ${genderClass} ${founder ? "is-founder" : ""} ${
+        deceased ? "is-deceased" : ""
+      } ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
       style={{ left: person.tree_x, top: person.tree_y, width: size.width, height: size.height }}
       role="group"
       tabIndex={0}
@@ -1052,6 +1086,21 @@ function PersonCard({
           {canEdit ? (
             <button
               type="button"
+              className="is-create"
+              title="Thêm người liên kết với thành viên này"
+              onPointerDown={stopActionPointer}
+              onClick={(event) => {
+                event.stopPropagation();
+                onQuickCreate?.(person);
+              }}
+            >
+              <span className="material-symbols-outlined">add</span>
+            </button>
+          ) : null}
+
+          {canEdit ? (
+            <button
+              type="button"
               title="Sửa thành viên"
               onPointerDown={stopActionPointer}
               onClick={(event) => {
@@ -1062,6 +1111,7 @@ function PersonCard({
               <span className="material-symbols-outlined">edit</span>
             </button>
           ) : null}
+
           {canDelete ? (
             <button
               type="button"
@@ -1078,7 +1128,9 @@ function PersonCard({
           ) : null}
         </div>
       ) : null}
+
       {isClanChief ? <div className="fte-chiefBadge">Tộc trưởng</div> : null}
+
       <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
         {person.avatar_url ? (
           <img className="fte-mainPhoto" src={person.avatar_url} alt={name} draggable="false" />
@@ -1086,9 +1138,11 @@ function PersonCard({
           <span className="material-symbols-outlined">person</span>
         )}
       </div>
+
       <div className="fte-cardName">{String(name).toUpperCase()}</div>
       <div className="fte-cardGeneration">ĐỜI {person.generation || "?"}</div>
       {lifeText ? <div className="fte-cardMeta">{lifeText}</div> : null}
+
       {canDrag ? (
         <span
           className="fte-resizeHandle"
@@ -1132,11 +1186,10 @@ function PersonInspector({
       return { ...current, [field]: value };
     });
 
-  // --- 🌟 HÀM TÁCH TÊN TỰ ĐỘNG CHO INSPECTOR 🌟 ---
   const handleFullNameChange = (e) => {
     const fullNameValue = e.target.value;
     const parts = fullNameValue.trim().split(/\s+/);
-    
+
     let surname = "";
     let middle_name = "";
     let first_name = "";
@@ -1155,154 +1208,187 @@ function PersonInspector({
     setForm((current) => ({
       ...current,
       display_name: fullNameValue,
-      surname: surname,
-      middle_name: middle_name,
-      first_name: first_name
+      surname,
+      middle_name,
+      first_name,
     }));
   };
 
   return (
     <div className="fte-modalOverlay fte-inspectorOverlay" role="presentation" onMouseDown={onClose}>
       <aside className="fte-inspector" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="fte-inspectorHeader">
-        <div>
-          <span>Thông tin thành viên</span>
-          <h3>{fullName(person, `Người #${person.id}`)}</h3>
-          <p>ID #{person.id}{spouse ? ` · Vợ/chồng: ${fullName(spouse)}` : ""}</p>
-        </div>
-        <button type="button" className="fte-iconButton" onClick={onClose} title="Đóng panel">
-          <span className="material-symbols-outlined">close</span>
-        </button>
-      </div>
-
-      {canEditRelations ? (
-        <div className="fte-inspectorActions">
-          <button type="button" onClick={() => onCreateRelation("spouse")}>
-            <span className="material-symbols-outlined">favorite</span>
-            Chọn vợ/chồng
-          </button>
-          <button type="button" onClick={() => onCreateRelation("child")}>
-            <span className="material-symbols-outlined">person_add</span>
-            Chọn con
-          </button>
-          <button type="button" onClick={() => onCreateRelation("father")}>
-            <span className="material-symbols-outlined">man</span>
-            Chọn cha
-          </button>
-          <button type="button" onClick={() => onCreateRelation("mother")}>
-            <span className="material-symbols-outlined">woman</span>
-            Chọn mẹ
+        <div className="fte-inspectorHeader">
+          <div>
+            <span>Thông tin thành viên</span>
+            <h3>{fullName(person, `Người #${person.id}`)}</h3>
+            <p>ID #{person.id}{spouse ? ` · Vợ/chồng: ${fullName(spouse)}` : ""}</p>
+          </div>
+          <button type="button" className="fte-iconButton" onClick={onClose} title="Đóng panel">
+            <span className="material-symbols-outlined">close</span>
           </button>
         </div>
-      ) : null}
 
-      {notice ? <div className="fte-readOnlyNote">{notice}</div> : null}
-
-      <div className="fte-formGrid">
-        <label>
-          Tên hiển thị
-          {/* Đã gắn sự kiện tách tên tự động */}
-          <input value={form.display_name} onChange={handleFullNameChange} disabled={!canEdit} />
-        </label>
-        <label>
-          Họ
-          <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Tên đệm
-          <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Tên
-          <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Giới tính
-          <select value={form.gender} onChange={(event) => setField("gender", event.target.value)} disabled={!canEdit}>
-            <option value="">Không rõ</option>
-            <option value="1">Nam</option>
-            <option value="2">Nữ</option>
-          </select>
-        </label>
-        <label>
-          Vai trò
-          <select
-            value={form.role_id}
-            onChange={(event) => setField("role_id", event.target.value)}
-            disabled={!canEditRole || !person.account_id}
-          >
-            <option value="">Chưa có tài khoản</option>
-            <option value="2">Tộc trưởng</option>
-            <option value="3">Thành viên</option>
-          </select>
-        </label>
-        <label>
-          Tình trạng
-          <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)} disabled={!canEdit}>
-            <option value="1">Còn sống</option>
-            <option value="0">Đã mất</option>
-          </select>
-        </label>
-        <label>
-          Ngày sinh
-          <input type="date" value={form.birth_date} onChange={(event) => setField("birth_date", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Ngày mất
-          <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={!canEdit || form.is_living === "1"} />
-        </label>
-        <label>
-          Đời thứ
-          <input type="number" min="1" value={form.generation} onChange={(event) => setField("generation", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Chi nhánh
-          <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label className="is-wide">
-          Quê quán
-          <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label className="is-wide">
-          Địa chỉ
-          <input value={form.address} onChange={(event) => setField("address", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Điện thoại
-          <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label>
-          Email
-          <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label className="is-wide">
-          Ảnh đại diện URL
-          <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label className="is-wide">
-          Giới thiệu
-          <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
-        </label>
-        <label className="is-wide">
-          Ghi chú
-          <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} disabled={!canEdit} />
-        </label>
-      </div>
-
-      {canEdit ? (
-        <div className="fte-inspectorFooter">
-          <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
-            <span className="material-symbols-outlined">save</span>
-            {saving ? "Đang lưu..." : "Lưu"}
-          </button>
-          {canDelete ? (
-            <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
-              <span className="material-symbols-outlined">delete</span>
-              Xóa
+        {canEditRelations ? (
+          <div className="fte-inspectorActions">
+            <button type="button" onClick={() => onCreateRelation("spouse")}>
+              <span className="material-symbols-outlined">favorite</span>
+              Chọn vợ/chồng
             </button>
-          ) : null}
+            <button type="button" onClick={() => onCreateRelation("child")}>
+              <span className="material-symbols-outlined">person_add</span>
+              Chọn con
+            </button>
+            <button type="button" onClick={() => onCreateRelation("father")}>
+              <span className="material-symbols-outlined">man</span>
+              Chọn cha
+            </button>
+            <button type="button" onClick={() => onCreateRelation("mother")}>
+              <span className="material-symbols-outlined">woman</span>
+              Chọn mẹ
+            </button>
+          </div>
+        ) : null}
+
+        {notice ? <div className="fte-readOnlyNote">{notice}</div> : null}
+
+        <div className="fte-formGrid">
+          <label>
+            Tên hiển thị
+            <input value={form.display_name} onChange={handleFullNameChange} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Họ
+            <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Tên đệm
+            <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Tên
+            <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Giới tính
+            <select value={form.gender} onChange={(event) => setField("gender", event.target.value)} disabled={!canEdit}>
+              <option value="">Không rõ</option>
+              <option value="1">Nam</option>
+              <option value="2">Nữ</option>
+            </select>
+          </label>
+
+          <label>
+            Vai trò
+            <select
+              value={form.role_id}
+              onChange={(event) => setField("role_id", event.target.value)}
+              disabled={!canEditRole || !person.account_id}
+            >
+              <option value="">Chưa có tài khoản</option>
+              <option value="2">Tộc trưởng</option>
+              <option value="3">Thành viên</option>
+            </select>
+          </label>
+
+          <label>
+            Tình trạng
+            <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)} disabled={!canEdit}>
+              <option value="1">Còn sống</option>
+              <option value="0">Đã mất</option>
+            </select>
+          </label>
+
+          <label>
+            Ngày sinh
+            <input
+              type="date"
+              value={form.birth_date}
+              onChange={(event) => setField("birth_date", event.target.value)}
+              disabled={!canEdit}
+            />
+          </label>
+
+          <label>
+            Ngày mất
+            <input
+              type="date"
+              value={form.death_date}
+              onChange={(event) => setField("death_date", event.target.value)}
+              disabled={!canEdit || form.is_living === "1"}
+            />
+          </label>
+
+          <label>
+            Đời thứ
+            <input
+              type="number"
+              min="1"
+              value={form.generation}
+              onChange={(event) => setField("generation", event.target.value)}
+              disabled={!canEdit}
+            />
+          </label>
+
+          <label>
+            Chi nhánh
+            <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label className="is-wide">
+            Quê quán
+            <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label className="is-wide">
+            Địa chỉ
+            <input value={form.address} onChange={(event) => setField("address", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Điện thoại
+            <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label>
+            Email
+            <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label className="is-wide">
+            Ảnh đại diện URL
+            <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label className="is-wide">
+            Giới thiệu
+            <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
+          </label>
+
+          <label className="is-wide">
+            Ghi chú
+            <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} disabled={!canEdit} />
+          </label>
         </div>
-      ) : null}
+
+        {canEdit ? (
+          <div className="fte-inspectorFooter">
+            <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
+              <span className="material-symbols-outlined">save</span>
+              {saving ? "Đang lưu..." : "Lưu"}
+            </button>
+
+            {canDelete ? (
+              <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
+                <span className="material-symbols-outlined">delete</span>
+                Xóa
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </aside>
     </div>
   );
@@ -1413,8 +1499,64 @@ function RelationSelectDialog({
   );
 }
 
+function QuickCreateRelationDialog({
+  sourcePerson,
+  onChoose,
+  onCancel,
+}) {
+  if (!sourcePerson) return null;
+
+  return (
+    <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
+      <div
+        className="fte-modal fte-quickCreateModal"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="fte-modalHeader">
+          <div>
+            <span>{fullName(sourcePerson)}</span>
+            <h3>Chọn loại liên kết cần tạo</h3>
+          </div>
+          <button type="button" className="fte-iconButton" onClick={onCancel} title="Đóng">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="fte-quickCreateChoices">
+          <button
+            type="button"
+            className="fte-quickCreateChoice"
+            onClick={() => onChoose("spouse")}
+          >
+            <span className="material-symbols-outlined">favorite</span>
+            <strong>Tạo vợ/chồng</strong>
+            <small>Tạo thành viên mới và liên kết vợ/chồng với người này</small>
+          </button>
+
+          <button
+            type="button"
+            className="fte-quickCreateChoice"
+            onClick={() => onChoose("child")}
+          >
+            <span className="material-symbols-outlined">person_add</span>
+            <strong>Tạo con</strong>
+            <small>Tạo thành viên mới và tự nối làm con của người này</small>
+          </button>
+        </div>
+
+        <div className="fte-modalFooter">
+          <button type="button" className="fte-ghostButton" onClick={onCancel}>
+            Hủy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel, onSubmit, saving }) {
-  if (!relation) return null;
+  if (!relation || !form) return null;
 
   const titleMap = {
     person: "Thêm người",
@@ -1424,19 +1566,48 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
     mother: "Thêm mẹ",
   };
 
-  const setField = (field, value) => {
-    if (field === "is_living" && value === "1") {
-      onChange({ ...form, is_living: value, death_date: "" });
-      return;
-    }
-    onChange({ ...form, [field]: value });
+  const relationTextMap = {
+    spouse: "vợ/chồng",
+    child: "con",
+    father: "cha",
+    mother: "mẹ",
   };
 
-  // --- 🌟 HÀM TÁCH TÊN TỰ ĐỘNG CHO MODAL THÊM NGƯỜI 🌟 ---
-  const handleFullNameChange = (e) => {
-    const fullNameValue = e.target.value;
+  const dialogTitle =
+    relation !== "person" && selectedPerson
+      ? `${titleMap[relation] || "Thêm người"} cho ${fullName(selectedPerson)}`
+      : titleMap[relation] || "Thêm người";
+
+  const setField = (field, value) => {
+    if (field === "is_living" && value === "1") {
+      onChange({
+        ...form,
+        is_living: value,
+        death_date: "",
+      });
+      return;
+    }
+
+    if (field === "is_living" && value === "0") {
+      onChange({
+        ...form,
+        is_living: value,
+        account_email: "",
+        account_password: "",
+      });
+      return;
+    }
+
+    onChange({
+      ...form,
+      [field]: value,
+    });
+  };
+
+  const handleFullNameChange = (event) => {
+    const fullNameValue = event.target.value;
     const parts = fullNameValue.trim().split(/\s+/);
-    
+
     let surname = "";
     let middle_name = "";
     let first_name = "";
@@ -1455,9 +1626,9 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
     onChange({
       ...form,
       display_name: fullNameValue,
-      surname: surname,
-      middle_name: middle_name,
-      first_name: first_name
+      surname,
+      middle_name,
+      first_name,
     });
   };
 
@@ -1466,9 +1637,14 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
       <div className="fte-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <div className="fte-modalHeader">
           <div>
-            <span>{selectedPerson ? fullName(selectedPerson) : "Gia phả"}</span>
-            <h3>{titleMap[relation] || "Thêm người"}</h3>
+            <span>
+              {relation !== "person" && selectedPerson
+                ? `Tạo ${relationTextMap[relation] || "quan hệ"} mới`
+                : "Gia phả"}
+            </span>
+            <h3>{dialogTitle}</h3>
           </div>
+
           <button type="button" className="fte-iconButton" onClick={onCancel} title="Đóng">
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -1477,55 +1653,129 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
         <div className="fte-formGrid fte-formGrid--modal">
           <label className="is-wide">
             Tên hiển thị
-            {/* Đã gắn sự kiện tách tên tự động */}
-            <input autoFocus value={form.display_name} onChange={handleFullNameChange} />
+            <input
+              autoFocus
+              value={form.display_name || ""}
+              onChange={handleFullNameChange}
+              placeholder="Ví dụ: Hà Văn Hải Đăng"
+            />
           </label>
+
           <label>
             Họ
-            <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} />
+            <input
+              value={form.surname || ""}
+              onChange={(event) => setField("surname", event.target.value)}
+            />
           </label>
+
           <label>
             Tên đệm
-            <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} />
+            <input
+              value={form.middle_name || ""}
+              onChange={(event) => setField("middle_name", event.target.value)}
+            />
           </label>
+
           <label>
             Tên
-            <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} />
+            <input
+              value={form.first_name || ""}
+              onChange={(event) => setField("first_name", event.target.value)}
+            />
           </label>
+
           <label>
             Giới tính
-            <select value={form.gender} onChange={(event) => setField("gender", event.target.value)}>
+            <select value={form.gender || ""} onChange={(event) => setField("gender", event.target.value)}>
               <option value="1">Nam</option>
               <option value="2">Nữ</option>
               <option value="">Không rõ</option>
             </select>
           </label>
+
           <label>
             Đời thứ
-            <input type="number" min="1" value={form.generation} onChange={(event) => setField("generation", event.target.value)} />
+            <input
+              type="number"
+              min="1"
+              value={form.generation || "1"}
+              onChange={(event) => setField("generation", event.target.value)}
+            />
           </label>
+
           <label>
             Tình trạng
-            <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)}>
+            <select value={form.is_living || "1"} onChange={(event) => setField("is_living", event.target.value)}>
               <option value="1">Còn sống</option>
               <option value="0">Đã mất</option>
             </select>
           </label>
+
+          {form.is_living === "1" ? (
+            <div className="fte-accountCreateBox is-wide">
+              <div className="fte-accountCreateTitle">
+                <span className="material-symbols-outlined">manage_accounts</span>
+                Tạo tài khoản đăng nhập cho người này
+              </div>
+
+              <label>
+                Email đăng nhập
+                <input
+                  type="email"
+                  value={form.account_email || ""}
+                  onChange={(event) => setField("account_email", event.target.value)}
+                  placeholder="example@gmail.com"
+                  autoComplete="new-email"
+                />
+              </label>
+
+              <label>
+                Mật khẩu đăng nhập
+                <input
+                  type="password"
+                  value={form.account_password || ""}
+                  onChange={(event) => setField("account_password", event.target.value)}
+                  placeholder="Tối thiểu 6 ký tự"
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
+          ) : null}
+
           <label>
             Ngày sinh
-            <input type="date" value={form.birth_date} onChange={(event) => setField("birth_date", event.target.value)} />
+            <input
+              type="date"
+              value={form.birth_date || ""}
+              onChange={(event) => setField("birth_date", event.target.value)}
+            />
           </label>
+
           <label>
             Ngày mất
-            <input type="date" value={form.death_date} onChange={(event) => setField("death_date", event.target.value)} disabled={form.is_living === "1"} />
+            <input
+              type="date"
+              value={form.death_date || ""}
+              onChange={(event) => setField("death_date", event.target.value)}
+              disabled={form.is_living === "1"}
+            />
           </label>
+
           <label className="is-wide">
             Quê quán
-            <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} />
+            <input
+              value={form.hometown || ""}
+              onChange={(event) => setField("hometown", event.target.value)}
+            />
           </label>
+
           <label className="is-wide">
             Ảnh đại diện URL
-            <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} />
+            <input
+              value={form.avatar_url || ""}
+              onChange={(event) => setField("avatar_url", event.target.value)}
+            />
           </label>
         </div>
 
@@ -1534,6 +1784,7 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
             <span className="material-symbols-outlined">person_add</span>
             {saving ? "Đang tạo..." : "Tạo"}
           </button>
+
           <button type="button" className="fte-ghostButton" disabled={saving} onClick={onCancel}>
             Hủy
           </button>
@@ -1542,7 +1793,6 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
     </div>
   );
 }
-
 export default function FamilyTreeEditor({
   clan,
   people: initialPeople = [],
@@ -1570,6 +1820,7 @@ export default function FamilyTreeEditor({
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [relationDialog, setRelationDialog] = useState(null);
+  const [quickCreateDialog, setQuickCreateDialog] = useState(null);
   const [treeRelationPicker, setTreeRelationPicker] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
 
@@ -1619,6 +1870,25 @@ export default function FamilyTreeEditor({
     () => findSpouse(selectedPerson, canonicalTree.families, people),
     [canonicalTree.families, people, selectedPerson],
   );
+  const dialogSourcePerson = useMemo(
+  () =>
+    people.find((person) => Number(person.id) === Number(dialog?.sourcePersonId)) ||
+    selectedPerson ||
+    null,
+  [people, dialog?.sourcePersonId, selectedPerson]
+);
+
+const dialogSourceSpouse = useMemo(
+  () => findSpouse(dialogSourcePerson, canonicalTree.families, people),
+  [dialogSourcePerson, canonicalTree.families, people]
+);
+
+const quickCreateSourcePerson = useMemo(
+  () =>
+    people.find((person) => Number(person.id) === Number(quickCreateDialog?.sourcePersonId)) ||
+    null,
+  [people, quickCreateDialog?.sourcePersonId]
+);
   const treeRelationSource = useMemo(
     () => people.find((person) => Number(person.id) === Number(treeRelationPicker?.sourcePersonId)) || null,
     [people, treeRelationPicker?.sourcePersonId],
@@ -2034,6 +2304,43 @@ export default function FamilyTreeEditor({
     }
   };
 
+  const openQuickCreateDialog = (person) => {
+  setBillingWarning(null);
+
+  if (!canEditAll) {
+    setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
+    return;
+  }
+
+  if (!person?.id) {
+    setStatus("Không xác định được thành viên nguồn.");
+    return;
+  }
+
+  setSelectedId(person.id);
+  setQuickCreateDialog({ sourcePersonId: person.id });
+};
+
+const openCreateDialogFromQuickRelation = (relation) => {
+  const sourcePerson = quickCreateSourcePerson;
+
+  if (!sourcePerson) {
+    setStatus("Không xác định được thành viên nguồn để tạo liên kết.");
+    setQuickCreateDialog(null);
+    return;
+  }
+
+  const spouse = findSpouse(sourcePerson, canonicalTree.families, people);
+
+  setDialog({
+    relation,
+    sourcePersonId: sourcePerson.id,
+    form: blankCreateForm(relation, sourcePerson, spouse),
+  });
+
+  setQuickCreateDialog(null);
+};
+
   const openCreateDialog = (relation) => {
     setBillingWarning(null);
     if (!canEditAll) {
@@ -2056,65 +2363,143 @@ export default function FamilyTreeEditor({
     });
   };
 
-  const submitCreateDialog = async () => {
-    if (!canEditAll || !dialog) return;
-    const form = dialog.form;
-    const display = String(form.display_name || "").trim();
-    const parts = [form.surname, form.middle_name, form.first_name].filter(Boolean).join(" ").trim();
-    if (!display && !parts) {
-      setStatus("Cần nhập tên thành viên mới.");
+const submitCreateDialog = async () => {
+  if (!canEditAll || !dialog) return;
+
+  const form = dialog.form;
+  const relation = dialog.relation;
+  const sourcePersonId = dialog?.sourcePersonId ? Number(dialog.sourcePersonId) : null;
+
+  const display = String(form.display_name || "").trim();
+  const parts = [form.surname, form.middle_name, form.first_name].filter(Boolean).join(" ").trim();
+
+  if (!display && !parts) {
+    setStatus("Cần nhập tên thành viên mới.");
+    return;
+  }
+
+  if (form.is_living === "1") {
+    const email = String(form.account_email || "").trim();
+    const password = String(form.account_password || "");
+
+    if (!email) {
+      setStatus("Người còn sống cần có email để tạo tài khoản.");
       return;
     }
 
-    setDialogSaving(true);
-    setStatus("");
-    try {
-      await createPersonAPI({
-        ...form,
-        clan_id: clan?.id,
-        gender: form.gender === "" ? null : Number(form.gender),
-        is_living: form.is_living === "1" ? 1 : 0,
-        generation: Number(form.generation) || 1,
-        branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
-        birth_date: form.birth_date || null,
-        death_date: form.death_date || null,
-        tree_x: Number(form.tree_x) || 0,
-        tree_y: Number(form.tree_y) || 0,
-      });
-
-      setDialog(null);
-      setStatus("Đã tạo thành viên mới.");
-      await onReload?.();
-    } catch (error) {
-      const errorCode = error?.code || error?.data?.code;
-      const billing = error?.billing || error?.data?.billing;
-
-      if (errorCode === "PERSON_LIMIT_REACHED") {
-        const currentPeople = billing?.current_people;
-        const personLimit = billing?.person_limit;
-        const planName = billing?.plan_name || "gói hiện tại";
-        const message =
-          currentPeople != null && personLimit != null
-            ? `Dòng họ đã đạt giới hạn ${currentPeople}/${personLimit} người của ${planName}. Vui lòng nâng cấp gói để thêm tiếp.`
-            : "Dòng họ đã đạt giới hạn số người của gói hiện tại. Vui lòng nâng cấp gói để thêm tiếp.";
-
-        setBillingWarning({ message });
-        setStatus(message);
-        return;
-      }
-
-      if (errorCode === "SUBSCRIPTION_EXPIRED") {
-        const message = "Gói sử dụng đã hết hạn. Vui lòng gia hạn để tiếp tục thêm người.";
-        setBillingWarning({ message });
-        setStatus(message);
-        return;
-      }
-
-      setStatus(error?.message || "Không thể tạo thành viên.");
-    } finally {
-      setDialogSaving(false);
+    if (!password || password.length < 6) {
+      setStatus("Mật khẩu tài khoản tối thiểu 6 ký tự.");
+      return;
     }
-  };
+  }
+
+  setDialogSaving(true);
+  setStatus("");
+
+  try {
+    const createdResponse = await createPersonAPI({
+      ...form,
+      clan_id: clan?.id,
+      gender: form.gender === "" ? null : Number(form.gender),
+      is_living: form.is_living === "1" ? 1 : 0,
+      generation: Number(form.generation) || 1,
+      branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
+      birth_date: form.birth_date || null,
+      death_date: form.is_living === "1" ? null : form.death_date || null,
+      tree_x: Number(form.tree_x) || 0,
+      tree_y: Number(form.tree_y) || 0,
+      account_email: form.is_living === "1" ? String(form.account_email || "").trim() : null,
+      account_password: form.is_living === "1" ? String(form.account_password || "") : null,
+    });
+
+    const newPersonId = extractCreatedPersonId(createdResponse);
+
+    if (sourcePersonId && relation !== "person") {
+      if (!newPersonId) {
+        throw new Error("Đã tạo người mới nhưng không lấy được ID để liên kết quan hệ.");
+      }
+
+      if (relation === "spouse") {
+        await linkRelationsAPI({
+          person_id: sourcePersonId,
+          spouse_person_id: newPersonId,
+        });
+      }
+
+      if (relation === "child") {
+        const family = findFamilyForParent(sourcePersonId, canonicalTree.families);
+        const existingChildren = family
+          ? asArray(canonicalTree.childRows)
+              .filter((row) => Number(row.family_id) === Number(family.id))
+              .map((row) => Number(row.person_id))
+          : [];
+
+        const childrenIds = Array.from(new Set([...existingChildren, newPersonId])).filter(
+          (id) => Number(id) !== Number(sourcePersonId)
+        );
+
+        await linkRelationsAPI({
+          person_id: sourcePersonId,
+          children_person_ids: childrenIds,
+        });
+      }
+
+      if (relation === "father" || relation === "mother") {
+        const currentParents = findParentFamilyForChild(
+          sourcePersonId,
+          canonicalTree.families,
+          canonicalTree.childRows
+        );
+
+        await linkRelationsAPI({
+          person_id: sourcePersonId,
+          father_person_id:
+            relation === "father" ? newPersonId : currentParents?.father_id || null,
+          mother_person_id:
+            relation === "mother" ? newPersonId : currentParents?.mother_id || null,
+        });
+      }
+    }
+
+    setDialog(null);
+
+    if (sourcePersonId && relation !== "person") {
+      setStatus(`Đã tạo thành viên mới và liên kết ${relationLabels[relation] || "quan hệ"} thành công.`);
+    } else {
+      setStatus("Đã tạo thành viên mới.");
+    }
+
+    await onReload?.();
+  } catch (error) {
+    const errorCode = error?.code || error?.data?.code;
+    const billing = error?.billing || error?.data?.billing;
+
+    if (errorCode === "PERSON_LIMIT_REACHED") {
+      const currentPeople = billing?.current_people;
+      const personLimit = billing?.person_limit;
+      const planName = billing?.plan_name || "gói hiện tại";
+      const message =
+        currentPeople != null && personLimit != null
+          ? `Dòng họ đã đạt giới hạn ${currentPeople}/${personLimit} người của ${planName}. Vui lòng nâng cấp gói để thêm tiếp.`
+          : "Dòng họ đã đạt giới hạn số người của gói hiện tại. Vui lòng nâng cấp gói để thêm tiếp.";
+
+      setBillingWarning({ message });
+      setStatus(message);
+      return;
+    }
+
+    if (errorCode === "SUBSCRIPTION_EXPIRED") {
+      const message = "Gói sử dụng đã hết hạn. Vui lòng gia hạn để tiếp tục thêm người.";
+      setBillingWarning({ message });
+      setStatus(message);
+      return;
+    }
+
+    setStatus(error?.message || "Không thể tạo thành viên.");
+  } finally {
+    setDialogSaving(false);
+  }
+};
 
   const submitRelationDialog = async () => {
     if (!canEditAll || !relationDialog || !selectedPerson || !relationDialog.personId) return;
@@ -2473,20 +2858,21 @@ export default function FamilyTreeEditor({
                       </svg>
                       {people.map((person) => (
                         <PersonCard
-                          key={person.id}
-                          person={person}
-                          selected={selectedId === person.id}
-                          dragging={draggingId === person.id}
-                          canDrag={canEditPerson(person.id)}
-                          canEdit={canEditPerson(person.id)}
-                          canDelete={canEditAll && canEditPerson(person.id)}
-                          founder={founderIds.has(Number(person.id))}
-                          size={getCardSize(cardSizes, person.id)}
-                          onPointerDown={handleCardPointerDown}
-                          onResizePointerDown={beginCardResize}
-                          onEdit={openPersonEditor}
-                          onDelete={handleDeletePersonByCard}
-                        />
+                        key={person.id}
+                        person={person}
+                        selected={selectedId === person.id}
+                        dragging={draggingId === person.id}
+                        canDrag={canEditPerson(person.id)}
+                        canEdit={canEditPerson(person.id)}
+                        canDelete={canEditAll && canEditPerson(person.id)}
+                        founder={founderIds.has(Number(person.id))}
+                        size={getCardSize(cardSizes, person.id)}
+                        onPointerDown={handleCardPointerDown}
+                        onResizePointerDown={beginCardResize}
+                        onEdit={openPersonEditor}
+                        onDelete={handleDeletePersonByCard}
+                        onQuickCreate={openQuickCreateDialog}
+                      />
                       ))}
                     </div>
                   </TransformComponent>
@@ -2533,16 +2919,22 @@ export default function FamilyTreeEditor({
           setStatus(`Đang chọn ${relationLabels[relation] || "quan hệ"} cho ${fullName(selectedPerson)}. Hãy bấm vào một thành viên trên cây.`);
         }}
       />
-
-      <CreatePersonDialog
-        relation={dialog?.relation}
-        form={dialog?.form}
-        selectedPerson={selectedPerson}
-        saving={dialogSaving}
-        onChange={(form) => setDialog((current) => (current ? { ...current, form } : current))}
-        onCancel={() => !dialogSaving && setDialog(null)}
-        onSubmit={submitCreateDialog}
+      
+      <QuickCreateRelationDialog
+        sourcePerson={quickCreateSourcePerson}
+        onChoose={openCreateDialogFromQuickRelation}
+        onCancel={() => !dialogSaving && setQuickCreateDialog(null)}
       />
+
+        <CreatePersonDialog
+          relation={dialog?.relation}
+            form={dialog?.form}
+            selectedPerson={dialogSourcePerson}
+            saving={dialogSaving}
+            onChange={(form) => setDialog((current) => (current ? { ...current, form } : current))}
+            onCancel={() => !dialogSaving && setDialog(null)}
+            onSubmit={submitCreateDialog}
+          />
     </section>
   );
 
