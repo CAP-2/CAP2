@@ -366,6 +366,16 @@ export const assignTaskAPI = (data) =>
     },
     "Giao việc thất bại"
   );
+  
+export const bulkAssignTasksAPI = (data) =>
+  request(
+    "/tasks/bulk-assign",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+    "Giao nhiều công việc thất bại"
+  );
 
 export const getTasksAPI = (params = {}) => {
   const query = new URLSearchParams();

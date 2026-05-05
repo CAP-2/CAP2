@@ -7,6 +7,7 @@ const {
     assertTreeMutationPermission,
 } = require('../utils/treeEditPermissions');
 const { createNotification } = require('../utils/notifications');
+const { sendMail, isSmtpConfigured } = require('../utils/email');
 const { deletePersonCompletely } = require('../utils/personDeletion');
 const { getTreeLayoutSettings, saveTreeLayoutSettings } = require('../utils/treeLayoutSettings');
 const { normalizeMediaId, extractMediaIdFromUrl, getMediaUrl } = require('../utils/media');
@@ -1871,6 +1872,69 @@ const ensureTaskTables = async() => {
     hasEnsuredTaskTables = true;
 };
 
+
+const escapeHtml = (value) =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+const formatTaskEmailDate = (value) => {
+    if (!value) return 'Chưa có hạn chót';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString('vi-VN');
+};
+
+const sendTaskAssignmentEmail = async({ member, title, description, dueDate, eventTitle, taskId }) => {
+    if (!member?.email || !isSmtpConfigured()) {
+        return { sent: false, skipped: true };
+    }
+
+    const subject = `Công việc mới: ${title}`;
+
+    const recipientName =
+        member.display_name ||
+        [member.surname, member.first_name].filter(Boolean).join(' ').trim() ||
+        member.email;
+
+    const taskLink = `/member/tasks/${taskId}`;
+
+    const text = [
+        `Xin chào ${recipientName},`,
+        '',
+        `Bạn vừa được phân công công việc: ${title}`,
+        eventTitle ? `Sự kiện: ${eventTitle}` : null,
+        `Hạn chót: ${formatTaskEmailDate(dueDate)}`,
+        description ? `Mô tả: ${description}` : null,
+        '',
+        `Vui lòng đăng nhập Gia Phả Việt để xem chi tiết và cập nhật trạng thái: ${taskLink}`,
+    ].filter(Boolean).join('\n');
+
+    const html = `
+        <p>Xin chào <strong>${escapeHtml(recipientName)}</strong>,</p>
+        <p>Bạn vừa được phân công công việc mới trên Gia Phả Việt.</p>
+        <ul>
+            <li><strong>Công việc:</strong> ${escapeHtml(title)}</li>
+            ${eventTitle ? `<li><strong>Sự kiện:</strong> ${escapeHtml(eventTitle)}</li>` : ''}
+            <li><strong>Hạn chót:</strong> ${escapeHtml(formatTaskEmailDate(dueDate))}</li>
+            ${description ? `<li><strong>Mô tả:</strong> ${escapeHtml(description)}</li>` : ''}
+        </ul>
+        <p>Vui lòng đăng nhập hệ thống để xem chi tiết và cập nhật trạng thái.</p>
+    `;
+
+    await sendMail({
+        to: member.email,
+        subject,
+        text,
+        html,
+    });
+
+    return { sent: true, skipped: false };
+};
+
 const normalizeTaskMemberIds = (body) => {
     const raw = Array.isArray(body.member_ids) ? body.member_ids : [body.member_id];
     return [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
@@ -2051,79 +2115,613 @@ exports.createTaskForEvent = async(req, res) => {
 };
 
 exports.assignTask = async(req, res) => {
-        const title = String(req.body.title || "").trim();
-        const description = String(req.body.description || "").trim();
-        const dueDate = req.body.due_date || null;
-        const eventIdFromBody = req.body.event_id ?? req.body.eventId ?? null;
-        const memberIds = normalizeTaskMemberIds(req.body);
+    const connection = await db.getConnection();
 
-        try {
-            await ensureTaskTables();
-            if (!title) {
-                return res.status(400).json({ success: false, message: "Tiêu đề công việc không được để trống" });
-            }
-            if (!memberIds.length) {
-                return res.status(400).json({ success: false, message: "Vui lòng chọn ít nhất một thành viên" });
-            }
+    try {
+        const managerAccountId = req.user?.account_id || req.user?.id;
+        const managerRole = String(req.user?.role || '').toLowerCase();
 
-            const placeholders = memberIds.map(() => "?").join(",");
-            const [memberRows] = await db.query(
-                `
-            SELECT a.id AS account_id, a.person_id, p.clan_id, p.display_name, p.surname, p.first_name
-            FROM accounts a
-            INNER JOIN people p ON p.id = a.person_id
-            WHERE a.id IN (${placeholders}) AND a.role_id = 3 AND a.status = 'active'
-            `,
-                memberIds
-            );
-            if (memberRows.length !== memberIds.length) {
-                return res.status(400).json({ success: false, message: "Một hoặc nhiều thành viên không hợp lệ hoặc chưa kích hoạt" });
-            }
-            let taskContext;
-            try {
-                taskContext = await resolveTaskClanAndEvent(req, memberRows);
-            } catch (err) {
-                return res.status(err.status || 400).json({ success: false, message: err.message });
-            }
-
-            const [taskResult] = await db.query(
-                "INSERT INTO manager_tasks (manager_account_id, clan_id, title, description, due_date, event_id) VALUES (?, ?, ?, ?, ?, ?)", [req.user.id, taskContext.taskClanId, title, description || null, dueDate || null, taskContext.eventId || null]
-            );
-
-            for (const member of memberRows) {
-                await db.query(
-                    "INSERT INTO manager_task_assignments (task_id, member_account_id, member_person_id) VALUES (?, ?, ?)", [taskResult.insertId, member.account_id, member.person_id]
-                );
-                await db.query(
-                        `INSERT INTO notifications
-     (receiver_account_id, receiver_person_id, type, title, message, link_url)
-     VALUES (?, ?, ?, ?, ?, ?)`, [
-                            member.account_id,
-                            member.person_id,
-                            "task_assigned",
-                            `Cong viec moi: ${title}`,
-                            `Ban duoc giao cong viec "${title}"${dueDate ? `, han chot ${dueDate}` : ""}.`,
-        `/member/tasks/${taskResult.insertId}`,
-    ]
-);
-            await emitNotificationToAccount(req, member.account_id, {
-                type: "task_assigned",
-                title: "Cong viec moi",
-                message: `Ban duoc giao cong viec: "${title}"`,
-                dueDate: dueDate,
-                taskId: taskResult.insertId,
+        if (!managerAccountId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Bạn cần đăng nhập để giao việc',
             });
         }
 
-        return res.json({
+        if (!['admin', 'manager'].includes(managerRole)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bạn không có quyền giao việc',
+            });
+        }
+
+        const {
+            event_id,
+            title,
+            description,
+            due_date,
+            member_account_ids,
+        } = req.body || {};
+
+        const trimmedTitle = String(title || '').trim();
+        const trimmedDescription = String(description || '').trim();
+
+        if (!trimmedTitle) {
+            return res.status(400).json({
+                success: false,
+                message: 'Tiêu đề công việc là bắt buộc',
+            });
+        }
+
+        const assigneeIds = Array.isArray(member_account_ids)
+            ? [...new Set(member_account_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+            : [];
+
+        if (!assigneeIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'Vui lòng chọn ít nhất một thành viên được phân công',
+            });
+        }
+
+        const normalizedEventId = event_id ? Number(event_id) : null;
+
+        if (event_id && !Number.isFinite(normalizedEventId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'event_id không hợp lệ',
+            });
+        }
+
+        await connection.beginTransaction();
+
+        let eventRow = null;
+        let clanId = req.user?.clan_id || null;
+
+        if (normalizedEventId) {
+            const [eventRows] = await connection.query(
+                `
+                SELECT id, title, clan_id
+                FROM events
+                WHERE id = ?
+                LIMIT 1
+                `,
+                [normalizedEventId]
+            );
+
+            eventRow = eventRows[0] || null;
+
+            if (!eventRow) {
+                await connection.rollback();
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không tìm thấy sự kiện',
+                });
+            }
+
+            clanId = eventRow.clan_id || clanId;
+        }
+
+        if (!clanId) {
+            const [managerRows] = await connection.query(
+                `
+                SELECT p.clan_id
+                FROM accounts a
+                LEFT JOIN people p ON p.id = a.person_id
+                WHERE a.id = ?
+                LIMIT 1
+                `,
+                [managerAccountId]
+            );
+
+            clanId = managerRows[0]?.clan_id || null;
+        }
+
+        if (!clanId) {
+            await connection.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Không xác định được dòng họ để giao việc',
+            });
+        }
+
+        const [memberRows] = await connection.query(
+            `
+            SELECT 
+                a.id AS account_id,
+                a.email,
+                a.status,
+                a.person_id,
+                p.display_name,
+                p.surname,
+                p.middle_name,
+                p.first_name,
+                p.clan_id
+            FROM accounts a
+            LEFT JOIN people p ON p.id = a.person_id
+            WHERE a.id IN (${assigneeIds.map(() => '?').join(',')})
+            `,
+            assigneeIds
+        );
+
+        if (memberRows.length !== assigneeIds.length) {
+            await connection.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại',
+            });
+        }
+
+        const invalidMember = memberRows.find((member) => member.clan_id && member.clan_id !== clanId);
+
+        if (invalidMember) {
+            await connection.rollback();
+            return res.status(403).json({
+                success: false,
+                message: 'Không thể giao việc cho thành viên ngoài dòng họ',
+            });
+        }
+
+        const [taskResult] = await connection.query(
+            `
+            INSERT INTO manager_tasks
+                (manager_account_id, clan_id, title, description, due_date, event_id)
+            VALUES
+                (?, ?, ?, ?, ?, ?)
+            `,
+            [
+                managerAccountId,
+                clanId,
+                trimmedTitle,
+                trimmedDescription || null,
+                due_date || null,
+                normalizedEventId,
+            ]
+        );
+
+        const taskId = taskResult.insertId;
+
+        for (const member of memberRows) {
+            await connection.query(
+                `
+                INSERT INTO manager_task_assignments
+                    (task_id, member_account_id, member_person_id)
+                VALUES
+                    (?, ?, ?)
+                `,
+                [taskId, member.account_id, member.person_id || null]
+            );
+
+            await createNotification({
+                accountId: member.account_id,
+                type: 'task_assigned',
+                title: 'Bạn có công việc mới',
+                message: `Bạn được phân công công việc: ${trimmedTitle}`,
+                data: {
+                    task_id: taskId,
+                    event_id: normalizedEventId,
+                },
+                connection,
+            });
+        }
+
+        await connection.commit();
+
+        const io = req.app?.get?.('io');
+
+        if (io) {
+            for (const member of memberRows) {
+                io.to(`account_${member.account_id}`).emit('notification', {
+                    type: 'task_assigned',
+                    title: 'Bạn có công việc mới',
+                    message: `Bạn được phân công công việc: ${trimmedTitle}`,
+                    task_id: taskId,
+                    event_id: normalizedEventId,
+                });
+            }
+        }
+
+        const emailSummary = {
+            sent: 0,
+            skipped: 0,
+            failed: 0,
+        };
+
+        for (const member of memberRows) {
+            try {
+                const mailResult = await sendTaskAssignmentEmail({
+                    member,
+                    title: trimmedTitle,
+                    description: trimmedDescription,
+                    dueDate: due_date,
+                    eventTitle: eventRow?.title || null,
+                    taskId,
+                });
+
+                if (mailResult.sent) {
+                    emailSummary.sent += 1;
+                } else if (mailResult.skipped) {
+                    emailSummary.skipped += 1;
+                }
+            } catch (mailError) {
+                emailSummary.failed += 1;
+                console.error('sendTaskAssignmentEmail error:', {
+                    taskId,
+                    accountId: member.account_id,
+                    error: mailError.message,
+                });
+            }
+        }
+
+        return res.status(201).json({
             success: true,
-            message: "Đã giao việc thành công",
-            task_id: taskResult.insertId,
+            message: 'Đã giao việc thành công',
+            task_id: taskId,
             assigned_count: memberRows.length,
+            email: emailSummary,
         });
     } catch (error) {
+        try {
+            await connection.rollback();
+        } catch (_) {}
+
         console.error('assignTask error:', error);
-        res.status(500).json({ success: false, message: "Lỗi phân công công việc" });
+
+        return res.status(500).json({
+            success: false,
+            message: 'Không thể giao việc',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        });
+    } finally {
+        connection.release();
+    }
+};
+
+exports.bulkAssignTasks = async(req, res) => {
+    const connection = await db.getConnection();
+
+    try {
+        await ensureTaskTables();
+
+        const managerAccountId = req.user?.id || req.user?.account_id;
+        const roleId = Number(req.user?.role_id);
+
+        if (!managerAccountId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Bạn cần đăng nhập để giao việc',
+            });
+        }
+
+        if (![1, 2].includes(roleId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bạn không có quyền giao việc',
+            });
+        }
+
+        const body = req.body || {};
+        const eventId = parseOptionalPositiveInt(body.event_id ?? body.eventId);
+        const tasks = Array.isArray(body.tasks) ? body.tasks : [];
+
+        if (!tasks.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'Danh sách công việc không được để trống',
+            });
+        }
+
+        if (tasks.length > 50) {
+            return res.status(400).json({
+                success: false,
+                message: 'Không được giao quá 50 công việc trong một lần',
+            });
+        }
+
+        const normalizedTasks = tasks.map((task, index) => {
+            const title = String(task?.title || '').trim();
+            const description = task?.description == null ? '' : String(task.description).trim();
+            const dueDate = task?.due_date || task?.dueDate || null;
+
+            const memberAccountIds = Array.isArray(task?.member_account_ids)
+                ? task.member_account_ids
+                : Array.isArray(task?.member_ids)
+                    ? task.member_ids
+                    : [];
+
+            const assigneeIds = [
+                ...new Set(
+                    memberAccountIds
+                        .map((id) => Number(id))
+                        .filter((id) => Number.isFinite(id) && id > 0)
+                ),
+            ];
+
+            return {
+                index,
+                title,
+                description,
+                dueDate,
+                assigneeIds,
+            };
+        });
+
+        const invalidTitleTask = normalizedTasks.find((task) => !task.title);
+        if (invalidTitleTask) {
+            return res.status(400).json({
+                success: false,
+                message: `Công việc thứ ${invalidTitleTask.index + 1} thiếu tiêu đề`,
+            });
+        }
+
+        const invalidAssigneeTask = normalizedTasks.find((task) => !task.assigneeIds.length);
+        if (invalidAssigneeTask) {
+            return res.status(400).json({
+                success: false,
+                message: `Công việc "${invalidAssigneeTask.title}" chưa chọn người được giao`,
+            });
+        }
+
+        let eventRow = null;
+        let clanId = null;
+
+        if (eventId) {
+            const [eventRows] = await connection.query(
+                `
+                SELECT id, clan_id, title, event_date, description
+                FROM events
+                WHERE id = ?
+                LIMIT 1
+                `,
+                [eventId]
+            );
+
+            eventRow = eventRows[0] || null;
+
+            if (!eventRow) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không tìm thấy sự kiện',
+                });
+            }
+
+            clanId = eventRow.clan_id || null;
+        }
+
+        if (roleId === 2) {
+            const managerClanId = await getManagerClanId(managerAccountId);
+
+            if (managerClanId == null) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được dòng họ của manager',
+                });
+            }
+
+            if (clanId != null && Number(clanId) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Manager chỉ được giao việc trong sự kiện thuộc dòng họ của mình',
+                });
+            }
+
+            clanId = managerClanId;
+        }
+
+        if (!clanId) {
+            const requestedClanId = parseOptionalPositiveInt(body.clan_id);
+
+            if (requestedClanId) {
+                clanId = requestedClanId;
+            }
+        }
+
+        if (!clanId) {
+            const [managerRows] = await connection.query(
+                `
+                SELECT p.clan_id
+                FROM accounts a
+                LEFT JOIN people p ON p.id = a.person_id
+                WHERE a.id = ?
+                LIMIT 1
+                `,
+                [managerAccountId]
+            );
+
+            clanId = managerRows[0]?.clan_id || null;
+        }
+
+        if (!clanId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Không xác định được dòng họ để giao việc',
+            });
+        }
+
+        const allAssigneeIds = [
+            ...new Set(
+                normalizedTasks.flatMap((task) => task.assigneeIds)
+            ),
+        ];
+
+        const [memberRows] = await connection.query(
+            `
+            SELECT
+                a.id AS account_id,
+                a.email,
+                a.status,
+                a.person_id,
+                p.display_name,
+                p.surname,
+                p.middle_name,
+                p.first_name,
+                p.clan_id
+            FROM accounts a
+            INNER JOIN people p ON p.id = a.person_id
+            WHERE a.id IN (${allAssigneeIds.map(() => '?').join(',')})
+              AND a.status = 'active'
+            `,
+            allAssigneeIds
+        );
+
+        if (memberRows.length !== allAssigneeIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại, chưa active hoặc chưa liên kết hồ sơ',
+            });
+        }
+
+        const memberByAccountId = new Map(
+            memberRows.map((member) => [Number(member.account_id), member])
+        );
+
+        const invalidClanMember = memberRows.find(
+            (member) => Number(member.clan_id) !== Number(clanId)
+        );
+
+        if (invalidClanMember) {
+            return res.status(403).json({
+                success: false,
+                message: 'Không thể giao việc cho thành viên ngoài dòng họ',
+            });
+        }
+
+        await connection.beginTransaction();
+
+        const createdTasks = [];
+        const notificationJobs = [];
+
+        for (const task of normalizedTasks) {
+            const [taskResult] = await connection.query(
+                `
+                INSERT INTO manager_tasks
+                    (manager_account_id, clan_id, title, description, due_date, event_id)
+                VALUES
+                    (?, ?, ?, ?, ?, ?)
+                `,
+                [
+                    managerAccountId,
+                    clanId,
+                    task.title,
+                    task.description || null,
+                    task.dueDate || null,
+                    eventId || null,
+                ]
+            );
+
+            const taskId = taskResult.insertId;
+
+            createdTasks.push({
+                id: taskId,
+                title: task.title,
+                description: task.description,
+                due_date: task.dueDate || null,
+                event_id: eventId || null,
+                assignee_ids: task.assigneeIds,
+            });
+
+            for (const accountId of task.assigneeIds) {
+                const member = memberByAccountId.get(Number(accountId));
+
+                await connection.query(
+                    `
+                    INSERT INTO manager_task_assignments
+                        (task_id, member_account_id, member_person_id)
+                    VALUES
+                        (?, ?, ?)
+                    `,
+                    [taskId, member.account_id, member.person_id]
+                );
+
+                await createNotification({
+                    accountId: member.account_id,
+                    type: 'task_assigned',
+                    title: 'Bạn có công việc mới',
+                    message: `Bạn được phân công công việc: ${task.title}`,
+                    data: {
+                        task_id: taskId,
+                        event_id: eventId || null,
+                    },
+                    connection,
+                });
+
+                notificationJobs.push({
+                    member,
+                    taskId,
+                    title: task.title,
+                    description: task.description,
+                    dueDate: task.dueDate || null,
+                });
+            }
+        }
+
+        await connection.commit();
+
+        for (const job of notificationJobs) {
+            await emitNotificationToAccount(req, job.member.account_id, {
+                type: 'task_assigned',
+                title: 'Bạn có công việc mới',
+                message: `Bạn được phân công công việc: ${job.title}`,
+                task_id: job.taskId,
+                event_id: eventId || null,
+            });
+        }
+
+        const emailSummary = {
+            sent: 0,
+            skipped: 0,
+            failed: 0,
+        };
+
+        for (const job of notificationJobs) {
+            try {
+                const mailResult = await sendTaskAssignmentEmail({
+                    member: job.member,
+                    title: job.title,
+                    description: job.description,
+                    dueDate: job.dueDate,
+                    eventTitle: eventRow?.title || null,
+                    taskId: job.taskId,
+                });
+
+                if (mailResult.sent) {
+                    emailSummary.sent += 1;
+                } else if (mailResult.skipped) {
+                    emailSummary.skipped += 1;
+                }
+            } catch (mailError) {
+                emailSummary.failed += 1;
+                console.error('bulkAssignTasks email error:', {
+                    taskId: job.taskId,
+                    accountId: job.member.account_id,
+                    error: mailError.message,
+                });
+            }
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: 'Đã giao danh sách công việc thành công',
+            event_id: eventId || null,
+            created_count: createdTasks.length,
+            assignment_count: notificationJobs.length,
+            tasks: createdTasks,
+            email: emailSummary,
+        });
+    } catch (error) {
+        try {
+            await connection.rollback();
+        } catch (_) {}
+
+        console.error('bulkAssignTasks error:', error);
+
+        return res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Không thể giao danh sách công việc',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        });
+    } finally {
+        connection.release();
     }
 };
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { getAdminClanTasks, getAdminClans, getAdminMembers } from "../../api/adminService";
 import {
   assignTaskAPI,
+  bulkAssignTasksAPI,
   createManagerEventAPI,
   deleteManagerEventAPI,
   getManagerEventsAPI,
@@ -186,6 +187,7 @@ export default function TaskManagementPage({ role = "member" }) {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiTaskSuggestions, setAiTaskSuggestions] = useState([]);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
@@ -430,116 +432,266 @@ export default function TaskManagementPage({ role = "member" }) {
 
   const getTodayInput = () => new Date().toISOString().slice(0, 10);
 
-  const normalizeAiTasks = (items = [], fallbackEventId = null) =>
-    asArray(items)
-      .map((item, index) => ({
-        id: `ai-${Date.now()}-${index}`,
-        event_id: item.event_id || fallbackEventId || null,
-        member_id: null,
-        title: String(item.title || "").trim(),
-        description: String(item.description || "").trim(),
-        due_date: item.due_date || "",
-        status: item.status || "assigned",
-      }))
-      .filter((item) => item.title);
+const normalizeAiTasks = (items = [], fallbackEventId = null) =>
+  asArray(items)
+    .map((item, index) => ({
+      id: `ai-${Date.now()}-${index}`,
+      selected: true,
+      event_id: item.event_id || fallbackEventId || null,
+      member_account_ids: [],
+      title: String(item.title || "").trim(),
+      description: String(item.description || "").trim(),
+      due_date: item.due_date || "",
+      suggested_role: String(item.suggested_role || "").trim(),
+      status: item.status || "assigned",
+    }))
+    .filter((item) => item.title);
 
-  const requestAiEventCreate = async () => {
-    const prompt = aiPrompt.trim();
-    if (!prompt || aiLoading) return;
-    setError("");
-    setMessage("");
-    setAiLoading(true);
-    try {
-      const result = await generateEventFormAI({
-        mode: "event_create",
-        prompt,
-        today: getTodayInput(),
-        clan_id: isAdmin && clanId ? Number(clanId) : undefined,
-        current_event: null,
-        existing_tasks: [],
-      });
+const requestAiEventCreate = async () => {
+  const prompt = aiPrompt.trim();
 
-      if (result.status !== "success") {
-        setError("AI chỉ hỗ trợ tạo sự kiện và công việc dòng họ. Vui lòng nhập nội dung liên quan đến sự kiện.");
-        return;
-      }
+  if (!prompt || aiLoading) return;
 
-      const aiEvent = result.event || {};
-      setEventForm({
-        title: aiEvent.title || "",
-        event_date: aiEvent.event_date || "",
-        description: aiEvent.description || "",
-      });
-      setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks));
-      setShowCreateForm(true);
-      setMessage("AI đã điền form sự kiện và tạo danh sách công việc gợi ý. Hãy kiểm tra trước khi lưu.");
-    } catch (err) {
-      setError(err?.message || "Không thể gọi AI tạo sự kiện.");
-    } finally {
-      setAiLoading(false);
+  setError("");
+  setMessage("");
+  setAiLoading(true);
+
+  try {
+    const result = await generateEventFormAI({
+      mode: "event_create",
+      prompt,
+      today: getTodayInput(),
+      clan_id: isAdmin && clanId ? Number(clanId) : undefined,
+      current_event: null,
+      existing_tasks: [],
+    });
+
+    if (result.status !== "success") {
+      setError("AI chỉ hỗ trợ tạo sự kiện và công việc dòng họ. Vui lòng nhập nội dung liên quan đến sự kiện.");
+      return;
     }
-  };
 
-  const requestAiTaskCreate = async () => {
-    if (!selectedEvent || aiLoading) return;
-    const prompt = aiPrompt.trim() || "Gợi ý thêm các công việc còn thiếu cho sự kiện này";
-    setError("");
-    setMessage("");
-    setAiLoading(true);
-    try {
-      const result = await generateEventFormAI({
-        mode: "task_create",
-        prompt,
-        today: getTodayInput(),
+    const aiEvent = result.event || {};
+
+    setEventForm({
+      title: aiEvent.title || "",
+      event_date: aiEvent.event_date || "",
+      description: aiEvent.description || "",
+    });
+
+    setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks));
+    setShowCreateForm(true);
+    setMessage("AI đã điền form sự kiện và tạo danh sách công việc gợi ý. Hãy kiểm tra trước khi lưu.");
+  } catch (err) {
+    setError(err?.message || "Không thể gọi AI tạo sự kiện.");
+  } finally {
+    setAiLoading(false);
+  }
+};
+
+const requestAiTaskCreate = async () => {
+  if (!selectedEvent || aiLoading) return;
+
+  const prompt = aiPrompt.trim() || "Gợi ý thêm các công việc còn thiếu cho sự kiện này";
+
+  setError("");
+  setMessage("");
+  setAiLoading(true);
+
+  try {
+    const result = await generateEventFormAI({
+      mode: "task_create",
+      prompt,
+      today: getTodayInput(),
+      clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
+      current_event: {
+        id: selectedEvent.id,
+        title: selectedEvent.title,
+        event_date: toDateInput(selectedEvent.event_date),
+        description: selectedEvent.description || "",
         clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
-        current_event: {
-          id: selectedEvent.id,
-          title: selectedEvent.title,
-          event_date: toDateInput(selectedEvent.event_date),
-          description: selectedEvent.description || "",
-          clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
-        },
-        existing_tasks: selectedTasks.map((task) => ({
-          id: task.task_id || task.id,
-          event_id: task.event_id || selectedEvent.id,
-          title: task.title,
-          description: task.description,
-          due_date: toDateInput(task.due_date),
-          status: task.status,
-        })),
+      },
+      existing_tasks: [
+            ...selectedTasks.map((task) => ({
+              id: task.task_id || task.id,
+              event_id: task.event_id || selectedEvent.id,
+              title: task.title,
+              description: task.description,
+              due_date: toDateInput(task.due_date),
+              status: task.status,
+              source: "assigned",
+            })),
+            ...aiTaskSuggestions.map((task) => ({
+              id: task.id,
+              event_id: task.event_id || selectedEvent.id,
+              title: task.title,
+              description: task.description,
+              due_date: task.due_date || null,
+              status: task.status || "assigned",
+              source: "ai_suggestion",
+            })),
+          ],
       });
 
-      if (result.status !== "success") {
-        setError("AI chỉ hỗ trợ gợi ý công việc liên quan đến sự kiện đang chọn.");
-        return;
-      }
-
-      setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks, selectedEvent.id));
-      setMessage("AI đã tạo danh sách công việc gợi ý. Chọn một công việc để đưa vào form giao việc.");
-    } catch (err) {
-      setError(err?.message || "Không thể gọi AI tạo công việc.");
-    } finally {
-      setAiLoading(false);
+    if (result.status !== "success") {
+      setError("AI chỉ hỗ trợ gợi ý công việc liên quan đến sự kiện đang chọn.");
+      return;
     }
-  };
 
-  const useAiTaskSuggestion = (task) => {
-    setForm((prev) => ({
-      ...prev,
-      event_id: String(selectedEventId || task.event_id || ""),
-      title: task.title || "",
-      description: task.description || "",
-      due_date: task.due_date || "",
-    }));
-    setMessage("Đã đưa công việc AI gợi ý vào form. Hãy chọn người thực hiện rồi bấm Giao việc.");
-  };
+    setAiTaskSuggestions((prev) => [
+        ...prev,
+        ...normalizeAiTasks(result.manager_tasks, selectedEvent.id),
+      ]);
+    setMessage("AI đã tạo danh sách công việc gợi ý. Hãy kiểm tra, chọn người thực hiện rồi gửi công việc.");
+  } catch (err) {
+    setError(err?.message || "Không thể gọi AI tạo công việc.");
+  } finally {
+    setAiLoading(false);
+  }
+};
 
-  const openEvent = (eventId) => {
-    setSelectedEventId(String(eventId));
-    setMessage("");
-    setError("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+
+const updateAiTaskSuggestion = (taskId, patch) => {
+  setAiTaskSuggestions((prev) =>
+    prev.map((task) =>
+      task.id === taskId ? { ...task, ...patch } : task
+    )
+  );
+};
+
+const submitSingleAiTaskSuggestion = async (task) => {
+  if (!selectedEvent) {
+    setError("Vui lòng chọn sự kiện trước khi gửi công việc.");
+    return;
+  }
+
+  const title = String(task.title || "").trim();
+  const description = String(task.description || "").trim();
+  const dueDate = task.due_date || null;
+  const memberIds = Array.isArray(task.member_account_ids)
+    ? task.member_account_ids
+        .map(Number)
+        .filter((id) => Number.isFinite(id) && id > 0)
+    : [];
+
+  if (!task.selected) {
+    setError("Công việc này chưa được chọn.");
+    return;
+  }
+
+  if (!title) {
+    setError("Tiêu đề công việc không được để trống.");
+    return;
+  }
+
+  if (!description) {
+    setError("Mô tả công việc không được để trống.");
+    return;
+  }
+
+  if (!dueDate) {
+    setError("Hạn chót không được để trống.");
+    return;
+  }
+
+  if (!memberIds.length) {
+    setError("Vui lòng chọn ít nhất một người thực hiện.");
+    return;
+  }
+
+  setError("");
+  setMessage("");
+  setBulkAssigning(true);
+
+  try {
+    const result = await bulkAssignTasksAPI({
+      event_id: Number(selectedEvent.id),
+      ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
+      tasks: [
+        {
+          title,
+          description,
+          due_date: dueDate,
+          member_account_ids: memberIds,
+        },
+      ],
+    });
+
+    setMessage(result?.message || `Đã gửi công việc "${title}".`);
+
+    setAiTaskSuggestions((prev) =>
+      prev.filter((item) => item.id !== task.id)
+    );
+
+    await loadData();
+  } catch (err) {
+    setError(err?.message || "Không thể gửi công việc AI đề xuất.");
+  } finally {
+    setBulkAssigning(false);
+  }
+};
+
+const submitSelectedAiTaskSuggestions = async () => {
+  if (!selectedEvent) {
+    setError("Vui lòng chọn sự kiện trước khi gửi công việc.");
+    return;
+  }
+
+  const selectedAiTasks = aiTaskSuggestions.filter((task) => task.selected);
+
+  if (!selectedAiTasks.length) {
+    setError("Vui lòng chọn ít nhất một công việc AI đề xuất.");
+    return;
+  }
+
+  const invalidTask = selectedAiTasks.find((task) => {
+    const title = String(task.title || "").trim();
+    const description = String(task.description || "").trim();
+    const dueDate = task.due_date || null;
+    const memberIds = Array.isArray(task.member_account_ids)
+      ? task.member_account_ids
+      : [];
+
+    return !title || !description || !dueDate || !memberIds.length;
+  });
+
+  if (invalidTask) {
+    setError("Mỗi công việc được chọn phải có đủ: tiêu đề, mô tả, hạn chót và người thực hiện.");
+    return;
+  }
+
+  setError("");
+  setMessage("");
+  setBulkAssigning(true);
+
+  try {
+    const result = await bulkAssignTasksAPI({
+      event_id: Number(selectedEvent.id),
+      ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
+      tasks: selectedAiTasks.map((task) => ({
+        title: String(task.title || "").trim(),
+        description: String(task.description || "").trim(),
+        due_date: task.due_date || null,
+        member_account_ids: task.member_account_ids.map(Number),
+      })),
+    });
+
+    setMessage(result?.message || `Đã gửi ${selectedAiTasks.length} công việc AI đề xuất.`);
+    setAiTaskSuggestions([]);
+    await loadData();
+  } catch (err) {
+    setError(err?.message || "Không thể gửi danh sách công việc AI đề xuất.");
+  } finally {
+    setBulkAssigning(false);
+  }
+};
+
+const openEvent = (eventId) => {
+  setSelectedEventId(String(eventId));
+  setMessage("");
+  setError("");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
   if (loading) {
     return (
@@ -646,22 +798,133 @@ export default function TaskManagementPage({ role = "member" }) {
               {aiLoading ? "AI đang tạo..." : "Tạo công việc bằng AI"}
             </button>
           </div>
-          {!!aiTaskSuggestions.length && (
-            <div className="ai-suggestion-list">
-              {aiTaskSuggestions.map((task) => (
-                <article className="ai-suggestion-item" key={task.id}>
-                  <div>
-                    <strong>{task.title}</strong>
-                    {task.description && <p>{task.description}</p>}
-                    <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
-                  </div>
-                  <button className="task-btn task-btn-ghost" type="button" onClick={() => useAiTaskSuggestion(task)}>
-                    Đưa vào form
-                  </button>
-                </article>
-              ))}
+                  {!!aiTaskSuggestions.length && (
+  <div className="ai-task-panel">
+    <div className="ai-task-panel-head">
+      <div>
+        <h3>Công việc AI đề xuất</h3>
+        <p>Kiểm tra đủ tiêu đề, mô tả, hạn chót và người thực hiện trước khi gửi.</p>
+      </div>
+
+      <button
+        className="task-btn task-btn-primary"
+        type="button"
+        onClick={submitSelectedAiTaskSuggestions}
+        disabled={bulkAssigning || !members.length}
+      >
+        <span className="material-symbols-outlined">send</span>
+        {bulkAssigning ? "Đang gửi..." : "Gửi các việc đã chọn"}
+      </button>
+    </div>
+
+    <div className="ai-task-grid">
+      {aiTaskSuggestions.map((task) => {
+        const titleOk = Boolean(String(task.title || "").trim());
+        const descriptionOk = Boolean(String(task.description || "").trim());
+        const dueDateOk = Boolean(task.due_date);
+        const assigneeOk = Array.isArray(task.member_account_ids) && task.member_account_ids.length > 0;
+        const canSend = task.selected && titleOk && descriptionOk && dueDateOk && assigneeOk && !bulkAssigning;
+
+        return (
+          <article className="ai-task-card" key={task.id}>
+            <div className="ai-task-card-top">
+              <label className="ai-task-check">
+                <input
+                  type="checkbox"
+                  checked={Boolean(task.selected)}
+                  onChange={(event) =>
+                    updateAiTaskSuggestion(task.id, {
+                      selected: event.target.checked,
+                    })
+                  }
+                />
+                <span>Chọn giao việc này</span>
+              </label>
+
+              <span className={canSend ? "ai-task-valid is-ok" : "ai-task-valid is-warning"}>
+                {canSend ? "Đủ thông tin" : "Thiếu thông tin"}
+              </span>
             </div>
-          )}
+
+            <div className="ai-task-fields">
+              <label className={!titleOk ? "field-invalid" : ""}>
+                <span>Tiêu đề</span>
+                <input
+                  value={task.title}
+                  onChange={(event) =>
+                    updateAiTaskSuggestion(task.id, {
+                      title: event.target.value,
+                    })
+                  }
+                  placeholder="Nhập tiêu đề công việc"
+                />
+              </label>
+
+              <label className={!descriptionOk ? "field-invalid" : ""}>
+                <span>Mô tả</span>
+                <textarea
+                  rows={3}
+                  value={task.description}
+                  onChange={(event) =>
+                    updateAiTaskSuggestion(task.id, {
+                      description: event.target.value,
+                    })
+                  }
+                  placeholder="Mô tả việc cần làm"
+                />
+              </label>
+
+              <label className={!dueDateOk ? "field-invalid" : ""}>
+                <span>Hạn chót</span>
+                <input
+                  type="date"
+                  value={task.due_date || ""}
+                  onChange={(event) =>
+                    updateAiTaskSuggestion(task.id, {
+                      due_date: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              {task.suggested_role && (
+                <div className="ai-task-role">
+                  Gợi ý vai trò: <strong>{task.suggested_role}</strong>
+                </div>
+              )}
+
+              <div className={!assigneeOk ? "task-field field-invalid" : "task-field"}>
+                <span>Người thực hiện</span>
+                <MemberCombobox
+                  members={members}
+                  value={task.member_account_ids || []}
+                  disabled={bulkAssigning || !members.length}
+                  onChange={(memberIds) =>
+                    updateAiTaskSuggestion(task.id, {
+                      member_account_ids: memberIds,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="ai-task-card-actions">
+              <button
+                className="task-btn task-btn-primary"
+                type="button"
+                onClick={() => submitSingleAiTaskSuggestion(task)}
+                disabled={!canSend}
+              >
+                <span className="material-symbols-outlined">send</span>
+                Gửi công việc
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  </div>
+)}
         </section>
 
         <div className="event-detail-layout">

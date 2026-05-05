@@ -53,9 +53,9 @@
     router.post('/events/:eventId/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.createTaskForEvent);
 
     router.post('/assign-task', verifyToken, checkRole(['admin', 'manager']), managerController.assignTask);
+    router.post('/tasks/bulk-assign', verifyToken, checkRole(['admin', 'manager']), managerController.bulkAssignTasks);
     router.get('/tasks', verifyToken, checkRole(['admin', 'manager']), managerController.getAssignedTasks);
     router.patch('/tasks/:id/complete', verifyToken, checkRole(['admin', 'manager']), managerController.completeTask);
-
     // 2. Quản lý Gia phả (Lineage)
     router.get('/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
     router.patch('/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
