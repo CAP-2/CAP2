@@ -276,9 +276,9 @@ export default function ClanFundPage() {
       {/* Modal 1: Create Campaign */}
       {showCampaignModal && (
         <div className="fund-modal-v2" onClick={() => setShowCampaignModal(false)}>
-          <div className="modal-glass" onClick={e => e.stopPropagation()}>
+          <div className="modal-glass fund-create-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-v2">
-              <h3>Tạo Đợt Thu Mới</h3>
+              <h3>Tạo </h3>
               <button onClick={() => setShowCampaignModal(false)} className="close-btn">&times;</button>
             </div>
             <div className="modal-body-v2">
@@ -504,76 +504,15 @@ export default function ClanFundPage() {
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `
-        .glass-bg { background: rgba(0, 0, 0, 0.2); }
-        .premium-header { display: flex; justify-content: space-between; align-items: center; padding: 2rem; margin-bottom: 2rem; border-bottom: 2px solid rgba(255, 255, 255, 0.1); }
-        .header-info h1 { font-size: 2.4rem; color: #fff; margin: 0; }
-        .header-info p { color: rgba(255, 255, 255, 0.6); }
-        .section-title { color: #fff; opacity: 0.9; }
-        .header-actions { display: flex; gap: 1rem; }
-        .fund-main-grid { display: grid; grid-template-columns: 1fr 450px; gap: 2.5rem; margin-top: 3rem; }
-        .campaign-grid-v3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
-        .campaign-card-v3 { padding: 1.5rem; position: relative; border-left: 6px solid var(--fund-gold); background: rgba(17, 20, 32, 0.5); cursor: pointer; transition: 0.3s; }
-        .campaign-card-v3:hover { background: rgba(255, 255, 255, 0.08); transform: translateY(-5px); }
-        .card-top { display: flex; justify-content: space-between; margin-bottom: 1rem; }
-        .year-pill { background: rgba(255, 255, 255, 0.1); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; }
-        .status-dot { width: 12px; height: 12px; border-radius: 50%; }
-        .status-dot.open { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; }
-        .status-dot.closed { background: #95a5a6; }
-        .progress-container-v3 { height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; margin: 1rem 0; overflow: hidden; }
-        .progress-bar-v3 { height: 100%; background: linear-gradient(90deg, var(--fund-gold), var(--fund-green)); border-radius: 4px; }
-        .card-bottom { display: flex; justify-content: space-between; font-weight: bold; color: #fff; }
-        .target-text { opacity: 0.5; font-size: 0.8rem; }
-        .completion-rate { position: absolute; top: 1.5rem; right: 1.5rem; font-size: 1.2rem; font-weight: 800; color: var(--fund-gold); }
-        .ledger-box { background: rgba(17, 20, 32, 0.5); }
-        .fund-table-v3 { width: 100%; border-collapse: collapse; }
-        .fund-table-v3 th { text-align: left; padding: 1rem; color: rgba(255, 255, 255, 0.5); font-size: 0.8rem; text-transform: uppercase; }
-        .fund-table-v3 td { padding: 1.2rem 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-        .tx-name { font-weight: 600; color: #fff; }
-        .tx-date { font-size: 0.75rem; color: rgba(255, 255, 255, 0.4); display: flex; align-items: center; gap: 8px; }
-        .tx-person-pill { background: var(--fund-gold); color: #000; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; text-transform: uppercase; }
-        .tx-val.income { color: #2ecc71; }
-        .tx-val.expense { color: #ff7675; }
-        .method-pill { font-size: 0.7rem; background: rgba(255, 255, 255, 0.05); padding: 2px 6px; border-radius: 4px; color: rgba(255, 255, 255, 0.6); }
-        .close-btn { background: none; border: none; color: #fff; font-size: 2.2rem; cursor: pointer; opacity: 0.5; transition: 0.3s; }
-        .close-btn:hover { opacity: 1; transform: rotate(90deg); }
-        .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-        .premium-form .form-group { margin-bottom: 1.2rem; }
-        .premium-form label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); }
-        .premium-form input, .premium-form select, .premium-form textarea { width: 100%; padding: 0.8rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; outline: none; background: rgba(0, 0, 0, 0.2); color: #fff; }
-        .premium-form input:focus { border-color: var(--fund-gold); background: rgba(0, 0, 0, 0.4); }
-        .sub-title-v3 { color: var(--fund-gold); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; margin: 1.5rem 0 1rem; font-size: 1rem; }
-        .upload-label-v3 { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 0.8rem; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.2); cursor: pointer; color: rgba(255,255,255,0.6); transition: 0.3s; }
-        .upload-label-v3:hover { background: rgba(255,255,255,0.1); border-color: var(--fund-gold); color: #fff; }
-        .mini-qr img { width: 40px; height: 40px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: 0.3s; }
-        .mini-qr img:hover { transform: scale(1.2); }
-        .mgmt-toolbar { display: flex; gap: 2rem; padding: 1.2rem; margin-bottom: 2rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .mgmt-item label { display: block; font-size: 0.8rem; color: rgba(255, 255, 255, 0.4); margin-bottom: 0.4rem; }
-        .input-with-btn { display: flex; align-items: center; gap: 0.5rem; }
-        .input-with-btn input { width: 120px; padding: 0.4rem; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; }
-        .ledger-stats-v3 { display: flex; gap: 1rem; margin-bottom: 2rem; }
-        .l-stat { flex: 1; background: rgba(255, 255, 255, 0.03); padding: 1.2rem; border-radius: 12px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.05); }
-        .l-stat span { display: block; font-size: 0.75rem; color: rgba(255, 255, 255, 0.4); text-transform: uppercase; }
-        .l-stat strong { font-size: 1.3rem; color: #2ecc71; }
-        .radio-toggle { display: flex; background: rgba(0, 0, 0, 0.2); padding: 4px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); }
-        .radio-toggle label { flex: 1; text-align: center; padding: 0.6rem; cursor: pointer; border-radius: 8px; margin: 0; color: rgba(255, 255, 255, 0.5); }
-        .radio-toggle label.active { background: rgba(255, 255, 255, 0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.2); color: #fff; }
-        .radio-toggle input { display: none; }
-        .btn-export-v2 { background: var(--fund-blue); color: white; border: none; padding: 0.6rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; }
-        .btn-export-v2:hover { background: #2980b9; transform: translateY(-2px); }
-        .btn-approve-v3-active { background: #2ecc71; color: white; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3); }
-        .btn-approve-v3-active:hover { transform: scale(1.05); background: #27ae60; }
-        .done-pill { font-size: 0.8rem; color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 2px 8px; border-radius: 4px; }
-        .approval-info { padding: 1.2rem; margin-bottom: 1.5rem; background: rgba(255,255,255,0.05); }
-        .approval-info .info-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
-        .approval-info .info-row span { color: rgba(255,255,255,0.5); }
-        .evidence-view { margin-bottom: 2rem; text-align: center; }
-        .evidence-view label { display: block; text-align: left; margin-bottom: 1rem; font-weight: bold; color: rgba(255,255,255,0.7); }
-        .bill-img-v3 { max-width: 100%; border-radius: 12px; border: 4px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .modal-header-v2 h3 { margin: 0; color: #fff; }
-        .ledger-modal { max-width: 900px; width: 95%; }
-        .ledger-table-wrapper { max-height: 400px; overflow-y: auto; padding-right: 10px; }
-        .ledger-table-wrapper::-webkit-scrollbar { width: 6px; }
-        .ledger-table-wrapper::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        .premium-header { margin-bottom: 2rem; }
+        .header-actions { display: flex; gap: 0.9rem; flex-wrap: wrap; justify-content: flex-end; }
+        .fund-main-grid { margin-top: 2rem; }
+        .campaign-grid-v3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        .ledger-box { min-height: 100%; }
+        .fund-table-v3 td strong { color: var(--fund-text); }
+        .approval-info { margin-bottom: 1.25rem; }
+        .ledger-table-wrapper { max-height: 420px; overflow-y: auto; padding-right: 0.25rem; }
+        .bill-img-v3 { display: block; margin: 0 auto; }
       `}} />
     </div>
   );
