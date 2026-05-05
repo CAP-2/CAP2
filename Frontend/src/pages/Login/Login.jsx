@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./login.css";
 import { loginAPI, registerAPI } from "../../api/authService";
+import DateInput from "../../components/common/DateInput";
+import { vietnamDateToIso } from "../../utils/dateFormat";
 
 const initialLoginForm = {
   email: "",
@@ -197,7 +199,7 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
         middle_name: middleName,
         surname,
         display_name: displayName,
-        birth_date: registerForm.birth_date,
+        birth_date: vietnamDateToIso(registerForm.birth_date) || null,
         hometown: registerForm.hometown.trim(),
         gender: Number(registerForm.gender) || 1,
         clan_id: clanId,
@@ -359,11 +361,9 @@ export default function Login({ isOpen, initialMode = "login", onClose, onLoginS
                   <option value="1">Nam</option>
                   <option value="2">Nữ</option>
                 </select>
-                <input
+                <DateInput
                   name="birth_date"
                   value={registerForm.birth_date}
-                  type="date"
-                  max={new Date().toISOString().split("T")[0]}
                   onChange={handleRegisterChange}
                   required
                 />

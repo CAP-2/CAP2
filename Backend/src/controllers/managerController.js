@@ -3372,38 +3372,44 @@ exports.updateTreePerson = async (req, res) => {
         }
 
         if (has('role_id')) {
-            if (permission.scope !== 'all') {
-                return res.status(403).json({ success: false, message: 'Khong duoc doi vai tro trong che do temporary edit.' });
-            }
-            if (Number(req.user.role_id) !== 1 && Number(req.user.role_id) !== 2) {
-                return res.status(403).json({ success: false, message: 'Ban khong co quyen doi vai tro thanh vien.' });
-            }
+            const roleInput = body.role_id;
 
-            const rid = Number(body.role_id);
-            if (rid !== 2 && rid !== 3) {
-                return res.status(400).json({ success: false, message: 'Vai tro chi ho tro 2 - toc truong hoac 3 - thanh vien.' });
-            }
-
-            const [accountRows] = await db.query(
-                'SELECT id, role_id FROM accounts WHERE person_id = ? ORDER BY id ASC LIMIT 1',
-                [personId]
-            );
-            if (!accountRows.length) {
-                return res.status(400).json({ success: false, message: 'Thanh vien nay chua co tai khoan de doi vai tro.' });
-            }
-
-            const targetAccount = accountRows[0];
-            if (Number(req.user.role_id) === 2) {
-                if (Number(targetAccount.id) === Number(req.user.id) && rid !== Number(targetAccount.role_id)) {
-                    return res.status(400).json({ success: false, message: 'Manager khong the tu doi vai tro cua chinh minh.' });
+            // Cho phép lưu thông tin người không có tài khoản (người đã mất/người thêm thủ công)
+            // khi frontend gửi role_id rỗng. Chỉ xử lý đổi vai trò khi role_id thật sự là 2 hoặc 3.
+            if (roleInput !== null && roleInput !== '') {
+                if (permission.scope !== 'all') {
+                    return res.status(403).json({ success: false, message: 'Khong duoc doi vai tro trong che do temporary edit.' });
                 }
-                if (rid === 3 && Number(targetAccount.role_id) !== 3) {
-                    return res.status(403).json({ success: false, message: 'Manager khong duoc ha vai tro cua toc truong khac.' });
+                if (Number(req.user.role_id) !== 1 && Number(req.user.role_id) !== 2) {
+                    return res.status(403).json({ success: false, message: 'Ban khong co quyen doi vai tro thanh vien.' });
                 }
-            }
 
-            if (rid !== Number(targetAccount.role_id)) {
-                await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [rid, targetAccount.id]);
+                const rid = Number(roleInput);
+                if (rid !== 2 && rid !== 3) {
+                    return res.status(400).json({ success: false, message: 'Vai tro chi ho tro 2 - toc truong hoac 3 - thanh vien.' });
+                }
+
+                const [accountRows] = await db.query(
+                    'SELECT id, role_id FROM accounts WHERE person_id = ? ORDER BY id ASC LIMIT 1',
+                    [personId]
+                );
+                if (!accountRows.length) {
+                    return res.status(400).json({ success: false, message: 'Thanh vien nay chua co tai khoan de doi vai tro.' });
+                }
+
+                const targetAccount = accountRows[0];
+                if (Number(req.user.role_id) === 2) {
+                    if (Number(targetAccount.id) === Number(req.user.id) && rid !== Number(targetAccount.role_id)) {
+                        return res.status(400).json({ success: false, message: 'Manager khong the tu doi vai tro cua chinh minh.' });
+                    }
+                    if (rid === 3 && Number(targetAccount.role_id) !== 3) {
+                        return res.status(403).json({ success: false, message: 'Manager khong duoc ha vai tro cua toc truong khac.' });
+                    }
+                }
+
+                if (rid !== Number(targetAccount.role_id)) {
+                    await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [rid, targetAccount.id]);
+                }
             }
         }
 

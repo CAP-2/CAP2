@@ -13,6 +13,8 @@ import {
 } from "../../api/managerService";
 import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
 import { generateEventFormAI } from "../../api/aiServerService";
+import DateInput from "../../components/common/DateInput";
+import { formatDateTimeVN, formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "./TaskManagementPage.css";
 
 const STATUS_LABELS = {
@@ -38,16 +40,11 @@ function fullName(item) {
 
 function formatDate(value, withTime = false) {
   if (!value) return "Chưa có";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return withTime ? date.toLocaleString("vi-VN") : date.toLocaleDateString("vi-VN");
+  return withTime ? formatDateTimeVN(value) : formatDateVN(value);
 }
 
 function toDateInput(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return date.toISOString().slice(0, 10);
+  return isoToVietnamDate(value);
 }
 
 function summarizeTasks(tasks) {
@@ -323,6 +320,7 @@ export default function TaskManagementPage({ role = "member" }) {
         ...form,
         title: form.title.trim(),
         description: form.description.trim(),
+        due_date: vietnamDateToIso(form.due_date) || null,
         event_id: Number(selectedEventId),
         member_ids: memberIds,
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
@@ -350,7 +348,7 @@ export default function TaskManagementPage({ role = "member" }) {
     try {
       const result = await createManagerEventAPI({
         title: eventForm.title.trim(),
-        event_date: eventForm.event_date || null,
+        event_date: vietnamDateToIso(eventForm.event_date) || null,
         description: eventForm.description.trim(),
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       });
@@ -383,7 +381,7 @@ export default function TaskManagementPage({ role = "member" }) {
     try {
       await updateManagerEventAPI(selectedEvent.id, {
         title: editEventForm.title.trim(),
-        event_date: editEventForm.event_date || null,
+        event_date: vietnamDateToIso(editEventForm.event_date) || null,
         description: editEventForm.description.trim(),
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       });
@@ -441,7 +439,7 @@ const normalizeAiTasks = (items = [], fallbackEventId = null) =>
       member_account_ids: [],
       title: String(item.title || "").trim(),
       description: String(item.description || "").trim(),
-      due_date: item.due_date || "",
+      due_date: isoToVietnamDate(item.due_date),
       suggested_role: String(item.suggested_role || "").trim(),
       status: item.status || "assigned",
     }))
@@ -475,7 +473,7 @@ const requestAiEventCreate = async () => {
 
     setEventForm({
       title: aiEvent.title || "",
-      event_date: aiEvent.event_date || "",
+      event_date: isoToVietnamDate(aiEvent.event_date),
       description: aiEvent.description || "",
     });
 
@@ -526,7 +524,7 @@ const requestAiTaskCreate = async () => {
               event_id: task.event_id || selectedEvent.id,
               title: task.title,
               description: task.description,
-              due_date: task.due_date || null,
+              due_date: vietnamDateToIso(task.due_date) || null,
               status: task.status || "assigned",
               source: "ai_suggestion",
             })),
@@ -611,7 +609,7 @@ const submitSingleAiTaskSuggestion = async (task) => {
         {
           title,
           description,
-          due_date: dueDate,
+          due_date: vietnamDateToIso(dueDate) || null,
           member_account_ids: memberIds,
         },
       ],
@@ -671,7 +669,7 @@ const submitSelectedAiTaskSuggestions = async () => {
       tasks: selectedAiTasks.map((task) => ({
         title: String(task.title || "").trim(),
         description: String(task.description || "").trim(),
-        due_date: task.due_date || null,
+        due_date: vietnamDateToIso(task.due_date) || null,
         member_account_ids: task.member_account_ids.map(Number),
       })),
     });
@@ -876,8 +874,7 @@ const openEvent = (eventId) => {
 
               <label className={!dueDateOk ? "field-invalid" : ""}>
                 <span>Hạn chót</span>
-                <input
-                  type="date"
+                <DateInput
                   value={task.due_date || ""}
                   onChange={(event) =>
                     updateAiTaskSuggestion(task.id, {
@@ -939,7 +936,7 @@ const openEvent = (eventId) => {
             </label>
             <label>
               <span>Ngày sự kiện</span>
-              <input type="date" value={editEventForm.event_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
+              <DateInput value={editEventForm.event_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
             </label>
             <label>
               <span>Mô tả</span>
@@ -983,7 +980,7 @@ const openEvent = (eventId) => {
             </label>
             <label>
               <span>Hạn chót</span>
-              <input type="date" value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
+              <DateInput value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
             </label>
             <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length}>
               <span className="material-symbols-outlined">send</span>
@@ -1095,7 +1092,7 @@ const openEvent = (eventId) => {
             </label>
             <label>
               <span>Ngày sự kiện</span>
-              <input type="date" value={eventForm.event_date} onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
+              <DateInput value={eventForm.event_date} onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
             </label>
             <label>
               <span>Mô tả ngắn</span>

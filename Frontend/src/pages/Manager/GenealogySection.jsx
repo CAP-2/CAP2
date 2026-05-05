@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
+import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./manager.css";
 
 export default function GenealogySection() {
@@ -39,7 +40,7 @@ export default function GenealogySection() {
       .toLowerCase()
       .trim();
 
-  const formatDateTime = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "1 giờ từ lúc tạo key");
+  const formatDateTime = (value) => (value ? formatDateTimeVN(value) : "1 giờ từ lúc tạo key");
 
   const loadTree = useCallback(async () => {
     setLoading(true);

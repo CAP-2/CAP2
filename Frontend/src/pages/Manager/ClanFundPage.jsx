@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiRequest } from "../../services/api";
 import { resolveImageUrl } from "../../utils/media";
+import DateInput from "../../components/common/DateInput";
+import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "../FundDesign.css";
 import FundAnalytics from "./FundAnalytics";
 
@@ -24,7 +26,7 @@ export default function ClanFundPage() {
 
   const [generalTx, setGeneralTx] = useState({
     type: "income", amount: "", note: "", method: "Tiền mặt", 
-    date: new Date().toISOString().split('T')[0], category: "Khác",
+    date: isoToVietnamDate(new Date().toISOString().split('T')[0]), category: "Khác",
     person_id: "", campaign_id: ""
   });
 
@@ -100,7 +102,13 @@ export default function ClanFundPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await apiRequest("/api/manager/fund/campaigns", { method: "POST", body: JSON.stringify(formData) });
+      await apiRequest("/api/manager/fund/campaigns", {
+        method: "POST",
+        body: JSON.stringify({
+          ...formData,
+          deadline: vietnamDateToIso(formData.deadline) || null,
+        }),
+      });
       setShowCampaignModal(false);
       loadData();
     } catch (error) {
@@ -160,6 +168,7 @@ export default function ClanFundPage() {
         method: "POST", 
         body: JSON.stringify({
           ...generalTx,
+          date: vietnamDateToIso(generalTx.date) || null,
           person_id: generalTx.person_id || null,
           campaign_id: generalTx.campaign_id || null
         }) 
@@ -167,7 +176,7 @@ export default function ClanFundPage() {
       setShowGeneralForm(false);
       setGeneralTx({ 
         type: "income", amount: "", note: "", method: "Tiền mặt", 
-        date: new Date().toISOString().split('T')[0], category: "Khác",
+        date: isoToVietnamDate(new Date().toISOString().split('T')[0]), category: "Khác",
         person_id: "", campaign_id: ""
       });
       loadData();
@@ -258,7 +267,7 @@ export default function ClanFundPage() {
                       <div className="tx-name">{tx.note || 'Chi chung'}</div>
                       <div className="tx-date">
                         {tx.person_name && <span className="tx-person-pill">{tx.person_name}</span>}
-                        {new Date(tx.date).toLocaleDateString('vi-VN')}
+                        {formatDateVN(tx.date)}
                       </div>
                     </td>
                     <td className={`tx-val ${tx.type}`}>{tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}</td>
@@ -289,7 +298,7 @@ export default function ClanFundPage() {
                 </div>
                 <div className="form-row-2">
                   <div className="form-group"><label>Số tiền / Đinh</label><input type="number" required placeholder="50000" onChange={e => setFormData({...formData, amount_per_dinh: e.target.value})} /></div>
-                  <div className="form-group"><label>Hạn đóng</label><input type="date" required onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
+                  <div className="form-group"><label>Hạn đóng</label><DateInput required value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
                 </div>
                 
                 <h4 className="sub-title-v3">Thông tin nhận tiền</h4>
@@ -387,7 +396,7 @@ export default function ClanFundPage() {
                     {selectedCampaign.transactions.map(tx => (
                       <tr key={tx.id}>
                         <td><strong>{tx.person_name}</strong></td>
-                        <td>{new Date(tx.contribution_date).toLocaleDateString('vi-VN')}</td>
+                        <td>{formatDateVN(tx.contribution_date)}</td>
                         <td>{formatCurrency(tx.amount)}</td>
                         <td>
                           {tx.status === 'pending' ? (
@@ -489,7 +498,7 @@ export default function ClanFundPage() {
 
                    <div className="form-row-2">
                      <div className="form-group"><label>Số tiền</label><input type="number" required value={generalTx.amount} onChange={e => setGeneralTx({...generalTx, amount: e.target.value})} /></div>
-                     <div className="form-group"><label>Ngày</label><input type="date" required value={generalTx.date} onChange={e => setGeneralTx({...generalTx, date: e.target.value})} /></div>
+                     <div className="form-group"><label>Ngày</label><DateInput required value={generalTx.date} onChange={e => setGeneralTx({...generalTx, date: e.target.value})} /></div>
                    </div>
 
                    <div className="form-group"><label>Nội dung / Ghi chú</label><textarea required value={generalTx.note} onChange={e => setGeneralTx({...generalTx, note: e.target.value})} rows="2" placeholder="Ví dụ: Đóng quỹ khuyến học bằng tiền mặt..."></textarea></div>

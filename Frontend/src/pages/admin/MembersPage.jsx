@@ -6,6 +6,7 @@ import {
   updateAdminAccountAccess,
   deleteAdminAccount,
 } from "../../api/adminService";
+import { formatDateVN } from "../../utils/dateFormat";
 
 const emptyForm = {
   account_id: null,
@@ -317,7 +318,7 @@ export default function MembersPage() {
                 <td><span className="clan-tag">{a.clan_name || "Chưa gán"}</span></td>
                 <td><span className={`role-badge role-${a.role_id}`}>{roleLabel(a.role_id)}</span></td>
                 <td><span className={`status-pill status-${a.status || "none"}`}>{a.status || "N/A"}</span></td>
-                <td>{a.created_at ? new Date(a.created_at).toLocaleDateString("vi-VN") : "-"}</td>
+                <td>{a.created_at ? formatDateVN(a.created_at) : "-"}</td>
                 <td className="text-right">
                   <div className="action-buttons">
                     <button className="btn-icon btn-edit" title="Sửa" onClick={() => openEdit(a)}>

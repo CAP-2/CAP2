@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDateTimeVN, formatDateVN } from "../../utils/dateFormat";
 import {
   getBillingPlans,
   getClanBilling,
@@ -479,7 +480,7 @@ export default function BillingPage() {
             Ngày hết hạn:{" "}
             <b>
               {billing.expires_at
-                ? new Date(billing.expires_at).toLocaleDateString("vi-VN")
+                ? formatDateVN(billing.expires_at)
                 : "Không giới hạn"}
             </b>
           </p>
@@ -583,7 +584,7 @@ export default function BillingPage() {
 
                     <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
                       {payment.paid_at
-                        ? new Date(payment.paid_at).toLocaleString("vi-VN")
+                        ? formatDateTimeVN(payment.paid_at)
                         : "Chưa thanh toán"}
                     </td>
                   </tr>

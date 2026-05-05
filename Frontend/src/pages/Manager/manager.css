@@ -1761,3 +1761,22 @@ select.mgr-search.mgr-selectMulti {
   padding: 11px 14px;
   font-weight: 800;
 }
+
+.mgr-dateField {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mgr-lunarHint {
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.3;
+  padding-left: 2px;
+}
+
+.mgr-lunarHint::before {
+  content: "☾ ";
+  color: #c28a2c;
+}

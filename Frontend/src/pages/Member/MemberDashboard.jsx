@@ -8,13 +8,13 @@ import {
   sendMemberChat,
   updateMemberTaskStatus,
 } from "../../api/memberService";
+import DateInput from "../../components/common/DateInput";
+import { formatDateTimeVN, formatDateVN, vietnamDateToIso } from "../../utils/dateFormat";
 import "./MemberDashboard.css";
 
 function formatDate(value, withTime = false) {
   if (!value) return "Chưa cập nhật";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return withTime ? date.toLocaleString("vi-VN") : date.toLocaleDateString("vi-VN");
+  return withTime ? formatDateTimeVN(value) : formatDateVN(value);
 }
 
 function getTaskLabel(status) {
@@ -189,7 +189,7 @@ export default function MemberDashboard() {
     try {
       await createMemberReminder({
         title: reminderForm.title.trim(),
-        date: reminderForm.date,
+        date: vietnamDateToIso(reminderForm.date) || null,
         note: reminderForm.note.trim(),
       });
       setReminderForm({ title: "", date: "", note: "" });
@@ -343,8 +343,7 @@ export default function MemberDashboard() {
               onChange={(event) => setReminderForm((current) => ({ ...current, title: event.target.value }))}
               placeholder="Tiêu đề nhắc việc"
             />
-            <input
-              type="date"
+            <DateInput
               value={reminderForm.date}
               onChange={(event) => setReminderForm((current) => ({ ...current, date: event.target.value }))}
             />

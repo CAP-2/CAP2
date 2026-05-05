@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./register.css";
 import { registerAPI } from "../../api/authService";
+import DateInput from "../../components/common/DateInput";
+import { vietnamDateToIso } from "../../utils/dateFormat";
 import termsText from "./terms.txt?raw";
 import privacyText from "./privacy.txt?raw";
 
@@ -56,7 +58,10 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const res = await registerAPI(form);
+      const res = await registerAPI({
+        ...form,
+        birth_date: vietnamDateToIso(form.birth_date) || null,
+      });
       if (res.success) {
         alert("Đăng ký thành công! Vui lòng chờ phê duyệt.");
         navigate("/waiting");
@@ -95,7 +100,7 @@ const Register = () => {
               <option value="1">Nam</option>
               <option value="2">Nữ</option>
             </select>
-            <input name="birth_date" value={form.birth_date} type="date" max={new Date().toISOString().split("T")[0]} onChange={handleChange} required />
+            <DateInput name="birth_date" value={form.birth_date} onChange={handleChange} required />
           </div>
 
           <input name="email" value={form.email} placeholder="Email đăng nhập" type="email" onChange={handleChange} required />

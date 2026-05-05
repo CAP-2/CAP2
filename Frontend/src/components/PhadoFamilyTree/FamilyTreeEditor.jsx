@@ -10,6 +10,9 @@ import {
   updatePersonAPI,
   updatePersonPositionAPI,
 } from "../../api/managerService";
+import { formatLunarFullFromSolar } from "../../utils/lunarCalendar";
+import DateInput from "../common/DateInput";
+import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "./FamilyTreeEditor.css";
 
 const CARD_WIDTH = 170;
@@ -155,28 +158,12 @@ function saveLineRoutes(clanId, routes) {
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
-const dateInput = (value) => {
-  if (!value) return "";
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-  const text = String(value).trim();
-  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return "";
-};
+const dateInput = (value) => isoToVietnamDate(value);
 
-const formatDisplayDate = (value) => {
-  const text = dateInput(value);
-  if (!text) return "";
-  const [year, month, day] = text.split("-");
-  return day && month && year ? `${day}/${month}/${year}` : text;
-};
+const formatDisplayDate = (value) => formatDateVN(value);
 
 const birthTime = (person) => {
-  const text = dateInput(person?.birth_date);
+  const text = vietnamDateToIso(person?.birth_date);
   if (!text) return null;
   const time = Date.parse(text);
   return Number.isFinite(time) ? time : null;
@@ -980,6 +967,12 @@ function blankCreateForm(relation, selectedPerson, spouse) {
 };
 }
 
+function LunarDateHint({ value, label = "Âm lịch" }) {
+  const text = formatLunarFullFromSolar(value);
+  if (!text) return null;
+  return <small className="fte-lunarHint">{label}: {text}</small>;
+}
+
 function personToForm(person) {
   return {
     display_name: person?.display_name || "",
@@ -1304,22 +1297,22 @@ function PersonInspector({
 
           <label>
             Ngày sinh
-            <input
-              type="date"
+            <DateInput
               value={form.birth_date}
               onChange={(event) => setField("birth_date", event.target.value)}
               disabled={!canEdit}
             />
+            <LunarDateHint value={form.birth_date} label="Ngày sinh âm lịch" />
           </label>
 
           <label>
             Ngày mất
-            <input
-              type="date"
+            <DateInput
               value={form.death_date}
               onChange={(event) => setField("death_date", event.target.value)}
               disabled={!canEdit || form.is_living === "1"}
             />
+            <LunarDateHint value={form.death_date} label="Ngày mất âm lịch" />
           </label>
 
           <label>
@@ -1745,21 +1738,21 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
 
           <label>
             Ngày sinh
-            <input
-              type="date"
+            <DateInput
               value={form.birth_date || ""}
               onChange={(event) => setField("birth_date", event.target.value)}
             />
+            <LunarDateHint value={form.birth_date} label="Ngày sinh âm lịch" />
           </label>
 
           <label>
             Ngày mất
-            <input
-              type="date"
+            <DateInput
               value={form.death_date || ""}
               onChange={(event) => setField("death_date", event.target.value)}
               disabled={form.is_living === "1"}
             />
+            <LunarDateHint value={form.death_date} label="Ngày mất âm lịch" />
           </label>
 
           <label className="is-wide">
@@ -2259,9 +2252,17 @@ const quickCreateSourcePerson = useMemo(
         is_living: form.is_living === "1" ? 1 : 0,
         generation: Number(form.generation) || 1,
         branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
-        birth_date: form.birth_date || null,
-        death_date: form.death_date || null,
+        birth_date: vietnamDateToIso(form.birth_date) || null,
+        death_date: form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null,
       };
+
+      // Người đã mất/người được thêm thủ công có thể chưa có tài khoản.
+      // Không gửi role_id rỗng lên backend, nếu không backend sẽ hiểu là đang đổi vai trò
+      // và chặn việc lưu ngày sinh/ngày mất với lỗi "Vai trò chỉ hỗ trợ...".
+      delete payload.role_id;
+      delete payload.account_email;
+      delete payload.account_password;
+
       if (canEditAll && selectedPerson.account_id && (form.role_id === "2" || form.role_id === "3")) {
         payload.role_id = Number(form.role_id);
       }
@@ -2404,8 +2405,8 @@ const submitCreateDialog = async () => {
       is_living: form.is_living === "1" ? 1 : 0,
       generation: Number(form.generation) || 1,
       branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
-      birth_date: form.birth_date || null,
-      death_date: form.is_living === "1" ? null : form.death_date || null,
+      birth_date: vietnamDateToIso(form.birth_date) || null,
+      death_date: form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null,
       tree_x: Number(form.tree_x) || 0,
       tree_y: Number(form.tree_y) || 0,
       account_email: form.is_living === "1" ? String(form.account_email || "").trim() : null,

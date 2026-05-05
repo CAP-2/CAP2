@@ -8,6 +8,9 @@ import {
   updateMemberByManager,
 } from "../../api/managerService";
 import { getStoredUser } from "../../utils/auth";
+import { formatLunarFullFromSolar } from "../../utils/lunarCalendar";
+import DateInput from "../../components/common/DateInput";
+import { isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import { compactPayload, fullName } from "./managerData";
 import "./manager.css";
 
@@ -63,8 +66,8 @@ const toEditForm = (member) => ({
   middle_name: member.middle_name || "",
   first_name: member.first_name || "",
   gender: member.gender == null ? "" : String(member.gender),
-  birth_date: member.birth_date || "",
-  death_date: member.death_date || "",
+  birth_date: isoToVietnamDate(member.birth_date),
+  death_date: isoToVietnamDate(member.death_date),
   is_living: member.is_living === 0 || member.is_living === false ? "0" : "1",
   generation: member.generation == null ? "1" : String(member.generation),
   branch: member.branch == null ? "" : String(member.branch),
@@ -78,6 +81,12 @@ const toEditForm = (member) => ({
 });
 
 const idText = (value) => (value == null || value === "" ? "" : String(value));
+
+function LunarDateHint({ value, label = "Âm lịch" }) {
+  const text = formatLunarFullFromSolar(value);
+  if (!text) return null;
+  return <small className="mgr-lunarHint">{label}: {text}</small>;
+}
 
 export default function AccountPage() {
   const currentUser = getStoredUser();
@@ -213,7 +222,10 @@ export default function AccountPage() {
     setMessage("");
     setError("");
     try {
-      const payload = compactPayload(createForm);
+      const payload = compactPayload({
+        ...createForm,
+        birth_date: vietnamDateToIso(createForm.birth_date) || null,
+      });
       if (!isAdmin) delete payload.clan_id;
       await createMember(payload);
       setCreateForm(emptyCreateForm);
@@ -293,7 +305,14 @@ export default function AccountPage() {
     setMessage("");
     setError("");
     try {
-      await updateMemberByManager(editAccountId, compactPayload(editForm));
+      await updateMemberByManager(
+        editAccountId,
+        compactPayload({
+          ...editForm,
+          birth_date: vietnamDateToIso(editForm.birth_date) || null,
+          death_date: editForm.is_living === "1" ? null : vietnamDateToIso(editForm.death_date) || null,
+        }),
+      );
       setMessage("Đã lưu thay đổi thành viên vào database.");
       setEditAccountId(null);
       await loadMembers();
@@ -344,7 +363,10 @@ export default function AccountPage() {
                   </select>
                   <input className="mgr-field" name="generation" type="number" min="1" value={createForm.generation} onChange={updateCreateField} placeholder="Đời" />
                 </div>
-                <input className="mgr-field" name="birth_date" type="date" value={createForm.birth_date} onChange={updateCreateField} />
+                <div className="mgr-dateField">
+                  <DateInput className="mgr-field" name="birth_date" value={createForm.birth_date} onChange={updateCreateField} />
+                  <LunarDateHint value={createForm.birth_date} label="Ngày sinh âm lịch" />
+                </div>
                 <input className="mgr-field" name="hometown" value={createForm.hometown} onChange={updateCreateField} placeholder="Quê quán" />
                 {isAdmin && <input className="mgr-field" name="clan_id" type="number" value={createForm.clan_id} onChange={updateCreateField} placeholder="clan_id" />}
                 <button className="mgr-btnPrimary" type="submit" disabled={saving}>
@@ -509,8 +531,14 @@ export default function AccountPage() {
                 <option value="2">Nữ</option>
                 <option value="">Không khai báo</option>
               </select>
-              <input className="mgr-field" name="birth_date" type="date" value={editForm.birth_date} onChange={updateEditField} />
-              <input className="mgr-field" name="death_date" type="date" value={editForm.death_date} onChange={updateEditField} />
+              <div className="mgr-dateField">
+                <DateInput className="mgr-field" name="birth_date" value={editForm.birth_date} onChange={updateEditField} />
+                <LunarDateHint value={editForm.birth_date} label="Ngày sinh âm lịch" />
+              </div>
+              <div className="mgr-dateField">
+                <DateInput className="mgr-field" name="death_date" value={editForm.death_date} onChange={updateEditField} disabled={editForm.is_living === "1"} />
+                <LunarDateHint value={editForm.death_date} label="Ngày mất âm lịch" />
+              </div>
               <select className="mgr-field" name="is_living" value={editForm.is_living} onChange={updateEditField}>
                 <option value="1">Còn sống</option>
                 <option value="0">Đã mất</option>

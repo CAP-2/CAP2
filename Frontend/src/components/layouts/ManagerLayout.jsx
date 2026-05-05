@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
+import { formatDateVN } from "../../utils/dateFormat";
 import { apiRequest } from "../../services/api";
 import { resolveImageUrl } from "../../utils/media";
 import NotificationBell from "./NotificationBell";
@@ -16,6 +17,7 @@ const menuItems = [
   { icon: "group", label: "Thành viên dòng họ", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
   { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/manager/fund" },
+  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/manager/calendar" },
   { icon: "payments", label: "Gói sử dụng", path: "/manager/billing" },
 ];
 
@@ -314,7 +316,7 @@ export default function ManagerLayout() {
         <header className="manager-top-header glass-effect">
           <div className="header-context">
             <h1>Hệ thống quản trị Gia Phả</h1>
-            <p>Phiên làm việc: {new Date().toLocaleDateString('vi-VN')}</p>
+            <p>Phiên làm việc: {formatDateVN(new Date())}</p>
           </div>
           <div className="header-utils">
             <button className="util-btn" title="Sửa tài khoản" onClick={openAccountModal}>

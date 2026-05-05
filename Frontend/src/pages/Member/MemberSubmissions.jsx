@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getGeneralPosts, getMySubmissions } from "../../api/memberService";
+import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./MemberDashboard.css";
 
 function formatDate(value) {
   if (!value) return "Chưa cập nhật";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("vi-VN");
+  return formatDateTimeVN(value);
 }
 
 function statusText(status) {

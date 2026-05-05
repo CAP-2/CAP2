@@ -1,3 +1,4 @@
+import { formatDateTimeVN, formatDateVN } from "../../utils/dateFormat";
 export const asArray = (value) => (Array.isArray(value) ? value : []);
 
 export const fullName = (item, fallback = "Chưa có tên") =>
@@ -12,14 +13,12 @@ export const avatarInitial = (item) => fullName(item).charAt(0).toUpperCase();
 
 export const formatDate = (value) => {
   if (!value) return "Chưa có ngày";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("vi-VN");
+  return formatDateVN(value);
 };
 
 export const formatDateTime = (value) => {
   if (!value) return "Chưa có thời gian";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("vi-VN");
+  return formatDateTimeVN(value);
 };
 
 export const compactPayload = (form) =>

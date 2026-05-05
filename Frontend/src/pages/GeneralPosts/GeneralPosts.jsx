@@ -8,6 +8,7 @@ import {
   togglePostLike,
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
+import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./GeneralPosts.css";
 
 const emptyPostForm = {
@@ -18,9 +19,7 @@ const emptyPostForm = {
 
 function formatDate(value) {
   if (!value) return "Chưa cập nhật";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("vi-VN");
+  return formatDateTimeVN(value);
 }
 
 function buildPostDescription(post) {

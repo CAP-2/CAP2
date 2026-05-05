@@ -38,6 +38,7 @@ import MemberSubmissions from "../pages/Member/MemberSubmissions";
 import TaskManagementPage from "../pages/Tasks/TaskManagementPage";
 import GeneralPosts from "../pages/GeneralPosts/GeneralPosts";
 import TimeCapsulePage from "../pages/TimeCapsule/TimeCapsulePage";
+import VietnamCalendarPage from "../pages/Calendar/VietnamCalendarPage";
 
 export default function AppRoutes() {
   return (
@@ -71,6 +72,7 @@ export default function AppRoutes() {
           <Route path="/user/submissions" element={<MemberSubmissions />} />
           <Route path="/user/profile" element={<MemberProfile />} />
           <Route path="/user/fund" element={<MemberFundPage />} />
+          <Route path="/user/calendar" element={<VietnamCalendarPage />} />
         </Route>
       </Route>
 
@@ -89,6 +91,7 @@ export default function AppRoutes() {
           <Route path="/manager/media" element={<Navigate to="/manager/posts" replace />} />
           <Route path="/manager/billing" element={<BillingPage />} />
           <Route path="/manager/fund" element={<ClanFundPage />} />
+          <Route path="/manager/calendar" element={<VietnamCalendarPage />} />
         </Route>
       </Route>
 
@@ -106,6 +109,7 @@ export default function AppRoutes() {
           <Route path="/dashboard/gallery" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard/billing" element={<BillingPage />} />
           <Route path="/dashboard/settings" element={<SettingsPage />} />
+          <Route path="/dashboard/calendar" element={<VietnamCalendarPage />} />
         </Route>
       </Route>
 

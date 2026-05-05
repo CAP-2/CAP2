@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./clanRegister.css";
 import { registerClanManagerAPI } from "../../api/authService";
+import DateInput from "../../components/common/DateInput";
+import { vietnamDateToIso } from "../../utils/dateFormat";
 import termsText from "./terms.txt?raw";
 import privacyText from "./privacy.txt?raw";
 
@@ -112,6 +114,7 @@ const ClanRegister = () => {
       const res = await registerClanManagerAPI({
         clan_name: clanName,
         ...payload,
+        birth_date: vietnamDateToIso(payload.birth_date) || null,
       });
 
       if (res.success) {
@@ -202,11 +205,9 @@ const ClanRegister = () => {
                   <option value="1">Nam</option>
                   <option value="2">Nữ</option>
                 </select>
-                <input
+                <DateInput
                   name="birth_date"
                   value={managerForm.birth_date}
-                  type="date"
-                  max={new Date().toISOString().split("T")[0]}
                   onChange={handleManagerChange}
                   required
                 />

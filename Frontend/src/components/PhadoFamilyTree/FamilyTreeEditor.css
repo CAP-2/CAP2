@@ -1618,3 +1618,18 @@ body.fte-bodyFullscreen {
     line-height: 1.45;
     color: #7a5b33;
 }
+.fte-lunarHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.fte-lunarHint::before {
+  content: "☾";
+  color: #c28a2c;
+}

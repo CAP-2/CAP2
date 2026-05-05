@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
+import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./NotificationBell.css";
 
 function normalizeLink(linkUrl, role) {
@@ -12,14 +13,7 @@ function normalizeLink(linkUrl, role) {
 
 function formatTime(value) {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeVN(value);
 }
 
 export default function NotificationBell({ role = "member", buttonClassName = "" }) {

@@ -59,6 +59,8 @@ const adminRoutes = require('./src/routes/adminRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
 const voiceRoutes = require('../voice/backendRoutes');
 const mediaRoutes = require('./src/routes/mediaRoutes');
+const calendarRoutes = require('./src/routes/calendarRoutes');
+const { startCalendarReminderScheduler } = require('./src/controllers/calendarController');
 
 const managerController = require('./src/controllers/managerController');
 
@@ -187,6 +189,7 @@ app.post('/api/upload', verifyToken, (req, res) => {
 
 // 8. Main API routes
 app.use('/api/media', mediaRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/billing', billingRoutes);
@@ -277,6 +280,8 @@ app.use((req, res) => {
 
 // 10. Start server
 const PORT = process.env.PORT || 3000;
+
+startCalendarReminderScheduler(app);
 
 server.listen(PORT, () => {
     console.log(`

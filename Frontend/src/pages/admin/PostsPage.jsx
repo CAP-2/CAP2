@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getAdminClans, getAdminPostsByClan } from "../../api/adminService";
+import { formatDateVN } from "../../utils/dateFormat";
 import "./PostsPage.css";
 
 export default function PostsPage() {
@@ -112,7 +113,7 @@ export default function PostsPage() {
                                                 {post.image_url && <span className="has-image"><span className="material-symbols-outlined">image</span></span>}
                                             </div>
                                         </td>
-                                        <td>{new Date(post.created_at).toLocaleDateString('vi-VN')}</td>
+                                        <td>{formatDateVN(post.created_at)}</td>
                                         <td>
                                             <span className={`status-badge ${post.status}`}>
                                                 {post.status === 'approved' ? 'Đã duyệt' : post.status === 'pending' ? 'Chờ duyệt' : 'Đã ẩn'}

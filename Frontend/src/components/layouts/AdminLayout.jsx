@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
+import { formatDateVN } from "../../utils/dateFormat";
 import "./AdminLayout.css";
 
 const menuItems = [
@@ -11,6 +12,7 @@ const menuItems = [
   { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
   { icon: "assignment", label: "Quản lý sự kiện ", path: "/dashboard/tasks" },
   { icon: "workspace_premium", label: "Gói sử dụng", path: "/dashboard/billing" },
+  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/dashboard/calendar" },
   { icon: "settings", label: "Cài đặt Hệ thống", path: "/dashboard/settings" },
 ];
 
@@ -88,7 +90,7 @@ export default function AdminLayout() {
         <header className="admin-top-header glass-effect">
           <div className="header-context">
             <h1>Hệ thống Quản trị Gia Phả Việt</h1>
-            <p>{currentTime.toLocaleTimeString('vi-VN')} | {new Date().toLocaleDateString('vi-VN', { weekday: 'long' })}</p>
+            <p>{currentTime.toLocaleTimeString('vi-VN')} | {formatDateVN(currentTime)}</p>
           </div>
         </header>
 

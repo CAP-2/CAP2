@@ -8,6 +8,7 @@ import {
   updateVoiceTranscript,
   uploadVoiceRecording,
 } from "../../api/voiceService";
+import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./TimeCapsulePage.css";
 
 const MAX_SECONDS = 180;
@@ -20,9 +21,7 @@ function pickMimeType() {
 
 function formatDate(value) {
   if (!value) return "Chưa cập nhật";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("vi-VN");
+  return formatDateTimeVN(value);
 }
 
 function formatDuration(seconds) {

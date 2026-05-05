@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiRequest } from "../../services/api";
 import { resolveImageUrl } from "../../utils/media";
+import { formatDateVN } from "../../utils/dateFormat";
 import "../FundDesign.css";
 
 export default function MemberFundPage() {
@@ -145,7 +146,7 @@ export default function MemberFundPage() {
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
                   <span className="year-pill">{c.year}</span>
                   <span className="deadline-tag" style={{fontSize: '0.8rem', color: '#ff7675', fontWeight: 'bold'}}>
-                    Hạn: {new Date(c.deadline).toLocaleDateString('vi-VN')}
+                    Hạn: {formatDateVN(c.deadline)}
                   </span>
                 </div>
                 <h4 style={{fontSize: '1.3rem', marginBottom: '1rem', color: '#fff'}}>{c.name}</h4>
@@ -176,7 +177,7 @@ export default function MemberFundPage() {
                 <div key={`${tx.type}-${tx.id}`} className={`tx-card-v2 ${tx.type}`}>
                   <div className="tx-main">
                     <div className="tx-note">{tx.note || 'Đóng góp dòng họ'}</div>
-                    <div className="tx-meta">{new Date(tx.date).toLocaleDateString('vi-VN')} • {tx.method}</div>
+                    <div className="tx-meta">{formatDateVN(tx.date)} • {tx.method}</div>
                   </div>
                   <div className="tx-amount" style={{textAlign: 'right'}}>
                     <div style={{fontWeight: 'bold', color: tx.type === 'income' ? '#2ecc71' : '#ff7675'}}>

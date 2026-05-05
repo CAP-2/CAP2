@@ -13,6 +13,7 @@ const menuItems = [
   { icon: "hourglass", label: "Viên nang thời gian", path: "/user/time-capsule" },
   { icon: "history_edu", label: "Bảng tin dòng họ", path: "/user/posts" },
   { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/user/fund" },
+  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/user/calendar" },
   { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
 ];
 
