@@ -1080,3 +1080,289 @@
 .manager-event-card .event-status-pill {
   margin-top: 0.35rem;
 }
+
+/* Event manager refinements: compact toolbar, archive, AI workspace, popup forms */
+.event-toolbar-compact {
+  grid-template-columns: minmax(260px, 0.72fr) auto auto auto;
+  justify-content: start;
+}
+
+.event-search-compact {
+  max-width: 760px;
+}
+
+.ai-event-modal,
+.archive-modal {
+  width: min(820px, 100%);
+}
+
+.archive-modal {
+  width: min(980px, 100%);
+}
+
+.archive-search {
+  margin: 14px 0;
+}
+
+.archive-event-list {
+  display: grid;
+  gap: 12px;
+}
+
+.archive-event-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(91, 36, 24, 0.14);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.archive-event-item strong {
+  display: block;
+  color: var(--task-ink);
+  font-size: 1rem;
+}
+
+.archive-event-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--task-muted);
+  font-weight: 800;
+}
+
+.archive-event-item p {
+  margin: 6px 0 0;
+  color: var(--task-muted);
+  font-weight: 700;
+}
+
+.event-action-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+}
+
+.event-action-strip strong {
+  display: block;
+  color: var(--task-primary-deep);
+  font-size: 1.05rem;
+}
+
+.event-action-strip small {
+  display: block;
+  margin-top: 3px;
+  color: var(--task-muted);
+  font-weight: 750;
+}
+
+.event-action-buttons,
+.ai-task-head-actions,
+.create-ai-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.event-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.1fr) minmax(360px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.event-ai-panel {
+  margin: 0;
+  padding: 18px;
+}
+
+.event-assigned-column .task-history-card {
+  height: 100%;
+}
+
+.ai-inline-prompt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.ai-inline-prompt input,
+.ai-modal-field textarea,
+.ai-count-control input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--task-ink);
+  font: inherit;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.ai-modal-field {
+  display: grid;
+  gap: 8px;
+  color: #3b4555;
+  font-weight: 900;
+}
+
+.ai-modal-field textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+.ai-count-control {
+  display: grid;
+  gap: 6px;
+  min-width: 112px;
+  color: #3b4555;
+  font-weight: 900;
+}
+
+.ai-count-control input {
+  max-width: 120px;
+}
+
+.ai-count-control-wide {
+  margin-top: 12px;
+}
+
+.ai-selected-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 900;
+}
+
+.ai-task-grid-compact {
+  max-height: 760px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ai-task-card-compact {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.ai-task-top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-task-fields-compact {
+  grid-template-columns: minmax(150px, 0.9fr) 128px;
+  gap: 10px;
+}
+
+.ai-task-fields-compact .ai-task-desc,
+.ai-task-fields-compact label:nth-child(3),
+.ai-task-fields-compact .task-field,
+.ai-task-fields-compact .ai-task-role {
+  grid-column: 1 / -1;
+}
+
+.ai-task-fields-compact textarea {
+  min-height: 60px;
+}
+
+.ai-task-card-compact .task-combobox-button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 0.88rem;
+}
+
+.ai-task-card-compact .task-selected {
+  min-height: 0;
+  margin-top: 4px;
+}
+
+.ai-task-card-compact .task-selected small {
+  font-size: 0.78rem;
+}
+
+.ai-task-card-compact .task-selected span {
+  padding: 3px 7px;
+  font-size: 0.76rem;
+}
+
+.ai-task-card-compact .task-combobox-menu {
+  top: 42px;
+}
+
+.ai-task-card-compact .task-combobox-list {
+  max-height: 170px;
+}
+
+.task-icon-btn.is-danger {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.ai-empty {
+  margin-top: 10px;
+  border: 1px dashed rgba(91, 36, 24, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.create-ai-tools {
+  align-items: flex-end;
+  border: 1px dashed rgba(91, 36, 24, 0.18);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 250, 247, 0.72);
+}
+
+.ai-modal-suggestions .ai-suggestion-item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: grid;
+}
+
+@media (max-width: 1180px) {
+  .event-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .event-toolbar-compact {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .event-search-compact {
+    max-width: none;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 780px) {
+  .event-toolbar-compact,
+  .ai-inline-prompt,
+  .archive-event-item,
+  .ai-task-fields-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .event-action-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .event-action-buttons .task-btn,
+  .event-toolbar-compact .task-btn,
+  .ai-inline-prompt .task-btn {
+    width: 100%;
+  }
+}

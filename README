@@ -46,7 +46,7 @@ npm run dev
 tạo file AI-server/.env
 
 ```bash
-cd D:\cap2\AI-server
+cd AI-server
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt

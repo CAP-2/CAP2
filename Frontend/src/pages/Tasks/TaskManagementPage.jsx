@@ -213,6 +213,12 @@ export default function TaskManagementPage({ role = "member" }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiTaskSuggestions, setAiTaskSuggestions] = useState([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [showAiEventModal, setShowAiEventModal] = useState(false);
+  const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
+  const [aiTaskCount, setAiTaskCount] = useState(5);
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
@@ -236,6 +242,22 @@ export default function TaskManagementPage({ role = "member" }) {
     if (!q) return events;
     return events.filter((event) => `${event.title || ""} ${event.description || ""} ${event.clan_name || ""}`.toLowerCase().includes(q));
   }, [events, searchTerm]);
+
+  const activeFilteredEvents = useMemo(
+    () => filteredEvents.filter((event) => event.status !== "ended"),
+    [filteredEvents]
+  );
+
+  const archivedEvents = useMemo(
+    () => events.filter((event) => event.status === "ended"),
+    [events]
+  );
+
+  const filteredArchivedEvents = useMemo(() => {
+    const q = archiveSearch.trim().toLowerCase();
+    if (!q) return archivedEvents;
+    return archivedEvents.filter((event) => `${event.title || ""} ${event.description || ""} ${event.clan_name || ""}`.toLowerCase().includes(q));
+  }, [archivedEvents, archiveSearch]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -494,8 +516,8 @@ const normalizeAiTasks = (items = [], fallbackEventId = null) =>
     }))
     .filter((item) => item.title);
 
-const requestAiEventCreate = async () => {
-  const prompt = aiPrompt.trim();
+const requestAiEventCreate = async (overridePrompt = "") => {
+  const prompt = String(overridePrompt || aiPrompt).trim();
 
   if (!prompt || aiLoading) return;
 
@@ -529,6 +551,7 @@ const requestAiEventCreate = async () => {
 
     setAiTaskSuggestions(normalizeAiTasks(result.manager_tasks));
     setShowCreateForm(true);
+    setShowAiEventModal(false);
     setMessage("AI đã điền form sự kiện và tạo danh sách công việc gợi ý. Hãy kiểm tra trước khi lưu.");
   } catch (err) {
     setError(err?.message || "Không thể gọi AI tạo sự kiện.");
@@ -549,7 +572,8 @@ const requestAiTaskCreate = async () => {
   try {
     const result = await generateEventFormAI({
       mode: "task_create",
-      prompt,
+      prompt: `${prompt}. Hãy gợi ý khoảng ${aiTaskCount} công việc rõ ràng, có hạn chót phù hợp.`,
+      requested_task_count: Number(aiTaskCount) || 5,
       today: getTodayInput(),
       clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
       current_event: {
@@ -606,6 +630,27 @@ const updateAiTaskSuggestion = (taskId, patch) => {
       task.id === taskId ? { ...task, ...patch } : task
     )
   );
+};
+
+const removeAiTaskSuggestion = (taskId) => {
+  setAiTaskSuggestions((prev) => prev.filter((task) => task.id !== taskId));
+};
+
+const selectedAiTaskCount = aiTaskSuggestions.filter((task) => task.selected).length;
+
+const requestAiTasksForCreateForm = () => {
+  const prompt = [
+    aiPrompt.trim(),
+    eventForm.title ? `Sự kiện: ${eventForm.title}` : "",
+    eventForm.start_date ? `Ngày bắt đầu: ${eventForm.start_date}` : "",
+    eventForm.end_date ? `Ngày kết thúc: ${eventForm.end_date}` : "",
+    eventForm.description ? `Mô tả: ${eventForm.description}` : "",
+    `Hãy gợi ý khoảng ${aiTaskCount} công việc cần chuẩn bị cho sự kiện này.`,
+  ]
+    .filter(Boolean)
+    .join(". ");
+
+  requestAiEventCreate(prompt);
 };
 
 const submitSingleAiTaskSuggestion = async (task) => {
@@ -829,227 +874,257 @@ const openEvent = (eventId) => {
         {message && <div className="task-alert is-success">{message}</div>}
         {error && <div className="task-alert is-error">{error}</div>}
 
-        <section className="task-card ai-event-card">
-          <div className="task-card-title">
-            <span className="material-symbols-outlined">auto_awesome</span>
-            <h2>AI gợi ý công việc cho sự kiện</h2>
+        <div className="event-action-strip task-card">
+          <div>
+            <strong>Quản lý sự kiện</strong>
+            <small>Chỉnh sửa, giao việc và dùng AI trong các popup gọn để không chiếm diện tích trang.</small>
           </div>
-          <div className="ai-event-row">
-            <textarea
-              value={aiPrompt}
-              onChange={(event) => setAiPrompt(event.target.value)}
-              rows={3}
-              placeholder="Ví dụ: Gợi ý thêm 5 việc còn thiếu cho giỗ tổ này"
-              disabled={aiLoading}
-            />
+          <div className="event-action-buttons">
             <button className="task-btn task-btn-primary" type="button" onClick={requestAiTaskCreate} disabled={aiLoading}>
               <span className="material-symbols-outlined">auto_awesome</span>
-              {aiLoading ? "AI đang tạo..." : "Tạo công việc bằng AI"}
+              {aiLoading ? "AI đang tạo..." : "AI tạo công việc"}
+            </button>
+            <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowAssignTaskModal(true)}>
+              <span className="material-symbols-outlined">assignment_add</span>
+              Giao công việc
+            </button>
+            <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowEditEventModal(true)}>
+              <span className="material-symbols-outlined">edit_calendar</span>
+              Sửa sự kiện
             </button>
           </div>
-                  {!!aiTaskSuggestions.length && (
-  <div className="ai-task-panel">
-    <div className="ai-task-panel-head">
-      <div>
-        <h3>Công việc AI đề xuất</h3>
-        <p>Kiểm tra đủ tiêu đề, mô tả, hạn chót và người thực hiện trước khi gửi.</p>
-      </div>
-
-      <button
-        className="task-btn task-btn-primary"
-        type="button"
-        onClick={submitSelectedAiTaskSuggestions}
-        disabled={bulkAssigning || !members.length}
-      >
-        <span className="material-symbols-outlined">send</span>
-        {bulkAssigning ? "Đang gửi..." : "Gửi các việc đã chọn"}
-      </button>
-    </div>
-
-    <div className="ai-task-grid">
-      {aiTaskSuggestions.map((task) => {
-        const titleOk = Boolean(String(task.title || "").trim());
-        const descriptionOk = Boolean(String(task.description || "").trim());
-        const dueDateOk = Boolean(task.due_date);
-        const assigneeOk = Array.isArray(task.member_account_ids) && task.member_account_ids.length > 0;
-        const canSend = task.selected && titleOk && descriptionOk && dueDateOk && assigneeOk && !bulkAssigning;
-
-        return (
-          <article className="ai-task-card" key={task.id}>
-            <div className="ai-task-card-top">
-              <label className="ai-task-check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(task.selected)}
-                  onChange={(event) =>
-                    updateAiTaskSuggestion(task.id, {
-                      selected: event.target.checked,
-                    })
-                  }
-                />
-                <span>Chọn giao việc này</span>
-              </label>
-
-              <span className={canSend ? "ai-task-valid is-ok" : "ai-task-valid is-warning"}>
-                {canSend ? "Đủ thông tin" : "Thiếu thông tin"}
-              </span>
-            </div>
-
-            <div className="ai-task-fields">
-              <label className={!titleOk ? "field-invalid" : ""}>
-                <span>Tiêu đề</span>
-                <input
-                  value={task.title}
-                  onChange={(event) =>
-                    updateAiTaskSuggestion(task.id, {
-                      title: event.target.value,
-                    })
-                  }
-                  placeholder="Nhập tiêu đề công việc"
-                />
-              </label>
-
-              <label className={!descriptionOk ? "field-invalid" : ""}>
-                <span>Mô tả</span>
-                <textarea
-                  rows={3}
-                  value={task.description}
-                  onChange={(event) =>
-                    updateAiTaskSuggestion(task.id, {
-                      description: event.target.value,
-                    })
-                  }
-                  placeholder="Mô tả việc cần làm"
-                />
-              </label>
-
-              <label className={!dueDateOk ? "field-invalid" : ""}>
-                <span>Hạn chót</span>
-                <DateInput
-                  value={task.due_date || ""}
-                  onChange={(event) =>
-                    updateAiTaskSuggestion(task.id, {
-                      due_date: event.target.value,
-                    })
-                  }
-                />
-              </label>
-
-              {task.suggested_role && (
-                <div className="ai-task-role">
-                  Gợi ý vai trò: <strong>{task.suggested_role}</strong>
-                </div>
-              )}
-
-              <div className={!assigneeOk ? "task-field field-invalid" : "task-field"}>
-                <span>Người thực hiện</span>
-                <MemberCombobox
-                  members={members}
-                  value={task.member_account_ids || []}
-                  disabled={bulkAssigning || !members.length}
-                  onChange={(memberIds) =>
-                    updateAiTaskSuggestion(task.id, {
-                      member_account_ids: memberIds,
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="ai-task-card-actions">
-              <button
-                className="task-btn task-btn-primary"
-                type="button"
-                onClick={() => submitSingleAiTaskSuggestion(task)}
-                disabled={!canSend}
-              >
-                <span className="material-symbols-outlined">send</span>
-                Gửi công việc
-              </button>
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  </div>
-)}
-        </section>
-
-        <div className="event-detail-layout">
-          <form className="task-card task-form event-edit-card" onSubmit={saveEvent}>
-            <div className="task-card-title">
-              <span className="material-symbols-outlined">edit_calendar</span>
-              <h2>Sửa sự kiện</h2>
-            </div>
-            <label>
-              <span>Tên sự kiện</span>
-              <input value={editEventForm.title} onChange={(event) => setEditEventForm((prev) => ({ ...prev, title: event.target.value }))} />
-            </label>
-            <label>
-              <span>Ngày bắt đầu</span>
-              <DateInput value={editEventForm.start_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, start_date: event.target.value }))} />
-            </label>
-            <label>
-              <span>Ngày kết thúc</span>
-              <DateInput value={editEventForm.end_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, end_date: event.target.value }))} />
-            </label>
-            <label>
-              <span>Trạng thái</span>
-              <div className={`event-status-pill ${eventStatusClass(selectedEvent.status)}`}>{eventStatusLabel(selectedEvent.status)}</div>
-            </label>
-            <label>
-              <span>Mô tả</span>
-              <textarea value={editEventForm.description} onChange={(event) => setEditEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={5} placeholder="Mô tả sự kiện" />
-            </label>
-            <div className="task-form-actions">
-              <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
-                <span className="material-symbols-outlined">save</span>
-                Lưu thay đổi
-              </button>
-              <button className="task-btn task-btn-danger" type="button" onClick={deleteEvent} disabled={saving}>
-                <span className="material-symbols-outlined">delete</span>
-                Xóa sự kiện
-              </button>
-            </div>
-          </form>
-
-          <form className="task-card task-form event-assign-card" onSubmit={submitTask}>
-            <div className="task-card-title">
-              <span className="material-symbols-outlined">assignment_add</span>
-              <h2>Giao công việc</h2>
-            </div>
-            <div className="selected-event-banner">
-              <span className="material-symbols-outlined">event</span>
-              <div>
-                <strong>{selectedEvent.title}</strong>
-                <small>Công việc tạo tại đây tự động gắn vào sự kiện này.</small>
-              </div>
-            </div>
-            <div className="task-field">
-              <span>Người thực hiện</span>
-              <MemberCombobox members={members} value={form.member_ids} disabled={saving || !members.length} onChange={(memberIds) => setForm((prev) => ({ ...prev, member_ids: memberIds }))} />
-            </div>
-            <label>
-              <span>Tiêu đề công việc</span>
-              <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ví dụ: Chuẩn bị mâm cúng" />
-            </label>
-            <label>
-              <span>Mô tả công việc</span>
-              <textarea value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Nội dung cần thực hiện" />
-            </label>
-            <label>
-              <span>Hạn chót</span>
-              <DateInput value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
-            </label>
-            <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length}>
-              <span className="material-symbols-outlined">send</span>
-              {saving ? "Đang lưu..." : "Giao việc"}
-            </button>
-            {!members.length && <p className="task-note">Chưa có member active để giao việc trong dòng họ này.</p>}
-          </form>
         </div>
 
-        <TaskList title="Công việc trong sự kiện" tasks={selectedTasks} />
+        <div className="event-workspace-grid">
+          <section className="task-card ai-task-panel event-ai-panel">
+            <div className="ai-task-panel-head">
+              <div>
+                <h3>Công việc AI sinh ra</h3>
+                <p>Chọn các công việc muốn giao. Đã chọn {selectedAiTaskCount}/{aiTaskSuggestions.length} công việc.</p>
+              </div>
+              <div className="ai-task-head-actions">
+                <label className="ai-count-control">
+                  <span>Số việc AI</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={aiTaskCount}
+                    onChange={(event) => setAiTaskCount(event.target.value)}
+                  />
+                </label>
+                <button
+                  className="task-btn task-btn-primary"
+                  type="button"
+                  onClick={submitSelectedAiTaskSuggestions}
+                  disabled={bulkAssigning || !members.length || !selectedAiTaskCount}
+                >
+                  <span className="material-symbols-outlined">send</span>
+                  {bulkAssigning ? "Đang gửi..." : "Gửi việc đã chọn"}
+                </button>
+              </div>
+            </div>
+
+            <div className="ai-inline-prompt">
+              <input
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                placeholder="Ví dụ: Gợi ý thêm việc chuẩn bị hậu cần, đón khách, mâm cỗ..."
+                disabled={aiLoading}
+              />
+              <button className="task-btn task-btn-ghost" type="button" onClick={requestAiTaskCreate} disabled={aiLoading}>
+                <span className="material-symbols-outlined">auto_awesome</span>
+                Tạo thêm
+              </button>
+            </div>
+
+            {aiTaskSuggestions.length ? (
+              <div className="ai-task-grid ai-task-grid-compact">
+                {aiTaskSuggestions.map((task) => {
+                  const titleOk = Boolean(String(task.title || "").trim());
+                  const descriptionOk = Boolean(String(task.description || "").trim());
+                  const dueDateOk = Boolean(task.due_date);
+                  const assigneeOk = Array.isArray(task.member_account_ids) && task.member_account_ids.length > 0;
+                  const canSend = task.selected && titleOk && descriptionOk && dueDateOk && assigneeOk && !bulkAssigning;
+
+                  return (
+                    <article className="ai-task-card ai-task-card-compact" key={task.id}>
+                      <div className="ai-task-card-top">
+                        <label className="ai-task-check">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(task.selected)}
+                            onChange={(event) => updateAiTaskSuggestion(task.id, { selected: event.target.checked })}
+                          />
+                          <span>Chọn</span>
+                        </label>
+
+                        <div className="ai-task-top-actions">
+                          <span className={canSend ? "ai-task-valid is-ok" : "ai-task-valid is-warning"}>
+                            {canSend ? "Đủ thông tin" : "Thiếu thông tin"}
+                          </span>
+                          <button className="task-icon-btn is-danger" type="button" onClick={() => removeAiTaskSuggestion(task.id)} aria-label="Xóa công việc AI">
+                            <span className="material-symbols-outlined">delete</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="ai-task-fields ai-task-fields-compact">
+                        <label className={!titleOk ? "field-invalid" : ""}>
+                          <span>Tiêu đề</span>
+                          <input
+                            value={task.title}
+                            onChange={(event) => updateAiTaskSuggestion(task.id, { title: event.target.value })}
+                            placeholder="Nhập tiêu đề công việc"
+                          />
+                        </label>
+
+                        <label className={!dueDateOk ? "field-invalid" : ""}>
+                          <span>Hạn chót</span>
+                          <DateInput
+                            value={task.due_date || ""}
+                            onChange={(event) => updateAiTaskSuggestion(task.id, { due_date: event.target.value })}
+                          />
+                        </label>
+
+                        <label className={!descriptionOk ? "field-invalid" : "ai-task-desc"}>
+                          <span>Mô tả</span>
+                          <textarea
+                            rows={2}
+                            value={task.description}
+                            onChange={(event) => updateAiTaskSuggestion(task.id, { description: event.target.value })}
+                            placeholder="Mô tả việc cần làm"
+                          />
+                        </label>
+
+                        <div className={!assigneeOk ? "task-field field-invalid" : "task-field"}>
+                          <span>Người thực hiện</span>
+                          <MemberCombobox
+                            members={members}
+                            value={task.member_account_ids || []}
+                            disabled={bulkAssigning || !members.length}
+                            onChange={(memberIds) => updateAiTaskSuggestion(task.id, { member_account_ids: memberIds })}
+                          />
+                        </div>
+
+                        {task.suggested_role && (
+                          <div className="ai-task-role">
+                            Gợi ý: <strong>{task.suggested_role}</strong>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="ai-task-card-actions">
+                        <button className="task-btn task-btn-primary" type="button" onClick={() => submitSingleAiTaskSuggestion(task)} disabled={!canSend}>
+                          <span className="material-symbols-outlined">send</span>
+                          Gửi việc này
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="task-empty ai-empty">Chưa có công việc AI. Bấm “AI tạo công việc” để sinh gợi ý.</div>
+            )}
+          </section>
+
+          <div className="event-assigned-column">
+            <TaskList title="Công việc trong sự kiện" tasks={selectedTasks} />
+          </div>
+        </div>
+
+        {showEditEventModal && (
+          <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowEditEventModal(false)}>
+            <form className="task-modal-card task-form event-edit-card" onSubmit={saveEvent} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="task-modal-head">
+                <div className="task-card-title">
+                  <span className="material-symbols-outlined">edit_calendar</span>
+                  <h2>Sửa sự kiện</h2>
+                </div>
+                <button className="task-icon-btn" type="button" onClick={() => setShowEditEventModal(false)} aria-label="Đóng">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <label>
+                <span>Tên sự kiện</span>
+                <input value={editEventForm.title} onChange={(event) => setEditEventForm((prev) => ({ ...prev, title: event.target.value }))} />
+              </label>
+              <label>
+                <span>Ngày bắt đầu</span>
+                <DateInput value={editEventForm.start_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, start_date: event.target.value }))} />
+              </label>
+              <label>
+                <span>Ngày kết thúc</span>
+                <DateInput value={editEventForm.end_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, end_date: event.target.value }))} />
+              </label>
+              <label>
+                <span>Trạng thái</span>
+                <div className={`event-status-pill ${eventStatusClass(selectedEvent.status)}`}>{eventStatusLabel(selectedEvent.status)}</div>
+              </label>
+              <label>
+                <span>Mô tả</span>
+                <textarea value={editEventForm.description} onChange={(event) => setEditEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={5} placeholder="Mô tả sự kiện" />
+              </label>
+              <div className="task-form-actions task-modal-actions">
+                <button className="task-btn task-btn-primary" type="submit" disabled={saving}>
+                  <span className="material-symbols-outlined">save</span>
+                  Lưu thay đổi
+                </button>
+                <button className="task-btn task-btn-danger" type="button" onClick={deleteEvent} disabled={saving}>
+                  <span className="material-symbols-outlined">delete</span>
+                  Xóa sự kiện
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {showAssignTaskModal && (
+          <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowAssignTaskModal(false)}>
+            <form className="task-modal-card task-form event-assign-card" onSubmit={submitTask} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="task-modal-head">
+                <div className="task-card-title">
+                  <span className="material-symbols-outlined">assignment_add</span>
+                  <h2>Giao công việc</h2>
+                </div>
+                <button className="task-icon-btn" type="button" onClick={() => setShowAssignTaskModal(false)} aria-label="Đóng">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div className="selected-event-banner">
+                <span className="material-symbols-outlined">event</span>
+                <div>
+                  <strong>{selectedEvent.title}</strong>
+                  <small>Công việc tạo tại đây tự động gắn vào sự kiện này.</small>
+                </div>
+              </div>
+              <div className="task-field">
+                <span>Người thực hiện</span>
+                <MemberCombobox members={members} value={form.member_ids} disabled={saving || !members.length} onChange={(memberIds) => setForm((prev) => ({ ...prev, member_ids: memberIds }))} />
+              </div>
+              <label>
+                <span>Tiêu đề công việc</span>
+                <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Ví dụ: Chuẩn bị mâm cúng" />
+              </label>
+              <label>
+                <span>Mô tả công việc</span>
+                <textarea value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Nội dung cần thực hiện" />
+              </label>
+              <label>
+                <span>Hạn chót</span>
+                <DateInput value={form.due_date} onChange={(event) => setForm((prev) => ({ ...prev, due_date: event.target.value }))} />
+              </label>
+              <div className="task-form-actions task-modal-actions">
+                <button className="task-btn task-btn-primary" type="submit" disabled={saving || !members.length}>
+                  <span className="material-symbols-outlined">send</span>
+                  {saving ? "Đang lưu..." : "Giao việc"}
+                </button>
+              </div>
+              {!members.length && <p className="task-note">Chưa có member active để giao việc trong dòng họ này.</p>}
+            </form>
+          </div>
+        )}
       </section>
     );
   }
@@ -1073,49 +1148,109 @@ const openEvent = (eventId) => {
       {message && <div className="task-alert is-success">{message}</div>}
       {error && <div className="task-alert is-error">{error}</div>}
 
-      <div className="event-toolbar">
-        <div className="event-search event-search-wide">
+      <div className="event-toolbar event-toolbar-compact">
+        <div className="event-search event-search-compact">
           <span className="material-symbols-outlined">search</span>
-          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Tìm sự kiện theo tên hoặc mô tả..." />
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Tìm sự kiện..." />
         </div>
+        <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowAiEventModal(true)}>
+          <span className="material-symbols-outlined">auto_awesome</span>
+          AI điền form
+        </button>
+        <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowArchive(true)}>
+          <span className="material-symbols-outlined">inventory_2</span>
+          Kho lưu trữ ({archivedEvents.length})
+        </button>
         <button className="task-btn task-btn-primary" type="button" onClick={() => setShowCreateForm(true)}>
           <span className="material-symbols-outlined">add</span>
           Thêm sự kiện
         </button>
       </div>
 
-      <section className="task-card ai-event-card">
-        <div className="task-card-title">
-          <span className="material-symbols-outlined">auto_awesome</span>
-          <h2>AI tạo sự kiện và công việc</h2>
-        </div>
-        <div className="ai-event-row">
-          <textarea
-            value={aiPrompt}
-            onChange={(event) => setAiPrompt(event.target.value)}
-            rows={3}
-            placeholder="Ví dụ: Tạo sự kiện giỗ tổ ngày 10/11/2025, tụ họp con cháu ở từ đường"
-            disabled={aiLoading}
-          />
-          <button className="task-btn task-btn-primary" type="button" onClick={requestAiEventCreate} disabled={aiLoading || !aiPrompt.trim()}>
-            <span className="material-symbols-outlined">auto_awesome</span>
-            {aiLoading ? "AI đang tạo..." : "AI điền form"}
-          </button>
-        </div>
-        {!!aiTaskSuggestions.length && (
-          <div className="ai-suggestion-list">
-            {aiTaskSuggestions.map((task) => (
-              <article className="ai-suggestion-item" key={task.id}>
+      {showAiEventModal && (
+        <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowAiEventModal(false)}>
+          <div className="task-modal-card ai-event-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="task-modal-head">
+              <div className="task-card-title">
+                <span className="material-symbols-outlined">auto_awesome</span>
                 <div>
-                  <strong>{task.title}</strong>
-                  {task.description && <p>{task.description}</p>}
-                  <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
+                  <h2>AI tạo sự kiện & công việc</h2>
+                  <p>Nhập câu lệnh, AI sẽ điền sẵn form tạo sự kiện và gợi ý công việc.</p>
                 </div>
-              </article>
-            ))}
+              </div>
+              <button className="task-icon-btn" type="button" onClick={() => setShowAiEventModal(false)} aria-label="Đóng AI">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <label className="ai-modal-field">
+              <span>Câu lệnh cho AI</span>
+              <textarea
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                rows={4}
+                placeholder="Ví dụ: Tạo sự kiện giỗ tổ ngày 10/11/2025, tụ họp con cháu ở từ đường và gợi ý 6 công việc chuẩn bị"
+                disabled={aiLoading}
+              />
+            </label>
+            <label className="ai-count-control ai-count-control-wide">
+              <span>Số công việc muốn AI gợi ý</span>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={aiTaskCount}
+                onChange={(event) => setAiTaskCount(event.target.value)}
+              />
+            </label>
+            <div className="task-form-actions task-modal-actions">
+              <button className="task-btn task-btn-primary" type="button" onClick={() => requestAiEventCreate()} disabled={aiLoading || !aiPrompt.trim()}>
+                <span className="material-symbols-outlined">auto_awesome</span>
+                {aiLoading ? "AI đang tạo..." : "AI điền form"}
+              </button>
+              <button className="task-btn task-btn-ghost" type="button" onClick={() => setShowAiEventModal(false)}>
+                Hủy
+              </button>
+            </div>
           </div>
-        )}
-      </section>
+        </div>
+      )}
+
+      {showArchive && (
+        <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowArchive(false)}>
+          <div className="task-modal-card archive-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="task-modal-head">
+              <div className="task-card-title">
+                <span className="material-symbols-outlined">inventory_2</span>
+                <div>
+                  <h2>Kho lưu trữ sự kiện</h2>
+                  <p>Chỉ xem và tìm kiếm các sự kiện đã kết thúc. Không chỉnh sửa hoặc xóa tại đây.</p>
+                </div>
+              </div>
+              <button className="task-icon-btn" type="button" onClick={() => setShowArchive(false)} aria-label="Đóng kho lưu trữ">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="event-search archive-search">
+              <span className="material-symbols-outlined">search</span>
+              <input value={archiveSearch} onChange={(event) => setArchiveSearch(event.target.value)} placeholder="Tìm trong kho lưu trữ..." />
+            </div>
+            <div className="archive-event-list">
+              {filteredArchivedEvents.map((event) => (
+                <article className="archive-event-item" key={event.id}>
+                  <span className="manager-event-icon material-symbols-outlined">event_available</span>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <small>{formatEventRange(event)}</small>
+                    {event.description && <p>{event.description}</p>}
+                  </div>
+                  <span className={`event-status-pill ${eventStatusClass(event.status)}`}>{eventStatusLabel(event.status)}</span>
+                </article>
+              ))}
+              {!filteredArchivedEvents.length && <div className="task-empty">Không có sự kiện đã kết thúc phù hợp.</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreateForm && (
         <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowCreateForm(false)}>
@@ -1162,6 +1297,24 @@ const openEvent = (eventId) => {
               <textarea value={eventForm.description} onChange={(event) => setEventForm((prev) => ({ ...prev, description: event.target.value }))} rows={4} placeholder="Ghi chú địa điểm, nội dung chính hoặc yêu cầu chuẩn bị..." />
             </label>
 
+            <div className="create-ai-tools">
+              <label className="ai-count-control">
+                <span>Số công việc AI</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={aiTaskCount}
+                  onChange={(event) => setAiTaskCount(event.target.value)}
+                />
+              </label>
+              <button className="task-btn task-btn-ghost" type="button" onClick={requestAiTasksForCreateForm} disabled={aiLoading}>
+                <span className="material-symbols-outlined">auto_awesome</span>
+                {aiLoading ? "AI đang tạo..." : "Tạo công việc bằng AI"}
+              </button>
+              {!!aiTaskSuggestions.length && <span className="ai-selected-count">Đã chọn {selectedAiTaskCount}/{aiTaskSuggestions.length}</span>}
+            </div>
+
             {!!aiTaskSuggestions.length && (
               <div className="ai-modal-suggestions">
                 <strong>Công việc AI đề xuất</strong>
@@ -1169,11 +1322,22 @@ const openEvent = (eventId) => {
                 <div className="ai-suggestion-list">
                   {aiTaskSuggestions.map((task) => (
                     <article className="ai-suggestion-item" key={task.id}>
+                      <label className="ai-task-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(task.selected)}
+                          onChange={(event) => updateAiTaskSuggestion(task.id, { selected: event.target.checked })}
+                        />
+                        <span>Chọn</span>
+                      </label>
                       <div>
                         <strong>{task.title}</strong>
                         {task.description && <p>{task.description}</p>}
                         <small>Hạn chót: {task.due_date ? formatDate(task.due_date) : "Chưa có"}</small>
                       </div>
+                      <button className="task-icon-btn is-danger" type="button" onClick={() => removeAiTaskSuggestion(task.id)} aria-label="Xóa công việc AI">
+                        <span className="material-symbols-outlined">delete</span>
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -1194,7 +1358,7 @@ const openEvent = (eventId) => {
       )}
 
       <div className="manager-event-grid">
-        {filteredEvents.map((event) => {
+        {activeFilteredEvents.map((event) => {
           const assignmentCount = Number(event.assignment_count || 0);
           const completedCount = Number(event.completed_assignment_count || 0);
           const openCount = Math.max(assignmentCount - completedCount, 0);
@@ -1215,9 +1379,9 @@ const openEvent = (eventId) => {
         })}
       </div>
 
-      {!filteredEvents.length && (
+      {!activeFilteredEvents.length && (
         <div className="task-card task-empty">
-          {events.length ? "Không tìm thấy sự kiện phù hợp." : "Dòng họ này chưa có sự kiện. Bấm Thêm sự kiện để tạo mới."}
+          {events.length ? "Không tìm thấy sự kiện đang/sắp diễn ra phù hợp. Sự kiện đã kết thúc nằm trong Kho lưu trữ." : "Dòng họ này chưa có sự kiện. Bấm Thêm sự kiện để tạo mới."}
         </div>
       )}
     </section>
