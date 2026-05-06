@@ -98,7 +98,7 @@ npm run dev
 
 Bước 3:  Terminal 3: AI Server
 ```
-cd D:\cap2\AI-server
+cd AI-server
 .\.venv\Scripts\Activate.ps1
 python app.py
 

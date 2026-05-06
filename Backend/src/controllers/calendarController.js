@@ -5,7 +5,7 @@ const { sendMail, isSmtpConfigured } = require('../utils/email');
 let schemaReady = false;
 let schedulerStarted = false;
 
-const EVENT_TYPES = new Set(['family', 'study', 'holiday', 'personal', 'lunar', 'birthday', 'death_anniversary']);
+const EVENT_TYPES = new Set(['family', 'study', 'holiday', 'personal', 'lunar', 'birthday', 'death_anniversary', 'manager_event']);
 const EVENT_VISIBILITIES = new Set(['personal', 'global']);
 
 const pad2 = (value) => String(value).padStart(2, '0');
@@ -216,6 +216,127 @@ const normalizeReminderDays = (value) => {
   const number = Number(value ?? 0);
   if (!Number.isFinite(number)) return 0;
   return Math.min(365, Math.max(0, Math.round(number)));
+};
+
+
+let managerEventSchemaReady = false;
+
+const ensureManagerEventsForCalendarSchema = async () => {
+  if (managerEventSchemaReady) return;
+
+  const [columns] = await db.query('SHOW COLUMNS FROM events');
+  const names = new Set(columns.map((column) => column.Field));
+
+  if (!names.has('start_date')) {
+    await db.query('ALTER TABLE events ADD COLUMN start_date DATE NULL AFTER title');
+  }
+
+  if (!names.has('end_date')) {
+    await db.query('ALTER TABLE events ADD COLUMN end_date DATE NULL AFTER start_date');
+  }
+
+  if (!names.has('status')) {
+    await db.query("ALTER TABLE events ADD COLUMN status ENUM('upcoming','ongoing','ended') NOT NULL DEFAULT 'upcoming' AFTER end_date");
+  }
+
+  await db.query(`
+    UPDATE events
+    SET
+      start_date = COALESCE(start_date, event_date),
+      end_date = COALESCE(end_date, start_date, event_date)
+    WHERE event_date IS NOT NULL
+      AND (start_date IS NULL OR end_date IS NULL)
+  `);
+
+  try {
+    await db.query('CREATE INDEX idx_events_clan_range ON events (clan_id, start_date, end_date)');
+  } catch (error) {
+    if (error?.code !== 'ER_DUP_KEYNAME') throw error;
+  }
+
+  managerEventSchemaReady = true;
+};
+
+const addDaysIso = (isoDate, days) => {
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+const buildManagerEventsForCalendar = async ({ clanId, from, to }) => {
+  if (!clanId || !from || !to) return [];
+  await ensureManagerEventsForCalendarSchema();
+
+  const [rows] = await db.query(
+    `
+    SELECT
+      e.id,
+      e.clan_id,
+      e.title,
+      e.description,
+      COALESCE(e.start_date, e.event_date) AS start_date,
+      COALESCE(e.end_date, e.start_date, e.event_date) AS end_date,
+      CASE
+        WHEN COALESCE(e.end_date, e.start_date, e.event_date) < CURDATE() THEN 'ended'
+        WHEN COALESCE(e.start_date, e.event_date) <= CURDATE()
+          AND COALESCE(e.end_date, e.start_date, e.event_date) >= CURDATE() THEN 'ongoing'
+        ELSE 'upcoming'
+      END AS status
+    FROM events e
+    WHERE e.clan_id = ?
+      AND COALESCE(e.start_date, e.event_date) IS NOT NULL
+      AND COALESCE(e.end_date, e.start_date, e.event_date) >= ?
+      AND COALESCE(e.start_date, e.event_date) <= ?
+    ORDER BY COALESCE(e.start_date, e.event_date) ASC, e.id ASC
+    `,
+    [clanId, from, to]
+  );
+
+  const events = [];
+
+  for (const row of rows) {
+    let current = toIsoDate(row.start_date);
+    const end = toIsoDate(row.end_date) || current;
+    if (!current || !end) continue;
+
+    while (current <= end) {
+      if (current >= from && current <= to) {
+        events.push({
+          id: `manager-event-${row.id}-${current}`,
+          manager_event_id: row.id,
+          clan_id: row.clan_id,
+          creator_account_id: null,
+          creator_name: 'Dòng họ',
+          title: row.title,
+          date: current,
+          event_date: current,
+          start_date: toIsoDate(row.start_date),
+          end_date: toIsoDate(row.end_date),
+          time: '',
+          event_time: '',
+          type: 'manager_event',
+          note: row.description || '',
+          description: row.description || '',
+          visibility: 'global',
+          scope: 'global',
+          is_global: true,
+          source: 'manager_event',
+          status: row.status || 'upcoming',
+          can_edit: false,
+          can_delete: false,
+          reminder_days: null,
+          reminder_sent_at: null,
+          email_sent_at: null,
+          created_at: null,
+          updated_at: null,
+        });
+      }
+      current = addDaysIso(current, 1);
+      if (events.length > 2000) break;
+    }
+  }
+
+  return events;
 };
 
 const ensureCalendarSchema = async () => {
@@ -651,6 +772,7 @@ const processDueReminders = async () => {
 exports.listEvents = async (req, res) => {
   try {
     await ensureCalendarSchema();
+    await ensureManagerEventsForCalendarSchema();
     await processDueReminders().catch((error) => console.error('calendar reminder background error:', error));
 
     const clanId = await resolveClanId(req);
@@ -680,7 +802,8 @@ exports.listEvents = async (req, res) => {
 
     const dbEvents = rows.map((row) => mapEventRow(row, req));
     const personEvents = await buildYearlyPersonEvents({ clanId, from, to });
-    const events = [...dbEvents, ...personEvents].sort((a, b) => {
+    const managerEvents = await buildManagerEventsForCalendar({ clanId, from, to });
+    const events = [...dbEvents, ...personEvents, ...managerEvents].sort((a, b) => {
       const dateCompare = String(a.event_date || a.date).localeCompare(String(b.event_date || b.date));
       if (dateCompare !== 0) return dateCompare;
       return String(a.title || '').localeCompare(String(b.title || ''), 'vi');

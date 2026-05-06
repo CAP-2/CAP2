@@ -46,6 +46,34 @@ function formatDate(value, withTime = false) {
 function toDateInput(value) {
   return isoToVietnamDate(value);
 }
+function eventStatusLabel(status) {
+  if (status === "ongoing") return "Đang diễn ra";
+  if (status === "ended") return "Đã kết thúc";
+  return "Sắp diễn ra";
+}
+
+function eventStatusClass(status) {
+  if (status === "ongoing") return "is-ongoing";
+  if (status === "ended") return "is-ended";
+  return "is-upcoming";
+}
+
+function getEventStartDate(event) {
+  return event?.start_date || event?.event_date || event?.date || "";
+}
+
+function getEventEndDate(event) {
+  return event?.end_date || event?.start_date || event?.event_date || event?.date || "";
+}
+
+function formatEventRange(event) {
+  const start = getEventStartDate(event);
+  const end = getEventEndDate(event);
+  if (!start && !end) return "Chưa có thời gian";
+  if (!end || start === end) return formatDate(start);
+  return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
 
 function summarizeTasks(tasks) {
   return {
@@ -59,8 +87,8 @@ function summarizeTasks(tasks) {
 function summarizeEvents(events) {
   return {
     total: events.length,
-    active: events.filter((event) => Number(event.assignment_count || 0) > Number(event.completed_assignment_count || 0)).length,
-    done: events.filter((event) => Number(event.assignment_count || 0) > 0 && Number(event.assignment_count || 0) === Number(event.completed_assignment_count || 0)).length,
+    active: events.filter((event) => event.status === "ongoing").length,
+    done: events.filter((event) => event.status === "ended").length,
   };
 }
 
@@ -179,8 +207,8 @@ export default function TaskManagementPage({ role = "member" }) {
   const [selectedEventId, setSelectedEventId] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [form, setForm] = useState({ event_id: "", member_ids: [], title: "", description: "", due_date: "" });
-  const [eventForm, setEventForm] = useState({ title: "", event_date: "", description: "" });
-  const [editEventForm, setEditEventForm] = useState({ title: "", event_date: "", description: "" });
+  const [eventForm, setEventForm] = useState({ title: "", start_date: "", end_date: "", description: "" });
+  const [editEventForm, setEditEventForm] = useState({ title: "", start_date: "", end_date: "", description: "" });
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiTaskSuggestions, setAiTaskSuggestions] = useState([]);
@@ -284,13 +312,14 @@ export default function TaskManagementPage({ role = "member" }) {
 
   useEffect(() => {
     if (!selectedEvent) {
-      setEditEventForm({ title: "", event_date: "", description: "" });
+      setEditEventForm({ title: "", start_date: "", end_date: "", description: "" });
       setForm((prev) => ({ ...prev, event_id: "" }));
       return;
     }
     setEditEventForm({
       title: selectedEvent.title || "",
-      event_date: toDateInput(selectedEvent.event_date),
+      start_date: toDateInput(getEventStartDate(selectedEvent)),
+      end_date: toDateInput(getEventEndDate(selectedEvent)),
       description: selectedEvent.description || "",
     });
     setForm((prev) => ({ ...prev, event_id: String(selectedEvent.id) }));
@@ -344,17 +373,27 @@ export default function TaskManagementPage({ role = "member" }) {
       setError("Vui lòng nhập tên sự kiện.");
       return;
     }
+    if (!eventForm.start_date) {
+      setError("Vui lòng nhập ngày bắt đầu sự kiện.");
+      return;
+    }
+    if (eventForm.end_date && vietnamDateToIso(eventForm.end_date) < vietnamDateToIso(eventForm.start_date)) {
+      setError("Ngày kết thúc không được nhỏ hơn ngày bắt đầu.");
+      return;
+    }
     setSaving(true);
     try {
       const result = await createManagerEventAPI({
         title: eventForm.title.trim(),
-        event_date: vietnamDateToIso(eventForm.event_date) || null,
+        event_date: vietnamDateToIso(eventForm.start_date) || null,
+        start_date: vietnamDateToIso(eventForm.start_date) || null,
+        end_date: vietnamDateToIso(eventForm.end_date || eventForm.start_date) || null,
         description: eventForm.description.trim(),
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       });
       const createdEventId = result?.event_id ? String(result.event_id) : "";
       setMessage("Đã tạo sự kiện mới. Đang mở chi tiết để chỉnh sửa và giao việc.");
-      setEventForm({ title: "", event_date: "", description: "" });
+      setEventForm({ title: "", start_date: "", end_date: "", description: "" });
       setShowCreateForm(false);
       await loadData();
       if (createdEventId) {
@@ -377,11 +416,21 @@ export default function TaskManagementPage({ role = "member" }) {
       setError("Tên sự kiện không được để trống.");
       return;
     }
+    if (!editEventForm.start_date) {
+      setError("Vui lòng nhập ngày bắt đầu sự kiện.");
+      return;
+    }
+    if (editEventForm.end_date && vietnamDateToIso(editEventForm.end_date) < vietnamDateToIso(editEventForm.start_date)) {
+      setError("Ngày kết thúc không được nhỏ hơn ngày bắt đầu.");
+      return;
+    }
     setSaving(true);
     try {
       await updateManagerEventAPI(selectedEvent.id, {
         title: editEventForm.title.trim(),
-        event_date: vietnamDateToIso(editEventForm.event_date) || null,
+        event_date: vietnamDateToIso(editEventForm.start_date) || null,
+        start_date: vietnamDateToIso(editEventForm.start_date) || null,
+        end_date: vietnamDateToIso(editEventForm.end_date || editEventForm.start_date) || null,
         description: editEventForm.description.trim(),
         ...(isAdmin && clanId ? { clan_id: Number(clanId) } : {}),
       });
@@ -473,7 +522,8 @@ const requestAiEventCreate = async () => {
 
     setEventForm({
       title: aiEvent.title || "",
-      event_date: isoToVietnamDate(aiEvent.event_date),
+      start_date: isoToVietnamDate(aiEvent.start_date || aiEvent.event_date),
+        end_date: isoToVietnamDate(aiEvent.end_date || aiEvent.start_date || aiEvent.event_date),
       description: aiEvent.description || "",
     });
 
@@ -505,7 +555,8 @@ const requestAiTaskCreate = async () => {
       current_event: {
         id: selectedEvent.id,
         title: selectedEvent.title,
-        event_date: toDateInput(selectedEvent.event_date),
+        start_date: toDateInput(getEventStartDate(selectedEvent)),
+        end_date: toDateInput(getEventEndDate(selectedEvent)),
         description: selectedEvent.description || "",
         clan_id: selectedEvent.clan_id || (isAdmin && clanId ? Number(clanId) : undefined),
       },
@@ -759,7 +810,7 @@ const openEvent = (eventId) => {
           <div>
             <span className="task-kicker">{isAdmin ? "Admin" : "Manager"}</span>
             <h1>{selectedEvent.title}</h1>
-            <p>{formatDate(selectedEvent.event_date)} • {selectedTasks.length} công việc trong sự kiện • Manager chỉ quản lý dữ liệu thuộc dòng họ của mình.</p>
+            <p>{formatEventRange(selectedEvent)} • {eventStatusLabel(selectedEvent.status)} • {selectedTasks.length} công việc trong sự kiện • Manager chỉ quản lý dữ liệu thuộc dòng họ của mình.</p>
           </div>
           <div className="task-hero-actions">
             <button className="task-btn task-btn-ghost" type="button" onClick={() => setSelectedEventId("")}> 
@@ -935,8 +986,16 @@ const openEvent = (eventId) => {
               <input value={editEventForm.title} onChange={(event) => setEditEventForm((prev) => ({ ...prev, title: event.target.value }))} />
             </label>
             <label>
-              <span>Ngày sự kiện</span>
-              <DateInput value={editEventForm.event_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
+              <span>Ngày bắt đầu</span>
+              <DateInput value={editEventForm.start_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, start_date: event.target.value }))} />
+            </label>
+            <label>
+              <span>Ngày kết thúc</span>
+              <DateInput value={editEventForm.end_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, end_date: event.target.value }))} />
+            </label>
+            <label>
+              <span>Trạng thái</span>
+              <div className={`event-status-pill ${eventStatusClass(selectedEvent.status)}`}>{eventStatusLabel(selectedEvent.status)}</div>
             </label>
             <label>
               <span>Mô tả</span>
@@ -1091,8 +1150,12 @@ const openEvent = (eventId) => {
               />
             </label>
             <label>
-              <span>Ngày sự kiện</span>
-              <DateInput value={eventForm.event_date} onChange={(event) => setEventForm((prev) => ({ ...prev, event_date: event.target.value }))} />
+              <span>Ngày bắt đầu</span>
+              <DateInput value={eventForm.start_date} onChange={(event) => setEventForm((prev) => ({ ...prev, start_date: event.target.value }))} />
+            </label>
+            <label>
+              <span>Ngày kết thúc</span>
+              <DateInput value={eventForm.end_date} onChange={(event) => setEventForm((prev) => ({ ...prev, end_date: event.target.value }))} />
             </label>
             <label>
               <span>Mô tả ngắn</span>
@@ -1139,7 +1202,8 @@ const openEvent = (eventId) => {
             <button key={event.id} type="button" className="manager-event-card" onClick={() => openEvent(event.id)}>
               <span className="manager-event-icon material-symbols-outlined">account_tree</span>
               <strong>{event.title}</strong>
-              <small>{formatDate(event.event_date)}</small>
+              <small>{formatEventRange(event)}</small>
+              <span className={`event-status-pill ${eventStatusClass(event.status)}`}>{eventStatusLabel(event.status)}</span>
               {event.description && <p>{event.description}</p>}
               <div className="manager-event-metrics">
                 <span>{openCount} đang mở</span>
