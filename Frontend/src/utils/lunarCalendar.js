@@ -156,8 +156,32 @@ export function parseSolarDate(value) {
   return { day, month, year, date };
 }
 
+function addDaysToSolarParts(solar, days) {
+  if (!solar || !days) return solar;
+  const jd = jdFromDate(solar.day, solar.month, solar.year) + days;
+  const [day, month, year] = jdToDate(jd);
+  return { ...solar, day, month, year };
+}
+
+function normalizeSolarForCalendarLunarDisplay(solar) {
+  if (!solar) return null;
+
+  // The calendar module receives historical MySQL DATE values through the
+  // backend and, for very old dates, the effective solar day used to build
+  // death-anniversary events is one day later than the raw text shown in the
+  // edit form. To keep the personal-information lunar hint EXACTLY aligned
+  // with the calendar result, use the same historical-date adjustment here.
+  // This affects only old genealogy dates and leaves modern birthdays/events
+  // unchanged.
+  if (Number(solar.year) > 0 && Number(solar.year) < 1900) {
+    return addDaysToSolarParts(solar, 1);
+  }
+
+  return solar;
+}
+
 export function getLunarInfoFromSolar(value) {
-  const solar = parseSolarDate(value);
+  const solar = normalizeSolarForCalendarLunarDisplay(parseSolarDate(value));
   if (!solar) return null;
   return convertSolar2Lunar(solar.day, solar.month, solar.year, 7);
 }
