@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   approvePostAPI,
+  approveMemoryAPI,
   approveProfileUpdateAPI,
   approveUserAPI,
   getPendingReviewData,
   rejectPostAPI,
+  rejectMemoryAPI,
   rejectProfileUpdateAPI,
   rejectUserAPI,
 } from "../../api/managerService";
@@ -16,6 +18,7 @@ export default function PendingApprovals() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [pendingPosts, setPendingPosts] = useState([]);
   const [pendingProfiles, setPendingProfiles] = useState([]);
+  const [pendingMemories, setPendingMemories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -28,6 +31,7 @@ export default function PendingApprovals() {
       setPendingUsers(data.pendingUsers);
       setPendingPosts(data.pendingPosts);
       setPendingProfiles(data.pendingProfiles);
+      setPendingMemories(data.pendingMemories || []);
     } catch (err) {
       setError(err?.message || "Không thể tải danh sách chờ duyệt");
     } finally {
@@ -63,6 +67,12 @@ export default function PendingApprovals() {
     runAction(() => rejectProfileUpdateAPI(id, reason), "Đã từ chối cập nhật hồ sơ");
   };
 
+  const rejectMemory = (id) => {
+    const reason = window.prompt("Lý do từ chối kỉ niệm:", "Nội dung chưa phù hợp");
+    if (reason === null) return;
+    runAction(() => rejectMemoryAPI(id, reason), "Đã từ chối kỉ niệm dòng họ");
+  };
+
   return (
     <div className="pending-page animate-fade-in">
       <div className="tab-navigation glass-effect">
@@ -77,6 +87,10 @@ export default function PendingApprovals() {
         <button className={`tab-btn ${activeTab === "profiles" ? "active" : ""}`} onClick={() => setActiveTab("profiles")}>
           <span className="material-symbols-outlined">badge</span>
           Hồ sơ ({pendingProfiles.length})
+        </button>
+        <button className={`tab-btn ${activeTab === "memories" ? "active" : ""}`} onClick={() => setActiveTab("memories")}>
+          <span className="material-symbols-outlined">collections_bookmark</span>
+          Kỉ niệm ({pendingMemories.length})
         </button>
         <button className="tab-btn" onClick={loadPending} disabled={loading}>
           <span className="material-symbols-outlined">refresh</span>
@@ -172,6 +186,41 @@ export default function PendingApprovals() {
               </div>
             ))}
             {!loading && pendingProfiles.length === 0 && <div className="pending-empty glass-effect">Không có hồ sơ chờ duyệt.</div>}
+          </div>
+        )}
+
+        {activeTab === "memories" && (
+          <div className="pending-list">
+            {pendingMemories.map((memory) => (
+              <div key={memory.id} className="pending-item glass-effect pending-item--wide pending-memory-item">
+                <div className="item-main">
+                  {memory.media_url && (
+                    <a className="pending-thumb-link" href={memory.media_url} target="_blank" rel="noreferrer" title="Mở tệp kỉ niệm">
+                      {memory.media_type === "image" ? (
+                        <img className="pending-thumb" src={memory.media_url} alt="" />
+                      ) : (
+                        <span className="pending-memory-icon material-symbols-outlined">{memory.media_type === "video" ? "movie" : memory.media_type === "audio" ? "graphic_eq" : "attach_file"}</span>
+                      )}
+                    </a>
+                  )}
+                  <div className="item-info">
+                    <h4>{memory.title || "Kỉ niệm dòng họ"}</h4>
+                    <p>{memory.author_name || "Thành viên dòng họ"}</p>
+                    <p className="post-preview">{memory.content || memory.original_filename || "[Không có nội dung chữ]"}</p>
+                    <span className="item-date">{formatDate(memory.created_at)}</span>
+                  </div>
+                </div>
+                <div className="item-actions">
+                  <button className="approve-btn" onClick={() => runAction(() => approveMemoryAPI(memory.id), "Đã phê duyệt kỉ niệm")}>
+                    Duyệt kỉ niệm
+                  </button>
+                  <button className="reject-btn" onClick={() => rejectMemory(memory.id)}>
+                    Từ chối
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!loading && pendingMemories.length === 0 && <div className="pending-empty glass-effect">Không có kỉ niệm chờ duyệt.</div>}
           </div>
         )}
       </div>

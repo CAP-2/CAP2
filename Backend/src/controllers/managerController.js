@@ -4029,3 +4029,125 @@ exports.deleteManagerEvent = async (req, res) => {
         conn.release();
     }
 };
+const ensureFamilyMemoriesSchemaForManager = async () => {
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS family_memories (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            clan_id BIGINT UNSIGNED NOT NULL,
+            author_account_id BIGINT UNSIGNED NULL,
+            author_person_id BIGINT UNSIGNED NULL,
+            title VARCHAR(255) NOT NULL,
+            content TEXT NULL,
+            media_id BIGINT UNSIGNED NULL,
+            media_url TEXT NULL,
+            media_type VARCHAR(30) NOT NULL DEFAULT 'text',
+            mime_type VARCHAR(120) NULL,
+            original_filename VARCHAR(255) NULL,
+            status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+            rejection_reason TEXT NULL,
+            approved_by_account_id BIGINT UNSIGNED NULL,
+            approved_at TIMESTAMP NULL DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_family_memories_clan_status (clan_id, status),
+            KEY idx_family_memories_author (author_account_id),
+            KEY idx_family_memories_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+};
+
+const mapManagerMemoryRow = (row) => ({
+    ...row,
+    media_id: row.media_id || null,
+    media_url: row.media_id ? `/api/media/${row.media_id}` : row.media_url || null,
+    author_name: row.author_name || row.author_email || 'Thành viên dòng họ',
+});
+
+exports.getPendingMemories = async (req, res) => {
+    try {
+        await ensureFamilyMemoriesSchemaForManager();
+        let clanId = null;
+        if (Number(req.user.role_id) === 2) {
+            clanId = await getManagerClanId(req.user.id);
+            if (!clanId) return res.status(404).json({ success: false, message: 'Không xác định được dòng họ của manager' });
+        } else {
+            clanId = parseOptionalPositiveInt(req.query.clan_id || req.body?.clan_id);
+        }
+
+        const values = [];
+        let where = "fm.status = 'pending'";
+        if (clanId) {
+            where += ' AND fm.clan_id = ?';
+            values.push(clanId);
+        }
+
+        const [rows] = await db.query(
+            `SELECT fm.*, COALESCE(p.display_name, a.email) AS author_name, a.email AS author_email
+             FROM family_memories fm
+             LEFT JOIN accounts a ON a.id = fm.author_account_id
+             LEFT JOIN people p ON p.id = fm.author_person_id
+             WHERE ${where}
+             ORDER BY fm.created_at DESC`,
+            values
+        );
+        return res.json({ success: true, memories: rows.map(mapManagerMemoryRow) });
+    } catch (error) {
+        console.error('getPendingMemories error:', error);
+        return res.status(500).json({ success: false, message: 'Không thể tải kỉ niệm chờ duyệt' });
+    }
+};
+
+exports.approveMemory = async (req, res) => {
+    try {
+        await ensureFamilyMemoriesSchemaForManager();
+        const memoryId = Number(req.params.id);
+        if (!Number.isInteger(memoryId) || memoryId <= 0) return res.status(400).json({ success: false, message: 'ID kỉ niệm không hợp lệ' });
+
+        const values = [memoryId];
+        let where = 'id = ?';
+        if (Number(req.user.role_id) === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (!clanId) return res.status(404).json({ success: false, message: 'Không xác định được dòng họ của manager' });
+            where += ' AND clan_id = ?';
+            values.push(clanId);
+        }
+
+        const [result] = await db.query(
+            `UPDATE family_memories SET status = 'approved', rejection_reason = NULL, approved_by_account_id = ?, approved_at = CURRENT_TIMESTAMP WHERE ${where}`,
+            [req.user.id, ...values]
+        );
+        if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Không tìm thấy kỉ niệm chờ duyệt' });
+        return res.json({ success: true, message: 'Đã duyệt kỉ niệm dòng họ' });
+    } catch (error) {
+        console.error('approveMemory error:', error);
+        return res.status(500).json({ success: false, message: 'Không thể duyệt kỉ niệm' });
+    }
+};
+
+exports.rejectMemory = async (req, res) => {
+    try {
+        await ensureFamilyMemoriesSchemaForManager();
+        const memoryId = Number(req.params.id);
+        if (!Number.isInteger(memoryId) || memoryId <= 0) return res.status(400).json({ success: false, message: 'ID kỉ niệm không hợp lệ' });
+        const reason = String(req.body?.reason || '').trim() || 'Nội dung chưa phù hợp';
+
+        const values = [memoryId];
+        let where = 'id = ?';
+        if (Number(req.user.role_id) === 2) {
+            const clanId = await getManagerClanId(req.user.id);
+            if (!clanId) return res.status(404).json({ success: false, message: 'Không xác định được dòng họ của manager' });
+            where += ' AND clan_id = ?';
+            values.push(clanId);
+        }
+
+        const [result] = await db.query(
+            `UPDATE family_memories SET status = 'rejected', rejection_reason = ? WHERE ${where}`,
+            [reason, ...values]
+        );
+        if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Không tìm thấy kỉ niệm chờ duyệt' });
+        return res.json({ success: true, message: 'Đã từ chối kỉ niệm dòng họ' });
+    } catch (error) {
+        console.error('rejectMemory error:', error);
+        return res.status(500).json({ success: false, message: 'Không thể từ chối kỉ niệm' });
+    }
+};

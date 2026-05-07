@@ -13,7 +13,7 @@ const menuItems = [
   { icon: "account_tree", label: "Phả hệ dòng họ", path: "/manager/genealogy" },
   { icon: "assignment", label: "Sự kiện dùng họ", path: "/manager/tasks" },
   { icon: "post_add", label: "Bảng tin dòng họ", path: "/manager/posts" },
-  { icon: "hourglass", label: "Viên nang thời gian", path: "/manager/time-capsule" },
+  { icon: "collections_bookmark", label: "Kỉ niệm dòng họ", path: "/manager/time-capsule" },
   { icon: "group", label: "Thành viên dòng họ", path: "/manager/account" },
   { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
   { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/manager/fund" },
@@ -266,7 +266,7 @@ export default function ManagerLayout() {
 
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src={sidebarOpen ? "/logo giaphaviet.png" : "/logo.png"} alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
           </Link>
         </div>
 

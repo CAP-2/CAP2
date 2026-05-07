@@ -28,6 +28,8 @@ router.get("/posts/:id/comments", verifyToken, checkRole(["admin", "manager", "m
 router.post("/posts/:id/comments", verifyToken, checkRole(["admin", "manager", "member"]), memberController.addPostComment);
 router.post("/posts/:id/like", verifyToken, checkRole(["admin", "manager", "member"]), memberController.togglePostLike);
 router.get("/submissions", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getMySubmissions);
+router.get("/memories", verifyToken, checkRole(["admin", "manager", "member"]), memberController.getFamilyMemories);
+router.post("/memories", verifyToken, checkRole(["admin", "manager", "member"]), memberController.createFamilyMemory);
 
 // --- 💰 QUẢN LÝ QUỸ DÒNG HỌ (CLAN FUND) 💰 ---
 const fundController = require("../controllers/fundController");

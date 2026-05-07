@@ -31,29 +31,82 @@ function buildPostDescription(post) {
   return content.length > 180 ? `${content.slice(0, 177)}...` : content;
 }
 
-function PostCard({ post, onOpen }) {
+function getAuthorName(post) {
+  return post?.author_name || post?.created_by_name || post?.email || "Thành viên dòng họ";
+}
+
+function PostCard({ post, onOpen, onLike, liking }) {
+  const text = post.content || post.description || "Bài viết hình ảnh";
+
   return (
-    <button type="button" className="general-post-card" onClick={() => onOpen(post)}>
-      <span className="general-post-thumb">
-        {post.image_url ? (
-          <img src={post.image_url} alt="" />
-        ) : (
-          <span className="general-post-thumb-empty">
-            <span className="material-symbols-outlined">article</span>
+    <article className="feed-post-card">
+      <header className="feed-post-author-row">
+        <button type="button" className="feed-author-button" onClick={() => onOpen(post)}>
+          <span className="feed-avatar">
+            <img src="/logo.png" alt="" />
           </span>
-        )}
-        <span className="general-post-overlay">
-          <span className="general-post-action" title="Xem bài viết">
-            <span className="material-symbols-outlined">visibility</span>
+          <span className="feed-author-text">
+            <strong>{getAuthorName(post)}</strong>
+            <time>{formatDate(post.created_at)}</time>
           </span>
+        </button>
+      </header>
+
+      <button type="button" className="feed-post-content-button" onClick={() => onOpen(post)}>
+        <p className="feed-post-text">{text}</p>
+      </button>
+
+      {post.image_url ? (
+        <button type="button" className="feed-post-media" onClick={() => onOpen(post)}>
+          <img src={post.image_url} alt="Ảnh bài đăng" />
+        </button>
+      ) : null}
+
+      <div className="feed-post-stats">
+        <span>{Number(post.like_count || 0)} lượt thích</span>
+        <span>{Number(post.comment_count || 0)} bình luận</span>
+      </div>
+
+      <div className="feed-post-actions">
+        <button type="button" className={post.liked_by_me ? "is-liked" : ""} onClick={() => onLike(post)} disabled={liking}>
+          <span className="material-symbols-outlined">{post.liked_by_me ? "favorite" : "favorite_border"}</span>
+          <span>Thích</span>
+        </button>
+        <button type="button" onClick={() => onOpen(post)}>
+          <span className="material-symbols-outlined">chat_bubble</span>
+          <span>Bình luận</span>
+        </button>
+        <button type="button" onClick={() => onOpen(post)}>
+          <span className="material-symbols-outlined">visibility</span>
+          <span>Xem</span>
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function FeedComposer({ onOpen }) {
+  return (
+    <section className="feed-composer-card">
+      <div className="feed-composer-top">
+        <span className="feed-avatar is-small">
+          <img src="/logo.png" alt="" />
         </span>
-      </span>
-      <span className="general-post-info">
-        <span className="general-post-author">{post.author_name || "Thành viên"}</span>
-        <span className="general-post-date">{formatDate(post.created_at)}</span>
-        <span className="general-post-desc">{buildPostDescription(post)}</span>
-      </span>
-    </button>
+        <button type="button" className="feed-composer-input" onClick={onOpen}>
+          Chia sẻ điều gì với dòng họ...
+        </button>
+      </div>
+      <div className="feed-composer-actions">
+        <button type="button" onClick={onOpen}>
+          <span className="material-symbols-outlined">image</span>
+          Ảnh
+        </button>
+        <button type="button" onClick={onOpen}>
+          <span className="material-symbols-outlined">history_edu</span>
+          Câu chuyện
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -63,7 +116,7 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
       <section className="post-modal post-compose-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="post-modal-head">
           <div>
-            <h2>Thêm bài đăng</h2>
+            <h2>Tạo bài đăng</h2>
             <p>Bài của thành viên sẽ hiển thị sau khi quản lý duyệt.</p>
           </div>
           <button type="button" className="post-icon-btn" onClick={onClose} aria-label="Đóng">
@@ -73,23 +126,23 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
 
         <form className="post-compose-form" onSubmit={onSubmit}>
           <label className="post-field">
-            <span>Mô tả ngắn</span>
+            <span>Tiêu đề / mô tả ngắn</span>
             <input
               value={form.description}
               onChange={(event) => onChange("description", event.target.value)}
-              placeholder="Tóm tắt nội dung sẽ hiện ở dạng thu nhỏ"
+              placeholder="Ví dụ: Ngày họp mặt dòng họ, ảnh kỷ niệm..."
               maxLength={255}
               disabled={submitting}
             />
           </label>
 
           <label className="post-field">
-            <span>Nội dung đầy đủ</span>
+            <span>Nội dung bài viết</span>
             <textarea
               rows={8}
               value={form.content}
               onChange={(event) => onChange("content", event.target.value)}
-              placeholder="Viết toàn bộ bài đăng..."
+              placeholder="Bạn muốn chia sẻ điều gì với dòng họ?"
               disabled={submitting}
             />
           </label>
@@ -136,24 +189,30 @@ function PostDetailModal({
     <div className="post-modal-backdrop" onMouseDown={onClose}>
       <article className="post-modal post-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="post-modal-head">
-          <div>
-            <h2>{buildPostDescription(post)}</h2>
-            <p>
-              {post.author_name || "Thành viên"} · {formatDate(post.created_at)}
-            </p>
+          <div className="post-detail-title-row">
+            <span className="feed-avatar is-small">
+              <img src="/logo.png" alt="" />
+            </span>
+            <div>
+              <h2>{getAuthorName(post)}</h2>
+              <p>{formatDate(post.created_at)}</p>
+            </div>
           </div>
           <button type="button" className="post-icon-btn" onClick={onClose} aria-label="Đóng">
             <span className="material-symbols-outlined">close</span>
           </button>
         </header>
 
+        <div className="post-detail-body">
+          <h3>{buildPostDescription(post)}</h3>
+          <p>{post.content || post.description || "Bài viết hình ảnh"}</p>
+        </div>
+
         {post.image_url && (
           <div className="post-detail-image">
             <img src={post.image_url} alt="" />
           </div>
         )}
-
-        <div className="post-detail-body">{post.content || post.description || "Bài viết hình ảnh"}</div>
 
         <div className="post-detail-toolbar">
           <button type="button" className={`post-like-btn ${post.liked_by_me ? "is-liked" : ""}`} onClick={() => onLike(post)} disabled={liking}>
@@ -299,12 +358,12 @@ export default function GeneralPosts() {
     const imageUrl = form.image_url.trim();
 
     if (!description) {
-      setFormError("Vui lòng nhập mô tả ngắn cho bài đăng.");
+      setFormError("Vui lòng nhập tiêu đề hoặc mô tả ngắn cho bài đăng.");
       return;
     }
 
     if (!content && !imageUrl) {
-      setFormError("Vui lòng nhập nội dung đầy đủ hoặc thêm ảnh.");
+      setFormError("Vui lòng nhập nội dung hoặc thêm ảnh.");
       return;
     }
 
@@ -370,31 +429,44 @@ export default function GeneralPosts() {
   };
 
   return (
-    <div className="general-posts-page">
-      <header className="general-posts-header">
+    <div className="general-posts-page feed-page">
+      <header className="general-posts-hero">
         <div>
           <span className="general-posts-kicker">Bảng tin dòng họ</span>
-          <h1>Bài đăng đã duyệt</h1>
+          <h1>Bảng tin dòng họ</h1>
+          <p>Nơi lưu giữ câu chuyện, hình ảnh và kỷ niệm của các thành viên.</p>
         </div>
-        <button type="button" className="post-primary-btn" onClick={() => setShowAddModal(true)}>
-          <span className="material-symbols-outlined">add</span>
-          Thêm bài đăng
-        </button>
       </header>
 
-      {error && <div className="post-form-message is-error">{error}</div>}
+      <div className="feed-layout">
+        <main className="feed-main-column">
+          <FeedComposer onOpen={() => setShowAddModal(true)} />
+          {error && <div className="post-form-message is-error">{error}</div>}
 
-      {loading ? (
-        <div className="post-empty-state">Đang tải bài viết...</div>
-      ) : posts.length === 0 ? (
-        <div className="post-empty-state">Chưa có bài viết nào được phê duyệt.</div>
-      ) : (
-        <div className="general-post-grid">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} onOpen={openPost} />
-          ))}
-        </div>
-      )}
+          {loading ? (
+            <div className="post-empty-state">Đang tải bài viết...</div>
+          ) : posts.length === 0 ? (
+            <div className="post-empty-state">Chưa có bài viết nào được phê duyệt.</div>
+          ) : (
+            <div className="feed-post-list">
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} onOpen={openPost} onLike={handleToggleLike} liking={likingPostId === post.id} />
+              ))}
+            </div>
+          )}
+        </main>
+
+        <aside className="feed-right-panel">
+          <section className="feed-mini-card">
+            <h3>Bảng tin</h3>
+            <p>Các bài viết đã duyệt sẽ hiển thị cho thành viên trong dòng họ.</p>
+            <button type="button" className="post-primary-btn" onClick={() => setShowAddModal(true)}>
+              <span className="material-symbols-outlined">add</span>
+              Thêm bài đăng
+            </button>
+          </section>
+        </aside>
+      </div>
 
       {showAddModal && (
         <AddPostModal

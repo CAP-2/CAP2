@@ -154,3 +154,19 @@
 .pending-item--wide {
   align-items: flex-start;
 }
+
+.pending-memory-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(201, 154, 44, 0.16);
+  color: #f7d27a;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 2rem;
+}
+.pending-memory-item .item-main {
+  align-items: flex-start;
+}

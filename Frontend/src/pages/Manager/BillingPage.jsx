@@ -12,6 +12,7 @@ import {
   createSepayPayment,
   getPaymentStatus,
 } from "../../api/paymentService";
+import "./BillingPage.css";
 
 function readJsonStorage(key) {
   try {
@@ -326,507 +327,249 @@ export default function BillingPage() {
     loadInitialData();
   }, []);
 
+  const usagePeoplePercent = billing?.person_limit ? Math.min(100, Math.round((Number(billing.current_people || 0) / Number(billing.person_limit || 1)) * 100)) : 0;
+  const usageAccountsPercent = billing?.account_limit ? Math.min(100, Math.round((Number(billing.current_accounts || 0) / Number(billing.account_limit || 1)) * 100)) : 0;
+
   if (loading) {
     return (
-      <div style={{ padding: 24 }}>
-        <h1>Gói sử dụng</h1>
-        <p>Đang tải...</p>
+      <div className="billing-page billing-page--loading">
+        <div className="billing-card billing-loading-card">
+          <span className="material-symbols-outlined">hourglass_top</span>
+          <h1>Đang tải gói sử dụng...</h1>
+          <p>Hệ thống đang kiểm tra thông tin dòng họ và lịch sử thanh toán.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Gói sử dụng dòng họ</h1>
-
-      <p style={{ fontSize: 13, color: "#666" }}>
-        Debug role: <b>{currentRole || "không xác định"}</b>
-      </p>
-
-      {isAdmin && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 16,
-            border: "1px solid #bfdbfe",
-            background: "#eff6ff",
-            borderRadius: 8,
-            color: "#1e3a8a",
-          }}
-        >
-          <div style={{ marginBottom: 10 }}>
-            Bạn đang dùng tài khoản admin. Hãy chọn cây gia phả cần kiểm tra gói.
-            Nút “Nâng cấp thử nghiệm” chỉ dùng để test nội bộ, không phải thanh toán thật.
-          </div>
-
-          <label
-            style={{
-              display: "block",
-              marginBottom: 6,
-              fontWeight: 700,
-              color: "#111827",
-            }}
-          >
-            Chọn cây gia phả
-          </label>
-
-          <select
-            value={clanId || ""}
-            onChange={handleClanChange}
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              padding: "10px 12px",
-              border: "1px solid #93c5fd",
-              borderRadius: 8,
-              background: "#fff",
-              color: "#111827",
-              fontWeight: 600,
-            }}
-          >
-            {adminClans.map((clan) => (
-              <option key={clan.id} value={clan.id}>
-                #{clan.id} - {getClanName(clan)}
-              </option>
-            ))}
-          </select>
+    <div className="billing-page">
+      <section className="billing-hero">
+        <div>
+          <span className="billing-kicker">Gói sử dụng dòng họ</span>
+          <h1>Quản lý dung lượng & nâng cấp</h1>
+          <p>Theo dõi giới hạn hồ sơ, tài khoản đăng nhập và nâng cấp gói bằng thanh toán VietQR.</p>
         </div>
-      )}
-
-      {!isAdmin && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 12,
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            borderRadius: 8,
-            color: "#78350f",
-          }}
-        >
-          Thanh toán SePay đang được bật. Tài khoản manager có thể nâng cấp gói
-          cho dòng họ của mình bằng chuyển khoản VietQR.
-        </div>
-      )}
-
-      {message && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 12,
-            border: message.includes("thành công")
-              ? "1px solid #bbf7d0"
-              : "1px solid #f5c2c7",
-            background: message.includes("thành công") ? "#f0fdf4" : "#f8d7da",
-            borderRadius: 8,
-            color: message.includes("thành công") ? "#14532d" : "#842029",
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      {billingLoading && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 12,
-            border: "1px solid #ddd",
-            background: "#fff",
-            borderRadius: 8,
-            color: "#111827",
-          }}
-        >
-          Đang tải gói sử dụng của cây gia phả đã chọn...
-        </div>
-      )}
-
-      {billing && (
-        <section
-          style={{
-            marginBottom: 24,
-            padding: 20,
-            border: "1px solid #ddd",
-            borderRadius: 12,
-            background: "#fff",
-            color: "#111827",
-          }}
-        >
-          <h2>Gói hiện tại: {billing.plan_name}</h2>
-
-          <p>
-            Clan ID: <b>{clanId}</b>
-          </p>
-
-          <p>
-            Trạng thái: <b>{billing.status}</b>
-          </p>
-
-          <p>
-            Hồ sơ trong cây gia phả:{" "}
-            <b>
-              {billing.current_people} / {billing.person_limit}
-            </b>
-          </p>
-
-          <p>
-            Tài khoản đăng nhập:{" "}
-            <b>
-              {billing.current_accounts} / {billing.account_limit}
-            </b>
-          </p>
-
-          <p>
-            Ngày hết hạn:{" "}
-            <b>
-              {billing.expires_at
-                ? formatDateVN(billing.expires_at)
-                : "Không giới hạn"}
-            </b>
-          </p>
-
-          {billing.is_person_limit_reached && (
-            <p style={{ color: "#dc3545", fontWeight: 600 }}>
-              Dòng họ đã đạt giới hạn hồ sơ trong cây gia phả của gói hiện tại.
-            </p>
-          )}
-
-          {billing.is_account_limit_reached && (
-            <p style={{ color: "#dc3545", fontWeight: 600 }}>
-              Dòng họ đã đạt giới hạn tài khoản đăng nhập của gói hiện tại.
-            </p>
-          )}
-        </section>
-      )}
-
-      <section
-        style={{
-          marginBottom: 24,
-          padding: 20,
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          background: "#fff",
-          color: "#111827",
-        }}
-      >
-        <h2>Lịch sử nâng cấp / thanh toán</h2>
-
-        {payments.length === 0 ? (
-          <p>Chưa có giao dịch nào.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 14,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Gói
-                  </th>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Người thao tác
-                  </th>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Nhà cung cấp
-                  </th>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Mã đơn
-                  </th>
-                  <th style={{ textAlign: "right", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Số tiền
-                  </th>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Trạng thái
-                  </th>
-                  <th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #ddd" }}>
-                    Ngày thanh toán
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {payments.map((payment) => (
-                  <tr key={payment.id}>
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.plan_name || payment.plan_code || "Không rõ"}
-                    </td>
-
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.payer_email || "Không rõ"}
-                    </td>
-
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.provider || "manual"}
-                    </td>
-
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.order_code}
-                    </td>
-
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: "1px solid #eee",
-                        textAlign: "right",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {formatMoney(payment.amount_vnd)}
-                    </td>
-
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.status}
-                    </td>
-
-                    <td style={{ padding: 10, borderBottom: "1px solid #eee" }}>
-                      {payment.paid_at
-                        ? formatDateTimeVN(payment.paid_at)
-                        : "Chưa thanh toán"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {billing && (
+          <div className="billing-current-pill">
+            <span>Gói hiện tại</span>
+            <strong>{billing.plan_name}</strong>
           </div>
         )}
       </section>
 
-      {paymentDialog && (
-        <section
-          style={{
-            marginBottom: 24,
-            padding: 20,
-            border: "1px solid #bbf7d0",
-            borderRadius: 12,
-            background: "#f0fdf4",
-            color: "#14532d",
-          }}
-        >
-          <h2>Thanh toán SePay</h2>
-
-          <p>
-            Gói: <b>{paymentDialog.plan?.name}</b>
-          </p>
-
-          <p>
-            Số tiền: <b>{formatMoney(paymentDialog.amountVnd)}</b>
-          </p>
-
-          <p>
-            Nội dung chuyển khoản:
-            <br />
-            <b
-              style={{
-                display: "inline-block",
-                marginTop: 6,
-                padding: "6px 10px",
-                borderRadius: 8,
-                background: "#dcfce7",
-                color: "#166534",
-                letterSpacing: 0.3,
-              }}
-            >
-              {paymentDialog.transferContent}
-            </b>
-          </p>
-
-          <p>
-            Tài khoản nhận:{" "}
-            <b>
-              {paymentDialog.bankAccount || "Chưa cấu hình"} -{" "}
-              {paymentDialog.accountName || "Chưa cấu hình"}
-            </b>
-          </p>
-
-          {paymentDialog.qrUrl ? (
-            <div style={{ margin: "16px 0" }}>
-              <img
-                src={paymentDialog.qrUrl}
-                alt="QR thanh toán SePay"
-                style={{
-                  width: 260,
-                  maxWidth: "100%",
-                  border: "1px solid #86efac",
-                  borderRadius: 12,
-                  background: "#fff",
-                  padding: 8,
-                }}
-              />
-            </div>
-          ) : (
-            <p style={{ color: "#b91c1c", fontWeight: 600 }}>
-              Chưa tạo được mã QR. Kiểm tra cấu hình SEPAY_BANK_BIN và
-              SEPAY_BANK_ACCOUNT.
-            </p>
-          )}
-
-          <p>
-            Trạng thái: <b>{paymentDialog.status}</b>
-          </p>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={checkCurrentPaymentStatus}
-              disabled={paymentChecking}
-              style={{
-                padding: "10px 12px",
-                border: "none",
-                borderRadius: 8,
-                background: "#15803d",
-                color: "#fff",
-                cursor: paymentChecking ? "not-allowed" : "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {paymentChecking ? "Đang kiểm tra..." : "Tôi đã thanh toán - kiểm tra"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPaymentDialog(null)}
-              style={{
-                padding: "10px 12px",
-                border: "1px solid #86efac",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#166534",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              Đóng
-            </button>
+      {isAdmin && (
+        <section className="billing-alert billing-alert--admin">
+          <span className="material-symbols-outlined">admin_panel_settings</span>
+          <div>
+            <strong>Chế độ quản trị hệ thống</strong>
+            <p>Bạn có thể chọn cây gia phả để kiểm tra hoặc nâng cấp thử nghiệm gói sử dụng.</p>
+            <label>Chọn cây gia phả</label>
+            <select value={clanId || ""} onChange={handleClanChange}>
+              {adminClans.map((clan) => (
+                <option key={clan.id} value={clan.id}>
+                  #{clan.id} - {getClanName(clan)}
+                </option>
+              ))}
+            </select>
           </div>
         </section>
       )}
 
-      <h2>Danh sách gói</h2>
+      {!isAdmin && (
+        <section className="billing-alert billing-alert--pay">
+          <span className="material-symbols-outlined">qr_code_2</span>
+          <div>
+            <strong>Thanh toán SePay / VietQR đã sẵn sàng</strong>
+            <p>Tài khoản manager có thể nâng cấp gói cho dòng họ bằng chuyển khoản VietQR.</p>
+          </div>
+        </section>
+      )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: 16,
-        }}
-      >
-        {plans.map((plan) => {
-          const isCurrent = billing?.plan_code === plan.code;
+      {message && (
+        <section className={`billing-alert ${message.includes("thành công") || message.includes("Đã nâng cấp") ? "billing-alert--success" : "billing-alert--error"}`}>
+          <span className="material-symbols-outlined">{message.includes("thành công") || message.includes("Đã nâng cấp") ? "check_circle" : "error"}</span>
+          <div>{message}</div>
+        </section>
+      )}
 
-          return (
-            <div
-              key={plan.id}
-              style={{
-                padding: 20,
-                border: isCurrent ? "2px solid #0d6efd" : "1px solid #ddd",
-                borderRadius: 12,
-                background: "#fff",
-                color: "#111827",
-                minHeight: 240,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
+      {billingLoading && (
+        <section className="billing-alert billing-alert--loading">
+          <span className="material-symbols-outlined">sync</span>
+          <div>Đang tải gói sử dụng của cây gia phả đã chọn...</div>
+        </section>
+      )}
+
+      {billing && (
+        <section className="billing-overview-grid">
+          <article className="billing-card billing-current-card">
+            <div className="billing-card-head">
               <div>
-                <h3>{plan.name}</h3>
-
-                <p>{plan.description}</p>
-
-                <p>
-                  Giá:{" "}
-                  <b>
-                    {formatMoney(plan.price_vnd)}
-                    {plan.billing_cycle === "monthly" ? "/tháng" : ""}
-                  </b>
-                </p>
-
-                <p>{plan.person_limit} hồ sơ trong cây gia phả</p>
-                <p>{plan.account_limit} tài khoản đăng nhập</p>
+                <span className="billing-kicker">Gói hiện tại</span>
+                <h2>{billing.plan_name}</h2>
               </div>
-
-              {isCurrent ? (
-                <button
-                  type="button"
-                  disabled
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: 8,
-                    background: "#e5e7eb",
-                    color: "#6b7280",
-                    fontWeight: 600,
-                  }}
-                >
-                  Gói hiện tại
-                </button>
-              ) : isAdmin ? (
-                <button
-                  type="button"
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    border: "none",
-                    borderRadius: 8,
-                    background: "#2563eb",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                  onClick={async () => {
-                    const ok = window.confirm(
-                      `Nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}?`
-                    );
-
-                    if (!ok) return;
-
-                    try {
-                      setMessage("");
-
-                      await manualUpgradeClan(clanId, {
-                        plan_code: plan.code,
-                        months: 1,
-                      });
-
-                      await loadBillingForClan(clanId);
-
-                      setMessage(
-                        `Đã nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}.`
-                      );
-                    } catch (error) {
-                      setMessage(error.message || "Không thể nâng cấp thử nghiệm.");
-                    }
-                  }}
-                >
-                  Nâng cấp thử nghiệm
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    border: "none",
-                    borderRadius: 8,
-                    background: "#16a34a",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                  onClick={() => handleCreateSepayPayment(plan)}
-                >
-                  Nâng cấp ngay
-                </button>
-              )}
+              <span className="billing-status-badge">{billing.status}</span>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="billing-info-list">
+              <div><span>Clan ID</span><strong>#{clanId}</strong></div>
+              <div><span>Ngày hết hạn</span><strong>{billing.expires_at ? formatDateVN(billing.expires_at) : "Không giới hạn"}</strong></div>
+            </div>
+
+            <div className="billing-usage-block">
+              <div className="billing-usage-title">
+                <span>Hồ sơ gia phả</span>
+                <strong>{billing.current_people} / {billing.person_limit}</strong>
+              </div>
+              <div className="billing-progress"><span style={{ width: `${usagePeoplePercent}%` }} /></div>
+            </div>
+
+            <div className="billing-usage-block">
+              <div className="billing-usage-title">
+                <span>Tài khoản đăng nhập</span>
+                <strong>{billing.current_accounts} / {billing.account_limit}</strong>
+              </div>
+              <div className="billing-progress"><span style={{ width: `${usageAccountsPercent}%` }} /></div>
+            </div>
+
+            {(billing.is_person_limit_reached || billing.is_account_limit_reached) && (
+              <div className="billing-limit-warning">
+                <span className="material-symbols-outlined">warning</span>
+                <span>Dòng họ đã đạt một số giới hạn của gói hiện tại. Hãy nâng cấp để tiếp tục mở rộng.</span>
+              </div>
+            )}
+          </article>
+
+          <article className="billing-card billing-history-card">
+            <div className="billing-card-head">
+              <div>
+                <span className="billing-kicker">Thanh toán</span>
+                <h2>Lịch sử nâng cấp</h2>
+              </div>
+              <span className="billing-count-pill">{payments.length} giao dịch</span>
+            </div>
+
+            {payments.length === 0 ? (
+              <div className="billing-empty-state">
+                <span className="material-symbols-outlined">receipt_long</span>
+                <p>Chưa có giao dịch nào.</p>
+              </div>
+            ) : (
+              <div className="billing-payment-list">
+                {payments.map((payment) => (
+                  <div className="billing-payment-row" key={payment.id}>
+                    <div>
+                      <strong>{payment.plan_name || payment.plan_code || "Không rõ"}</strong>
+                      <span>{payment.payer_email || "Không rõ"} · {payment.provider || "manual"}</span>
+                    </div>
+                    <div className="billing-payment-meta">
+                      <strong>{formatMoney(payment.amount_vnd)}</strong>
+                      <span>{payment.paid_at ? formatDateTimeVN(payment.paid_at) : "Chưa thanh toán"}</span>
+                    </div>
+                    <span className={`billing-payment-status is-${String(payment.status || "pending").toLowerCase()}`}>{payment.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
+      )}
+
+      {paymentDialog && (
+        <section className="billing-card billing-payment-dialog">
+          <div className="billing-card-head">
+            <div>
+              <span className="billing-kicker">Thanh toán SePay</span>
+              <h2>{paymentDialog.plan?.name}</h2>
+            </div>
+            <span className="billing-status-badge">{paymentDialog.status}</span>
+          </div>
+
+          <div className="billing-payment-content">
+            <div>
+              <div className="billing-info-list is-payment">
+                <div><span>Số tiền</span><strong>{formatMoney(paymentDialog.amountVnd)}</strong></div>
+                <div><span>Nội dung chuyển khoản</span><strong>{paymentDialog.transferContent}</strong></div>
+                <div><span>Tài khoản nhận</span><strong>{paymentDialog.bankAccount || "Chưa cấu hình"} - {paymentDialog.accountName || "Chưa cấu hình"}</strong></div>
+              </div>
+              <div className="billing-actions-row">
+                <button type="button" className="billing-primary-btn" onClick={checkCurrentPaymentStatus} disabled={paymentChecking}>
+                  {paymentChecking ? "Đang kiểm tra..." : "Tôi đã thanh toán - kiểm tra"}
+                </button>
+                <button type="button" className="billing-secondary-btn" onClick={() => setPaymentDialog(null)}>
+                  Đóng
+                </button>
+              </div>
+            </div>
+            {paymentDialog.qrUrl ? (
+              <div className="billing-qr-box">
+                <img src={paymentDialog.qrUrl} alt="QR thanh toán SePay" />
+                <span>Quét mã để thanh toán</span>
+              </div>
+            ) : (
+              <div className="billing-qr-box is-empty">Chưa tạo được mã QR.</div>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section className="billing-plans-section">
+        <div className="billing-section-title">
+          <span className="billing-kicker">Danh sách gói</span>
+          <h2>Chọn gói phù hợp với quy mô dòng họ</h2>
+        </div>
+
+        <div className="billing-plan-grid">
+          {plans.map((plan) => {
+            const isCurrent = billing?.plan_code === plan.code;
+            const isFeatured = String(plan.code || "").toLowerCase().includes("pro") || String(plan.name || "").toLowerCase().includes("pro");
+
+            return (
+              <article key={plan.id} className={`billing-plan-card ${isCurrent ? "is-current" : ""} ${isFeatured ? "is-featured" : ""}`}>
+                {isCurrent && <span className="billing-plan-ribbon">Đang dùng</span>}
+                {isFeatured && !isCurrent && <span className="billing-plan-ribbon is-featured-ribbon">Phổ biến</span>}
+                <h3>{plan.name}</h3>
+                <p>{plan.description}</p>
+                <div className="billing-plan-price">
+                  <strong>{formatMoney(plan.price_vnd)}</strong>
+                  {plan.billing_cycle === "monthly" ? <span>/tháng</span> : null}
+                </div>
+                <ul>
+                  <li><span className="material-symbols-outlined">account_tree</span>{plan.person_limit} hồ sơ trong cây gia phả</li>
+                  <li><span className="material-symbols-outlined">group</span>{plan.account_limit} tài khoản đăng nhập</li>
+                </ul>
+
+                {isCurrent ? (
+                  <button type="button" className="billing-disabled-btn" disabled>Gói hiện tại</button>
+                ) : isAdmin ? (
+                  <button
+                    type="button"
+                    className="billing-primary-btn"
+                    onClick={async () => {
+                      const ok = window.confirm(`Nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}?`);
+                      if (!ok) return;
+                      try {
+                        setMessage("");
+                        await manualUpgradeClan(clanId, { plan_code: plan.code, months: 1 });
+                        await loadBillingForClan(clanId);
+                        setMessage(`Đã nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}.`);
+                      } catch (error) {
+                        setMessage(error.message || "Không thể nâng cấp thử nghiệm.");
+                      }
+                    }}
+                  >
+                    Nâng cấp thử nghiệm
+                  </button>
+                ) : (
+                  <button type="button" className="billing-primary-btn" onClick={() => handleCreateSepayPayment(plan)}>
+                    Nâng cấp ngay
+                  </button>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

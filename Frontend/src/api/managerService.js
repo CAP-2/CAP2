@@ -230,21 +230,24 @@ export const getMediaAPI = () =>
   request("/media", {}, "Không thể lấy dữ liệu thư viện");
 
 export const getPendingReviewData = async () => {
-  const [users, posts, profiles] = await Promise.all([
+  const [users, posts, profiles, memories] = await Promise.all([
     getPendingUsers(),
     getPendingPosts(),
     getPendingProfileUpdates(),
+    getPendingMemories().catch(() => ({ memories: [] })),
   ]);
 
   const pendingUsers = asArray(users);
   const pendingPosts = asArray(posts);
   const pendingProfiles = asArray(profiles);
+  const pendingMemories = asArray(memories?.memories || memories);
 
   return {
     pendingUsers,
     pendingPosts,
     pendingProfiles,
-    totalPending: pendingUsers.length + pendingPosts.length + pendingProfiles.length,
+    pendingMemories,
+    totalPending: pendingUsers.length + pendingPosts.length + pendingProfiles.length + pendingMemories.length,
   };
 };
 
@@ -474,3 +477,22 @@ export const deleteManagerEventAPI = (eventId, params = {}) => {
     "Xóa sự kiện thất bại"
   );
 };
+export const getPendingMemories = () =>
+  request("/pending-memories", {}, "Không thể lấy kỉ niệm chờ duyệt");
+
+export const approveMemoryAPI = (id) =>
+  request(
+    `/approve-memory/${id}`,
+    { method: "POST" },
+    "Phê duyệt kỉ niệm thất bại"
+  );
+
+export const rejectMemoryAPI = (id, reason) =>
+  request(
+    `/reject-memory/${id}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+    "Từ chối kỉ niệm thất bại"
+  );

@@ -1545,3 +1545,128 @@ exports.updateTaskStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: "Lỗi cập nhật trạng thái công việc" });
   }
 };
+const ensureFamilyMemoriesSchema = async () => {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS family_memories (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      clan_id BIGINT UNSIGNED NOT NULL,
+      author_account_id BIGINT UNSIGNED NULL,
+      author_person_id BIGINT UNSIGNED NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NULL,
+      media_id BIGINT UNSIGNED NULL,
+      media_url TEXT NULL,
+      media_type VARCHAR(30) NOT NULL DEFAULT 'text',
+      mime_type VARCHAR(120) NULL,
+      original_filename VARCHAR(255) NULL,
+      status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+      rejection_reason TEXT NULL,
+      approved_by_account_id BIGINT UNSIGNED NULL,
+      approved_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_family_memories_clan_status (clan_id, status),
+      KEY idx_family_memories_author (author_account_id),
+      KEY idx_family_memories_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+};
+
+const inferMemoryMediaType = (mimeType) => {
+  const mime = String(mimeType || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'text';
+};
+
+const mapMemoryRow = (row) => ({
+  ...row,
+  media_id: row.media_id || null,
+  media_url: row.media_id ? `/api/media/${row.media_id}` : row.media_url || null,
+  author_name: row.author_name || row.author_email || 'Thành viên dòng họ',
+});
+
+exports.getFamilyMemories = async (req, res) => {
+  try {
+    await ensureFamilyMemoriesSchema();
+    const context = await getAccountContext(req.user.id);
+    if (!context?.clan_id) return res.status(400).json({ success: false, message: 'Tài khoản chưa liên kết dòng họ' });
+
+    const roleId = Number(req.user?.role_id || context.role_id);
+    const includeOwnPending = req.query?.includeOwnPending === '1';
+    const values = [context.clan_id];
+    let where = 'fm.clan_id = ? AND fm.status = \'approved\'';
+    if (includeOwnPending || roleId === 1 || roleId === 2) {
+      where = 'fm.clan_id = ? AND (fm.status = \'approved\' OR fm.author_account_id = ?)';
+      values.push(req.user.id);
+    }
+
+    const [rows] = await db.query(
+      `SELECT fm.*, COALESCE(p.display_name, a.email) AS author_name, a.email AS author_email
+       FROM family_memories fm
+       LEFT JOIN accounts a ON a.id = fm.author_account_id
+       LEFT JOIN people p ON p.id = fm.author_person_id
+       WHERE ${where}
+       ORDER BY fm.created_at DESC`,
+      values
+    );
+
+    return res.json({ success: true, memories: rows.map(mapMemoryRow) });
+  } catch (error) {
+    console.error('getFamilyMemories error:', error);
+    return res.status(500).json({ success: false, message: 'Không thể tải kỉ niệm dòng họ' });
+  }
+};
+
+exports.createFamilyMemory = async (req, res) => {
+  try {
+    await ensureFamilyMemoriesSchema();
+    const context = await getAccountContext(req.user.id);
+    if (!context?.clan_id) return res.status(400).json({ success: false, message: 'Tài khoản chưa liên kết dòng họ' });
+
+    const title = String(req.body?.title || '').trim();
+    const content = String(req.body?.content || '').trim();
+    const mediaId = normalizeMediaId(req.body?.media_id);
+    const mimeType = req.body?.mime_type ? String(req.body.mime_type).trim() : null;
+    const originalFilename = req.body?.original_filename ? String(req.body.original_filename).trim() : null;
+    const mediaUrl = req.body?.media_url ? String(req.body.media_url).trim() : null;
+    const mediaType = inferMemoryMediaType(mimeType || req.body?.media_type);
+
+    if (!title && !content && !mediaId && !mediaUrl) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập nội dung hoặc tải tệp kỉ niệm' });
+    }
+
+    const roleId = Number(req.user?.role_id || context.role_id);
+    const status = roleId === 1 || roleId === 2 ? 'approved' : 'pending';
+    const [created] = await db.query(
+      `INSERT INTO family_memories
+       (clan_id, author_account_id, author_person_id, title, content, media_id, media_url, media_type, mime_type, original_filename, status, approved_by_account_id, approved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${status === 'approved' ? 'CURRENT_TIMESTAMP' : 'NULL'})`,
+      [
+        context.clan_id,
+        req.user.id,
+        context.person_id || null,
+        title || 'Kỉ niệm dòng họ',
+        content || null,
+        mediaId,
+        mediaUrl || null,
+        mediaType,
+        mimeType,
+        originalFilename,
+        status,
+        status === 'approved' ? req.user.id : null,
+      ]
+    );
+
+    return res.json({
+      success: true,
+      memory_id: created.insertId,
+      status,
+      message: status === 'approved' ? 'Đã đăng kỉ niệm dòng họ.' : 'Đã gửi kỉ niệm, vui lòng chờ trưởng họ duyệt.',
+    });
+  } catch (error) {
+    console.error('createFamilyMemory error:', error);
+    return res.status(500).json({ success: false, message: 'Không thể gửi kỉ niệm dòng họ' });
+  }
+};

@@ -40,6 +40,9 @@
     router.get('/pending-profiles', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingProfileUpdates);
     router.post('/approve-profile/:id', verifyToken, checkRole(['admin', 'manager']), managerController.approveProfileUpdate);
     router.post('/reject-profile/:id', verifyToken, checkRole(['admin', 'manager']), managerController.rejectProfileUpdate);
+    router.get('/pending-memories', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingMemories);
+    router.post('/approve-memory/:id', verifyToken, checkRole(['admin', 'manager']), managerController.approveMemory);
+    router.post('/reject-memory/:id', verifyToken, checkRole(['admin', 'manager']), managerController.rejectMemory);
 
     // Route Quản lý Đa phương tiện (Media Management)
     router.get('/media', verifyToken, checkRole(['admin', 'manager']), managerController.getMedia);

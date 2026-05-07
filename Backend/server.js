@@ -187,6 +187,65 @@ app.post('/api/upload', verifyToken, (req, res) => {
     });
 });
 
+
+
+// 7.1 Upload API for family memories: image, video, audio are stored in MySQL media_files
+const memoryMediaUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: Number(process.env.MAX_MEMORY_MEDIA_UPLOAD_BYTES || 50 * 1024 * 1024) },
+    fileFilter: (req, file, cb) => {
+        const mime = String(file.mimetype || '').toLowerCase();
+        if (mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/')) {
+            return cb(null, true);
+        }
+        return cb(new Error('Chỉ cho phép tải ảnh, video hoặc ghi âm'));
+    }
+});
+
+app.post('/api/upload-memory-media', verifyToken, (req, res) => {
+    memoryMediaUpload.single('file')(req, res, async (uploadError) => {
+        if (uploadError) {
+            const isMulterLimit = uploadError?.code === 'LIMIT_FILE_SIZE';
+            return res.status(isMulterLimit ? 413 : 400).json({
+                success: false,
+                message: isMulterLimit ? 'Tệp vượt quá dung lượng cho phép' : uploadError.message || 'Tệp không hợp lệ'
+            });
+        }
+
+        try {
+            if (!req.file) {
+                return res.status(400).json({ success: false, message: 'Không có tệp được chọn' });
+            }
+
+            const accountId = req.user?.id || req.user?.account_id || null;
+            const context = await getUploadContext(accountId);
+            const mediaId = await createMediaFile({
+                ownerAccountId: accountId,
+                ownerPersonId: context.owner_person_id || context.ownerPersonId || req.user?.person_id || null,
+                clanId: context.clan_id || context.clanId || null,
+                usageType: 'other',
+                originalFilename: req.file.originalname,
+                mimeType: req.file.mimetype,
+                fileSizeBytes: req.file.size,
+                imageBuffer: req.file.buffer,
+            });
+            const url = getMediaUrl(req, mediaId);
+            return res.json({
+                success: true,
+                mediaId,
+                media_id: mediaId,
+                url,
+                mediaUrl: url,
+                mimeType: req.file.mimetype,
+                originalFilename: req.file.originalname,
+            });
+        } catch (error) {
+            console.error('Upload memory media error:', error);
+            return res.status(500).json({ success: false, message: 'Không thể lưu tệp vào database' });
+        }
+    });
+});
+
 // 8. Main API routes
 app.use('/api/media', mediaRoutes);
 app.use('/api/calendar', calendarRoutes);

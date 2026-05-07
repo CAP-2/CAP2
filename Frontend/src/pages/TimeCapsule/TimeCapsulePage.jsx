@@ -1,540 +1,475 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  getVoiceRecordingAudioUrl,
-  getVoiceRecipientOptions,
-  getVoiceRecordings,
-  retryVoiceRecording,
-  sendVoiceRecording,
-  updateVoiceTranscript,
-  uploadVoiceRecording,
-} from "../../api/voiceService";
+import { apiRequest } from "../../services/api";
 import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./TimeCapsulePage.css";
 
-const MAX_SECONDS = 180;
-
-function pickMimeType() {
-  if (!window.MediaRecorder) return "";
-  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
-  return candidates.find((type) => window.MediaRecorder.isTypeSupported(type)) || "";
-}
-
-function formatDate(value) {
-  if (!value) return "Chưa cập nhật";
-  return formatDateTimeVN(value);
-}
-
-function formatDuration(seconds) {
-  const total = Math.max(0, Number(seconds) || 0);
-  const minutes = Math.floor(total / 60);
-  const rest = total % 60;
-  return `${minutes}:${String(rest).padStart(2, "0")}`;
-}
+const emptyForm = {
+  title: "",
+  content: "",
+  media_id: null,
+  media_url: "",
+  media_type: "text",
+  mime_type: "",
+  original_filename: "",
+};
 
 function getStatusLabel(status) {
-  if (status === "completed") return "Đã lưu ký ức";
-  if (status === "transcribing") return "Đang chuyển chữ";
-  if (status === "failed") return "Cần xử lý lại";
-  return "Đã nhận ghi âm";
+  if (status === "approved") return "Đã duyệt";
+  if (status === "rejected") return "Từ chối";
+  return "Chờ duyệt";
+}
+
+function getMediaKind(fileOrMemory) {
+  const mime = String(fileOrMemory?.type || fileOrMemory?.mime_type || "").toLowerCase();
+  const explicit = String(fileOrMemory?.media_type || "").toLowerCase();
+  if (explicit === "image" || mime.startsWith("image/")) return "image";
+  if (explicit === "video" || mime.startsWith("video/")) return "video";
+  if (explicit === "audio" || mime.startsWith("audio/")) return "audio";
+  return "text";
+}
+
+function MemoryMedia({ memory }) {
+  const url = memory.media_url || (memory.media_id ? `/api/media/${memory.media_id}` : "");
+  if (!url) return null;
+  const kind = getMediaKind(memory);
+  if (kind === "image") return <img className="memory-media" src={url} alt={memory.title || "Kỉ niệm"} />;
+  if (kind === "video") return <video className="memory-media" src={url} controls preload="metadata" />;
+  if (kind === "audio") return <audio className="memory-audio" src={url} controls />;
+  return (
+    <a className="memory-file-link" href={url} target="_blank" rel="noreferrer">
+      <span className="material-symbols-outlined">attach_file</span>
+      {memory.original_filename || "Mở tệp đính kèm"}
+    </a>
+  );
+}
+
+function MemoryCard({ memory, isManagerView = false }) {
+  return (
+    <article className={`memory-card is-${memory.status || "approved"}`}>
+      <div className="memory-card-head">
+        <div className="memory-author-avatar">
+          {(memory.author_name || "K").slice(0, 1).toUpperCase()}
+        </div>
+        <div>
+          <h3>{memory.title || "Kỉ niệm dòng họ"}</h3>
+          <p>
+            {memory.author_name || "Thành viên dòng họ"} • {memory.created_at ? formatDateTimeVN(memory.created_at) : "Chưa cập nhật"}
+          </p>
+        </div>
+        <span className={`memory-status is-${memory.status || "approved"}`}>{getStatusLabel(memory.status)}</span>
+      </div>
+      {memory.content && <p className="memory-content">{memory.content}</p>}
+      <MemoryMedia memory={memory} />
+      {memory.status === "pending" && !isManagerView && (
+        <div className="memory-note">Kỉ niệm này đang chờ trưởng họ duyệt trước khi hiển thị công khai.</div>
+      )}
+      {memory.status === "rejected" && memory.rejection_reason && (
+        <div className="memory-note is-rejected">Lý do từ chối: {memory.rejection_reason}</div>
+      )}
+    </article>
+  );
 }
 
 export default function TimeCapsulePage({ role = "member" }) {
-  const [recordings, setRecordings] = useState([]);
+  const isManager = role === "manager" || role === "admin";
+  const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("");
+  const [form, setForm] = useState(emptyForm);
+  const [filePreview, setFilePreview] = useState(null);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [captureMode, setCaptureMode] = useState("none");
+  const [cameraStream, setCameraStream] = useState(null);
   const [recorderState, setRecorderState] = useState("idle");
-  const [seconds, setSeconds] = useState(0);
-  const [editingId, setEditingId] = useState(null);
-  const [transcriptDraft, setTranscriptDraft] = useState("");
-  const [savingTranscriptId, setSavingTranscriptId] = useState(null);
-  const [retryingId, setRetryingId] = useState(null);
-  const [recipientOptions, setRecipientOptions] = useState([]);
-  const [selectedRecipientsByRecording, setSelectedRecipientsByRecording] = useState({});
-  const [scheduleModeByRecording, setScheduleModeByRecording] = useState({});
-  const [scheduledAtByRecording, setScheduledAtByRecording] = useState({});
-  const [sendingId, setSendingId] = useState(null);
+  const [cameraError, setCameraError] = useState("");
+  const liveVideoRef = useRef(null);
   const recorderRef = useRef(null);
-  const streamRef = useRef(null);
-  const chunksRef = useRef([]);
-  const startedAtRef = useRef(0);
-  const timerRef = useRef(null);
+  const recordedChunksRef = useRef([]);
 
-  const loadRecordings = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const loadMemories = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
-      const result = await getVoiceRecordings(80);
-      setRecordings(result.recordings || []);
+      const result = await apiRequest("/api/member/memories?includeOwnPending=1");
+      setMemories(result.memories || []);
     } catch (err) {
-      setError(err?.message || "Không thể tải danh sách viên nang thời gian.");
+      setError(err?.message || "Không thể tải kỉ niệm dòng họ.");
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadRecordings();
-  }, [loadRecordings]);
+    loadMemories();
+  }, [loadMemories]);
 
   useEffect(() => {
-    let mounted = true;
-    getVoiceRecipientOptions()
-      .then((result) => {
-        if (mounted) setRecipientOptions(Array.isArray(result.recipients) ? result.recipients : []);
-      })
-      .catch(() => {
-        if (mounted) setRecipientOptions([]);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const hasPending = recordings.some((item) => item.status === "uploaded" || item.status === "transcribing");
-    if (!hasPending) return undefined;
-    const poller = window.setInterval(() => loadRecordings(true), 3000);
-    return () => window.clearInterval(poller);
-  }, [loadRecordings, recordings]);
+    if (liveVideoRef.current && cameraStream) {
+      liveVideoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream, captureMode]);
 
   useEffect(() => {
     return () => {
-      window.clearInterval(timerRef.current);
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
     };
-  }, []);
+  }, [filePreview?.url, cameraStream]);
 
   const stats = useMemo(() => {
-    const completed = recordings.filter((item) => item.status === "completed").length;
-    const processing = recordings.filter((item) => item.status === "uploaded" || item.status === "transcribing").length;
-    const totalSeconds = recordings.reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0);
-    return { completed, processing, totalSeconds };
-  }, [recordings]);
+    const approved = memories.filter((item) => item.status === "approved").length;
+    const pending = memories.filter((item) => item.status === "pending").length;
+    const media = memories.filter((item) => item.media_id || item.media_url).length;
+    return { approved, pending, media };
+  }, [memories]);
 
-  const stopTimer = () => {
-    window.clearInterval(timerRef.current);
-    timerRef.current = null;
-  };
+  const visibleMemories = useMemo(() => {
+    if (filter === "all") return memories;
+    return memories.filter((item) => item.status === filter);
+  }, [filter, memories]);
 
-  const uploadBlob = async (blob) => {
-    const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
-    setRecorderState("uploading");
-    setStatus("Đang gửi viên nang thời gian...");
+  const updateField = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
     setError("");
-
-    await uploadVoiceRecording(blob, {
-      durationSeconds,
-      filename: `vien-nang-thoi-gian-${Date.now()}.webm`,
-    });
-
-    setRecorderState("idle");
-    setSeconds(0);
-    setStatus("Đã nhận ghi âm. Worker sẽ chuyển thành transcript trong ít phút.");
-    await loadRecordings(true);
+    setMessage("");
   };
 
-  const startRecording = async () => {
+  const uploadMemoryBlob = async (blob, filename) => {
+    if (!blob) return;
+    setUploading(true);
+    setError("");
+    setMessage("");
     try {
-      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-        throw new Error("Trình duyệt này chưa hỗ trợ ghi âm trực tiếp.");
-      }
-
-      setStatus("");
-      setError("");
-      setSeconds(0);
-      chunksRef.current = [];
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const mimeType = pickMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data?.size > 0) chunksRef.current.push(event.data);
-      };
-
-      recorder.onstop = () => {
-        stopTimer();
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (blob.size <= 0) {
-          setRecorderState("idle");
-          setError("Không có dữ liệu ghi âm.");
-          return;
-        }
-
-        uploadBlob(blob).catch((err) => {
-          setRecorderState("idle");
-          setError(err?.message || "Không thể lưu viên nang thời gian.");
-        });
-      };
-
-      recorderRef.current = recorder;
-      startedAtRef.current = Date.now();
-      recorder.start();
-      setRecorderState("recording");
-
-      timerRef.current = window.setInterval(() => {
-        const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
-        setSeconds(elapsed);
-        if (elapsed >= MAX_SECONDS && recorder.state === "recording") {
-          recorder.stop();
-        }
-      }, 500);
+      const file = blob instanceof File ? blob : new File([blob], filename, { type: blob.type || "application/octet-stream" });
+      const data = new FormData();
+      data.append("file", file);
+      const result = await apiRequest("/api/upload-memory-media", {
+        method: "POST",
+        body: data,
+      });
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+      const previewUrl = URL.createObjectURL(file);
+      setFilePreview({ url: previewUrl, kind: getMediaKind(file), name: file.name });
+      setForm((prev) => ({
+        ...prev,
+        media_id: result.media_id || result.mediaId,
+        media_url: result.url || result.mediaUrl || "",
+        media_type: getMediaKind(file),
+        mime_type: file.type,
+        original_filename: file.name,
+      }));
+      setMessage("Đã lưu tệp kỉ niệm vào database. Bạn có thể gửi kỉ niệm để chờ duyệt.");
     } catch (err) {
+      setError(err?.message || "Không thể tải tệp kỉ niệm.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadMemoryBlob(file, file.name);
+    event.target.value = "";
+  };
+
+  const stopCameraStream = () => {
+    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setCaptureMode("none");
+    setRecorderState("idle");
+    setCameraError("");
+  };
+
+  const openCamera = async (mode) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Trình duyệt hoặc thiết bị này chưa hỗ trợ mở camera/micro trực tiếp.");
+      return;
+    }
+    try {
+      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraError("");
+      const constraints = mode === "photo"
+        ? { video: { facingMode: "environment" }, audio: false }
+        : { video: { facingMode: "environment" }, audio: true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setCameraStream(stream);
+      setCaptureMode(mode);
       setRecorderState("idle");
-      setError(err?.message || "Không thể bắt đầu ghi âm.");
+    } catch (err) {
+      setCameraError("Không thể mở camera. Hãy kiểm tra quyền camera/micro của trình duyệt.");
+    }
+  };
+
+  const capturePhoto = async () => {
+    const video = liveVideoRef.current;
+    if (!video) return;
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, width, height);
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        setError("Không thể chụp ảnh từ camera.");
+        return;
+      }
+      await uploadMemoryBlob(blob, `ky-niem-${Date.now()}.jpg`);
+      stopCameraStream();
+    }, "image/jpeg", 0.92);
+  };
+
+  const pickRecorderMimeType = (mode) => {
+    const candidates = mode === "audio"
+      ? ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
+      : ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+    return candidates.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || "";
+  };
+
+  const startRecordingWithStream = (stream, mode) => {
+    if (!window.MediaRecorder) {
+      setCameraError("Trình duyệt chưa hỗ trợ ghi âm/quay video trực tiếp.");
+      return;
+    }
+    recordedChunksRef.current = [];
+    const mimeType = pickRecorderMimeType(mode);
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorderRef.current = recorder;
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) recordedChunksRef.current.push(event.data);
+    };
+    recorder.onstop = async () => {
+      const blobType = recorder.mimeType || (mode === "audio" ? "audio/webm" : "video/webm");
+      const blob = new Blob(recordedChunksRef.current, { type: blobType });
+      const extension = blobType.includes("mp4") ? "mp4" : "webm";
+      await uploadMemoryBlob(blob, `ky-niem-${mode === "audio" ? "ghi-am" : "video"}-${Date.now()}.${extension}`);
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+      setCaptureMode("none");
+      setRecorderState("idle");
+    };
+    recorder.start();
+    setRecorderState("recording");
+  };
+
+  const startVideoRecording = () => {
+    if (!cameraStream) return;
+    startRecordingWithStream(cameraStream, "video");
+  };
+
+  const startAudioRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Trình duyệt hoặc thiết bị này chưa hỗ trợ ghi âm trực tiếp.");
+      return;
+    }
+    try {
+      if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setCameraStream(stream);
+      setCaptureMode("audio");
+      startRecordingWithStream(stream, "audio");
+    } catch (err) {
+      setCameraError("Không thể mở micro. Hãy kiểm tra quyền micro của trình duyệt.");
     }
   };
 
   const stopRecording = () => {
-    if (recorderRef.current?.state === "recording") {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
       recorderRef.current.stop();
+      setRecorderState("stopping");
     }
   };
 
-  const startEditTranscript = (recording) => {
-    setEditingId(recording.id);
-    setTranscriptDraft(recording.transcript || "");
+  const removeAttachedMedia = () => {
+    if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+    setFilePreview(null);
+    setForm((prev) => ({
+      ...prev,
+      media_id: null,
+      media_url: "",
+      media_type: "text",
+      mime_type: "",
+      original_filename: "",
+    }));
+    setMessage("");
     setError("");
-    setStatus("");
   };
 
-  const cancelEditTranscript = () => {
-    setEditingId(null);
-    setTranscriptDraft("");
+  const resetForm = () => {
+    setForm(emptyForm);
+    removeAttachedMedia();
+    stopCameraStream();
   };
 
-  const saveTranscript = async (recordingId) => {
-    const nextTranscript = transcriptDraft.trim();
-    if (!nextTranscript) {
-      setError("Transcript không được để trống.");
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const hasText = form.title.trim() || form.content.trim();
+    if (!hasText && !form.media_id && !form.media_url) {
+      setError("Vui lòng nhập nội dung hoặc tải ảnh/video/ghi âm.");
       return;
     }
-
+    setSubmitting(true);
+    setError("");
+    setMessage("");
     try {
-      setSavingTranscriptId(recordingId);
-      setError("");
-      const result = await updateVoiceTranscript(recordingId, nextTranscript);
-      setRecordings((items) =>
-        items.map((item) => (item.id === recordingId ? { ...item, ...(result.recording || {}) } : item))
-      );
-      setStatus("Đã lưu transcript.");
-      cancelEditTranscript();
+      const result = await apiRequest("/api/member/memories", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+      setMessage(result.message || "Đã gửi kỉ niệm dòng họ.");
+      resetForm();
+      await loadMemories();
     } catch (err) {
-      setError(err?.message || "Không thể lưu transcript.");
+      setError(err?.message || "Không thể gửi kỉ niệm dòng họ.");
     } finally {
-      setSavingTranscriptId(null);
+      setSubmitting(false);
     }
   };
-
-  const retryRecording = async (recordingId) => {
-    try {
-      setRetryingId(recordingId);
-      setError("");
-      const result = await retryVoiceRecording(recordingId);
-      setRecordings((items) =>
-        items.map((item) => (item.id === recordingId ? { ...item, ...(result.recording || {}) } : item))
-      );
-      setStatus("Đã đưa bản ghi vào hàng đợi xử lý lại.");
-      await loadRecordings(true);
-    } catch (err) {
-      setError(err?.message || "Không thể xử lý lại ghi âm.");
-    } finally {
-      setRetryingId(null);
-    }
-  };
-
-  const recipientKey = (recipient) =>
-    recipient.account_id ? `account:${recipient.account_id}` : `person:${recipient.person_id}`;
-
-  const getSelectedRecipientObjects = (recordingId) => {
-    const selected = new Set(selectedRecipientsByRecording[recordingId] || []);
-    return recipientOptions.filter((recipient) => selected.has(recipientKey(recipient)));
-  };
-
-  const toggleRecipient = (recordingId, key) => {
-    setSelectedRecipientsByRecording((current) => {
-      const selected = new Set(current[recordingId] || []);
-      if (selected.has(key)) selected.delete(key);
-      else selected.add(key);
-      return { ...current, [recordingId]: [...selected] };
-    });
-  };
-
-  const sendRecording = async (recording) => {
-    const selected = getSelectedRecipientObjects(recording.id);
-    if (recording.status !== "completed" || !String(recording.transcript || "").trim()) {
-      setError("Chỉ có thể gửi bản ghi đã completed và có transcript.");
-      return;
-    }
-    if (selected.length === 0) {
-      setError("Vui lòng chọn ít nhất một người nhận.");
-      return;
-    }
-
-    const mode = scheduleModeByRecording[recording.id] || "now";
-    const scheduledValue = scheduledAtByRecording[recording.id] || "";
-    if (mode === "later" && !scheduledValue) {
-      setError("Vui lòng chọn ngày giờ gửi.");
-      return;
-    }
-
-    try {
-      setSendingId(recording.id);
-      setError("");
-      const payload = {
-        recipients: selected.map((recipient) =>
-          recipient.account_id ? { account_id: recipient.account_id } : { person_id: recipient.person_id }
-        ),
-        scheduled_at: mode === "later" ? scheduledValue.replace("T", " ") + ":00" : null,
-      };
-      const result = await sendVoiceRecording(recording.id, payload);
-      const sent = (result.recipients || []).filter((item) => item.send_status === "sent").length;
-      const pending = (result.recipients || []).filter((item) => item.send_status === "pending").length;
-      setStatus(`Đã lưu gửi kèm voice và bản chữ. Gửi ngay: ${sent}, chờ lịch: ${pending}.`);
-      setSelectedRecipientsByRecording((current) => ({ ...current, [recording.id]: [] }));
-    } catch (err) {
-      setError(err?.message || "Không thể gửi ghi âm.");
-    } finally {
-      setSendingId(null);
-    }
-  };
-
-  const busy = recorderState === "recording" || recorderState === "uploading";
-  const isManager = role === "manager";
 
   return (
-    <div className="time-capsule-page">
-      <section className="time-capsule-header">
+    <div className="time-capsule-page memory-page">
+      <section className="time-capsule-header memory-hero">
         <div>
-          <span className="time-capsule-kicker">Viên nang thời gian</span>
-          <h2>Lưu lại ký ức bằng giọng nói</h2>
+          <span className="time-capsule-kicker">Kỉ niệm dòng họ</span>
+          <h2>Kỉ niệm dòng họ</h2>
           <p>
-            {isManager
-              ? "Quản lý có thể theo dõi các bản ghi trong dòng họ và dùng transcript để lưu giữ tư liệu."
-              : "Ghi lại lời kể, kỷ niệm, gia thoại hoặc lời nhắn cho thế hệ sau."}
+            Lưu giữ câu chuyện, hình ảnh, video và ghi âm của dòng họ. Thành viên gửi kỉ niệm sẽ chờ trưởng họ duyệt trước khi đăng công khai.
           </p>
         </div>
-        <button type="button" className="time-capsule-refresh" onClick={() => loadRecordings()} disabled={loading}>
+        <button type="button" className="time-capsule-refresh" onClick={loadMemories} disabled={loading}>
           <span className="material-symbols-outlined">refresh</span>
           Tải lại
         </button>
       </section>
 
-      {(error || status) && <div className={`time-capsule-alert ${error ? "is-error" : "is-success"}`}>{error || status}</div>}
+      {(error || message) && <div className={`time-capsule-alert ${error ? "is-error" : "is-success"}`}>{error || message}</div>}
 
-      <section className="time-capsule-workbench">
-        <div className="time-capsule-recorder">
-          <div className={`time-capsule-orb is-${recorderState}`}>
-            <span className="material-symbols-outlined">{recorderState === "recording" ? "graphic_eq" : "mic"}</span>
+      <section className="memory-workbench">
+        <form className="memory-form" onSubmit={handleSubmit}>
+          <div className="memory-form-head">
+            <div>
+              <h3>Đăng kỉ niệm</h3>
+              <p>{isManager ? "Kỉ niệm của trưởng họ được đăng ngay." : "Kỉ niệm của thành viên sẽ gửi vào hàng chờ duyệt."}</p>
+            </div>
+            <span className="memory-form-badge">Ảnh • Video • Ghi âm</span>
           </div>
-          <div>
-            <h3>{recorderState === "recording" ? "Đang ghi âm" : "Tạo viên nang mới"}</h3>
-            <p>{recorderState === "recording" ? `${formatDuration(seconds)} / ${formatDuration(MAX_SECONDS)}` : "Mỗi bản ghi tối đa 3 phút."}</p>
-          </div>
-          <div className="time-capsule-actions">
-            {recorderState === "recording" ? (
-              <button type="button" className="time-capsule-danger" onClick={stopRecording}>
-                <span className="material-symbols-outlined">stop_circle</span>
-                Dừng và lưu
-              </button>
-            ) : (
-              <button type="button" className="time-capsule-primary" onClick={startRecording} disabled={busy}>
-                <span className="material-symbols-outlined">radio_button_checked</span>
-                {recorderState === "uploading" ? "Đang lưu..." : "Bắt đầu ghi"}
-              </button>
-            )}
-          </div>
-        </div>
 
-        <div className="time-capsule-stats">
-          <div>
-            <strong>{recordings.length}</strong>
-            <span>Tổng viên nang</span>
+          <label className="memory-field">
+            <span>Tiêu đề</span>
+            <input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="Ví dụ: Họp mặt đầu xuân, kỉ niệm gia đình..." />
+          </label>
+
+          <label className="memory-field">
+            <span>Nội dung</span>
+            <textarea rows={5} value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder="Chia sẻ câu chuyện hoặc lời nhắn đi kèm kỉ niệm..." />
+          </label>
+
+          <div className="memory-capture-tools">
+            <label className="memory-upload-box">
+              <input type="file" accept="image/*,video/*,audio/*" onChange={handleFileChange} disabled={uploading || submitting} />
+              <span className="material-symbols-outlined">upload_file</span>
+              <strong>{uploading ? "Đang tải lên..." : "Tải tệp từ máy"}</strong>
+              <small>Chọn ảnh, video hoặc audio đã có sẵn.</small>
+            </label>
+
+            <button type="button" className="memory-capture-button" onClick={() => openCamera("photo")} disabled={uploading || submitting || recorderState === "recording"}>
+              <span className="material-symbols-outlined">photo_camera</span>
+              <strong>Chụp ảnh</strong>
+              <small>Mở camera thiết bị để chụp trực tiếp.</small>
+            </button>
+
+            <button type="button" className="memory-capture-button" onClick={() => openCamera("video")} disabled={uploading || submitting || recorderState === "recording"}>
+              <span className="material-symbols-outlined">videocam</span>
+              <strong>Quay video</strong>
+              <small>Quay video trực tiếp từ camera.</small>
+            </button>
+
+            <button type="button" className={`memory-capture-button ${recorderState === "recording" && captureMode === "audio" ? "is-recording" : ""}`} onClick={recorderState === "recording" && captureMode === "audio" ? stopRecording : startAudioRecording} disabled={uploading || submitting || recorderState === "stopping" || (recorderState === "recording" && captureMode !== "audio")}>
+              <span className="material-symbols-outlined">mic</span>
+              <strong>{recorderState === "recording" && captureMode === "audio" ? "Dừng ghi âm" : "Ghi âm trực tiếp"}</strong>
+              <small>Chỉ lưu file âm thanh, không chuyển giọng nói thành văn bản.</small>
+            </button>
           </div>
-          <div>
-            <strong>{stats.completed}</strong>
-            <span>Đã có transcript</span>
+
+          {(captureMode === "photo" || captureMode === "video") && cameraStream ? (
+            <div className="memory-live-capture">
+              <video ref={liveVideoRef} autoPlay muted playsInline />
+              <div className="memory-live-actions">
+                {captureMode === "photo" ? (
+                  <button type="button" className="time-capsule-primary" onClick={capturePhoto} disabled={uploading || submitting}>Chụp ảnh này</button>
+                ) : recorderState === "recording" ? (
+                  <button type="button" className="time-capsule-danger" onClick={stopRecording}>Dừng quay video</button>
+                ) : (
+                  <button type="button" className="time-capsule-primary" onClick={startVideoRecording} disabled={uploading || submitting}>Bắt đầu quay</button>
+                )}
+                <button type="button" className="time-capsule-secondary" onClick={stopCameraStream} disabled={uploading || recorderState === "stopping"}>Đóng camera</button>
+              </div>
+            </div>
+          ) : null}
+
+          {captureMode === "audio" && recorderState === "recording" ? (
+            <div className="memory-recording-strip">
+              <span className="memory-recording-dot" />
+              Đang ghi âm trực tiếp từ micro...
+            </div>
+          ) : null}
+
+          {cameraError ? <div className="memory-camera-error">{cameraError}</div> : null}
+
+          {filePreview && (
+            <div className="memory-preview">
+              {filePreview.kind === "image" && <img src={filePreview.url} alt="Xem trước" />}
+              {filePreview.kind === "video" && <video src={filePreview.url} controls />}
+              {filePreview.kind === "audio" && <audio src={filePreview.url} controls />}
+              <div className="memory-preview-footer">
+                <span>{filePreview.name}</span>
+                <button type="button" onClick={removeAttachedMedia} disabled={submitting || uploading}>Xóa tệp</button>
+              </div>
+            </div>
+          )}
+
+          <div className="memory-actions">
+            <button type="button" className="time-capsule-secondary" onClick={resetForm} disabled={submitting || uploading}>Xóa form</button>
+            <button type="submit" className="time-capsule-primary" disabled={submitting || uploading}>{submitting ? "Đang gửi..." : "Gửi kỉ niệm"}</button>
           </div>
-          <div>
-            <strong>{stats.processing}</strong>
-            <span>Đang xử lý</span>
-          </div>
-          <div>
-            <strong>{formatDuration(stats.totalSeconds)}</strong>
-            <span>Thời lượng</span>
-          </div>
-        </div>
+        </form>
+
+        <aside className="memory-stats-panel">
+          <div><strong>{stats.approved}</strong><span>Kỉ niệm đã duyệt</span></div>
+          <div><strong>{stats.pending}</strong><span>Đang chờ duyệt</span></div>
+          <div><strong>{stats.media}</strong><span>Có tệp đính kèm</span></div>
+        </aside>
       </section>
 
-      <section className="time-capsule-list">
+      <section className="time-capsule-list memory-list-section">
         <div className="time-capsule-list-head">
-          <h3>{isManager ? "Viên nang trong dòng họ" : "Viên nang của tôi"}</h3>
-          <span>{loading ? "Đang tải..." : `${recordings.length} bản ghi`}</span>
+          <div>
+            <h3>Kỉ niệm đã lưu</h3>
+            <span>Hiển thị kỉ niệm đã duyệt và kỉ niệm của chính bạn đang chờ duyệt.</span>
+          </div>
+          <div className="memory-filter-group">
+            <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Tất cả</button>
+            <button className={filter === "approved" ? "active" : ""} onClick={() => setFilter("approved")}>Đã duyệt</button>
+            <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>Chờ duyệt</button>
+          </div>
         </div>
 
-        {recordings.length === 0 && !loading ? (
-          <div className="time-capsule-empty">
-            <span className="material-symbols-outlined">history_edu</span>
-            <p>Chưa có viên nang thời gian nào.</p>
-          </div>
+        {loading ? (
+          <div className="time-capsule-empty">Đang tải kỉ niệm...</div>
+        ) : visibleMemories.length === 0 ? (
+          <div className="time-capsule-empty">Chưa có kỉ niệm nào.</div>
         ) : (
-          <div className="time-capsule-items">
-            {recordings.map((item) => (
-              <article className="time-capsule-item" key={item.id}>
-                {(() => {
-                  const selectedRecipients = getSelectedRecipientObjects(item.id);
-                  const hasDeceasedRecipient = selectedRecipients.some(
-                    (recipient) => Number(recipient.is_living) === 0 || Boolean(recipient.death_date)
-                  );
-                  const canSend = item.status === "completed" && Boolean(String(item.transcript || "").trim());
-                  const scheduleMode = scheduleModeByRecording[item.id] || "now";
-                  return (
-                    <>
-                <div className="time-capsule-item-main">
-                  <div className={`time-capsule-status-dot is-${item.status}`} />
-                  <div>
-                    <h4>Viên nang #{item.id}</h4>
-                    <p>{formatDate(item.created_at)}</p>
-                  </div>
-                </div>
-                <div className="time-capsule-item-meta">
-                  <span className={`time-capsule-badge is-${item.status}`}>{getStatusLabel(item.status)}</span>
-                  <span>{formatDuration(item.duration_seconds)}</span>
-                  {item.transcript_edited ? <span>Đã sửa transcript</span> : null}
-                </div>
-                {item.status === "failed" && <p className="time-capsule-error">{item.error_message || "Worker xử lý thất bại."}</p>}
-                <audio className="time-capsule-audio" controls src={getVoiceRecordingAudioUrl(item.id)} />
-                {editingId === item.id ? (
-                  <div className="time-capsule-editor">
-                    <textarea
-                      value={transcriptDraft}
-                      onChange={(event) => setTranscriptDraft(event.target.value)}
-                      maxLength={50000}
-                    />
-                    <div className="time-capsule-inline-actions">
-                      <button
-                        type="button"
-                        className="time-capsule-primary"
-                        onClick={() => saveTranscript(item.id)}
-                        disabled={savingTranscriptId === item.id}
-                      >
-                        Lưu
-                      </button>
-                      <button type="button" className="time-capsule-secondary" onClick={cancelEditTranscript}>
-                        Hủy
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  item.transcript && <div className="time-capsule-transcript">{item.transcript}</div>
-                )}
-                <div className="time-capsule-inline-actions">
-                  {item.transcript && editingId !== item.id ? (
-                    <button type="button" className="time-capsule-secondary" onClick={() => startEditTranscript(item)}>
-                      Sửa transcript
-                    </button>
-                  ) : null}
-                  {item.status === "failed" ? (
-                    <button
-                      type="button"
-                      className="time-capsule-secondary"
-                      onClick={() => retryRecording(item.id)}
-                      disabled={retryingId === item.id}
-                    >
-                      {retryingId === item.id ? "Đang đưa vào hàng đợi..." : "Xử lý lại"}
-                    </button>
-                  ) : null}
-                </div>
-                {canSend ? (
-                  <div className="time-capsule-send">
-                    <div className="time-capsule-send-head">
-                      <h5>Gửi voice kèm bản chữ</h5>
-                      <span>{selectedRecipients.length} người nhận</span>
-                    </div>
-                    <div className="time-capsule-recipient-grid">
-                      {recipientOptions.map((recipient) => {
-                        const key = recipientKey(recipient);
-                        const checked = selectedRecipientsByRecording[item.id]?.includes(key) || false;
-                        const deceased = Number(recipient.is_living) === 0 || Boolean(recipient.death_date);
-                        return (
-                          <label className={`time-capsule-recipient ${checked ? "is-selected" : ""}`} key={key}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleRecipient(item.id, key)}
-                            />
-                            <span>
-                              <strong>{recipient.display_name || `Person #${recipient.person_id}`}</strong>
-                              <small>
-                                {recipient.account_id ? `TK #${recipient.account_id}` : "Chưa có tài khoản"}
-                                {deceased ? " · đã mất" : ""}
-                              </small>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    {hasDeceasedRecipient ? (
-                      <div className="time-capsule-send-note">
-                        Người này đã mất, hệ thống sẽ lưu/gửi ngay vào hồ sơ liên quan, không chờ lịch hẹn.
-                      </div>
-                    ) : null}
-                    <div className="time-capsule-schedule">
-                      <label>
-                        <input
-                          type="radio"
-                          name={`schedule-${item.id}`}
-                          checked={scheduleMode === "now"}
-                          onChange={() => setScheduleModeByRecording((current) => ({ ...current, [item.id]: "now" }))}
-                        />
-                        Gửi ngay
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name={`schedule-${item.id}`}
-                          checked={scheduleMode === "later"}
-                          onChange={() =>
-                            setScheduleModeByRecording((current) => ({ ...current, [item.id]: "later" }))
-                          }
-                        />
-                        Hẹn ngày/giờ gửi
-                      </label>
-                      {scheduleMode === "later" ? (
-                        <input
-                          type="datetime-local"
-                          value={scheduledAtByRecording[item.id] || ""}
-                          onChange={(event) =>
-                            setScheduledAtByRecording((current) => ({ ...current, [item.id]: event.target.value }))
-                          }
-                        />
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="time-capsule-primary"
-                      onClick={() => sendRecording(item)}
-                      disabled={sendingId === item.id || selectedRecipients.length === 0}
-                    >
-                      <span className="material-symbols-outlined">send</span>
-                      {sendingId === item.id ? "Đang gửi..." : "Gửi bản ghi"}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="time-capsule-send is-disabled">
-                    Chỉ bản ghi completed có transcript mới được gửi.
-                  </div>
-                )}
-                    </>
-                  );
-                })()}
-              </article>
-            ))}
+          <div className="memory-feed">
+            {visibleMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} />)}
           </div>
         )}
       </section>

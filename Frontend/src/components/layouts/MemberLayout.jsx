@@ -10,7 +10,7 @@ import "./MemberLayout.css";
 const menuItems = [
   { icon: "assignment", label: "Sự kiện dòng họ", path: "/user/tasks" },
   { icon: "account_tree", label: "Gia phả dòng họ", path: "/user/family-tree" },
-  { icon: "hourglass", label: "Viên nang thời gian", path: "/user/time-capsule" },
+  { icon: "collections_bookmark", label: "Kỉ niệm dòng họ", path: "/user/time-capsule" },
   { icon: "history_edu", label: "Bảng tin dòng họ", path: "/user/posts" },
   { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/user/fund" },
   { icon: "calendar_month", label: "Lịch Việt Nam", path: "/user/calendar" },
@@ -88,7 +88,7 @@ export default function MemberLayout() {
         </button>
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src={sidebarOpen ? "/logo giaphaviet.png" : "/logo.png"} alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
             <span>Gia Phả Việt</span>
           </Link>
         </div>

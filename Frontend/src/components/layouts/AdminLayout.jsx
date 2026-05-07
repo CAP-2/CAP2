@@ -51,7 +51,7 @@ export default function AdminLayout() {
 
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src="/logo-giaphaviet.png" alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
           </Link>
         </div>
 

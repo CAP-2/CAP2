@@ -211,3 +211,33 @@
   padding: 0;
   min-height: calc(100vh - 180px);
 }
+
+/* Unified Gia Phả Việt logo: full when expanded, G mark when collapsed */
+.sidebar-header .sidebar-brand {
+  width: 100%;
+  min-height: 86px;
+  margin: 0 auto 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.sidebar-header .sidebar-brand img {
+  width: min(210px, 100%);
+  max-width: 210px;
+  max-height: 86px;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+.sidebar-collapsed .sidebar-header .sidebar-brand {
+  min-height: 64px;
+  margin-bottom: 1.4rem;
+}
+.sidebar-collapsed .sidebar-header .sidebar-brand img {
+  width: 54px;
+  height: 54px;
+  max-width: 54px;
+  max-height: 54px;
+  object-fit: contain;
+}
