@@ -817,6 +817,7 @@ exports.verifyTreeEditSession = async (req, res) => {
       member_generation: session.memberGeneration,
       allowed_generations: session.allowedGenerations,
       expires_at: session.expiresAt,
+      expires_in_ms: session.expiresInMs,
       message: "Temporary edit key hợp lệ.",
     });
   } catch (error) {

@@ -98,7 +98,16 @@ async function findValidTreeEditGrant(accountId, rawKey) {
 
   const [rows] = await db.query(
     `
-      SELECT id, member_account_id, member_person_id, clan_id, expires_at, created_by_account_id, created_at
+      SELECT
+        id,
+        member_account_id,
+        member_person_id,
+        clan_id,
+        expires_at,
+        created_by_account_id,
+        created_at,
+        TIMESTAMPDIFF(MICROSECOND, NOW(6), expires_at) / 1000 AS expires_remaining_ms,
+        TIMESTAMPDIFF(MICROSECOND, NOW(6), DATE_ADD(created_at, INTERVAL 1 HOUR)) / 1000 AS created_remaining_ms
       FROM member_tree_edit_keys
       WHERE member_account_id = ?
         AND key_hash = ?
@@ -201,15 +210,21 @@ async function buildTreeEditSession(grant) {
   const scope = await buildGenerationEditScope(grant.member_person_id, grant.clan_id);
   const expiresAtTime = new Date(grant.expires_at).getTime();
   const createdExpiryTime = new Date(grant.created_at).getTime() + TEMP_EDIT_TTL_MS;
-  const effectiveExpiresAt =
-    Number.isFinite(expiresAtTime) && Number.isFinite(createdExpiryTime)
-      ? new Date(Math.min(expiresAtTime, createdExpiryTime))
-      : grant.expires_at;
+  const dbRemainingCandidates = [grant.expires_remaining_ms, grant.created_remaining_ms]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  const expiresInMs = dbRemainingCandidates.length
+    ? Math.max(0, Math.min(...dbRemainingCandidates))
+    : Number.isFinite(expiresAtTime) && Number.isFinite(createdExpiryTime)
+      ? Math.max(0, Math.min(expiresAtTime, createdExpiryTime) - Date.now())
+      : 0;
+  const effectiveExpiresAt = new Date(Date.now() + expiresInMs);
 
   return {
     grant,
     allowedNodeIds: scope.allowedNodeIds,
     expiresAt: effectiveExpiresAt,
+    expiresInMs,
     memberGeneration: scope.memberGeneration,
     allowedGenerations: scope.allowedGenerations,
   };
@@ -279,6 +294,7 @@ async function assertTreeMutationPermission(req, { action, affectedPersonIds = [
     scope: "limited",
     allowedNodeIds: session.allowedNodeIds,
     expiresAt: session.expiresAt,
+    expiresInMs: session.expiresInMs,
     memberPersonId: session.grant.member_person_id,
     memberGeneration: session.memberGeneration,
     allowedGenerations: session.allowedGenerations,

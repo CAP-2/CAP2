@@ -1,7 +1,16 @@
 const STORAGE_KEY = "member_tree_edit_session";
 
+function getExpiryTime(expiresAt) {
+  const time = Date.parse(expiresAt);
+  return Number.isFinite(time) ? time : 0;
+}
+
 function canUseStorage() {
-  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+  try {
+    return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+  } catch {
+    return false;
+  }
 }
 
 export function readTreeEditSession() {
@@ -17,13 +26,17 @@ export function readTreeEditSession() {
       window.sessionStorage.removeItem(STORAGE_KEY);
       return null;
     }
-    if (Date.parse(expiresAt) <= Date.now()) {
+    if (getExpiryTime(expiresAt) <= Date.now()) {
       window.sessionStorage.removeItem(STORAGE_KEY);
       return null;
     }
     return { key, expiresAt };
   } catch {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+    try {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore storage failures. The caller can continue in read-only mode.
+    }
     return null;
   }
 }
@@ -32,16 +45,28 @@ export function saveTreeEditSession(session) {
   if (!canUseStorage()) return;
   const key = typeof session?.key === "string" ? session.key.trim() : "";
   const expiresAt = typeof session?.expiresAt === "string" ? session.expiresAt : "";
-  if (!key || !expiresAt) {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+  if (!key || !expiresAt || getExpiryTime(expiresAt) <= Date.now()) {
+    try {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore storage failures. The caller can continue in read-only mode.
+    }
     return;
   }
-  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ key, expiresAt }));
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ key, expiresAt }));
+  } catch {
+    // Ignore storage failures. The current in-memory permission still works.
+  }
 }
 
 export function clearTreeEditSession() {
   if (!canUseStorage()) return;
-  window.sessionStorage.removeItem(STORAGE_KEY);
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
 }
 
 export function getTreeEditKeyHeader() {

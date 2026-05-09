@@ -945,3 +945,36 @@
 .member-tree-layout--viewer .fte-shell.is-fullscreen .fte-toolbar {
   flex-wrap: nowrap;
 }
+
+.member-tree-keyBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-tree-keyInput {
+  min-width: 220px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.member-tree-keyInput:focus {
+  border-color: #2563eb;
+}
+
+.member-tree-keyInput:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.member-tree-keyStatus {
+  font-size: 13px;
+  color: #166534;
+  font-weight: 500;
+}

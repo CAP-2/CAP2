@@ -23,6 +23,17 @@ export default function FamilyTreePage() {
   });
   const [permissionExpiry, setPermissionExpiry] = useState("");
 
+  const resolvePermissionExpiry = useCallback((response) => {
+    const expiresInMs = Number(response?.expires_in_ms);
+    if (Number.isFinite(expiresInMs) && expiresInMs > 0) {
+      return new Date(Date.now() + expiresInMs).toISOString();
+    }
+
+    const expiresAt = typeof response?.expires_at === "string" ? response.expires_at : "";
+    const expiresAtTime = Date.parse(expiresAt);
+    return Number.isFinite(expiresAtTime) && expiresAtTime > Date.now() ? expiresAt : "";
+  }, []);
+
   const loadTree = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -70,7 +81,13 @@ export default function FamilyTreePage() {
 
       try {
         const response = await verifyTreeEditSession(key, { activate: !silent });
-        saveTreeEditSession({ key, expiresAt: response.expires_at });
+        const expiresAt = resolvePermissionExpiry(response);
+        if (!expiresAt) {
+          resetTemporaryPermission("");
+          setKeyError("Temporary edit key đã hết hạn. Vui lòng xin manager tạo key mới.");
+          return;
+        }
+        saveTreeEditSession({ key, expiresAt });
         setPermission({
           canEdit: true,
           editScope: "limited",
@@ -78,7 +95,7 @@ export default function FamilyTreePage() {
           memberGeneration: response.member_generation ?? null,
           allowedGenerations: Array.isArray(response.allowed_generations) ? response.allowed_generations : [],
         });
-        setPermissionExpiry(response.expires_at || "");
+        setPermissionExpiry(expiresAt);
         setKeyInput(key);
         setKeyStatus("Bạn có quyền chỉnh sửa tạm thời đến khi temporary edit key hết hạn. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.");
         setKeyError("");
@@ -89,7 +106,7 @@ export default function FamilyTreePage() {
         setKeySaving(false);
       }
     },
-    [resetTemporaryPermission],
+    [resetTemporaryPermission, resolvePermissionExpiry],
   );
 
   useEffect(() => {
@@ -221,6 +238,41 @@ export default function FamilyTreePage() {
         <button className="member-btn member-btn-ghost" type="button" onClick={() => setIsClanInfoOpen(true)}>
           Thông tin dòng họ
         </button>
+        <div className="member-tree-keyBox">
+        <input
+          className="member-tree-keyInput"
+          type="text"
+          placeholder="Nhập temporary edit key"
+          value={keyInput}
+          disabled={keySaving || permission.canEdit}
+          onChange={(e) => setKeyInput(e.target.value)}
+        />
+
+        {!permission.canEdit ? (
+          <button
+            className="member-btn member-btn-primary"
+            type="button"
+            disabled={keySaving || !keyInput.trim()}
+            onClick={() => activateTemporaryPermission(keyInput)}
+          >
+            {keySaving ? "Đang kiểm tra..." : "Mở quyền sửa"}
+          </button>
+        ) : (
+          <button
+            className="member-btn member-btn-ghost"
+            type="button"
+            onClick={() => resetTemporaryPermission("Đã tắt quyền chỉnh sửa tạm thời.")}
+          >
+            Tắt quyền sửa
+          </button>
+        )}
+
+        {permission.canEdit && remainingText ? (
+          <span className="member-tree-keyStatus">
+            Còn hạn: {remainingText}
+          </span>
+        ) : null}
+      </div>
         <div className="member-tree-info-popover">
           <button
             className={`member-btn member-btn-ghost ${isInfoPanelOpen ? "is-active" : ""}`}
@@ -246,7 +298,9 @@ export default function FamilyTreePage() {
                 children={children}
                 layoutSettings={dashboard?.layoutSettings}
                 loading={loading}
-                readOnly
+                readOnly={!permission.canEdit}
+                editPermission={permission}
+                onReload={loadTree}
               />
             </div>
           )}
