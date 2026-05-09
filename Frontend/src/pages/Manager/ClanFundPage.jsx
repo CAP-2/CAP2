@@ -20,7 +20,7 @@ export default function ClanFundPage() {
   
   const [formData, setFormData] = useState({
     name: "", description: "", year: new Date().getFullYear(),
-    amount_per_dinh: "", deadline: "", dinh_definition: "males_only",
+    amount_per_member: "", deadline: "", contribution_unit_definition: "males_only",
     bank_name: "", bank_account: "", bank_owner: "", qr_code_media_id: null
   });
 
@@ -297,7 +297,7 @@ export default function ClanFundPage() {
                   <div className="form-group"><label>Năm</label><input type="number" required value={formData.year} onChange={e => setFormData({...formData, year: e.target.value})} /></div>
                 </div>
                 <div className="form-row-2">
-                  <div className="form-group"><label>Số tiền / Đinh</label><input type="number" required placeholder="50000" onChange={e => setFormData({...formData, amount_per_dinh: e.target.value})} /></div>
+                  <div className="form-group"><label>Số tiền / Thành viên</label><input type="number" required placeholder="50000" onChange={e => setFormData({...formData, amount_per_member: e.target.value})} /></div>
                   <div className="form-group"><label>Hạn đóng</label><DateInput required value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
                 </div>
                 
@@ -321,8 +321,8 @@ export default function ClanFundPage() {
                 </div>
 
                 <div className="form-group">
-                  <label>Định nghĩa "Đinh"</label>
-                  <select onChange={e => setFormData({...formData, dinh_definition: e.target.value})}>
+                  <label>Định nghĩa suất đóng</label>
+                  <select onChange={e => setFormData({...formData, contribution_unit_definition: e.target.value})}>
                     <option value="males_only">Chỉ nam giới (theo truyền thống)</option>
                     <option value="adults_all">Tất cả người trưởng thành (trên 18 tuổi)</option>
                     <option value="per_family">Tính theo từng hộ gia đình</option>
@@ -367,10 +367,10 @@ export default function ClanFundPage() {
                   <div className="input-with-btn">
                     <input 
                       type="number" 
-                      defaultValue={selectedCampaign.campaign.amount_per_dinh} 
-                      onBlur={(e) => handleUpdateCampaign(selectedCampaign.campaign.id, { amount_per_dinh: e.target.value })}
+                      defaultValue={selectedCampaign.campaign.amount_per_member} 
+                      onBlur={(e) => handleUpdateCampaign(selectedCampaign.campaign.id, { amount_per_member: e.target.value })}
                     />
-                    <span>VNĐ / Đinh</span>
+                    <span>VNĐ / Thành viên</span>
                   </div>
                 </div>
                 {selectedCampaign.campaign.qr_code_media_id && (

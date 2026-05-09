@@ -30,9 +30,9 @@ exports.getCampaigns = async (req, res) => {
             );
             c.collected_amount = rows[0].total || 0;
             
-            const dinhCount = await exports.internalCalculateDinh(c.clan_id, c.dinh_definition);
-            c.dinh_count = dinhCount;
-            c.target_amount = dinhCount * c.amount_per_dinh;
+            const contributionUnitCount = await exports.internalCalculateContributionUnit(c.clan_id, c.contribution_unit_definition);
+            c.contribution_unit_count = contributionUnitCount;
+            c.target_amount = contributionUnitCount * c.amount_per_member;
         }
 
         res.json({ success: true, campaigns });
@@ -143,14 +143,14 @@ exports.addExpense = async (req, res) => {
 
 exports.createCampaign = async (req, res) => {
     try {
-        const { name, description, year, amount_per_dinh, deadline, dinh_definition, bank_name, bank_account, bank_owner, qr_code_media_id } = req.body;
+        const { name, description, year, amount_per_member, deadline, contribution_unit_definition, bank_name, bank_account, bank_owner, qr_code_media_id } = req.body;
         const clanId = await getUserClanId(req.user.id);
         if (!clanId) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
         const [result] = await db.query(
-            `INSERT INTO fund_campaigns (clan_id, name, description, year, amount_per_dinh, deadline, dinh_definition, bank_name, bank_account, bank_owner, qr_code_media_id, status) 
+            `INSERT INTO fund_campaigns (clan_id, name, description, year, amount_per_member, deadline, contribution_unit_definition, bank_name, bank_account, bank_owner, qr_code_media_id, status) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
-            [clanId, name, description, year, amount_per_dinh, deadline, dinh_definition, bank_name, bank_account, bank_owner, qr_code_media_id || null]
+            [clanId, name, description, year, amount_per_member, deadline, contribution_unit_definition, bank_name, bank_account, bank_owner, qr_code_media_id || null]
         );
 
         // BULK NOTIFICATION
@@ -174,18 +174,18 @@ exports.createCampaign = async (req, res) => {
 exports.updateCampaign = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, amount_per_dinh, name, deadline } = req.body;
+        const { status, amount_per_member, name, deadline } = req.body;
         const clanId = await getUserClanId(req.user.id);
         if (!clanId) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
         await db.query(
             `UPDATE fund_campaigns 
              SET status = COALESCE(?, status), 
-                 amount_per_dinh = COALESCE(?, amount_per_dinh),
+                 amount_per_member = COALESCE(?, amount_per_member),
                  name = COALESCE(?, name),
                  deadline = COALESCE(?, deadline)
              WHERE id = ? AND clan_id = ?`,
-            [status, amount_per_dinh, name, deadline, id, clanId]
+            [status, amount_per_member, name, deadline, id, clanId]
         );
 
         res.json({ success: true, message: 'Đã cập nhật đợt thu' });
@@ -211,22 +211,22 @@ exports.getCampaignDetails = async (req, res) => {
             ORDER BY ec.created_at DESC
         `, [id]);
 
-        const dinhCount = await exports.internalCalculateDinh(campaign.clan_id, campaign.dinh_definition);
+        const contributionUnitCount = await exports.internalCalculateContributionUnit(campaign.clan_id, campaign.contribution_unit_definition);
         const [collectedRows] = await db.query("SELECT SUM(amount) as total, COUNT(DISTINCT person_id) as paid_count FROM event_contributions WHERE campaign_id = ? AND status = 'approved'", [id]);
         
-        const targetAmount = dinhCount * campaign.amount_per_dinh;
+        const targetAmount = contributionUnitCount * campaign.amount_per_member;
         const collectedAmount = collectedRows[0].total || 0;
         const paidCount = collectedRows[0].paid_count || 0;
 
         res.json({ 
             success: true, campaign, transactions,
             stats: {
-                dinh_count: dinhCount,
+                contribution_unit_count: contributionUnitCount,
                 paid_count: paidCount,
                 target_amount: targetAmount,
                 collected_amount: collectedAmount,
                 completion_rate: targetAmount > 0 ? (collectedAmount / targetAmount) * 100 : 0,
-                participation_rate: dinhCount > 0 ? (paidCount / dinhCount) * 100 : 0
+                participation_rate: contributionUnitCount > 0 ? (paidCount / contributionUnitCount) * 100 : 0
             }
         });
     } catch (error) {
@@ -306,17 +306,17 @@ exports.getFundStats = async (req, res) => {
 
         // Completion rate per campaign for this year
         const [campaignStats] = await db.query(`
-            SELECT id, name, year, amount_per_dinh, dinh_definition
+            SELECT id, name, year, amount_per_member, contribution_unit_definition
             FROM fund_campaigns
             WHERE clan_id = ? AND year = ?
         `, [clanId, curYear]);
 
         for (let c of campaignStats) {
-            const dinhCount = await exports.internalCalculateDinh(clanId, c.dinh_definition);
+            const contributionUnitCount = await exports.internalCalculateContributionUnit(clanId, c.contribution_unit_definition);
             const [rows] = await db.query("SELECT SUM(amount) as total FROM event_contributions WHERE campaign_id = ? AND status = 'approved'", [c.id]);
-            c.dinh_count = dinhCount;
+            c.contribution_unit_count = contributionUnitCount;
             c.collected = rows[0].total || 0;
-            c.target = dinhCount * c.amount_per_dinh;
+            c.target = contributionUnitCount * c.amount_per_member;
             c.completion = c.target > 0 ? (c.collected / c.target) * 100 : 0;
         }
 
@@ -405,7 +405,7 @@ exports.importFundExcel = async (req, res) => {
     }
 };
 
-exports.internalCalculateDinh = async (clanId, definition) => {
+exports.internalCalculateContributionUnit = async (clanId, definition) => {
     let q = '';
     if (definition === 'males_only') q = "SELECT COUNT(*) as count FROM people WHERE clan_id = ? AND gender = 'male' AND is_living = 1";
     else if (definition === 'adults_all') q = "SELECT COUNT(*) as count FROM people WHERE clan_id = ? AND TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) >= 18 AND is_living = 1";

@@ -86,10 +86,14 @@ function getResetMemory(email) {
 function clearResetMemory(email) {
     passwordResetMemory.delete(email);
 }
-async function clearResetToken(email) {
+async function clearResetToken(email, accountId = null) {
     clearResetMemory(email);
     try {
-        await db.query('DELETE FROM password_reset_tokens WHERE email = ?', [email]);
+        if (accountId) {
+            await db.query('DELETE FROM password_reset_tokens WHERE account_id = ?', [accountId]);
+        } else {
+            await db.query('DELETE FROM password_reset_tokens WHERE account_id = (SELECT id FROM accounts WHERE LOWER(TRIM(email)) = ? LIMIT 1)', [email]);
+        }
     } catch (dbErr) {
         if (dbErr?.code !== 'ER_NO_SUCH_TABLE') throw dbErr;
     }
@@ -251,9 +255,9 @@ exports.requestPasswordReset = async (req, res) => {
 
         try {
             await db.query(
-                `INSERT INTO password_reset_tokens (email, code_hash, expires_at) VALUES (?, ?, ?)
+                `INSERT INTO password_reset_tokens (account_id, code_hash, expires_at) VALUES (?, ?, ?)
                  ON DUPLICATE KEY UPDATE code_hash = VALUES(code_hash), expires_at = VALUES(expires_at), created_at = CURRENT_TIMESTAMP`,
-                [email, codeHash, expiresAt]
+                [rows[0].id, codeHash, expiresAt]
             );
         } catch (dbErr) {
             if (dbErr?.code !== 'ER_NO_SUCH_TABLE') throw dbErr;
@@ -279,7 +283,12 @@ exports.resetPasswordWithCode = async (req, res) => {
 
     try {
         try {
-            const [tokRows] = await db.query('SELECT code_hash, expires_at FROM password_reset_tokens WHERE email = ? LIMIT 1', [email]);
+            const [tokRows] = await db.query(
+                `SELECT prt.code_hash, prt.expires_at FROM password_reset_tokens prt
+                 JOIN accounts a ON prt.account_id = a.id
+                 WHERE LOWER(TRIM(a.email)) = ? LIMIT 1`,
+                [email]
+            );
             if (tokRows.length) ({ code_hash, expires_at } = tokRows[0]);
         } catch (dbErr) {
             if (dbErr?.code !== 'ER_NO_SUCH_TABLE') throw dbErr;
@@ -308,7 +317,7 @@ exports.resetPasswordWithCode = async (req, res) => {
         }
 
         await db.query('UPDATE accounts SET password = ? WHERE id = ?', [hashed, accRows[0].id]);
-        await clearResetToken(email);
+        await clearResetToken(email, accRows[0].id);
 
         return res.json({ success: true, message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập.' });
     } catch (error) {
