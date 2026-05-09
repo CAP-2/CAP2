@@ -41,7 +41,7 @@ export default function MemberFundPage() {
       const details = await apiRequest(`/api/member/fund/campaigns/${campaign.id}`);
       setSelectedCampaign(details);
       setFormData({ 
-        amount: details.campaign.amount_per_dinh, 
+        amount: details.campaign.amount_per_member, 
         note: `Đóng góp ${details.campaign.name}`, 
         method: "Chuyển khoản",
         evidence_media_id: null
@@ -149,15 +149,15 @@ export default function MemberFundPage() {
                     Hạn: {formatDateVN(c.deadline)}
                   </span>
                 </div>
-                <h4 style={{fontSize: '1.3rem', marginBottom: '1rem', color: '#fff'}}>{c.name}</h4>
+                <h4 style={{fontSize: '1.3rem', marginBottom: '1rem', color: 'var(--fund-text)'}}>{c.name}</h4>
                 <div className="card-info-box">
                   <div className="info-row">
-                    <label>Mức đóng (1 đinh)</label>
-                    <strong style={{color: '#fff'}}>{formatCurrency(c.amount_per_dinh)}</strong>
+                    <label>Mức đóng (1 suất)</label>
+                    <strong style={{color: 'var(--fund-text)'}}>{formatCurrency(c.amount_per_member)}</strong>
                   </div>
                   <div className="info-row">
                     <label>Đối tượng</label>
-                    <span style={{color: '#fff'}}>{c.dinh_definition === 'males_only' ? 'Nam giới' : 'Người trưởng thành'}</span>
+                    <span style={{color: 'var(--fund-text)'}}>{c.contribution_unit_definition === 'males_only' ? 'Nam giới' : 'Người trưởng thành'}</span>
                   </div>
                 </div>
                 <button className="btn-premium btn-green" style={{width: '100%', marginTop: '1.5rem'}} onClick={() => openPayModal(c)}>
@@ -229,7 +229,7 @@ export default function MemberFundPage() {
                           <div className="bank-row"><label>STK:</label> <strong>{selectedCampaign.campaign.bank_account}</strong></div>
                           <div className="bank-row"><label>Chủ TK:</label> <span>{selectedCampaign.campaign.bank_owner}</span></div>
                           <div className="bank-row total-row">
-                            <label>Số tiền:</label> <strong>{formatCurrency(selectedCampaign.campaign.amount_per_dinh)}</strong>
+                            <label>Số tiền:</label> <strong>{formatCurrency(selectedCampaign.campaign.amount_per_member)}</strong>
                           </div>
                         </div>
                         {selectedCampaign.campaign.qr_code_media_id && (
@@ -302,49 +302,7 @@ export default function MemberFundPage() {
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .glass-bg { background: rgba(0, 0, 0, 0.2); }
-        .section-title { font-size: 1.5rem; color: #fff; margin-bottom: 1.5rem; position: relative; padding-left: 1rem; opacity: 0.9; }
-        .section-title::before { content: ''; position: absolute; left: 0; top: 0.2rem; bottom: 0.2rem; width: 4px; background: var(--fund-gold); border-radius: 2px; }
-        .year-pill { background: rgba(255, 255, 255, 0.1); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; }
-        .card-info-box { background: rgba(0, 0, 0, 0.2); padding: 1rem; border-radius: 12px; }
-        .info-row { display: flex; justify-content: space-between; margin: 0.5rem 0; font-size: 0.9rem; }
-        .info-row label { color: rgba(255, 255, 255, 0.5); }
-        .tx-card-v2 { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .tx-note { font-weight: 600; font-size: 0.95rem; color: #fff; }
-        .tx-meta { font-size: 0.75rem; color: rgba(255,255,255,0.4); }
-        .pending-label { font-size: 0.65rem; color: var(--fund-gold); font-style: italic; display: block; }
-        
-        .method-switcher-v3 { display: flex; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 12px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.1); }
-        .method-switcher-v3 label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 1rem; cursor: pointer; border-radius: 10px; color: rgba(255,255,255,0.5); transition: 0.3s; }
-        .method-switcher-v3 label.active { background: rgba(255,255,255,0.1); color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        .method-switcher-v3 input { display: none; }
-        
-        .pay-layout-v3 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
-        .bank-card-v3 { background: rgba(0, 0, 0, 0.3); padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); color: #fff; }
-        .bank-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .total-row { border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 1rem; margin-top: 1rem; }
-        .total-row strong { color: #ff7675; font-size: 1.1rem; }
-        
-        .qr-box-v3 { text-align: center; margin-top: 1.5rem; }
-        .qr-box-v3 img { max-width: 180px; border: 5px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .qr-box-v3 p { font-size: 0.85rem; color: rgba(255,255,255,0.4); margin-top: 0.8rem; }
-        
-        .cash-card-v3 { background: rgba(255,255,255,0.03); padding: 2rem; border-radius: 20px; border: 1px dashed rgba(255,255,255,0.2); text-align: center; color: #fff; }
-        .large-icon { font-size: 3rem; color: var(--fund-gold); margin-bottom: 1rem; }
-        
-        .upload-label-v3 { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 1rem; border: 2px dashed rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; transition: 0.3s; color: rgba(255,255,255,0.4); }
-        .upload-label-v3:hover { border-color: var(--fund-gold); color: #fff; background: rgba(255,255,255,0.05); }
-        
-        .success-screen { text-align: center; padding: 2rem; color: #fff; }
-        .success-screen span { font-size: 4rem; color: #2ecc71; }
-        .close-btn { background: none; border: none; color: #fff; font-size: 2.2rem; cursor: pointer; opacity: 0.5; transition: 0.3s; }
-        .close-btn:hover { opacity: 1; transform: rotate(90deg); }
-        .premium-form label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: rgba(255,255,255,0.7); }
-        .premium-form input, .premium-form textarea { width: 100%; padding: 0.8rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; outline: none; background: rgba(0, 0, 0, 0.2); color: #fff; }
-        .premium-form input:focus { border-color: var(--fund-gold); background: rgba(0, 0, 0, 0.4); }
-        @media (max-width: 768px) { .pay-layout-v3 { grid-template-columns: 1fr; } }
-      `}} />
+
     </div>
   );
 }
