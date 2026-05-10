@@ -3,11 +3,11 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import Header from "./Header";
 import SiteFooter from "./SiteFooter";
 import Login from "../../pages/Login/Login";
+import Register from "../../pages/Register/Register";
 import { getCurrentUser, logout } from "../../utils/auth";
 
 export default function UserLayout() {
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState("login");
+  const [authMode, setAuthMode] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,14 +58,16 @@ export default function UserLayout() {
     handleRedirection(loggedInUser);
   };
 
+  const closeAuth = () => {
+    setAuthMode(null);
+  };
+
   const openLogin = () => {
     setAuthMode("login");
-    setIsAuthOpen(true);
   };
 
   const openRegister = () => {
     setAuthMode("register");
-    setIsAuthOpen(true);
   };
 
   return (
@@ -84,10 +86,16 @@ export default function UserLayout() {
       <SiteFooter />
 
       <Login
-        isOpen={isAuthOpen}
-        initialMode={authMode}
-        onClose={() => setIsAuthOpen(false)}
+        isOpen={authMode === "login"}
+        onClose={closeAuth}
         onLoginSuccess={handleLoginSuccess}
+        onOpenRegister={openRegister}
+      />
+
+      <Register
+        isOpen={authMode === "register"}
+        onClose={closeAuth}
+        onLoginClick={openLogin}
       />
     </>
   );
