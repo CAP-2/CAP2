@@ -715,43 +715,181 @@ exports.getPostsByClan = async (req, res) => {
 };
 
 /** Lấy thống kê cho Dashboard */
+const monthSeriesFromRows = (rows = []) => {
+  const rowMap = new Map(rows.map((item) => [item.month_key, Number(item.total || 0)]));
+  const now = new Date();
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const key = `${date.getFullYear()}-${month}`;
+
+    return {
+      month_key: key,
+      label: `${month}/${date.getFullYear()}`,
+      total: rowMap.get(key) || 0,
+    };
+  });
+};
+
+const checkTableExists = async (tableName) => {
+  const [rows] = await db.query(
+    `
+    SELECT COUNT(*) AS total
+    FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = ?
+    `,
+    [tableName]
+  );
+
+  return Number(rows[0]?.total || 0) > 0;
+};
+
 exports.getDashboardStats = async (req, res) => {
   try {
-    const period = req.query.period || req.query.range || "all";
-    const accountsFilter = withDateFilter(period, "a");
-    const peopleFilter = withDateFilter(period, "p");
-    const clansFilter = withDateFilter(period, "c");
-    const postsFilter = withDateFilter(period, "po");
+    const [hasMediaFiles, hasPlans, hasSubscriptions] = await Promise.all([
+      checkTableExists("media_files"),
+      checkTableExists("plans"),
+      checkTableExists("subscriptions"),
+    ]);
 
-    const [[{ total_accounts }]] = await db.query(`SELECT COUNT(*) AS total_accounts FROM accounts a WHERE ${accountsFilter}`);
-    const [[{ total_members }]] = await db.query(`SELECT COUNT(*) AS total_members FROM people p WHERE ${peopleFilter}`);
-    const [[{ total_clans }]] = await db.query(`SELECT COUNT(*) AS total_clans FROM clans c WHERE ${clansFilter}`);
-    const [[{ total_events }]] = await db.query("SELECT COUNT(*) AS total_events FROM events");
-    const [[{ total_photos }]] = await db.query(`SELECT COUNT(*) AS total_photos FROM posts po WHERE ((po.image_url IS NOT NULL AND po.image_url != '') OR po.image_media_id IS NOT NULL) AND ${postsFilter}`);
-    const [[{ total_posts }]] = await db.query(`SELECT COUNT(*) AS total_posts FROM posts po WHERE ${postsFilter}`);
+    const [[{ total_accounts }]] = await db.query(`SELECT COUNT(*) AS total_accounts FROM accounts`);
+    const [[{ total_members }]] = await db.query(`SELECT COUNT(*) AS total_members FROM people`);
+    const [[{ total_clans }]] = await db.query(`SELECT COUNT(*) AS total_clans FROM clans`);
+    const [[{ total_events }]] = await db.query(`SELECT COUNT(*) AS total_events FROM events`);
 
-    const [monthly_clans] = await db.query(`
-      SELECT DATE_FORMAT(c.created_at, '%Y-%m') AS month_key,
-             DATE_FORMAT(c.created_at, '%m/%Y') AS label,
+    let total_media = 0;
+
+    if (hasMediaFiles) {
+      const [[mediaCount]] = await db.query(`SELECT COUNT(*) AS total_media FROM media_files`);
+      total_media = Number(mediaCount?.total_media || 0);
+    } else {
+      const [[postMediaCount]] = await db.query(`
+        SELECT COUNT(*) AS total_media
+        FROM posts
+        WHERE image_url IS NOT NULL AND image_url != ''
+      `);
+      total_media = Number(postMediaCount?.total_media || 0);
+    }
+
+    const [monthlyAccountRows] = await db.query(`
+      SELECT DATE_FORMAT(a.created_at, '%Y-%m') AS month_key,
              COUNT(*) AS total
-      FROM clans c
-      WHERE c.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
-      GROUP BY month_key, label
+      FROM accounts a
+      WHERE a.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
+      GROUP BY month_key
       ORDER BY month_key ASC
     `);
 
+    const [monthlyClanRows] = await db.query(`
+      SELECT DATE_FORMAT(c.created_at, '%Y-%m') AS month_key,
+             COUNT(*) AS total
+      FROM clans c
+      WHERE c.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
+      GROUP BY month_key
+      ORDER BY month_key ASC
+    `);
+
+    const [top_clans_by_members] = await db.query(`
+      SELECT
+        c.id AS clan_id,
+        c.clan_name,
+        COUNT(p.id) AS member_count
+      FROM clans c
+      LEFT JOIN people p ON p.clan_id = c.id
+      GROUP BY c.id, c.clan_name
+      ORDER BY member_count DESC, c.clan_name ASC
+      LIMIT 8
+    `);
+
+    let plan_distribution = [];
+    let upgrade_alerts = [];
+
+    if (hasPlans && hasSubscriptions) {
+      const [planRows] = await db.query(`
+        SELECT
+          COALESCE(pl.name, 'Chưa có gói') AS plan_name,
+          COALESCE(pl.code, 'none') AS plan_code,
+          COUNT(c.id) AS total
+        FROM clans c
+        LEFT JOIN subscriptions s ON s.clan_id = c.id
+        LEFT JOIN plans pl ON pl.id = s.plan_id
+        GROUP BY plan_name, plan_code
+        ORDER BY total DESC, plan_name ASC
+      `);
+
+      const totalPlanClans = planRows.reduce((sum, item) => sum + Number(item.total || 0), 0) || 1;
+
+      plan_distribution = planRows.map((item) => ({
+        ...item,
+        total: Number(item.total || 0),
+        percent: Math.round((Number(item.total || 0) / totalPlanClans) * 100),
+      }));
+
+      const [alertRows] = await db.query(`
+        SELECT
+          c.id AS clan_id,
+          c.clan_name,
+          pl.name AS plan_name,
+          pl.code AS plan_code,
+          pl.person_limit,
+          pl.account_limit,
+          COUNT(DISTINCT p.id) AS current_people,
+          COUNT(DISTINCT CASE WHEN a.status = 'active' THEN a.id END) AS current_accounts,
+          ROUND((COUNT(DISTINCT p.id) / NULLIF(pl.person_limit, 0)) * 100) AS people_usage_percent,
+          ROUND((COUNT(DISTINCT CASE WHEN a.status = 'active' THEN a.id END) / NULLIF(pl.account_limit, 0)) * 100) AS account_usage_percent
+        FROM clans c
+        INNER JOIN subscriptions s ON s.clan_id = c.id
+        INNER JOIN plans pl ON pl.id = s.plan_id
+        LEFT JOIN people p ON p.clan_id = c.id
+        LEFT JOIN accounts a ON a.person_id = p.id
+        WHERE pl.person_limit > 0 OR pl.account_limit > 0
+        GROUP BY c.id, c.clan_name, pl.name, pl.code, pl.person_limit, pl.account_limit
+        HAVING COALESCE(people_usage_percent, 0) >= 80
+            OR COALESCE(account_usage_percent, 0) >= 80
+        ORDER BY GREATEST(COALESCE(people_usage_percent, 0), COALESCE(account_usage_percent, 0)) DESC
+        LIMIT 10
+      `);
+
+      upgrade_alerts = alertRows.map((item) => ({
+        ...item,
+        current_people: Number(item.current_people || 0),
+        current_accounts: Number(item.current_accounts || 0),
+        person_limit: Number(item.person_limit || 0),
+        account_limit: Number(item.account_limit || 0),
+        people_usage_percent: Number(item.people_usage_percent || 0),
+        account_usage_percent: Number(item.account_usage_percent || 0),
+        max_usage_percent: Math.max(Number(item.people_usage_percent || 0), Number(item.account_usage_percent || 0)),
+      }));
+    } else {
+      plan_distribution = [
+        {
+          plan_name: "Chưa cấu hình gói",
+          plan_code: "none",
+          total: Number(total_clans || 0),
+          percent: Number(total_clans || 0) ? 100 : 0,
+        },
+      ];
+    }
+
     return res.json({
       success: true,
-      period,
       stats: {
-        total_accounts,
-        total_members,
-        total_clans,
-        total_events,
-        total_photos,
-        total_posts
+        total_accounts: Number(total_accounts || 0),
+        total_members: Number(total_members || 0),
+        total_clans: Number(total_clans || 0),
+        total_events: Number(total_events || 0),
+        total_media,
       },
-      monthly_clans
+      plan_distribution,
+      top_clans_by_members: top_clans_by_members.map((item) => ({
+        ...item,
+        member_count: Number(item.member_count || 0),
+      })),
+      upgrade_alerts,
+      monthly_accounts: monthSeriesFromRows(monthlyAccountRows),
+      monthly_clans: monthSeriesFromRows(monthlyClanRows),
     });
   } catch (e) {
     console.error("getDashboardStats:", e);
