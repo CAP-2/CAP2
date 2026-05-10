@@ -7,7 +7,7 @@ const {
     computeManagerEventStatusSql,
     ensureManagerEventScheduleColumns,
     normalizeManagerEventDates,
-    notifyClanAboutManagerEvent,
+    enqueueClanAboutManagerEventNotification,
 } = require('../../services/manager/eventService');
 const {
     getManagerClanId,
@@ -95,7 +95,7 @@ const createManagerEvent = async(req, res) => {
             [clanId, title, eventDate || startDate, startDate, endDate || startDate, description || null]
         );
 
-        const notificationResult = await notifyClanAboutManagerEvent(req, {
+        const notificationResult = enqueueClanAboutManagerEventNotification(req, {
             clanId,
             eventId: result.insertId,
             title,
@@ -106,7 +106,7 @@ const createManagerEvent = async(req, res) => {
 
         return res.json({
             success: true,
-            message: 'Đã tạo sự kiện và thông báo cho thành viên dòng họ',
+            message: 'Đã tạo sự kiện. Hệ thống đang gửi thông báo và email cho thành viên dòng họ trong nền.',
             event_id: result.insertId,
             notifications: notificationResult,
         });
@@ -341,10 +341,15 @@ const assignTask = async(req, res) => {
                 p.surname,
                 p.middle_name,
                 p.first_name,
-                p.clan_id
+                p.clan_id,
+                p.is_living,
+                p.death_date
             FROM accounts a
-            LEFT JOIN people p ON p.id = a.person_id
+            INNER JOIN people p ON p.id = a.person_id
             WHERE a.id IN (${assigneeIds.map(() => '?').join(',')})
+              AND a.status = 'active'
+              AND COALESCE(p.is_living, 1) = 1
+              AND p.death_date IS NULL
             `,
             assigneeIds
         );
@@ -353,7 +358,7 @@ const assignTask = async(req, res) => {
             await connection.rollback();
             return res.status(400).json({
                 success: false,
-                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại',
+                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại, chưa active hoặc đã mất',
             });
         }
 
@@ -660,11 +665,15 @@ const bulkAssignTasks = async(req, res) => {
                 p.surname,
                 p.middle_name,
                 p.first_name,
-                p.clan_id
+                p.clan_id,
+                p.is_living,
+                p.death_date
             FROM accounts a
             INNER JOIN people p ON p.id = a.person_id
             WHERE a.id IN (${allAssigneeIds.map(() => '?').join(',')})
               AND a.status = 'active'
+              AND COALESCE(p.is_living, 1) = 1
+              AND p.death_date IS NULL
             `,
             allAssigneeIds
         );
@@ -672,7 +681,7 @@ const bulkAssignTasks = async(req, res) => {
         if (memberRows.length !== allAssigneeIds.length) {
             return res.status(400).json({
                 success: false,
-                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại, chưa active hoặc chưa liên kết hồ sơ',
+                message: 'Một hoặc nhiều tài khoản được phân công không tồn tại, chưa active, chưa liên kết hồ sơ hoặc đã mất',
             });
         }
 

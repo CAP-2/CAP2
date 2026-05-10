@@ -26,3 +26,39 @@ textarea,
 select {
   font: inherit;
 }
+
+/* Scrollbar toàn dự án: gọn, chỉ nổi rõ khi người dùng hover/cuộn vùng nội dung */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-within {
+  scrollbar-color: rgba(92, 37, 23, 0.38) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(92, 37, 23, 0.38);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(92, 37, 23, 0.62);
+}

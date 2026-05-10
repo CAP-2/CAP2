@@ -12,9 +12,11 @@ import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./GeneralPosts.css";
 
 const emptyPostForm = {
+  type: "story",
   description: "",
   content: "",
   image_url: "",
+  media_type: "",
 };
 
 function formatDate(value) {
@@ -35,8 +37,36 @@ function getAuthorName(post) {
   return post?.author_name || post?.created_by_name || post?.email || "Thành viên dòng họ";
 }
 
+function getPostMediaUrl(post) {
+  return String(post?.image_url || post?.media_url || "").trim();
+}
+
+function isVideoMedia(value, explicitType = "") {
+  const type = String(explicitType || "").toLowerCase();
+  const url = String(value || "").toLowerCase();
+  return type.startsWith("video/") || /[?&]media=video(?:&|$)/.test(url) || /\.(mp4|webm|mov|m4v)(\?|#|$)/.test(url);
+}
+
+function PostMedia({ url, mediaType = "", detail = false }) {
+  if (!url) return null;
+  if (isVideoMedia(url, mediaType)) {
+    return (
+      <video
+        className={detail ? "post-detail-video" : "feed-post-video"}
+        src={url}
+        controls={detail}
+        muted={!detail}
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+  return <img src={url} alt="Media bài đăng" />;
+}
+
 function PostCard({ post, onOpen, onLike, liking }) {
   const text = post.content || post.description || "Bài viết hình ảnh";
+  const mediaUrl = getPostMediaUrl(post);
 
   return (
     <article className="feed-post-card">
@@ -56,9 +86,9 @@ function PostCard({ post, onOpen, onLike, liking }) {
         <p className="feed-post-text">{text}</p>
       </button>
 
-      {post.image_url ? (
+      {mediaUrl ? (
         <button type="button" className="feed-post-media" onClick={() => onOpen(post)}>
-          <img src={post.image_url} alt="Ảnh bài đăng" />
+          <PostMedia url={mediaUrl} mediaType={post.media_type || post.mime_type || ""} />
         </button>
       ) : null}
 
@@ -92,16 +122,16 @@ function FeedComposer({ onOpen }) {
         <span className="feed-avatar is-small">
           <img src="/logo.png" alt="" />
         </span>
-        <button type="button" className="feed-composer-input" onClick={onOpen}>
+        <button type="button" className="feed-composer-input" onClick={() => onOpen("story")}>
           Chia sẻ điều gì với dòng họ...
         </button>
       </div>
       <div className="feed-composer-actions">
-        <button type="button" onClick={onOpen}>
-          <span className="material-symbols-outlined">image</span>
-          Ảnh
+        <button type="button" onClick={() => onOpen("media")}>
+          <span className="material-symbols-outlined">perm_media</span>
+          Ảnh / Video
         </button>
-        <button type="button" onClick={onOpen}>
+        <button type="button" onClick={() => onOpen("story")}>
           <span className="material-symbols-outlined">history_edu</span>
           Câu chuyện
         </button>
@@ -125,6 +155,27 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
         </header>
 
         <form className="post-compose-form" onSubmit={onSubmit}>
+          <div className="post-type-tabs" role="tablist" aria-label="Loại bài đăng">
+            <button
+              type="button"
+              className={form.type === "media" ? "is-active" : ""}
+              onClick={() => onChange("type", "media")}
+              disabled={submitting}
+            >
+              <span className="material-symbols-outlined">perm_media</span>
+              Ảnh / Video
+            </button>
+            <button
+              type="button"
+              className={form.type !== "media" ? "is-active" : ""}
+              onClick={() => onChange("type", "story")}
+              disabled={submitting}
+            >
+              <span className="material-symbols-outlined">history_edu</span>
+              Câu chuyện
+            </button>
+          </div>
+
           <label className="post-field">
             <span>Tiêu đề / mô tả ngắn</span>
             <input
@@ -147,12 +198,24 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
             />
           </label>
 
-          <ImageUpload
-            value={form.image_url}
-            disabled={submitting}
-            label="Tải ảnh bài đăng"
-            onUploadSuccess={(url) => onChange("image_url", url)}
-          />
+          {form.type === "media" && (
+            <ImageUpload
+              value={form.image_url}
+              disabled={submitting}
+              label="Tải ảnh hoặc video bài đăng"
+              accept="image/*,video/*"
+              allowVideo
+              usageType="post_image"
+              onUploadSuccess={(url, result = {}) => {
+                const mimeType = String(result.mimeType || result.mime_type || "");
+                const mediaUrl = mimeType.startsWith("video/") && url && !/[?&]media=video\b/.test(url)
+                  ? `${url}${url.includes("?") ? "&" : "?"}media=video`
+                  : url;
+                onChange("image_url", mediaUrl);
+                onChange("media_type", mimeType);
+              }}
+            />
+          )}
 
           {(error || notice) && <div className={`post-form-message ${error ? "is-error" : "is-success"}`}>{error || notice}</div>}
 
@@ -208,9 +271,9 @@ function PostDetailModal({
           <p>{post.content || post.description || "Bài viết hình ảnh"}</p>
         </div>
 
-        {post.image_url && (
+        {getPostMediaUrl(post) && (
           <div className="post-detail-image">
-            <img src={post.image_url} alt="" />
+            <PostMedia url={getPostMediaUrl(post)} mediaType={post.media_type || post.mime_type || ""} detail />
           </div>
         )}
 
@@ -356,14 +419,20 @@ export default function GeneralPosts() {
     const description = form.description.trim();
     const content = form.content.trim();
     const imageUrl = form.image_url.trim();
+    const postType = form.type === "media" ? "media" : "story";
 
     if (!description) {
       setFormError("Vui lòng nhập tiêu đề hoặc mô tả ngắn cho bài đăng.");
       return;
     }
 
-    if (!content && !imageUrl) {
-      setFormError("Vui lòng nhập nội dung hoặc thêm ảnh.");
+    if (postType === "media" && !imageUrl) {
+      setFormError("Vui lòng chọn ảnh hoặc video cho bài đăng.");
+      return;
+    }
+
+    if (postType === "story" && !content) {
+      setFormError("Vui lòng nhập nội dung câu chuyện.");
       return;
     }
 
@@ -374,7 +443,8 @@ export default function GeneralPosts() {
       const result = await submitMaterial({
         description,
         content: content || description,
-        image_url: imageUrl,
+        image_url: postType === "media" ? imageUrl : "",
+        media_type: form.media_type || "",
       });
       setForm(emptyPostForm);
       setFormNotice(result.message || "Đã gửi bài đăng.");
@@ -400,6 +470,18 @@ export default function GeneralPosts() {
     } finally {
       setLikingPostId(null);
     }
+  };
+
+  const openAddModal = (type = "story") => {
+    setForm((current) => ({
+      ...current,
+      type: type === "media" ? "media" : "story",
+      image_url: type === "media" ? current.image_url : "",
+      media_type: type === "media" ? current.media_type : "",
+    }));
+    setFormError("");
+    setFormNotice("");
+    setShowAddModal(true);
   };
 
   const handleSubmitComment = async (event) => {
@@ -440,7 +522,7 @@ export default function GeneralPosts() {
 
       <div className="feed-layout">
         <main className="feed-main-column">
-          <FeedComposer onOpen={() => setShowAddModal(true)} />
+          <FeedComposer onOpen={openAddModal} />
           {error && <div className="post-form-message is-error">{error}</div>}
 
           {loading ? (
@@ -460,7 +542,7 @@ export default function GeneralPosts() {
           <section className="feed-mini-card">
             <h3>Bảng tin</h3>
             <p>Các bài viết đã duyệt sẽ hiển thị cho thành viên trong dòng họ.</p>
-            <button type="button" className="post-primary-btn" onClick={() => setShowAddModal(true)}>
+            <button type="button" className="post-primary-btn" onClick={() => openAddModal("story")}>
               <span className="material-symbols-outlined">add</span>
               Thêm bài đăng
             </button>

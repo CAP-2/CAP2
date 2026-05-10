@@ -13,6 +13,8 @@ import {
 import { avatarInitial, formatDate, fullName } from "./managerData";
 import "./PendingApprovals.css";
 
+const isVideoUrl = (value = "") => /[?&]media=video(?:&|$)/i.test(String(value)) || /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(String(value));
+
 export default function PendingApprovals() {
   const [activeTab, setActiveTab] = useState("users");
   const [pendingUsers, setPendingUsers] = useState([]);
@@ -134,8 +136,12 @@ export default function PendingApprovals() {
               <div key={post.post_id} className="pending-item glass-effect">
                 <div className="item-main">
                   {post.image_url && (
-                    <a className="pending-thumb-link" href={post.image_url} target="_blank" rel="noreferrer" title="Mo anh bai viet">
-                      <img className="pending-thumb" src={post.image_url} alt="" />
+                    <a className="pending-thumb-link" href={post.image_url} target="_blank" rel="noreferrer" title="Mở media bài viết">
+                      {isVideoUrl(post.image_url) ? (
+                        <video className="pending-thumb" src={post.image_url} muted playsInline preload="metadata" />
+                      ) : (
+                        <img className="pending-thumb" src={post.image_url} alt="" />
+                      )}
                     </a>
                   )}
                   <div className="item-info">

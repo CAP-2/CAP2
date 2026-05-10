@@ -14,7 +14,7 @@ function personName(person) {
   return (
     person?.display_name ||
     [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
-    `Thành viên #${person?.id}`
+    "Thành viên"
   );
 }
 

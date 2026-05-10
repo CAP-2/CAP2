@@ -31,7 +31,7 @@ export default function GenealogySection() {
   const formatPersonName = (person) =>
     person?.display_name ||
     [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
-    `Member #${person?.account_id}`;
+    "Thành viên";
 
   const normalizeSearchText = (value) =>
     String(value || "")
@@ -174,7 +174,7 @@ export default function GenealogySection() {
   const copyGeneratedKeys = async () => {
     const text = generatedKeys
       .filter((item) => item?.key)
-      .map((item) => `${item.member_name || `Account #${item.member_account_id}`}: ${item.key}`)
+      .map((item) => `${item.member_name || `Thành viên`}: ${item.key}`)
       .join("\n");
     if (!text) return;
     try {
@@ -343,7 +343,7 @@ export default function GenealogySection() {
                   />
                   <span>
                     <strong>{formatPersonName(person)}</strong>
-                    <small>account #{person.account_id}</small>
+                    <small>{person.account_email || person.account_email || "Thành viên"}</small>
                   </span>
                 </label>
               );

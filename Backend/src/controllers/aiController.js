@@ -60,6 +60,7 @@ exports.generateEventFormAI = async (req, res) => {
             current_event,
             existing_tasks,
             context,
+            requested_task_count,
         } = req.body || {};
 
         const normalizedPrompt = String(prompt || '').trim();
@@ -71,6 +72,10 @@ exports.generateEventFormAI = async (req, res) => {
             });
         }
 
+        const normalizedTaskCount = Number.isFinite(Number(requested_task_count))
+            ? Math.min(Math.max(Math.round(Number(requested_task_count)), 1), 20)
+            : undefined;
+
         const aiPayload = {
             mode: mode || 'event_create',
             prompt: normalizedPrompt,
@@ -78,6 +83,7 @@ exports.generateEventFormAI = async (req, res) => {
             clan_id: clan_id || req.user?.clan_id || null,
             current_event: current_event || null,
             existing_tasks: Array.isArray(existing_tasks) ? existing_tasks : [],
+            requested_task_count: normalizedTaskCount,
             context: context || {},
             account_id: accountId,
             role,

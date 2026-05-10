@@ -145,7 +145,7 @@ export default function AccountPage() {
         .map((member) => ({
           accountId: String(member.account_id),
           personId: String(member.person_id),
-          label: `#${member.person_id} - ${fullName(member)}${member.generation ? ` (Đời ${member.generation})` : ""}`,
+          label: `${fullName(member)}${member.generation ? ` (Đời ${member.generation})` : ""}`,
         })),
     [members]
   );
@@ -488,7 +488,7 @@ export default function AccountPage() {
               <div className="manager-member-row" key={member.account_id}>
                 <div>
                   <strong>{fullName(member)}</strong>
-                  <span>#{member.person_id} · {member.email}</span>
+                  <span>{member.email}</span>
                 </div>
                 <div>Đời {member.generation || "?"}</div>
                 <div>{member.hometown || "Chưa có quê quán"}</div>

@@ -1,5 +1,8 @@
 const nodemailer = require("nodemailer");
 
+let cachedTransporter = null;
+let cachedTransporterKey = null;
+
 function isSmtpConfigured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
@@ -12,7 +15,18 @@ function getTransporter() {
   }
 
   const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
-  return nodemailer.createTransport({
+  const transporterKey = [
+    process.env.SMTP_HOST,
+    port,
+    process.env.SMTP_USER,
+    process.env.SMTP_PASS,
+  ].join("|");
+
+  if (cachedTransporter && cachedTransporterKey === transporterKey) {
+    return cachedTransporter;
+  }
+
+  cachedTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
     secure: port === 465,
@@ -21,6 +35,8 @@ function getTransporter() {
       pass: process.env.SMTP_PASS,
     },
   });
+  cachedTransporterKey = transporterKey;
+  return cachedTransporter;
 }
 
 async function sendMail({ to, subject, text, html }) {

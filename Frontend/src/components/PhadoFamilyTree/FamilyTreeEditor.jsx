@@ -1033,7 +1033,7 @@ function PersonCard({
   onDelete,
   onQuickCreate,
 }) {
-  const name = fullName(person, `Người #${person.id}`);
+  const name = fullName(person, "Thành viên");
   const genderClass =
     Number(person.gender) === 1
       ? "is-male"
@@ -1213,8 +1213,8 @@ function PersonInspector({
         <div className="fte-inspectorHeader">
           <div>
             <span>Thông tin thành viên</span>
-            <h3>{fullName(person, `Người #${person.id}`)}</h3>
-            <p>ID #{person.id}{spouse ? ` · Vợ/chồng: ${fullName(spouse)}` : ""}</p>
+            <h3>{fullName(person, "Thành viên")}</h3>
+            <p>{spouse ? `Vợ/chồng: ${fullName(spouse)}` : "Thông tin hồ sơ gia phả"}</p>
           </div>
           <button type="button" className="fte-iconButton" onClick={onClose} title="Đóng panel">
             <span className="material-symbols-outlined">close</span>
@@ -1458,11 +1458,10 @@ function RelationSelectDialog({
                     {person.avatar_url ? <img src={person.avatar_url} alt={fullName(person)} /> : fullName(person).charAt(0).toUpperCase()}
                   </span>
                   <span>
-                    <strong>{fullName(person, `Người #${person.id}`)}</strong>
+                    <strong>{fullName(person, "Thành viên")}</strong>
                     <small>
-                      ID #{person.id} · Đời {person.generation || "?"}
+                      Đời {person.generation || "?"}
                       {person.gender ? ` · ${Number(person.gender) === 1 ? "Nam" : "Nữ"}` : ""}
-                      {person.account_id ? ` · TK #${person.account_id}` : ""}
                     </small>
                   </span>
                   {linkedIds.has(Number(person.id)) ? <em>Đang liên kết</em> : null}

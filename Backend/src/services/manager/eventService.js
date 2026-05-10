@@ -174,6 +174,31 @@ const notifyClanAboutManagerEvent = async(req, { clanId, eventId, title, descrip
     return { notificationCount, email: emailSummary };
 };
 
+
+const enqueueClanAboutManagerEventNotification = (req, payload) => {
+    const app = req?.app || null;
+    const jobPayload = { ...payload };
+
+    setImmediate(() => {
+        notifyClanAboutManagerEvent({ app }, jobPayload)
+            .then((summary) => {
+                console.log('manager event notification job completed:', {
+                    event_id: jobPayload.eventId,
+                    notifications: summary?.notificationCount || 0,
+                    email: summary?.email || null,
+                });
+            })
+            .catch((error) => {
+                console.error('manager event notification job failed:', {
+                    event_id: jobPayload.eventId,
+                    error: error?.message || error,
+                });
+            });
+    });
+
+    return { queued: true };
+};
+
 module.exports = {
     hasEnsuredManagerEventScheduleColumns,
     ensureManagerEventScheduleColumns,
@@ -183,4 +208,5 @@ module.exports = {
     formatManagerEventDateRange,
     sendManagerEventEmail,
     notifyClanAboutManagerEvent,
+    enqueueClanAboutManagerEventNotification,
 };

@@ -66,7 +66,9 @@ const managerController = require('./src/controllers/managerController');
 
 const {
     MAX_IMAGE_SIZE_BYTES,
+    MAX_POST_MEDIA_SIZE_BYTES,
     isAllowedImageMimeType,
+    isAllowedPostMediaMimeType,
     getMediaUrl,
     createMediaFile,
     getUploadContext,
@@ -74,13 +76,13 @@ const {
 
 const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
-// 4. Cấu hình upload ảnh: ảnh mới được lưu trực tiếp vào MySQL LONGBLOB
+// 4. Cấu hình upload media: ảnh/video bài đăng được lưu trực tiếp vào MySQL LONGBLOB
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
+    limits: { fileSize: MAX_POST_MEDIA_SIZE_BYTES || MAX_IMAGE_SIZE_BYTES },
     fileFilter: (req, file, cb) => {
-        if (!isAllowedImageMimeType(file.mimetype)) {
-            return cb(new Error('Chỉ cho phép upload ảnh JPG, PNG, WEBP hoặc GIF'));
+        if (!isAllowedPostMediaMimeType(file.mimetype)) {
+            return cb(new Error('Chỉ cho phép upload ảnh JPG, PNG, WEBP, GIF hoặc video MP4, WEBM, MOV'));
         }
         cb(null, true);
     }
@@ -139,8 +141,8 @@ app.post('/api/upload', verifyToken, (req, res) => {
             return res.status(isMulterLimit ? 413 : 400).json({
                 success: false,
                 message: isMulterLimit
-                    ? 'Ảnh vượt quá dung lượng cho phép'
-                    : uploadError.message || 'File ảnh không hợp lệ'
+                    ? 'Tệp vượt quá dung lượng cho phép'
+                    : uploadError.message || 'File media không hợp lệ'
             });
         }
 
@@ -174,14 +176,16 @@ app.post('/api/upload', verifyToken, (req, res) => {
                 mediaId,
                 media_id: mediaId,
                 imageUrl,
-                url: imageUrl
+                url: imageUrl,
+                mimeType: req.file.mimetype,
+                mime_type: req.file.mimetype
             });
         } catch (error) {
-            console.error('Upload image to database error:', error);
+            console.error('Upload media to database error:', error);
 
             return res.status(500).json({
                 success: false,
-                message: 'Không thể lưu ảnh vào database'
+                message: 'Không thể lưu media vào database'
             });
         }
     });

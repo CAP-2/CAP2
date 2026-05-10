@@ -4,15 +4,27 @@ const db = require('../config/db');
 
 const API_MEDIA_PREFIX = '/api/media/';
 const MAX_IMAGE_SIZE_BYTES = Number(process.env.MAX_IMAGE_UPLOAD_BYTES || 5 * 1024 * 1024);
+const MAX_POST_MEDIA_SIZE_BYTES = Number(process.env.MAX_POST_MEDIA_UPLOAD_BYTES || 50 * 1024 * 1024);
 const ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
 ]);
+const ALLOWED_POST_MEDIA_MIME_TYPES = new Set([
+  ...ALLOWED_IMAGE_MIME_TYPES,
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-m4v',
+]);
 
 function isAllowedImageMimeType(mimeType) {
   return ALLOWED_IMAGE_MIME_TYPES.has(String(mimeType || '').toLowerCase());
+}
+
+function isAllowedPostMediaMimeType(mimeType) {
+  return ALLOWED_POST_MEDIA_MIME_TYPES.has(String(mimeType || '').toLowerCase());
 }
 
 function getMediaUrl(req, mediaId) {
@@ -160,8 +172,11 @@ async function createMediaFromLocalFile({ rawUrlOrPath, usageType, ownerAccountI
 module.exports = {
   API_MEDIA_PREFIX,
   MAX_IMAGE_SIZE_BYTES,
+  MAX_POST_MEDIA_SIZE_BYTES,
   ALLOWED_IMAGE_MIME_TYPES,
+  ALLOWED_POST_MEDIA_MIME_TYPES,
   isAllowedImageMimeType,
+  isAllowedPostMediaMimeType,
   getMediaUrl,
   normalizeMediaId,
   extractMediaIdFromUrl,

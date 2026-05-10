@@ -1727,7 +1727,7 @@ Quy tắc:
 14. Nếu prompt có cả "cuối năm" và tháng cụ thể, ưu tiên tháng cụ thể.
 15. Nếu có event_date thì mỗi task phải có due_date.
 16. due_date phải trước hoặc đúng event_date, trừ task tổng kết/hậu cần sau sự kiện có thể bằng event_date.
-17. Sinh 5 đến 10 task tùy độ phức tạp.
+17. Nếu input có requested_task_count thì phải sinh đúng requested_task_count task, không ít hơn và không nhiều hơn. Nếu không có requested_task_count thì sinh 5 đến 10 task tùy độ phức tạp.
 18. Task phải cụ thể, giao được cho một người thực hiện.
 19. Nếu prompt có địa điểm như "nhà bác Quân", "nhà thờ tổ", "từ đường", phải đưa địa điểm đó vào description của task liên quan.
 20. Nếu chủ đề lạ, hãy tự suy luận các việc cần làm theo logic tổ chức sự kiện: chuẩn bị, thông báo, hậu cần, điều phối, ghi nhận chi phí, tổng kết.
@@ -1834,6 +1834,87 @@ def make_task(event_id: int | None, title: str, description: str, due_date: str 
         "due_date": due_date,
         "status": "assigned",
     }
+
+
+def requested_task_count_from_body(body: dict[str, Any]) -> int | None:
+    value = parse_int(body.get("requested_task_count"))
+    if value is None:
+        return None
+    return max(1, min(value, 20))
+
+
+def normalize_task_title_for_compare(task: dict[str, Any]) -> str:
+    return normalize_vietnamese(str(task.get("title") or "")).strip()
+
+
+def enforce_requested_task_count(
+    tasks: list[dict[str, Any]],
+    body: dict[str, Any],
+    mode: str,
+    event: dict[str, Any],
+) -> list[dict[str, Any]]:
+    target = requested_task_count_from_body(body)
+    if not target:
+        return tasks
+
+    event_id = None
+    if mode == "task_create":
+        current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
+        event_id = parse_int(current_event.get("id"))
+
+    event_title = str(event.get("title") or "Sự kiện dòng họ").strip()
+    event_date = event.get("event_date") or parse_iso_date_from_text(str(body.get("prompt") or ""), str(body.get("today") or ""))
+    event_description = str(event.get("description") or body.get("prompt") or "").strip()
+
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for task in tasks or []:
+        if not isinstance(task, dict):
+            continue
+        title_key = normalize_task_title_for_compare(task)
+        if not title_key or title_key in seen:
+            continue
+        item = dict(task)
+        item["event_id"] = None if mode == "event_create" else event_id
+        item["member_id"] = None
+        item["status"] = "assigned"
+        cleaned.append(item)
+        seen.add(title_key)
+        if len(cleaned) >= target:
+            return cleaned[:target]
+
+    existing_tasks = body.get("existing_tasks") if isinstance(body.get("existing_tasks"), list) else []
+    fallback_candidates = default_tasks_for_event(
+        event_title,
+        event_date,
+        None if mode == "event_create" else event_id,
+        existing_tasks + cleaned,
+        event_description,
+    )
+
+    for candidate in fallback_candidates:
+        title_key = normalize_task_title_for_compare(candidate)
+        if not title_key or title_key in seen:
+            continue
+        cleaned.append(candidate)
+        seen.add(title_key)
+        if len(cleaned) >= target:
+            return cleaned[:target]
+
+    while len(cleaned) < target:
+        index = len(cleaned) + 1
+        due_date = date_add_days(event_date, -max(target - index, 0)) or event_date
+        cleaned.append(
+            make_task(
+                None if mode == "event_create" else event_id,
+                f"Chuẩn bị bổ sung {index}",
+                "Rà soát và hoàn thiện một đầu việc cần thiết để sự kiện diễn ra suôn sẻ.",
+                due_date,
+            )
+        )
+
+    return cleaned[:target]
 
 
 def default_event_title(prompt: str) -> str:
@@ -2057,6 +2138,13 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
         normalized_event.get("event_date"),
     )
 
+    normalized_tasks = enforce_requested_task_count(
+        normalized_tasks,
+        body,
+        mode,
+        normalized_event,
+    )
+
     return {
         "status": "success",
         "mode": mode,
@@ -2101,6 +2189,12 @@ def create_app() -> Flask:
             }), 400
 
         fallback = fallback_event_form(body)
+        fallback["manager_tasks"] = enforce_requested_task_count(
+            fallback.get("manager_tasks") or [],
+            body,
+            fallback.get("mode") or ("task_create" if body.get("mode") == "task_create" else "event_create"),
+            fallback.get("event") or {},
+        )
 
         if groq_client is None:
             return jsonify({"success": True, **fallback})
@@ -2112,6 +2206,7 @@ def create_app() -> Flask:
             "clan_id": body.get("clan_id"),
             "current_event": body.get("current_event"),
             "existing_tasks": body.get("existing_tasks") or [],
+            "requested_task_count": requested_task_count_from_body(body),
         }
 
         try:
@@ -2157,6 +2252,13 @@ def create_app() -> Flask:
                 # Chỉ dùng fallback task nếu AI không sinh được task nào.
                 if not normalized["manager_tasks"]:
                     normalized["manager_tasks"] = fallback["manager_tasks"]
+
+                normalized["manager_tasks"] = enforce_requested_task_count(
+                    normalized.get("manager_tasks") or [],
+                    body,
+                    normalized.get("mode") or "event_create",
+                    normalized.get("event") or {},
+                )
 
                 return jsonify({"success": True, **normalized})
 

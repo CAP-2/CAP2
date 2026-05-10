@@ -14,6 +14,8 @@ const ImageUpload = ({
   disabled = false,
   usageType = "other",
   crop = undefined,
+  accept = "image/*",
+  allowVideo = false,
 }) => {
   const avatarMode = useMemo(() => {
     if (typeof crop === "boolean") return crop;
@@ -34,6 +36,11 @@ const ImageUpload = ({
   const fileInputRef = useRef(null);
   const cropImageRef = useRef(null);
   const dragRef = useRef(null);
+
+  const isVideoPreview = useMemo(() => {
+    const value = String(preview || "").toLowerCase();
+    return /[?&]media=video\b/.test(value) || /\.(mp4|webm|mov|m4v)(\?|#|$)/.test(value);
+  }, [preview]);
 
   const cropBaseScale = useMemo(() => {
     if (!cropImageSize.width || !cropImageSize.height) return 1;
@@ -64,7 +71,11 @@ const ImageUpload = ({
     try {
       const result = await uploadImage(file, { usageType });
       if (result.success) {
-        onUploadSuccess?.(result.url || result.imageUrl || "", result);
+        const uploadedUrl = result.url || result.imageUrl || "";
+        const previewUrl = file.type?.startsWith("video/") && uploadedUrl && !/[?&]media=video\b/.test(uploadedUrl)
+          ? `${uploadedUrl}${uploadedUrl.includes("?") ? "&" : "?"}media=video`
+          : uploadedUrl;
+        onUploadSuccess?.(previewUrl, { ...result, mimeType: result.mimeType || result.mime_type || file.type });
       } else {
         setError(result.message || "Tải ảnh thất bại");
       }
@@ -88,8 +99,15 @@ const ImageUpload = ({
 
   const handleFile = async (file) => {
     if (!file || disabled) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Vui lòng chọn tệp hình ảnh (.jpg, .png, .webp, ...)");
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !(allowVideo && isVideo)) {
+      setError(allowVideo ? "Vui lòng chọn tệp ảnh hoặc video hợp lệ" : "Vui lòng chọn tệp hình ảnh (.jpg, .png, .webp, ...)");
+      return;
+    }
+
+    if (avatarMode && !isImage) {
+      setError("Ảnh đại diện chỉ hỗ trợ tệp hình ảnh.");
       return;
     }
 
@@ -243,15 +261,19 @@ const ImageUpload = ({
             hidden
             ref={fileInputRef}
             onChange={(event) => handleFile(event.target.files[0])}
-            accept="image/*"
+            accept={accept}
             disabled={disabled || loading}
           />
 
           {preview ? (
             <div className="preview-container">
-              <img src={preview} alt="" className="image-preview" onError={() => setError("URL ảnh không hợp lệ")} />
+              {isVideoPreview ? (
+                <video src={preview} className="image-preview" controls muted playsInline preload="metadata" />
+              ) : (
+                <img src={preview} alt="" className="image-preview" onError={() => setError("URL ảnh không hợp lệ")} />
+              )}
               <div className="preview-overlay">
-                <span>{avatarMode ? "Đổi ảnh đại diện" : "Thay đổi ảnh"}</span>
+                <span>{avatarMode ? "Đổi ảnh đại diện" : allowVideo ? "Thay đổi ảnh/video" : "Thay đổi ảnh"}</span>
               </div>
               <button className="preview-clear" type="button" onClick={clearImage} disabled={disabled || loading}>
                 Xóa

@@ -7,7 +7,7 @@ export const fullName = (item, fallback = "Chưa có tên") =>
   item?.email ||
   fallback;
 
-export const personName = (person) => fullName(person, `Người #${person?.id ?? "?"}`);
+export const personName = (person) => fullName(person, "Thành viên");
 
 export const avatarInitial = (item) => fullName(item).charAt(0).toUpperCase();
 
