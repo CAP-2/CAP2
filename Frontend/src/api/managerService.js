@@ -93,6 +93,9 @@ export const createTreeEditKeyAPI = (memberAccountIds) => {
 export const getFundOverviewAPI = () =>
   request("/fund/overview", {}, "Không thể lấy tổng quan quỹ");
 
+export const getFundStatsAPI = () =>
+  request("/fund/stats", {}, "Không thể lấy thống kê quỹ dòng họ");
+
 export const getFundTransactionsAPI = () =>
   request("/fund/transactions", {}, "Không thể lấy lịch sử giao dịch quỹ");
 
@@ -496,3 +499,5 @@ export const rejectMemoryAPI = (id, reason) =>
     },
     "Từ chối kỉ niệm thất bại"
   );
+
+
