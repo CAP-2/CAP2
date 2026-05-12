@@ -1754,17 +1754,17 @@ export default function ClanFundPage() {
             }
 
             .fund-modal-v2 {
-              position: fixed;
-              inset: 0;
-              z-index: 9999;
-              display: flex;
-              justify-content: center;
-              align-items: flex-start;
-              padding: 24px 14px;
-              overflow-y: auto;
-              background: rgba(22, 8, 14, 0.62);
-              backdrop-filter: blur(5px);
-            }
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 14px 64px;
+  overflow-y: auto;
+  background: rgba(22, 8, 14, 0.62);
+  backdrop-filter: blur(5px);
+}
 
             .modal-glass {
               background:
@@ -1774,14 +1774,21 @@ export default function ClanFundPage() {
               border-radius: 28px;
             }
 
-            .fund-create-modal,
-            .ledger-modal {
-              width: min(94vw, 980px);
-              max-height: calc(100vh - 48px);
-              overflow: hidden;
-              display: flex;
-              flex-direction: column;
-            }
+            .fund-create-modal {
+  width: min(94vw, 920px);
+  max-height: none;
+  overflow: visible;
+  display: block;
+  margin-bottom: 56px;
+}
+
+.ledger-modal {
+  width: min(94vw, 980px);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
             .approval-modal {
               width: min(94vw, 520px);
@@ -1806,11 +1813,34 @@ export default function ClanFundPage() {
             }
 
             .cash-expense-modal .modal-body-v2,
-            .fund-create-modal .modal-body-v2,
-            .ledger-modal .modal-body-v2,
-            .approval-modal .modal-body-v2 {
-              max-height: calc(100vh - 145px);
-            }
+.ledger-modal .modal-body-v2,
+.approval-modal .modal-body-v2 {
+  max-height: calc(100vh - 145px);
+}
+
+.fund-create-modal .modal-body-v2 {
+  max-height: none;
+  overflow: visible;
+  padding: 20px 26px 34px;
+}
+
+.fund-create-modal .premium-form {
+  padding-bottom: 20px;
+}
+
+.fund-create-modal .modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin-top: 18px;
+  padding: 14px 0 0;
+  background: linear-gradient(
+    180deg,
+    rgba(246, 232, 203, 0),
+    rgba(246, 232, 203, 0.98) 35%,
+    rgba(246, 232, 203, 1)
+  );
+}
 
             .modal-header-v2 {
               flex-shrink: 0;
@@ -2208,13 +2238,36 @@ export default function ClanFundPage() {
               }
 
               .cash-expense-modal,
-              .fund-create-modal,
-              .ledger-modal,
-              .approval-modal {
-                width: 100%;
-                max-height: calc(100vh - 24px);
-                border-radius: 20px;
-              }
+.fund-create-modal,
+.ledger-modal,
+.approval-modal {
+  width: 100%;
+  max-height: calc(100vh - 24px);
+  border-radius: 20px;
+}
+
+.fund-create-modal {
+  max-height: none;
+  overflow: visible;
+  display: block;
+  margin-bottom: 44px;
+}
+
+.fund-create-modal .modal-body-v2 {
+  max-height: none;
+  overflow: visible;
+  padding: 16px 16px 28px;
+}
+
+.fund-create-modal .modal-footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.fund-create-modal .modal-footer .btn-premium {
+  width: 100%;
+}
 
               .modal-header-v2 {
                 padding: 18px 18px 14px;
