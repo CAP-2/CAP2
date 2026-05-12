@@ -298,3 +298,378 @@
 .profile-drawer-avatar img {
   border-radius: 50% !important;
 }
+
+.avatar-upload-field {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.avatar-upload-field > span {
+  color: #4d2418;
+  font-weight: 800;
+}
+
+.avatar-edit-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.avatar-edit-frame {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: #fff8ec;
+  border: 4px solid #d4a62a;
+  box-shadow: 0 10px 24px rgba(58, 13, 8, 0.16);
+  overflow: hidden;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-edit-frame:active {
+  cursor: grabbing;
+}
+
+.avatar-edit-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.15s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.avatar-empty-preview {
+  text-align: center;
+  color: #8a6842;
+  font-weight: 800;
+}
+
+.avatar-empty-preview .material-symbols-outlined {
+  font-size: 2.3rem;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.avatar-empty-preview p {
+  margin: 0;
+}
+
+.avatar-edit-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.avatar-choose-button,
+.avatar-remove-button {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 166, 42, 0.45);
+  background: #fff7df;
+  color: #5a1f14;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.avatar-choose-button:hover,
+.avatar-remove-button:hover {
+  background: #ffeebe;
+}
+
+.avatar-remove-button {
+  background: #fff2f0;
+  color: #8b0000;
+}
+
+.avatar-zoom-control {
+  display: grid;
+  gap: 0.35rem;
+  color: #5d3924;
+  font-weight: 800;
+}
+
+.avatar-zoom-control input {
+  width: 100%;
+}
+
+.avatar-edit-actions small {
+  color: #7b5738;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .avatar-edit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .avatar-edit-frame {
+    margin: 0 auto;
+  }
+}
+.avatar-upload-field {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.avatar-upload-field > span {
+  color: #4d2418;
+  font-weight: 800;
+}
+
+.avatar-picker-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.avatar-click-preview {
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  border: 4px solid #d4a62a;
+  background: #fff8ec;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  box-shadow: 0 10px 24px rgba(58, 13, 8, 0.16);
+}
+
+.avatar-click-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.15s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.avatar-click-preview:hover .avatar-edit-hint {
+  opacity: 1;
+}
+
+.avatar-edit-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #4b180f;
+  color: #fff;
+  border: 2px solid #fff6e7;
+  opacity: 0.95;
+  box-shadow: 0 6px 14px rgba(58, 13, 8, 0.25);
+}
+
+.avatar-edit-hint .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.avatar-picker-actions {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.avatar-choose-button,
+.avatar-open-editor-button,
+.avatar-remove-button,
+.avatar-apply-button {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 166, 42, 0.45);
+  background: #fff7df;
+  color: #5a1f14;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.avatar-choose-button:hover,
+.avatar-open-editor-button:hover,
+.avatar-remove-button:hover,
+.avatar-apply-button:hover {
+  background: #ffeebe;
+}
+
+.avatar-open-editor-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.avatar-remove-button {
+  background: #fff2f0;
+  color: #8b0000;
+}
+
+.avatar-picker-actions small {
+  color: #7b5738;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.avatar-empty-preview {
+  text-align: center;
+  color: #8a6842;
+  font-weight: 800;
+  width: 100%;
+}
+
+.avatar-empty-preview .material-symbols-outlined {
+  font-size: 2.1rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.avatar-empty-preview p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.avatar-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.avatar-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 8, 4, 0.62);
+  backdrop-filter: blur(5px);
+}
+
+.avatar-editor-box {
+  position: relative;
+  width: min(92vw, 460px);
+  background: #fffaf2;
+  border: 1px solid rgba(212, 166, 42, 0.45);
+  border-radius: 24px;
+  padding: 1.25rem;
+  box-shadow: 0 24px 70px rgba(24, 8, 4, 0.38);
+  display: grid;
+  gap: 1rem;
+}
+
+.avatar-editor-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.avatar-editor-header h3 {
+  margin: 0;
+  color: #8b0000;
+  font-family: "Noto Serif", serif;
+  font-size: 1.35rem;
+}
+
+.avatar-editor-header p {
+  margin: 0.25rem 0 0;
+  color: #7b5738;
+  font-weight: 700;
+}
+
+.avatar-editor-close {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 166, 42, 0.35);
+  background: #4b180f;
+  color: #fff;
+  cursor: pointer;
+}
+
+.avatar-edit-frame {
+  border-radius: 50%;
+  background: #fff8ec;
+  border: 4px solid #d4a62a;
+  overflow: hidden;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-edit-frame:active {
+  cursor: grabbing;
+}
+
+.avatar-edit-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.15s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.avatar-edit-frame-large {
+  width: 280px;
+  height: 280px;
+  margin: 0 auto;
+  box-shadow: 0 14px 30px rgba(58, 13, 8, 0.18);
+}
+
+.avatar-zoom-control {
+  display: grid;
+  gap: 0.4rem;
+  color: #5d3924;
+  font-weight: 800;
+}
+
+.avatar-zoom-control input {
+  width: 100%;
+}
+
+.avatar-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.avatar-apply-button {
+  background: #4b180f;
+  color: #fff;
+}
+
+.avatar-apply-button:hover {
+  background: #6b2418;
+}
+
+@media (max-width: 640px) {
+  .avatar-picker-row {
+    grid-template-columns: 1fr;
+  }
+
+  .avatar-click-preview {
+    margin: 0 auto;
+  }
+
+  .avatar-editor-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .avatar-edit-frame-large {
+    width: 230px;
+    height: 230px;
+  }
+}
