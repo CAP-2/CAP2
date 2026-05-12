@@ -104,7 +104,7 @@ export default function ProfileDrawer({
       return;
     }
 
-    if (avatarPreview) {
+    if (avatarPreview && avatarPreview.startsWith("blob:")) {
       URL.revokeObjectURL(avatarPreview);
     }
 
@@ -131,9 +131,9 @@ export default function ProfileDrawer({
     });
   };
 
-  const createCroppedAvatarFile = () =>
+  const drawCroppedAvatarToCanvas = () =>
     new Promise((resolve, reject) => {
-      if (!avatarPreview || !avatarFile) {
+      if (!avatarPreview) {
         resolve(null);
         return;
       }
@@ -157,36 +157,33 @@ export default function ProfileDrawer({
         ctx.fillStyle = "#fff8ec";
         ctx.fillRect(0, 0, size, size);
 
-        const scale = Math.max(size / image.width, size / image.height) * avatarZoom;
+        /*
+          Dùng contain thay vì cover để ảnh không bị mất khung.
+          Math.min giúp ảnh nằm trọn trong khung tròn.
+          Khi kéo thanh thu phóng, avatarZoom mới phóng to ảnh.
+        */
+        const baseScale = Math.min(size / image.width, size / image.height);
+        const scale = baseScale * avatarZoom;
+
         const drawWidth = image.width * scale;
         const drawHeight = image.height * scale;
 
         const focusX = avatarPosition.x / 100;
         const focusY = avatarPosition.y / 100;
 
-        const drawX = size / 2 - drawWidth * focusX;
-        const drawY = size / 2 - drawHeight * focusY;
+        /*
+          Chỉ cho kéo khi ảnh lớn hơn khung.
+          Nếu ảnh nhỏ hơn khung thì tự căn giữa, không bị lệch.
+        */
+        const maxMoveX = Math.max(0, drawWidth - size);
+        const maxMoveY = Math.max(0, drawHeight - size);
+
+        const drawX = (size - drawWidth) / 2 - (focusX - 0.5) * maxMoveX;
+        const drawY = (size - drawHeight) / 2 - (focusY - 0.5) * maxMoveY;
 
         ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              reject(new Error("Không thể xử lý ảnh đã chọn."));
-              return;
-            }
-
-            const baseName = avatarFile.name?.replace(/\.[^.]+$/, "") || "avatar";
-
-            const croppedFile = new File([blob], `${baseName}-avatar.jpg`, {
-              type: "image/jpeg",
-            });
-
-            resolve(croppedFile);
-          },
-          "image/jpeg",
-          0.9,
-        );
+        resolve(canvas);
       };
 
       image.onerror = () => {
@@ -195,6 +192,82 @@ export default function ProfileDrawer({
 
       image.src = avatarPreview;
     });
+
+  const createCroppedAvatarDataUrl = async () => {
+    const canvas = await drawCroppedAvatarToCanvas();
+
+    if (!canvas) {
+      return "";
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.9);
+  };
+
+  const createCroppedAvatarFile = async () => {
+    if (!avatarPreview || !avatarFile) {
+      return null;
+    }
+
+    const canvas = await drawCroppedAvatarToCanvas();
+
+    if (!canvas) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Không thể xử lý ảnh đã chọn."));
+            return;
+          }
+
+          const baseName = avatarFile.name?.replace(/\.[^.]+$/, "") || "avatar";
+
+          const croppedFile = new File([blob], `${baseName}-avatar.jpg`, {
+            type: "image/jpeg",
+          });
+
+          resolve(croppedFile);
+        },
+        "image/jpeg",
+        0.9,
+      );
+    });
+  };
+
+  const handleApplyAvatarEdit = async () => {
+    setMessage("");
+
+    try {
+      const croppedDataUrl = await createCroppedAvatarDataUrl();
+
+      if (!croppedDataUrl) {
+        setMessage("Không có ảnh để áp dụng.");
+        return;
+      }
+
+      if (avatarPreview && avatarPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+
+      setAvatarPreview(croppedDataUrl);
+      setAvatarFile(null);
+
+      setContentForm((prev) => ({
+        ...prev,
+        avatar_url: croppedDataUrl,
+        avatar_media_id: null,
+      }));
+
+      setAvatarZoom(1);
+      setAvatarPosition({ x: 50, y: 50 });
+      setAvatarEditorOpen(false);
+      setMessage("Đã áp dụng khung ảnh. Bấm “Gửi duyệt ảnh và tiểu sử” để lưu.");
+    } catch (error) {
+      setMessage(error?.message || "Không thể áp dụng chỉnh sửa ảnh.");
+    }
+  };
 
   const loadProfile = async () => {
     setLoading(true);
@@ -260,7 +333,7 @@ export default function ProfileDrawer({
   useEffect(() => {
     if (open) return undefined;
 
-    if (avatarPreview) {
+    if (avatarPreview && avatarPreview.startsWith("blob:")) {
       URL.revokeObjectURL(avatarPreview);
     }
 
@@ -430,7 +503,14 @@ export default function ProfileDrawer({
         avatar_media_id: nextAvatarMediaId,
       }));
 
-      if (avatarPreview) {
+      setProfile((prev) => ({
+        ...prev,
+        pending_avatar_url: nextAvatarUrl,
+        pending_avatar_media_id: nextAvatarMediaId,
+        pending_bio: contentForm.bio,
+      }));
+
+      if (avatarPreview && avatarPreview.startsWith("blob:")) {
         URL.revokeObjectURL(avatarPreview);
       }
 
@@ -502,7 +582,11 @@ export default function ProfileDrawer({
           <div className="profile-drawer-user">
             <div className="profile-drawer-avatar">
               {avatarUrl ? (
-                <img src={avatarUrl} alt="" />
+                <span
+                  className="profile-drawer-avatar-bg"
+                  style={{ backgroundImage: `url(${avatarUrl})` }}
+                  aria-label="Ảnh đại diện"
+                />
               ) : (
                 <span className="material-symbols-outlined">person</span>
               )}
@@ -645,18 +729,20 @@ export default function ProfileDrawer({
                 title="Bấm để chỉnh sửa ảnh"
               >
                 {avatarPreview ? (
-                  <img
-                    src={avatarPreview}
-                    alt="Ảnh đại diện đã chọn"
-                    style={{
-                      transform: `scale(${avatarZoom})`,
-                      transformOrigin: `${avatarPosition.x}% ${avatarPosition.y}%`,
-                    }}
+                  <span
+                    className="avatar-preview-bg"
+                    style={{ backgroundImage: `url(${avatarPreview})` }}
+                    aria-label="Ảnh đại diện đã chọn"
                   />
                 ) : contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url ? (
-                  <img
-                    src={contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url}
-                    alt="Ảnh đại diện hiện tại"
+                  <span
+                    className="avatar-preview-bg"
+                    style={{
+                      backgroundImage: `url(${
+                        contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url
+                      })`,
+                    }}
+                    aria-label="Ảnh đại diện hiện tại"
                   />
                 ) : (
                   <div className="avatar-empty-preview">
@@ -699,7 +785,7 @@ export default function ProfileDrawer({
                     type="button"
                     className="avatar-remove-button"
                     onClick={() => {
-                      if (avatarPreview) {
+                      if (avatarPreview && avatarPreview.startsWith("blob:")) {
                         URL.revokeObjectURL(avatarPreview);
                       }
 
@@ -708,6 +794,12 @@ export default function ProfileDrawer({
                       setAvatarZoom(1);
                       setAvatarPosition({ x: 50, y: 50 });
                       setAvatarEditorOpen(false);
+
+                      setContentForm((prev) => ({
+                        ...prev,
+                        avatar_url: "",
+                        avatar_media_id: null,
+                      }));
                     }}
                   >
                     Xóa ảnh đã chọn
@@ -746,12 +838,23 @@ export default function ProfileDrawer({
 
                   <div
                     className="avatar-edit-frame avatar-edit-frame-large"
+                    onMouseDown={handleAvatarDrag}
                     onMouseMove={(event) => {
                       if (event.buttons === 1) {
                         handleAvatarDrag(event);
                       }
                     }}
-                    onClick={handleAvatarDrag}
+                    onTouchMove={(event) => {
+                      const touch = event.touches?.[0];
+
+                      if (!touch) return;
+
+                      handleAvatarDrag({
+                        currentTarget: event.currentTarget,
+                        clientX: touch.clientX,
+                        clientY: touch.clientY,
+                      });
+                    }}
                   >
                     {avatarPreview ? (
                       <img
@@ -796,7 +899,7 @@ export default function ProfileDrawer({
                     <button
                       type="button"
                       className="avatar-apply-button"
-                      onClick={() => setAvatarEditorOpen(false)}
+                      onClick={handleApplyAvatarEdit}
                     >
                       <span className="material-symbols-outlined">check</span>
                       Áp dụng

@@ -37,6 +37,7 @@
     opacity: 0;
     transform: translateX(34px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateX(0) scale(1);
@@ -66,24 +67,43 @@
   min-width: 0;
 }
 
+/* Avatar nhỏ trên header */
 .profile-drawer-avatar {
-  width: 62px;
-  height: 62px;
+  width: 68px;
+  height: 68px;
+  min-width: 68px;
+  min-height: 68px;
+  max-width: 68px;
+  max-height: 68px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f8e9ad 0%, #d6a536 45%, #7f2b17 100%);
+  background: #fff8ec;
   border: 3px solid rgba(255, 241, 190, 0.95);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
   overflow: hidden;
+  position: relative;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.profile-drawer-avatar-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain;
+  background-color: #fff8ec;
+  border-radius: 50%;
 }
 
 .profile-drawer-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
+  display: none;
 }
 
 .profile-drawer-avatar .material-symbols-outlined {
@@ -273,148 +293,10 @@
   filter: none;
 }
 
-@media (max-width: 680px) {
-  .profile-drawer-layer {
-    padding: 10px;
-  }
+/* ================================
+   AVATAR UPLOAD / PREVIEW
+================================ */
 
-  .profile-drawer-panel {
-    width: calc(100vw - 20px);
-    height: calc(100vh - 20px);
-    border-radius: 24px;
-  }
-
-  .profile-drawer-top {
-    border-radius: 24px 24px 18px 18px;
-  }
-
-  .profile-drawer-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Unified circular profile avatar. */
-.profile-drawer-avatar,
-.profile-drawer-avatar img {
-  border-radius: 50% !important;
-}
-
-.avatar-upload-field {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.avatar-upload-field > span {
-  color: #4d2418;
-  font-weight: 800;
-}
-
-.avatar-edit-row {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 1rem;
-  align-items: center;
-}
-
-.avatar-edit-frame {
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background: #fff8ec;
-  border: 4px solid #d4a62a;
-  box-shadow: 0 10px 24px rgba(58, 13, 8, 0.16);
-  overflow: hidden;
-  cursor: grab;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.avatar-edit-frame:active {
-  cursor: grabbing;
-}
-
-.avatar-edit-frame img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.15s ease;
-  user-select: none;
-  pointer-events: none;
-}
-
-.avatar-empty-preview {
-  text-align: center;
-  color: #8a6842;
-  font-weight: 800;
-}
-
-.avatar-empty-preview .material-symbols-outlined {
-  font-size: 2.3rem;
-  display: block;
-  margin-bottom: 0.35rem;
-}
-
-.avatar-empty-preview p {
-  margin: 0;
-}
-
-.avatar-edit-actions {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.avatar-choose-button,
-.avatar-remove-button {
-  min-height: 44px;
-  border-radius: 14px;
-  border: 1px solid rgba(212, 166, 42, 0.45);
-  background: #fff7df;
-  color: #5a1f14;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  cursor: pointer;
-}
-
-.avatar-choose-button:hover,
-.avatar-remove-button:hover {
-  background: #ffeebe;
-}
-
-.avatar-remove-button {
-  background: #fff2f0;
-  color: #8b0000;
-}
-
-.avatar-zoom-control {
-  display: grid;
-  gap: 0.35rem;
-  color: #5d3924;
-  font-weight: 800;
-}
-
-.avatar-zoom-control input {
-  width: 100%;
-}
-
-.avatar-edit-actions small {
-  color: #7b5738;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-@media (max-width: 640px) {
-  .avatar-edit-row {
-    grid-template-columns: 1fr;
-  }
-
-  .avatar-edit-frame {
-    margin: 0 auto;
-  }
-}
 .avatar-upload-field {
   display: grid;
   gap: 0.85rem;
@@ -432,26 +314,44 @@
   align-items: center;
 }
 
+/* Avatar preview bên dưới */
 .avatar-click-preview {
-  width: 124px;
-  height: 124px;
-  border-radius: 50%;
-  border: 4px solid #d4a62a;
-  background: #fff8ec;
-  overflow: hidden;
-  cursor: pointer;
-  position: relative;
+  width: 132px;
+  height: 132px;
+  min-width: 132px;
+  min-height: 132px;
+  max-width: 132px;
+  max-height: 132px;
   padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  display: block;
+  background: #fff8ec;
+  border: 5px solid #d6a528;
+  box-sizing: border-box;
+  cursor: pointer;
   box-shadow: 0 10px 24px rgba(58, 13, 8, 0.16);
 }
 
-.avatar-click-preview img {
+/* Không dùng img cho preview nữa, dùng background để không lệch */
+.avatar-preview-bg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  transition: transform 0.15s ease;
-  user-select: none;
-  pointer-events: none;
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain;
+  background-color: #fff8ec;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.avatar-click-preview img {
+  display: none;
 }
 
 .avatar-click-preview:hover .avatar-edit-hint {
@@ -460,22 +360,23 @@
 
 .avatar-edit-hint {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 34px;
-  height: 34px;
+  right: 4px;
+  bottom: 4px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: #4b180f;
-  color: #fff;
-  border: 2px solid #fff6e7;
-  opacity: 0.95;
-  box-shadow: 0 6px 14px rgba(58, 13, 8, 0.25);
+  background: #5b1f12;
+  color: #fff8ec;
+  border: 3px solid #fff8ec;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  box-shadow: 0 6px 14px rgba(60, 18, 10, 0.25);
 }
 
 .avatar-edit-hint .material-symbols-outlined {
-  font-size: 1.15rem;
+  font-size: 20px;
 }
 
 .avatar-picker-actions {
@@ -524,10 +425,15 @@
 }
 
 .avatar-empty-preview {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
   text-align: center;
   color: #8a6842;
   font-weight: 800;
-  width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .avatar-empty-preview .material-symbols-outlined {
@@ -541,10 +447,14 @@
   font-size: 0.82rem;
 }
 
+/* ================================
+   AVATAR EDITOR MODAL
+================================ */
+
 .avatar-editor-modal {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 999999;
   display: grid;
   place-items: center;
   padding: 1.5rem;
@@ -567,6 +477,7 @@
   box-shadow: 0 24px 70px rgba(24, 8, 4, 0.38);
   display: grid;
   gap: 1rem;
+  z-index: 2;
 }
 
 .avatar-editor-header {
@@ -598,6 +509,7 @@
   cursor: pointer;
 }
 
+/* Khung chỉnh ảnh */
 .avatar-edit-frame {
   border-radius: 50%;
   background: #fff8ec;
@@ -607,6 +519,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
+  user-select: none;
 }
 
 .avatar-edit-frame:active {
@@ -616,10 +530,12 @@
 .avatar-edit-frame img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
   transition: transform 0.15s ease;
   user-select: none;
   pointer-events: none;
+  display: block;
 }
 
 .avatar-edit-frame-large {
@@ -647,12 +563,37 @@
 }
 
 .avatar-apply-button {
-  background: #4b180f;
-  color: #fff;
+  background: linear-gradient(180deg, #5b1f12 0%, #3b1209 100%);
+  color: #fffaf2;
 }
 
 .avatar-apply-button:hover {
-  background: #6b2418;
+  background: linear-gradient(180deg, #7b2a18 0%, #4a170d 100%);
+  transform: translateY(-1px);
+}
+
+/* ================================
+   RESPONSIVE
+================================ */
+
+@media (max-width: 680px) {
+  .profile-drawer-layer {
+    padding: 10px;
+  }
+
+  .profile-drawer-panel {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 20px);
+    border-radius: 24px;
+  }
+
+  .profile-drawer-top {
+    border-radius: 24px 24px 18px 18px;
+  }
+
+  .profile-drawer-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
