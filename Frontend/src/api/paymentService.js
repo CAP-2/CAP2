@@ -46,3 +46,13 @@ export const getPaymentStatus = (orderCode) => {
     "Không thể kiểm tra trạng thái thanh toán"
   );
 };
+
+export const cancelPendingPayment = (paymentId) => {
+  return request(
+    `/${paymentId}/cancel`,
+    {
+      method: "PATCH",
+    },
+    "Không thể hủy giao dịch chờ thanh toán"
+  );
+};

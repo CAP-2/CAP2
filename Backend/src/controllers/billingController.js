@@ -1,6 +1,25 @@
 const db = require('../config/db');
 const { getClanBillingStatus } = require('../services/billingService');
 
+function getSepayQrUrl({ amount, orderCode }) {
+  const bankBin = process.env.SEPAY_BANK_BIN;
+  const bankAccount = process.env.SEPAY_BANK_ACCOUNT;
+  const accountName = process.env.SEPAY_ACCOUNT_NAME || '';
+  const template = process.env.SEPAY_QR_TEMPLATE || 'compact2';
+
+  if (!bankBin || !bankAccount || !orderCode) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    amount: String(amount || 0),
+    addInfo: orderCode,
+    accountName,
+  });
+
+  return `https://img.vietqr.io/image/${bankBin}-${bankAccount}-${template}.png?${params.toString()}`;
+}
+
 async function getPlans(req, res) {
   try {
     const [plans] = await db.query(
@@ -144,36 +163,71 @@ async function getClanPayments(req, res) {
       });
     }
 
-    const [payments] = await db.query(
+    await db.query(
       `
-      SELECT
-        pay.id,
-        pay.clan_id,
-        pay.plan_id,
-        pl.code AS plan_code,
-        pl.name AS plan_name,
-        pay.payer_account_id,
-        payer.email AS payer_email,
-        pay.provider,
-        pay.order_code,
-        pay.amount_vnd,
-        pay.status,
-        pay.paid_at,
-        pay.created_at,
-        pay.updated_at
-      FROM payments pay
-      LEFT JOIN plans pl ON pl.id = pay.plan_id
-      LEFT JOIN accounts payer ON payer.id = pay.payer_account_id
-      WHERE pay.clan_id = ?
-      ORDER BY COALESCE(pay.paid_at, pay.created_at) DESC, pay.id DESC
+      UPDATE payments
+      SET status = 'cancelled'
+      WHERE clan_id = ?
+        AND status = 'pending'
+        AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
       `,
       [clanId]
     );
 
-    return res.json({
-      success: true,
-      payments,
-    });
+    const [payments] = await db.query(
+  `
+  SELECT
+    pay.id,
+    pay.clan_id,
+    pay.plan_id,
+    pl.code AS plan_code,
+    pl.name AS plan_name,
+    pay.payer_account_id,
+    payer.email AS payer_email,
+    pay.provider,
+    pay.order_code,
+    pay.amount_vnd,
+    pay.status,
+    pay.paid_at,
+    pay.created_at,
+    pay.updated_at
+  FROM payments pay
+  LEFT JOIN plans pl ON pl.id = pay.plan_id
+  LEFT JOIN accounts payer ON payer.id = pay.payer_account_id
+  WHERE pay.clan_id = ?
+  ORDER BY COALESCE(pay.paid_at, pay.created_at) DESC, pay.id DESC
+  `,
+  [clanId]
+);
+
+const paymentsWithQr = payments.map((payment) => {
+  const status = String(payment.status || '').toLowerCase();
+  const provider = String(payment.provider || '').toLowerCase();
+
+  const canGenerateQr =
+    provider === 'sepay' &&
+    status === 'pending' &&
+    payment.order_code;
+
+  return {
+    ...payment,
+    transfer_content: payment.order_code,
+    qr_url: canGenerateQr
+      ? getSepayQrUrl({
+          amount: payment.amount_vnd,
+          orderCode: payment.order_code,
+        })
+      : null,
+    bank_bin: canGenerateQr ? process.env.SEPAY_BANK_BIN || null : null,
+    bank_account: canGenerateQr ? process.env.SEPAY_BANK_ACCOUNT || null : null,
+    account_name: canGenerateQr ? process.env.SEPAY_ACCOUNT_NAME || null : null,
+  };
+});
+
+return res.json({
+  success: true,
+  payments: paymentsWithQr,
+});
   } catch (error) {
     console.error('getClanPayments error:', error);
 

@@ -11,6 +11,7 @@ import { getAdminClans } from "../../api/adminService";
 import {
   createSepayPayment,
   getPaymentStatus,
+  cancelPendingPayment,
 } from "../../api/paymentService";
 import "./BillingPage.css";
 
@@ -154,9 +155,74 @@ export default function BillingPage() {
   const [message, setMessage] = useState("");
   const [paymentDialog, setPaymentDialog] = useState(null);
   const [paymentChecking, setPaymentChecking] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentActionLoading, setPaymentActionLoading] = useState(false);
 
   const currentRole = getCurrentUserRole();
   const isAdmin = currentRole === "admin";
+  const planRank = {
+  FREE: 0,
+  BASIC: 1,
+  PRO: 2,
+  PLUS: 3,
+};
+
+const normalizePlanCode = (planCode) => {
+  return String(planCode || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+};
+
+const getPlanRank = (planCode) => {
+  return planRank[normalizePlanCode(planCode)] ?? 0;
+};
+
+const isBillingActive =
+  billing?.status === "active" &&
+  billing?.expires_at &&
+  new Date(billing.expires_at) > new Date();
+
+const currentPlanRank = getPlanRank(billing?.plan_code);
+
+const activePendingPayment = payments.find((payment) => {
+  return String(payment.status || "").toLowerCase() === "pending";
+});
+
+const isPaymentExpired = (payment) => {
+  return String(payment?.status || "").toLowerCase() === "cancelled";
+};
+
+const isPlanDowngrade = (planCode) => {
+  return isBillingActive && getPlanRank(planCode) < currentPlanRank;
+};
+
+const getPaymentStatusText = (payment) => {
+  const status = String(payment?.status || "pending").toLowerCase();
+
+  if (status === "paid") {
+    return "Giao dịch đã thanh toán, không thể thanh toán lại.";
+  }
+
+  if (status === "pending") {
+    if (isPaymentExpired(payment)) {
+      return "Giao dịch đã quá 24 giờ, hệ thống sẽ tự hủy.";
+    }
+
+    if (isPlanDowngrade(payment.plan_code)) {
+      return "Không thể thanh toán gói thấp hơn khi gói hiện tại vẫn còn hiệu lực.";
+    }
+
+    return "Có thể tiếp tục thanh toán giao dịch này.";
+  }
+
+  if (status === "cancelled") {
+  return "Giao dịch đã bị hủy hoặc đã quá hạn, không thể thanh toán tiếp.";
+}
+
+return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
+};
 
   const loadBillingForClan = async (targetClanId) => {
     if (!targetClanId) {
@@ -246,6 +312,7 @@ export default function BillingPage() {
 
     setClanId(nextClanId);
     setPaymentDialog(null);
+    setSelectedPayment(null);
 
     await loadBillingForClan(nextClanId);
   };
@@ -253,6 +320,20 @@ export default function BillingPage() {
   const handleCreateSepayPayment = async (plan) => {
     try {
       setMessage("");
+      if (activePendingPayment) {
+        setSelectedPayment(activePendingPayment);
+        setMessage(
+          "Bạn đang có giao dịch chờ thanh toán. Vui lòng thanh toán hoặc hủy giao dịch đó trước khi tạo giao dịch mới."
+        );
+        return;
+      }
+
+      if (isPlanDowngrade(plan.code)) {
+        setMessage(
+          "Không thể mua gói thấp hơn khi gói hiện tại vẫn còn hiệu lực."
+        );
+        return;
+      }
 
       const payload = isAdmin
         ? {
@@ -322,7 +403,82 @@ export default function BillingPage() {
       setPaymentChecking(false);
     }
   };
+  
+  const handleCancelPendingPayment = async (payment) => {
+  if (!payment?.id) {
+    return;
+  }
 
+  const ok = window.confirm("Bạn có chắc muốn hủy giao dịch này không?");
+
+  if (!ok) {
+    return;
+  }
+
+  try {
+    setPaymentActionLoading(true);
+    setMessage("");
+
+    await cancelPendingPayment(payment.id);
+
+    setSelectedPayment(null);
+    setPaymentDialog(null);
+
+    await loadBillingForClan(clanId);
+
+    setMessage("Đã hủy giao dịch chờ thanh toán.");
+  } catch (error) {
+    setMessage(error.message || "Không thể hủy giao dịch.");
+  } finally {
+    setPaymentActionLoading(false);
+  }
+};
+
+const handlePaySelectedPayment = (payment) => {
+  if (!payment) {
+    return;
+  }
+
+  const status = String(payment.status || "").toLowerCase();
+
+  if (status === "paid") {
+    setMessage("Giao dịch này đã được thanh toán, không thể thanh toán lại.");
+    return;
+  }
+
+  if (status !== "pending") {
+    setMessage("Chỉ giao dịch đang chờ thanh toán mới có thể tiếp tục thanh toán.");
+    return;
+  }
+
+  if (isPaymentExpired(payment)) {
+    setMessage(
+      "Giao dịch đã quá 24 giờ. Vui lòng tải lại trang để hệ thống cập nhật trạng thái."
+    );
+    return;
+  }
+
+  if (isPlanDowngrade(payment.plan_code)) {
+    setMessage("Không thể thanh toán gói thấp hơn khi gói hiện tại vẫn còn hiệu lực.");
+    return;
+  }
+
+  setPaymentDialog({
+    plan: {
+      name: payment.plan_name || payment.plan_code || "Không rõ",
+      code: payment.plan_code,
+    },
+    orderCode: payment.order_code,
+    amountVnd: payment.amount_vnd,
+    transferContent:
+      payment.transfer_content || `Thanh toan ${payment.order_code}`,
+    qrUrl: payment.qr_url,
+    bankBin: payment.bank_bin,
+    bankAccount: payment.bank_account,
+    accountName: payment.account_name,
+    status: payment.status || "pending",
+  });
+};
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -386,12 +542,6 @@ export default function BillingPage() {
         </section>
       )}
 
-      {message && (
-        <section className={`billing-alert ${message.includes("thành công") || message.includes("Đã nâng cấp") ? "billing-alert--success" : "billing-alert--error"}`}>
-          <span className="material-symbols-outlined">{message.includes("thành công") || message.includes("Đã nâng cấp") ? "check_circle" : "error"}</span>
-          <div>{message}</div>
-        </section>
-      )}
 
       {billingLoading && (
         <section className="billing-alert billing-alert--loading">
@@ -401,80 +551,244 @@ export default function BillingPage() {
       )}
 
       {billing && (
-        <section className="billing-overview-grid">
-          <article className="billing-card billing-current-card">
-            <div className="billing-card-head">
-              <div>
-                <span className="billing-kicker">Gói hiện tại</span>
-                <h2>{billing.plan_name}</h2>
-              </div>
-              <span className="billing-status-badge">{billing.status}</span>
-            </div>
+  <section className="billing-overview-grid">
+    <article className="billing-card billing-current-card">
+      <div className="billing-card-head">
+        <div>
+          <span className="billing-kicker">Gói hiện tại</span>
+          <h2>{billing.plan_name}</h2>
+        </div>
+        <span className="billing-status-badge">{billing.status}</span>
+      </div>
 
-            <div className="billing-info-list">
-              <div><span>Clan ID</span><strong>#{clanId}</strong></div>
-              <div><span>Ngày hết hạn</span><strong>{billing.expires_at ? formatDateVN(billing.expires_at) : "Không giới hạn"}</strong></div>
-            </div>
+      <div className="billing-info-list">
+        <div>
+          <span>Clan ID</span>
+          <strong>#{clanId}</strong>
+        </div>
+        <div>
+          <span>Ngày hết hạn</span>
+          <strong>
+            {billing.expires_at
+              ? formatDateVN(billing.expires_at)
+              : "Không giới hạn"}
+          </strong>
+        </div>
+      </div>
 
-            <div className="billing-usage-block">
-              <div className="billing-usage-title">
-                <span>Hồ sơ gia phả</span>
-                <strong>{billing.current_people} / {billing.person_limit}</strong>
-              </div>
-              <div className="billing-progress"><span style={{ width: `${usagePeoplePercent}%` }} /></div>
-            </div>
+      <div className="billing-usage-block">
+        <div className="billing-usage-title">
+          <span>Hồ sơ gia phả</span>
+          <strong>
+            {billing.current_people} / {billing.person_limit}
+          </strong>
+        </div>
+        <div className="billing-progress">
+          <span style={{ width: `${usagePeoplePercent}%` }} />
+        </div>
+      </div>
 
-            <div className="billing-usage-block">
-              <div className="billing-usage-title">
-                <span>Tài khoản đăng nhập</span>
-                <strong>{billing.current_accounts} / {billing.account_limit}</strong>
-              </div>
-              <div className="billing-progress"><span style={{ width: `${usageAccountsPercent}%` }} /></div>
-            </div>
+      <div className="billing-usage-block">
+        <div className="billing-usage-title">
+          <span>Tài khoản đăng nhập</span>
+          <strong>
+            {billing.current_accounts} / {billing.account_limit}
+          </strong>
+        </div>
+        <div className="billing-progress">
+          <span style={{ width: `${usageAccountsPercent}%` }} />
+        </div>
+      </div>
 
-            {(billing.is_person_limit_reached || billing.is_account_limit_reached) && (
-              <div className="billing-limit-warning">
-                <span className="material-symbols-outlined">warning</span>
-                <span>Dòng họ đã đạt một số giới hạn của gói hiện tại. Hãy nâng cấp để tiếp tục mở rộng.</span>
-              </div>
-            )}
-          </article>
-
-          <article className="billing-card billing-history-card">
-            <div className="billing-card-head">
-              <div>
-                <span className="billing-kicker">Thanh toán</span>
-                <h2>Lịch sử nâng cấp</h2>
-              </div>
-              <span className="billing-count-pill">{payments.length} giao dịch</span>
-            </div>
-
-            {payments.length === 0 ? (
-              <div className="billing-empty-state">
-                <span className="material-symbols-outlined">receipt_long</span>
-                <p>Chưa có giao dịch nào.</p>
-              </div>
-            ) : (
-              <div className="billing-payment-list">
-                {payments.map((payment) => (
-                  <div className="billing-payment-row" key={payment.id}>
-                    <div>
-                      <strong>{payment.plan_name || payment.plan_code || "Không rõ"}</strong>
-                      <span>{payment.payer_email || "Không rõ"} · {payment.provider || "manual"}</span>
-                    </div>
-                    <div className="billing-payment-meta">
-                      <strong>{formatMoney(payment.amount_vnd)}</strong>
-                      <span>{payment.paid_at ? formatDateTimeVN(payment.paid_at) : "Chưa thanh toán"}</span>
-                    </div>
-                    <span className={`billing-payment-status is-${String(payment.status || "pending").toLowerCase()}`}>{payment.status}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-        </section>
+      {(billing.is_person_limit_reached || billing.is_account_limit_reached) && (
+        <div className="billing-limit-warning">
+          <span className="material-symbols-outlined">warning</span>
+          <span>
+            Dòng họ đã đạt một số giới hạn của gói hiện tại. Hãy nâng cấp để
+            tiếp tục mở rộng.
+          </span>
+        </div>
       )}
+    </article>
 
+    <article className="billing-card billing-history-card">
+      <div className="billing-card-head">
+        <div>
+          <span className="billing-kicker">Thanh toán</span>
+          <h2>Lịch sử nâng cấp</h2>
+        </div>
+        <span className="billing-count-pill">{payments.length} giao dịch</span>
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="billing-empty-state">
+          <span className="material-symbols-outlined">receipt_long</span>
+          <p>Chưa có giao dịch nào.</p>
+        </div>
+      ) : (
+        <div className="billing-payment-list">
+          {payments.map((payment) => (
+            <div
+              className="billing-payment-row"
+              key={payment.id}
+              onClick={() => setSelectedPayment(payment)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedPayment(payment);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div>
+                <strong>
+                  {payment.plan_name || payment.plan_code || "Không rõ"}
+                </strong>
+                <span>
+                  {payment.payer_email || "Không rõ"} ·{" "}
+                  {payment.provider || "manual"}
+                </span>
+              </div>
+
+              <div className="billing-payment-meta">
+                <strong>{formatMoney(payment.amount_vnd)}</strong>
+                <span>
+                  {payment.paid_at
+                    ? formatDateTimeVN(payment.paid_at)
+                    : "Chưa thanh toán"}
+                </span>
+              </div>
+
+              <span
+                className={`billing-payment-status is-${String(
+                  payment.status || "pending"
+                ).toLowerCase()}`}
+              >
+                {payment.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  </section>
+)}
+
+{selectedPayment && (
+  <section className="billing-card billing-transaction-detail">
+    <div className="billing-card-head">
+      <div>
+        <span className="billing-kicker">Chi tiết giao dịch</span>
+        <h2>
+          {selectedPayment.plan_name ||
+            selectedPayment.plan_code ||
+            "Không rõ"}
+        </h2>
+      </div>
+
+      <button
+        type="button"
+        className="billing-secondary-btn"
+        onClick={() => setSelectedPayment(null)}
+      >
+        Đóng
+      </button>
+    </div>
+
+    <div className="billing-info-list is-payment">
+      <div>
+        <span>Mã giao dịch</span>
+        <strong>{selectedPayment.order_code || selectedPayment.id}</strong>
+      </div>
+
+      <div>
+        <span>Gói</span>
+        <strong>
+          {selectedPayment.plan_name ||
+            selectedPayment.plan_code ||
+            "Không rõ"}
+        </strong>
+      </div>
+
+      <div>
+        <span>Số tiền</span>
+        <strong>{formatMoney(selectedPayment.amount_vnd)}</strong>
+      </div>
+
+      <div>
+        <span>Trạng thái</span>
+        <strong>{selectedPayment.status || "pending"}</strong>
+      </div>
+
+      <div>
+        <span>Ngày tạo</span>
+        <strong>
+          {selectedPayment.created_at
+            ? formatDateTimeVN(selectedPayment.created_at)
+            : "Không rõ"}
+        </strong>
+      </div>
+
+      <div>
+        <span>Ngày thanh toán</span>
+        <strong>
+          {selectedPayment.paid_at
+            ? formatDateTimeVN(selectedPayment.paid_at)
+            : "Chưa thanh toán"}
+        </strong>
+      </div>
+
+      <div>
+        <span>Email thanh toán</span>
+        <strong>{selectedPayment.payer_email || "Không rõ"}</strong>
+      </div>
+
+      <div>
+        <span>Nhà cung cấp</span>
+        <strong>{selectedPayment.provider || "manual"}</strong>
+      </div>
+    </div>
+
+    <div className="billing-transaction-note">
+      {getPaymentStatusText(selectedPayment)}
+    </div>
+
+    <div className="billing-actions-row">
+      <button
+        type="button"
+        className="billing-primary-btn"
+        disabled={
+          paymentActionLoading ||
+          String(selectedPayment.status || "").toLowerCase() !== "pending" ||
+          isPaymentExpired(selectedPayment) ||
+          isPlanDowngrade(selectedPayment.plan_code)
+        }
+        onClick={() => handlePaySelectedPayment(selectedPayment)}
+      >
+        {String(selectedPayment.status || "").toLowerCase() === "paid"
+          ? "Đã thanh toán"
+          : isPaymentExpired(selectedPayment)
+            ? "Giao dịch đã hủy"
+            : isPlanDowngrade(selectedPayment.plan_code)
+              ? "Không thể thanh toán gói thấp hơn"
+              : "Thanh toán giao dịch này"}
+      </button>
+
+      {String(selectedPayment.status || "").toLowerCase() === "pending" &&
+        !isPaymentExpired(selectedPayment) && (
+          <button
+            type="button"
+            className="billing-danger-btn"
+            disabled={paymentActionLoading}
+            onClick={() => handleCancelPendingPayment(selectedPayment)}
+          >
+            {paymentActionLoading ? "Đang xử lý..." : "Hủy giao dịch"}
+          </button>
+        )}
+    </div>
+  </section>
+)}
       {paymentDialog && (
         <section className="billing-card billing-payment-dialog">
           <div className="billing-card-head">
@@ -512,16 +826,33 @@ export default function BillingPage() {
           </div>
         </section>
       )}
+      {message && (
+        <section
+          className={`billing-alert ${
+            message.includes("thành công") || message.includes("Đã nâng cấp")
+              ? "billing-alert--success"
+              : "billing-alert--error"
+          }`}
+        >
+          <span className="material-symbols-outlined">
+            {message.includes("thành công") || message.includes("Đã nâng cấp")
+              ? "check_circle"
+              : "error"}
+          </span>
+          <div>{message}</div>
+        </section>
+      )}
 
       <section className="billing-plans-section">
-        <div className="billing-section-title">
-          <span className="billing-kicker">Danh sách gói</span>
-          <h2>Chọn gói phù hợp với quy mô dòng họ</h2>
-        </div>
-
+  <div className="billing-section-title">
+    <span className="billing-kicker">Danh sách gói</span>
+    <h2>Chọn gói phù hợp với quy mô dòng họ</h2>
+  </div>
         <div className="billing-plan-grid">
           {plans.map((plan) => {
             const isCurrent = billing?.plan_code === plan.code;
+            const isDowngrade = isPlanDowngrade(plan.code);
+            const hasActivePending = Boolean(activePendingPayment);
             const isFeatured = String(plan.code || "").toLowerCase().includes("pro") || String(plan.name || "").toLowerCase().includes("pro");
 
             return (
@@ -561,8 +892,17 @@ export default function BillingPage() {
                     Nâng cấp thử nghiệm
                   </button>
                 ) : (
-                  <button type="button" className="billing-primary-btn" onClick={() => handleCreateSepayPayment(plan)}>
-                    Nâng cấp ngay
+                  <button
+                    type="button"
+                    className="billing-primary-btn"
+                    disabled={hasActivePending || isDowngrade}
+                    onClick={() => handleCreateSepayPayment(plan)}
+                  >
+                    {hasActivePending
+                      ? "Đang có giao dịch chờ"
+                      : isDowngrade
+                        ? "Không thể hạ gói"
+                        : "Nâng cấp ngay"}
                   </button>
                 )}
               </article>
