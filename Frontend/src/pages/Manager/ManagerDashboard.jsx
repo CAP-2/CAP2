@@ -30,42 +30,50 @@ export default function ManagerDashboard() {
   const [error, setError] = useState("");
 
   const formatMoney = (value) =>
-  new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
+    new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0));
 
   const loadDashboard = useCallback(async () => {
-  setLoading(true);
-  setError("");
+    setLoading(true);
+    setError("");
 
-  try {
-    const [data, memberData, fundData, transactionData, treeData] =
-      await Promise.all([
-        getDashboardData(),
-        getMembers().catch(() => ({ members: [] })),
-        getFundOverviewAPI().catch(() => null),
-        getFundTransactionsAPI().catch(() => ({ transactions: [] })),
-        Promise.resolve({ families: [] }),
-      ]);
+    try {
+      const [data, memberData, fundData, transactionData, treeData] =
+        await Promise.all([
+          getDashboardData(),
+          getMembers().catch(() => ({ members: [] })),
+          getFundOverviewAPI().catch(() => null),
+          getFundTransactionsAPI().catch(() => ({ transactions: [] })),
+          getManagerTree().catch(() => ({ treeMembers: [], families: [] })),
+        ]);
 
-    setStats(data.stats || {});
-    setPendingUsers(data.pendingUsers || []);
-    setPendingPosts(data.pendingPosts || []);
-    setPendingProfiles(data.pendingProfiles || []);
-    setTasks(data.tasks || []);
+      setStats(data.stats || {});
+      setPendingUsers(data.pendingUsers || []);
+      setPendingPosts(data.pendingPosts || []);
+      setPendingProfiles(data.pendingProfiles || []);
+      setTasks(data.tasks || []);
 
-    setMembers(Array.isArray(memberData) ? memberData : memberData?.members || []);
-    setFundOverview(fundData?.overview || fundData || null);
-    setFundTransactions(transactionData?.transactions || []);
-    setFamilies(treeData?.families || []);
-  } catch (err) {
-    setError(err?.message || "Không thể tải dữ liệu tổng quan");
-  } finally {
-    setLoading(false);
-  }
-}, []);
+      const loadedMembers = Array.isArray(memberData)
+        ? memberData
+        : memberData?.members || [];
+
+      const treeMembers = Array.isArray(treeData?.treeMembers)
+        ? treeData.treeMembers
+        : [];
+
+      setMembers(treeMembers.length > 0 ? treeMembers : loadedMembers);
+      setFundOverview(fundData?.overview || fundData || null);
+      setFundTransactions(transactionData?.transactions || []);
+      setFamilies(treeData?.families || []);
+    } catch (err) {
+      setError(err?.message || "Không thể tải dữ liệu tổng quan");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -75,73 +83,102 @@ export default function ManagerDashboard() {
     () => tasks.filter((task) => task.status !== "completed").length,
     [tasks]
   );
-  const totalPending = pendingUsers.length + pendingPosts.length + pendingProfiles.length;
+
+  const totalPending =
+    pendingUsers.length + pendingPosts.length + pendingProfiles.length;
 
   const statCards = [
-    { icon: "group", label: "Thành viên dòng họ", value: stats.total_members || 0, color: "#8b0000" },
-    { icon: "pending_actions", label: "Đang chờ duyệt", value: totalPending, color: "#c99a2c" },
-    { icon: "account_balance_wallet", label: "Tổng tiền trong quỹ", value: formatMoney( fundOverview?.balance ||fundOverview?.current_balance ||fundOverview?.total || 0 ), color: "#2c5f2d", },
-    { icon: "assignment", label: "Nhiệm vụ active", value: activeTasks, color: "#2c3e50" },
+    {
+      icon: "group",
+      label: "Thành viên dòng họ",
+      value: stats.total_members || 0,
+      color: "#8b0000",
+    },
+    {
+      icon: "pending_actions",
+      label: "Đang chờ duyệt",
+      value: totalPending,
+      color: "#c99a2c",
+    },
+    {
+      icon: "account_balance_wallet",
+      label: "Tổng tiền trong quỹ",
+      value: formatMoney(
+        fundOverview?.balance ||
+          fundOverview?.current_balance ||
+          fundOverview?.total ||
+          0
+      ),
+      color: "#2c5f2d",
+    },
+    {
+      icon: "assignment",
+      label: "Nhiệm vụ active",
+      value: activeTasks,
+      color: "#2c3e50",
+    },
   ];
 
   return (
     <div className="manager-dashboard">
-      <div className="welcome-banner section-card">
-        <h2>Chào mừng trở lại, {currentUser?.name || currentUser?.display_name || "Manager"}!</h2>
-        <p>Hôm nay có {totalPending} yêu cầu cần xử lý từ dữ liệu trong hệ thống.</p>
-        <button type="button" className="small-action-btn" onClick={loadDashboard} disabled={loading}>
-          Tải lại
-        </button>
-      </div>
+      <div className="welcome-banner section-card welcome-banner-compact">
+  <div className="welcome-left">
+    <span className="welcome-icon material-symbols-outlined">
+      waving_hand
+    </span>
+
+    <div>
+      <h2>
+        Chào mừng trở lại,{" "}
+        {currentUser?.name || currentUser?.display_name || "Manager"}!
+      </h2>
+
+      <p>
+        Hôm nay có <strong>{totalPending}</strong> yêu cầu cần xử lý từ dữ liệu
+        trong hệ thống.
+      </p>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    className="small-action-btn welcome-reload-btn"
+    onClick={loadDashboard}
+    disabled={loading}
+  >
+    <span className="material-symbols-outlined">refresh</span>
+    Tải lại
+  </button>
+</div>
 
       {error && <div className="section-card error-alert">{error}</div>}
 
       <div className="stats-grid-dashboard">
-  {statCards.map((stat) => (
-    <div
-      key={stat.label}
-      className="stat-card"
-      style={{ borderLeftColor: stat.color }}
-    >
-      <div className="stat-icon" style={{ backgroundColor: stat.color }}>
-        <span className="material-symbols-outlined">{stat.icon}</span>
+        {statCards.map((stat) => (
+          <div
+            key={stat.label}
+            className="stat-card"
+            style={{ borderLeftColor: stat.color }}
+          >
+            <div className="stat-icon" style={{ backgroundColor: stat.color }}>
+              <span className="material-symbols-outlined">{stat.icon}</span>
+            </div>
+
+            <div className="stat-content">
+              <h3>{loading ? "..." : stat.value}</h3>
+              <p>{stat.label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="stat-content">
-        <h3>{loading ? "..." : stat.value}</h3>
-        <p>{stat.label}</p>
-      </div>
-    </div>
-  ))}
-</div>
-
-<ManagerDashboardCharts
-  members={members}
-  families={families}
-  fundTransactions={fundTransactions}
-  loading={loading}
-/>
-
-      <div className="dashboard-sections dashboard-sections-single">
-  <div className="section-card">
-    <h2>Phân công công việc</h2>
-
-    <div className="quick-stats">
-      {tasks.slice(0, 5).map((task) => (
-        <div className="quick-stat-item" key={task.id}>
-          <span>{task.title}</span>
-          <strong className={`status-badge ${task.status}`}>
-            {task.status}
-          </strong>
-        </div>
-      ))}
-
-      {!loading && tasks.length === 0 && (
-        <div className="activity-item">Chưa có công việc nào.</div>
-      )}
-    </div>
-  </div>
-</div>
+      <ManagerDashboardCharts
+        members={members}
+        families={families}
+        fundTransactions={fundTransactions}
+        tasks={tasks}
+        loading={loading}
+      />
     </div>
   );
 }

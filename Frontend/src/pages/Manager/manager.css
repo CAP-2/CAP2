@@ -1780,3 +1780,1428 @@ select.mgr-search.mgr-selectMulti {
   content: "☾ ";
   color: #c28a2c;
 }
+/* ================================
+   MANAGER DASHBOARD COMPACT CSS
+   Dán cuối file CSS của Manager
+================================ */
+
+/* Tổng thể dashboard */
+.manager-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+}
+
+/* Card trắng chung */
+.manager-dashboard .section-card {
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.98);
+  box-shadow: 0 8px 22px rgba(65, 25, 15, 0.14);
+  border: 1px solid rgba(214, 169, 93, 0.22);
+}
+
+/* 1. Khối chào mừng: đẩy lên, gọn lại, không dính 4 ô stats */
+.manager-dashboard .welcome-banner {
+  padding: 18px 22px;
+  margin-bottom: 2px;
+  min-height: unset;
+}
+
+.manager-dashboard .welcome-banner h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.25;
+  color: #8b0000;
+}
+
+.manager-dashboard .welcome-banner p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #4f2d20;
+}
+
+.manager-dashboard .small-action-btn {
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 4 ô thống kê: nằm giữa, có khoảng cách rõ */
+.manager-dashboard .stats-grid-dashboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 2px;
+}
+
+.manager-dashboard .stat-card {
+  min-height: 72px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.98);
+  overflow: hidden;
+}
+
+.manager-dashboard .stat-icon {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.manager-dashboard .stat-icon .material-symbols-outlined {
+  font-size: 26px;
+  color: #fff;
+}
+
+.manager-dashboard .stat-content h3 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  line-height: 1;
+  color: #2d140e;
+}
+
+.manager-dashboard .stat-content p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5c3829;
+}
+
+/* 2. Layout biểu đồ: gọn lại để nhìn được trong 1 trang */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+/* Card biểu đồ chung */
+.manager-dashboard .chart-card {
+  padding: 18px 20px;
+  min-height: unset;
+  overflow: hidden;
+}
+
+.manager-dashboard .chart-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.manager-dashboard .chart-title-row h2 {
+  margin: 0 0 4px;
+  font-size: 21px;
+  line-height: 1.15;
+  color: #9b0000;
+}
+
+.manager-dashboard .chart-title-row p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6d3c26;
+}
+
+.manager-dashboard .chart-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #fff5d9;
+  border: 1px solid #e5bd58;
+  color: #b37b00;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Thành viên theo giới tính */
+.manager-dashboard .gender-chart-card {
+  min-height: 260px;
+}
+
+.manager-dashboard .gender-chart-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 12px;
+}
+
+.manager-dashboard .gender-chart-card .recharts-responsive-container {
+  height: 220px !important;
+}
+
+.manager-dashboard .gender-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manager-dashboard .gender-summary-item {
+  min-height: 58px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #efd8ad;
+  background: #fff8ea;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.manager-dashboard .gender-summary-item > span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  min-width: 12px;
+}
+
+.manager-dashboard .gender-summary-item strong {
+  font-size: 20px;
+  line-height: 1;
+  color: #9b0000;
+}
+
+.manager-dashboard .gender-summary-item p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4e2a1c;
+}
+
+/* Gia đình theo quý */
+.manager-dashboard .family-chart-card {
+  min-height: 260px;
+}
+
+.manager-dashboard .family-chart-card .recharts-responsive-container {
+  height: 220px !important;
+}
+
+/* Thu chi nhỏ lại 1 nửa và nằm cùng hàng với phân công */
+.manager-dashboard .finance-quarter-card {
+  grid-column: auto;
+  min-height: 260px;
+}
+
+.manager-dashboard .finance-quarter-card .recharts-responsive-container {
+  height: 215px !important;
+}
+
+/* Phân công công việc đẩy lên cùng hàng với thu chi */
+.manager-dashboard .manager-task-card {
+  grid-column: auto;
+  min-height: 260px;
+}
+
+.manager-dashboard .manager-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 205px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.manager-dashboard .quick-stat-item {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fbf2e4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manager-dashboard .quick-stat-item span {
+  font-size: 14px;
+  font-weight: 700;
+  color: #3d2118;
+}
+
+.manager-dashboard .status-badge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #ffe8a6;
+  color: #9b6a00;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.manager-dashboard .chart-empty,
+.manager-dashboard .activity-item {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #7b5d46;
+  font-weight: 700;
+}
+
+/* Giảm khoảng trắng mặc định của biểu đồ recharts */
+.manager-dashboard .recharts-wrapper {
+  margin: 0 auto;
+}
+
+.manager-dashboard .recharts-legend-wrapper {
+  font-size: 13px;
+}
+
+/* Responsive tablet */
+@media (max-width: 1200px) {
+  .manager-dashboard .stats-grid-dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manager-dashboard .dashboard-chart-area,
+  .manager-dashboard .dashboard-chart-area-clean {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-dashboard .finance-quarter-card,
+  .manager-dashboard .manager-task-card {
+    grid-column: auto;
+  }
+}
+
+/* Responsive mobile */
+@media (max-width: 768px) {
+  .manager-dashboard {
+    gap: 12px;
+  }
+
+  .manager-dashboard .welcome-banner {
+    padding: 16px;
+  }
+
+  .manager-dashboard .welcome-banner h2 {
+    font-size: 19px;
+  }
+
+  .manager-dashboard .stats-grid-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-dashboard .stat-card {
+    min-height: 68px;
+  }
+
+  .manager-dashboard .chart-card {
+    padding: 16px;
+  }
+
+  .manager-dashboard .chart-title-row h2 {
+    font-size: 18px;
+  }
+
+  .manager-dashboard .gender-chart-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-dashboard .gender-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* =====================================================
+   FIX MANAGER DASHBOARD LAYOUT LẦN 2
+   Ép Thu/Chi nhỏ 1/2 + Phân công lên cùng hàng
+   Dán cuối cùng file CSS
+===================================================== */
+
+/* Ép toàn bộ khu biểu đồ thành 2 cột cố định */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 16px !important;
+  align-items: start !important;
+}
+
+/* Hàng 1: giới tính bên trái */
+.manager-dashboard .gender-chart-card {
+  grid-column: 1 / 2 !important;
+  grid-row: 1 !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+}
+
+/* Hàng 1: gia đình bên phải */
+.manager-dashboard .family-chart-card {
+  grid-column: 2 / 3 !important;
+  grid-row: 1 !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+}
+
+/* Hàng 2 bên trái: Thu / Chi, chỉ chiếm nửa hàng */
+.manager-dashboard .finance-quarter-card {
+  grid-column: 1 / 2 !important;
+  grid-row: 2 !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+}
+
+/* Hàng 2 bên phải: Phân công công việc, nằm ngang hàng Thu / Chi */
+.manager-dashboard .manager-task-card {
+  grid-column: 2 / 3 !important;
+  grid-row: 2 !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+}
+
+/* Card biểu đồ gọn hơn */
+.manager-dashboard .chart-card {
+  padding: 16px 18px !important;
+  overflow: hidden !important;
+}
+
+/* Tiêu đề gọn lại */
+.manager-dashboard .chart-title-row {
+  margin-bottom: 6px !important;
+}
+
+.manager-dashboard .chart-title-row h2 {
+  font-size: 20px !important;
+  margin-bottom: 3px !important;
+}
+
+.manager-dashboard .chart-title-row p {
+  font-size: 12.5px !important;
+}
+
+/* Sửa biểu đồ giới tính bị to và mất không gian */
+.manager-dashboard .gender-chart-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 140px !important;
+  gap: 8px !important;
+  align-items: center !important;
+}
+
+/* Thu nhỏ vùng biểu đồ tròn */
+.manager-dashboard .gender-chart-card .recharts-responsive-container {
+  height: 210px !important;
+  max-height: 210px !important;
+}
+
+/* Thu nhỏ 2 ô Nam/Nữ */
+.manager-dashboard .gender-summary {
+  gap: 8px !important;
+}
+
+.manager-dashboard .gender-summary-item {
+  min-height: 52px !important;
+  padding: 8px 10px !important;
+  border-radius: 12px !important;
+}
+
+.manager-dashboard .gender-summary-item strong {
+  font-size: 18px !important;
+}
+
+.manager-dashboard .gender-summary-item p {
+  font-size: 12px !important;
+}
+
+/* Thu nhỏ biểu đồ gia đình */
+.manager-dashboard .family-chart-card .recharts-responsive-container {
+  height: 210px !important;
+  max-height: 210px !important;
+}
+
+/* Thu nhỏ biểu đồ thu chi */
+.manager-dashboard .finance-quarter-card .recharts-responsive-container {
+  height: 210px !important;
+  max-height: 210px !important;
+}
+
+/* Danh sách phân công gọn lại */
+.manager-dashboard .manager-task-list {
+  max-height: 220px !important;
+  overflow-y: auto !important;
+  gap: 8px !important;
+}
+
+.manager-dashboard .quick-stat-item {
+  min-height: 40px !important;
+  padding: 9px 12px !important;
+}
+
+.manager-dashboard .quick-stat-item span {
+  font-size: 13px !important;
+}
+
+.manager-dashboard .status-badge {
+  font-size: 10px !important;
+  padding: 5px 9px !important;
+}
+
+/* Fix nếu CSS cũ đang ép Thu/Chi full width */
+.manager-dashboard .finance-quarter-card,
+.manager-dashboard .manager-task-card {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Tablet thì mới xuống 1 cột */
+@media (max-width: 1100px) {
+  .manager-dashboard .dashboard-chart-area,
+  .manager-dashboard .dashboard-chart-area-clean {
+    grid-template-columns: 1fr !important;
+  }
+
+  .manager-dashboard .gender-chart-card,
+  .manager-dashboard .family-chart-card,
+  .manager-dashboard .finance-quarter-card,
+  .manager-dashboard .manager-task-card {
+    grid-column: 1 / 2 !important;
+    grid-row: auto !important;
+    max-height: none !important;
+  }
+}
+.manager-dashboard .section-card,
+.manager-dashboard .stat-card {
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.manager-dashboard .section-card:hover,
+.manager-dashboard .stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(68, 20, 10, 0.24);
+  border-color: rgba(212, 166, 42, 0.48);
+}
+.manager-dashboard .stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.manager-dashboard .stat-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 220, 140, 0.28),
+    transparent
+  );
+  transform: skewX(-18deg);
+  transition: left 0.55s ease;
+}
+
+.manager-dashboard .stat-card:hover::after {
+  left: 120%;
+}
+.manager-dashboard .stat-card:hover .stat-icon {
+  animation: statIconPulse 0.55s ease;
+}
+
+@keyframes statIconPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.12) rotate(-3deg);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+.manager-dashboard .quick-stat-item {
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.manager-dashboard .quick-stat-item:hover {
+  transform: translateX(4px);
+  background: #fff2d6;
+  box-shadow: 0 6px 14px rgba(91, 42, 20, 0.14);
+}
+.manager-dashboard .welcome-banner,
+.manager-dashboard .stat-card,
+.manager-dashboard .chart-card {
+  animation: dashboardFadeUp 0.38s ease both;
+}
+
+.manager-dashboard .stat-card:nth-child(1) {
+  animation-delay: 0.04s;
+}
+
+.manager-dashboard .stat-card:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.manager-dashboard .stat-card:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.manager-dashboard .stat-card:nth-child(4) {
+  animation-delay: 0.16s;
+}
+
+@keyframes dashboardFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* =====================================================
+   MANAGER DASHBOARD COMPACT TOP LAYOUT
+   Dán cuối cùng file CSS để ghi đè các CSS trước
+===================================================== */
+
+/* Toàn bộ vùng nội dung manager gọn lại */
+.manager-dashboard {
+  gap: 10px !important;
+  padding-top: 0 !important;
+}
+
+/* Header "Hệ thống quản trị Gia Phả" gọn lại */
+.manager-main-header,
+.manager-header,
+.manager-topbar,
+.admin-header {
+  min-height: 70px !important;
+  height: 70px !important;
+  padding: 12px 28px !important;
+  margin-bottom: 12px !important;
+  border-radius: 18px !important;
+}
+
+.manager-main-header h1,
+.manager-header h1,
+.manager-topbar h1,
+.admin-header h1 {
+  font-size: 28px !important;
+  line-height: 1.15 !important;
+  margin: 0 0 6px !important;
+}
+
+.manager-main-header p,
+.manager-header p,
+.manager-topbar p,
+.admin-header p {
+  font-size: 14px !important;
+  margin: 0 !important;
+}
+
+/* 3 icon góc phải nhỏ hơn */
+.manager-main-header button,
+.manager-header button,
+.manager-topbar button,
+.admin-header button {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  border-radius: 14px !important;
+}
+
+/* Ô chào mừng gọn lại, không chiếm nhiều chiều cao */
+.manager-dashboard .welcome-banner {
+  min-height: 92px !important;
+  padding: 16px 22px !important;
+  margin-bottom: 6px !important;
+  border-radius: 18px !important;
+}
+
+.manager-dashboard .welcome-banner h2 {
+  font-size: 22px !important;
+  line-height: 1.15 !important;
+  margin: 0 0 6px !important;
+}
+
+.manager-dashboard .welcome-banner p {
+  font-size: 14px !important;
+  margin: 0 0 10px !important;
+}
+
+.manager-dashboard .welcome-banner .small-action-btn {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 5px 13px !important;
+  font-size: 12.5px !important;
+}
+
+/* Đẩy 4 ô thống kê lên và làm nhỏ hơn */
+.manager-dashboard .stats-grid-dashboard {
+  gap: 12px !important;
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;
+}
+
+.manager-dashboard .stat-card {
+  min-height: 68px !important;
+  height: 68px !important;
+  padding: 12px 16px !important;
+  border-radius: 16px !important;
+}
+
+.manager-dashboard .stat-icon {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  border-radius: 12px !important;
+}
+
+.manager-dashboard .stat-icon .material-symbols-outlined {
+  font-size: 24px !important;
+}
+
+.manager-dashboard .stat-content h3 {
+  font-size: 24px !important;
+  margin-bottom: 3px !important;
+}
+
+.manager-dashboard .stat-content p {
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+
+/* 4 biểu đồ gọn lại để nhìn được nhiều hơn trong 1 màn */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  gap: 12px !important;
+  align-items: start !important;
+}
+
+/* Card biểu đồ nhỏ hơn, mềm hơn */
+.manager-dashboard .chart-card {
+  padding: 15px 18px !important;
+  border-radius: 18px !important;
+  box-shadow: 0 8px 22px rgba(65, 25, 15, 0.14) !important;
+}
+
+/* Hàng tiêu đề biểu đồ gọn lại */
+.manager-dashboard .chart-title-row {
+  margin-bottom: 4px !important;
+}
+
+.manager-dashboard .chart-title-row h2 {
+  font-size: 21px !important;
+  line-height: 1.05 !important;
+  margin: 0 0 4px !important;
+}
+
+.manager-dashboard .chart-title-row p {
+  font-size: 12.5px !important;
+  line-height: 1.15 !important;
+}
+
+/* Card giới tính thấp hơn */
+.manager-dashboard .gender-chart-card {
+  min-height: 255px !important;
+  max-height: 255px !important;
+}
+
+.manager-dashboard .gender-chart-layout {
+  grid-template-columns: minmax(0, 1fr) 130px !important;
+  gap: 4px !important;
+}
+
+/* Vùng biểu đồ tròn thấp hơn */
+.manager-dashboard .gender-chart-card .recharts-responsive-container {
+  height: 170px !important;
+  max-height: 170px !important;
+}
+
+/* Kéo biểu đồ tròn lên một chút */
+.manager-dashboard .gender-chart-card .recharts-wrapper {
+  transform: translateY(-4px) scale(0.94) !important;
+  transform-origin: center center !important;
+}
+
+/* Nam/Nữ gọn hơn */
+.manager-dashboard .gender-summary {
+  gap: 7px !important;
+}
+
+.manager-dashboard .gender-summary-item {
+  min-height: 45px !important;
+  padding: 7px 9px !important;
+  border-radius: 12px !important;
+}
+
+.manager-dashboard .gender-summary-item strong {
+  font-size: 17px !important;
+}
+
+.manager-dashboard .gender-summary-item p {
+  font-size: 11.5px !important;
+  margin-top: 2px !important;
+}
+
+/* Card gia đình thấp hơn */
+.manager-dashboard .family-chart-card {
+  min-height: 255px !important;
+  max-height: 255px !important;
+}
+
+.manager-dashboard .family-chart-card .recharts-responsive-container {
+  height: 178px !important;
+  max-height: 178px !important;
+}
+
+/* Thu/Chi và phân công nằm cùng hàng, nhỏ hơn */
+.manager-dashboard .finance-quarter-card,
+.manager-dashboard .manager-task-card {
+  min-height: 250px !important;
+  max-height: 250px !important;
+}
+
+.manager-dashboard .finance-quarter-card .recharts-responsive-container {
+  height: 175px !important;
+  max-height: 175px !important;
+}
+
+/* Danh sách công việc gọn hơn */
+.manager-dashboard .manager-task-list {
+  max-height: 178px !important;
+  gap: 7px !important;
+  overflow-y: auto !important;
+}
+
+.manager-dashboard .quick-stat-item {
+  min-height: 36px !important;
+  padding: 8px 12px !important;
+  border-radius: 11px !important;
+}
+
+.manager-dashboard .quick-stat-item span {
+  font-size: 13px !important;
+}
+
+.manager-dashboard .status-badge {
+  padding: 4px 9px !important;
+  font-size: 10px !important;
+}
+
+/* Làm scrollbar phân công đẹp hơn */
+.manager-dashboard .manager-task-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.manager-dashboard .manager-task-list::-webkit-scrollbar-track {
+  background: rgba(236, 217, 188, 0.45);
+  border-radius: 999px;
+}
+
+.manager-dashboard .manager-task-list::-webkit-scrollbar-thumb {
+  background: rgba(150, 78, 43, 0.45);
+  border-radius: 999px;
+}
+
+/* Mobile/tablet giữ dễ nhìn */
+@media (max-width: 1100px) {
+  .manager-dashboard .gender-chart-card,
+  .manager-dashboard .family-chart-card,
+  .manager-dashboard .finance-quarter-card,
+  .manager-dashboard .manager-task-card {
+    min-height: auto !important;
+    max-height: none !important;
+  }
+}
+.manager-dashboard .section-card,
+.manager-dashboard .stat-card {
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.manager-dashboard .section-card:hover,
+.manager-dashboard .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(70, 22, 12, 0.22) !important;
+  border-color: rgba(212, 166, 42, 0.45) !important;
+}
+
+.manager-dashboard .stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.manager-dashboard .stat-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 42%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 218, 132, 0.26),
+    transparent
+  );
+  transform: skewX(-18deg);
+  transition: left 0.55s ease;
+}
+
+.manager-dashboard .stat-card:hover::after {
+  left: 120%;
+}
+/* =====================================================
+   WELCOME BANNER COMPACT - THANH CHÀO MỪNG MỎNG
+   Dán cuối cùng file CSS
+===================================================== */
+
+.manager-dashboard .welcome-banner-compact {
+  min-height: 68px !important;
+  height: 68px !important;
+  padding: 12px 18px !important;
+  margin-bottom: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 252, 247, 0.98),
+      rgba(255, 247, 231, 0.96)
+    ) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Vệt trang trí nhẹ bên phải banner */
+.manager-dashboard .welcome-banner-compact::after {
+  content: "";
+  position: absolute;
+  right: -36px;
+  top: -48px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(212, 166, 42, 0.14);
+  pointer-events: none;
+}
+
+.manager-dashboard .welcome-left {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.manager-dashboard .welcome-icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #9b0000, #c99a2c);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 8px 18px rgba(139, 0, 0, 0.18);
+}
+
+.manager-dashboard .welcome-banner-compact h2 {
+  margin: 0 0 4px !important;
+  font-size: 20px !important;
+  line-height: 1.1 !important;
+  color: #8b0000 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.manager-dashboard .welcome-banner-compact p {
+  margin: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+  color: #5f3828 !important;
+}
+
+.manager-dashboard .welcome-banner-compact p strong {
+  color: #9b0000;
+  font-weight: 900;
+}
+
+.manager-dashboard .welcome-reload-btn {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.manager-dashboard .welcome-reload-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* Đẩy cụm 4 ô thống kê sát lên sau banner */
+.manager-dashboard .stats-grid-dashboard {
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+/* Làm 4 ô thống kê gọn thêm một chút */
+.manager-dashboard .stat-card {
+  height: 64px !important;
+  min-height: 64px !important;
+  padding: 10px 15px !important;
+}
+
+.manager-dashboard .stat-icon {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+}
+
+.manager-dashboard .stat-content h3 {
+  font-size: 22px !important;
+}
+
+.manager-dashboard .stat-content p {
+  font-size: 12.5px !important;
+}
+
+/* Kéo toàn bộ chart lên thêm */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  margin-top: 0 !important;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .manager-dashboard .welcome-banner-compact {
+    height: auto !important;
+    min-height: 78px !important;
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .manager-dashboard .welcome-banner-compact h2 {
+    white-space: normal;
+    font-size: 18px !important;
+  }
+
+  .manager-dashboard .welcome-reload-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+/* Header trên cùng gọn hơn nữa */
+.manager-main-header,
+.manager-header,
+.manager-topbar,
+.admin-header {
+  min-height: 62px !important;
+  height: 62px !important;
+  padding: 10px 24px !important;
+  margin-bottom: 10px !important;
+}
+
+.manager-main-header h1,
+.manager-header h1,
+.manager-topbar h1,
+.admin-header h1 {
+  font-size: 26px !important;
+  margin-bottom: 4px !important;
+}
+
+.manager-main-header p,
+.manager-header p,
+.manager-topbar p,
+.admin-header p {
+  font-size: 13px !important;
+}
+
+.manager-main-header button,
+.manager-header button,
+.manager-topbar button,
+.admin-header button {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+}
+/* =====================================================
+   FIX DASHBOARD GAP + FIX CHART BỊ CẮT DƯỚI
+   Dán cuối cùng file CSS
+===================================================== */
+
+/* Kéo phần nội dung dashboard lên sát header */
+.manager-dashboard {
+  margin-top: -8px !important;
+  padding-top: 0 !important;
+  gap: 8px !important;
+}
+
+/* Giảm khoảng cách dưới header quản trị */
+.manager-main-header,
+.manager-header,
+.manager-topbar,
+.admin-header {
+  margin-bottom: 6px !important;
+}
+
+/* Nếu wrapper content/layout có padding top thì ép nhỏ lại */
+.manager-content,
+.manager-main-content,
+.manager-page-content,
+.manager-layout-content,
+.admin-content,
+.admin-main-content {
+  padding-top: 6px !important;
+}
+
+/* Banner chào mừng sát header hơn */
+.manager-dashboard .welcome-banner-compact,
+.manager-dashboard .welcome-banner {
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+}
+
+/* 4 ô thống kê sát banner hơn */
+.manager-dashboard .stats-grid-dashboard {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;
+}
+
+/* Khu biểu đồ không cách quá xa */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  margin-top: 0 !important;
+  gap: 12px !important;
+  align-items: start !important;
+}
+
+/* Quan trọng: không cắt nội dung biểu đồ nữa */
+.manager-dashboard .chart-card {
+  overflow: visible !important;
+}
+
+/* ================================
+   FIX Ô THÀNH VIÊN THEO GIỚI TÍNH
+================================ */
+
+.manager-dashboard .gender-chart-card {
+  min-height: 285px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.manager-dashboard .gender-chart-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 135px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 205px !important;
+}
+
+/* Không để biểu đồ tròn bị mất phần dưới */
+.manager-dashboard .gender-chart-card .recharts-responsive-container {
+  height: 205px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.manager-dashboard .gender-chart-card .recharts-wrapper {
+  transform: translateY(-4px) scale(0.88) !important;
+  transform-origin: center center !important;
+  overflow: visible !important;
+}
+
+/* Legend Nam/Nữ không bị cắt */
+.manager-dashboard .gender-chart-card .recharts-legend-wrapper {
+  bottom: -2px !important;
+  font-size: 12px !important;
+}
+
+/* Ô Nam/Nữ bên phải gọn */
+.manager-dashboard .gender-summary {
+  gap: 8px !important;
+}
+
+.manager-dashboard .gender-summary-item {
+  min-height: 48px !important;
+  padding: 8px 10px !important;
+}
+
+/* ================================
+   FIX Ô GIA ĐÌNH THEO QUÝ
+================================ */
+
+.manager-dashboard .family-chart-card {
+  min-height: 285px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.manager-dashboard .family-chart-card .recharts-responsive-container {
+  height: 210px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.manager-dashboard .family-chart-card .recharts-wrapper {
+  overflow: visible !important;
+}
+
+/* Để chữ Quý 2/2026 không bị mất */
+.manager-dashboard .family-chart-card .recharts-cartesian-axis-tick text {
+  font-size: 12px !important;
+}
+
+/* ================================
+   FIX THU CHI + PHÂN CÔNG
+================================ */
+
+.manager-dashboard .finance-quarter-card,
+.manager-dashboard .manager-task-card {
+  min-height: 270px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.manager-dashboard .finance-quarter-card .recharts-responsive-container {
+  height: 205px !important;
+  max-height: none !important;
+}
+
+.manager-dashboard .manager-task-list {
+  max-height: 195px !important;
+  overflow-y: auto !important;
+}
+
+/* Giảm tiêu đề các card để có thêm chỗ cho biểu đồ */
+.manager-dashboard .chart-title-row {
+  margin-bottom: 4px !important;
+}
+
+.manager-dashboard .chart-title-row h2 {
+  font-size: 20px !important;
+  line-height: 1.1 !important;
+}
+
+.manager-dashboard .chart-title-row p {
+  font-size: 12.5px !important;
+  line-height: 1.15 !important;
+}
+/* =====================================================
+   KÉO Ô CHÀO MỪNG LÊN SÁT HEADER
+   Dán cuối cùng file CSS
+===================================================== */
+
+/* Giảm khoảng cách dưới header */
+.manager-main-header,
+.manager-header,
+.manager-topbar,
+.admin-header {
+  margin-bottom: 0 !important;
+}
+
+/* Kéo toàn bộ dashboard lên */
+.manager-dashboard {
+  margin-top: -18px !important;
+  padding-top: 0 !important;
+}
+
+/* Riêng banner chào mừng kéo lên sát header */
+.manager-dashboard .welcome-banner-compact,
+.manager-dashboard .welcome-banner {
+  margin-top: -8px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Nếu layout cha vẫn tạo khoảng hở thì ép tiếp */
+.manager-content,
+.manager-main-content,
+.manager-page-content,
+.manager-layout-content,
+.admin-content,
+.admin-main-content {
+  padding-top: 0 !important;
+}
+/* Sidebar gọn hơn một chút */
+.manager-sidebar {
+  border-radius: 24px !important;
+}
+
+.manager-sidebar .logo,
+.manager-sidebar-logo {
+  margin-top: 8px !important;
+  margin-bottom: 22px !important;
+}
+
+.manager-sidebar .user-card,
+.manager-profile-card {
+  padding: 16px !important;
+  min-height: 92px !important;
+}
+
+.manager-sidebar nav,
+.manager-sidebar-menu {
+  gap: 8px !important;
+}
+
+.manager-sidebar nav a,
+.manager-sidebar-menu a,
+.manager-sidebar .menu-item {
+  min-height: 48px !important;
+  padding: 12px 18px !important;
+}
+/* =====================================================
+   FIX THU/CHI + PHÂN CÔNG BỊ LỆCH HÀNG
+   Dán cuối cùng file CSS
+===================================================== */
+
+/* Grid 2 cột căn theo hàng */
+.manager-dashboard .dashboard-chart-area,
+.manager-dashboard .dashboard-chart-area-clean {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 14px !important;
+  align-items: stretch !important;
+}
+
+/* Ép vị trí 4 ô */
+.manager-dashboard .gender-chart-card {
+  grid-column: 1 / 2 !important;
+  grid-row: 1 !important;
+}
+
+.manager-dashboard .family-chart-card {
+  grid-column: 2 / 3 !important;
+  grid-row: 1 !important;
+}
+
+.manager-dashboard .finance-quarter-card {
+  grid-column: 1 / 2 !important;
+  grid-row: 2 !important;
+}
+
+.manager-dashboard .manager-task-card {
+  grid-column: 2 / 3 !important;
+  grid-row: 2 !important;
+}
+
+/* Ép 2 ô hàng dưới cao bằng nhau */
+.manager-dashboard .finance-quarter-card,
+.manager-dashboard .manager-task-card {
+  height: 300px !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+  overflow: hidden !important;
+}
+
+/* Thu nhỏ vùng biểu đồ Thu/Chi để không đội chiều cao */
+.manager-dashboard .finance-quarter-card .recharts-responsive-container {
+  height: 205px !important;
+  max-height: 205px !important;
+}
+
+/* Giảm khoảng cách legend của Thu/Chi */
+.manager-dashboard .finance-quarter-card .recharts-legend-wrapper {
+  bottom: -4px !important;
+  font-size: 12px !important;
+}
+
+/* Phân công dùng cùng chiều cao với Thu/Chi */
+.manager-dashboard .manager-task-list {
+  max-height: 210px !important;
+  overflow-y: auto !important;
+  padding-right: 4px !important;
+}
+
+/* Item công việc gọn lại để không tràn */
+.manager-dashboard .quick-stat-item {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 7px 12px !important;
+  border-radius: 11px !important;
+}
+
+.manager-dashboard .quick-stat-item span {
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.manager-dashboard .status-badge {
+  font-size: 10px !important;
+  padding: 4px 9px !important;
+}
+
+/* Tiêu đề 2 ô hàng dưới bằng nhau */
+.manager-dashboard .finance-quarter-card .chart-title-row,
+.manager-dashboard .manager-task-card .chart-title-row {
+  height: 48px !important;
+  margin-bottom: 4px !important;
+  align-items: flex-start !important;
+}
+
+.manager-dashboard .finance-quarter-card .chart-title-row h2,
+.manager-dashboard .manager-task-card .chart-title-row h2 {
+  font-size: 20px !important;
+  line-height: 1.1 !important;
+  margin: 0 0 4px !important;
+}
+
+.manager-dashboard .finance-quarter-card .chart-title-row p,
+.manager-dashboard .manager-task-card .chart-title-row p {
+  font-size: 12.5px !important;
+  line-height: 1.1 !important;
+  margin: 0 !important;
+}
+
+/* Tablet/mobile xuống 1 cột */
+@media (max-width: 1100px) {
+  .manager-dashboard .dashboard-chart-area,
+  .manager-dashboard .dashboard-chart-area-clean {
+    grid-template-columns: 1fr !important;
+  }
+
+  .manager-dashboard .gender-chart-card,
+  .manager-dashboard .family-chart-card,
+  .manager-dashboard .finance-quarter-card,
+  .manager-dashboard .manager-task-card {
+    grid-column: 1 / 2 !important;
+    grid-row: auto !important;
+    height: auto !important;
+    min-height: 260px !important;
+    max-height: none !important;
+  }
+}

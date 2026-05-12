@@ -104,66 +104,109 @@ const buildGenderData = (members = []) => {
   }));
 };
 
+const getFamilyDate = (family) =>
+  family?.created_at ||
+  family?.createdAt ||
+  family?.marriage_date ||
+  family?.marriageDate ||
+  family?.updated_at ||
+  family?.updatedAt ||
+  family?.date;
+
+const getCurrentQuarterInfo = () => getQuarterFromDate(new Date());
+
+const normalizeId = (value) => {
+  const id = Number(value);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+
+const isMaleMember = (member) => normalizeGender(member?.gender) === "Nam";
+
 const buildFamilyQuarterData = (families = [], members = []) => {
   const map = new Map();
 
+  const memberById = new Map(
+    members
+      .map((member) => [normalizeId(member.id), member])
+      .filter(([id]) => id !== null)
+  );
+
+  const addFamilyToQuarter = (dateValue) => {
+    const quarterInfo = dateValue
+      ? getQuarterFromDate(dateValue)
+      : getCurrentQuarterInfo();
+
+    const current = map.get(quarterInfo.key) || {
+      quarter: quarterInfo.label,
+      total: 0,
+      year: quarterInfo.year,
+      quarterNumber: quarterInfo.quarter,
+    };
+
+    current.total += 1;
+    map.set(quarterInfo.key, current);
+  };
+
   if (families.length > 0) {
     families.forEach((family) => {
-      const quarterInfo = getQuarterFromDate(
-        family.created_at ||
-          family.createdAt ||
-          family.marriage_date ||
-          family.marriageDate ||
-          family.updated_at ||
-          family.updatedAt ||
-          family.date
-      );
+      const fatherId = normalizeId(family.father_id || family.fatherId);
+      const motherId = normalizeId(family.mother_id || family.motherId);
 
-      const current = map.get(quarterInfo.key) || {
-        quarter: quarterInfo.label,
-        total: 0,
-        year: quarterInfo.year,
-        quarterNumber: quarterInfo.quarter,
-      };
+      /*
+        Quy tắc tính gia đình:
+        - 1 người con trai có vợ = 1 gia đình.
+        - Đời con tiếp theo nếu cũng có vợ = thêm 1 gia đình.
+        - Vì vậy mỗi bản ghi có father_id + mother_id hợp lệ được tính là 1 gia đình.
+      */
+      if (!fatherId || !motherId) return;
 
-      current.total += 1;
-      map.set(quarterInfo.key, current);
+      const father = memberById.get(fatherId);
+
+      /*
+        Nếu tìm được thông tin người cha/chồng thì kiểm tra giới tính.
+        Nếu không tìm được vẫn cho tính, vì nhiều dữ liệu cũ có thể thiếu member trong treeMembers.
+      */
+      if (father && !isMaleMember(father)) return;
+
+      /*
+        Nếu chưa có ngày cưới/ngày tạo thì đưa vào quý hiện tại,
+        tránh hiện cột "Chưa rõ".
+      */
+      addFamilyToQuarter(getFamilyDate(family));
     });
   } else {
-    const familyMap = new Map();
+    /*
+      Trường hợp backend không trả bảng families,
+      thử tính theo spouse_id/wife_id/husband_id trong members.
+    */
+    const spousePairs = new Set();
 
     members.forEach((member) => {
-      const familyId =
-        member.family_id ||
-        member.familyId ||
-        member.father_id ||
-        member.mother_id ||
-        "unknown";
-
-      if (!familyMap.has(familyId)) {
-        familyMap.set(familyId, member);
-      }
-    });
-
-    familyMap.forEach((member) => {
-      const quarterInfo = getQuarterFromDate(
-        member.created_at ||
-          member.createdAt ||
-          member.updated_at ||
-          member.updatedAt ||
-          member.birth_date ||
-          member.birthDate
+      const memberId = normalizeId(member.id);
+      const spouseId = normalizeId(
+        member.spouse_id ||
+          member.spouseId ||
+          member.wife_id ||
+          member.wifeId ||
+          member.husband_id ||
+          member.husbandId
       );
 
-      const current = map.get(quarterInfo.key) || {
-        quarter: quarterInfo.label,
-        total: 0,
-        year: quarterInfo.year,
-        quarterNumber: quarterInfo.quarter,
-      };
+      if (!memberId || !spouseId || !isMaleMember(member)) return;
 
-      current.total += 1;
-      map.set(quarterInfo.key, current);
+      const key = [memberId, spouseId].sort((a, b) => a - b).join(":");
+      if (spousePairs.has(key)) return;
+
+      spousePairs.add(key);
+
+      addFamilyToQuarter(
+        member.marriage_date ||
+          member.marriageDate ||
+          member.created_at ||
+          member.createdAt ||
+          member.updated_at ||
+          member.updatedAt
+      );
     });
   }
 
@@ -213,14 +256,15 @@ export default function ManagerDashboardCharts({
   members = [],
   families = [],
   fundTransactions = [],
+  tasks = [],
   loading = false,
 }) {
   const genderData = useMemo(() => buildGenderData(members), [members]);
 
   const familyQuarterData = useMemo(
-  () => buildFamilyQuarterData(families, members),
-  [families, members]
-);
+    () => buildFamilyQuarterData(families, members),
+    [families, members]
+  );
 
   const financeQuarterData = useMemo(
     () => buildQuarterFinanceData(fundTransactions),
@@ -259,13 +303,13 @@ export default function ManagerDashboardCharts({
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
-                  data={genderData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={72}
-                  outerRadius={108}
-                  paddingAngle={6}
-                >
+  data={genderData}
+  dataKey="value"
+  nameKey="name"
+  innerRadius={54}
+  outerRadius={82}
+  paddingAngle={5}
+>
                   {genderData.map((entry) => (
                     <Cell
                       key={entry.name}
@@ -277,7 +321,10 @@ export default function ManagerDashboardCharts({
                 <Tooltip
                   formatter={(value, name) => {
                     const percent = totalMembersWithGender
-                      ? ((Number(value) / totalMembersWithGender) * 100).toFixed(1)
+                      ? (
+                          (Number(value) / totalMembersWithGender) *
+                          100
+                        ).toFixed(1)
                       : 0;
 
                     return [`${value} người - ${percent}%`, name];
@@ -317,139 +364,163 @@ export default function ManagerDashboardCharts({
       </div>
 
       <div className="section-card chart-card family-chart-card">
-  <div className="chart-title-row">
-  <div>
-    <h2>Gia đình theo quý</h2>
-    <p>Thống kê số gia đình theo chu kỳ 3 tháng</p>
-  </div>
+        <div className="chart-title-row">
+          <div>
+            <h2>Gia đình theo quý</h2>
+            <p>Mỗi cặp con trai đã có vợ được tính là 1 gia đình</p>
+          </div>
 
-  <span className="chart-badge">3 tháng</span>
-</div>
+          <span className="chart-badge">3 tháng</span>
+        </div>
 
-  {familyQuarterData.length === 0 ? (
-    <div className="chart-empty">Chưa có dữ liệu gia đình theo quý.</div>
-  ) : (
-    <ResponsiveContainer width="100%" height={320}>
-      <BarChart
-        data={familyQuarterData}
-        margin={{ top: 20, right: 20, left: 0, bottom: 10 }}
-        barCategoryGap="28%"
-      >
-        <CartesianGrid
-          strokeDasharray="4 4"
-          vertical={false}
-          stroke="#eadfce"
-        />
+        {familyQuarterData.length === 0 ? (
+          <div className="chart-empty">Chưa có dữ liệu gia đình theo quý.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart
+              data={familyQuarterData}
+              margin={{ top: 20, right: 20, left: 0, bottom: 10 }}
+              barCategoryGap="28%"
+            >
+              <CartesianGrid
+                strokeDasharray="4 4"
+                vertical={false}
+                stroke="#eadfce"
+              />
 
-        <XAxis
-          dataKey="quarter"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#7a684f", fontSize: 14, fontWeight: 600 }}
-        />
+              <XAxis
+                dataKey="quarter"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#7a684f", fontSize: 14, fontWeight: 600 }}
+              />
 
-        <YAxis
-          allowDecimals={false}
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#7a684f", fontSize: 14 }}
-        />
+              <YAxis
+                allowDecimals={false}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#7a684f", fontSize: 14 }}
+              />
 
-        <Tooltip
-          formatter={(value) => [`${value} gia đình`, "Số lượng"]}
-          contentStyle={{
-            borderRadius: "12px",
-            border: "1px solid #ecd9bc",
-            background: "#fffaf3",
-          }}
-        />
+              <Tooltip
+                formatter={(value) => [`${value} gia đình`, "Số lượng"]}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "1px solid #ecd9bc",
+                  background: "#fffaf3",
+                }}
+              />
 
-        <Bar
-          dataKey="total"
-          name="Số gia đình"
-          fill={FAMILY_COLOR}
-          radius={[12, 12, 0, 0]}
-          maxBarSize={68}
-        />
-         </BarChart>
-        </ResponsiveContainer>
-         )}
-    </div>
+              <Bar
+                dataKey="total"
+                name="Số gia đình"
+                fill={FAMILY_COLOR}
+                radius={[12, 12, 0, 0]}
+                maxBarSize={68}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
       <div className="section-card chart-card finance-quarter-card">
-  <div className="chart-title-row">
-    <div>
-      <h2>Thu / Chi theo quý</h2>
-      <p>Mỗi quý gồm 2 cột: tổng thu và tổng chi</p>
-    </div>
-  </div>
+        <div className="chart-title-row">
+          <div>
+            <h2>Thu / Chi theo quý</h2>
+            <p>Mỗi quý gồm 2 cột: tổng thu và tổng chi</p>
+          </div>
+        </div>
 
-  {financeQuarterData.length === 0 ? (
-    <div className="chart-empty">Chưa có dữ liệu thu chi.</div>
-  ) : (
-    <ResponsiveContainer width="100%" height={360}>
-      <BarChart
-        data={financeQuarterData}
-        margin={{ top: 20, right: 24, left: 10, bottom: 10 }}
-        barGap={10}
-        barCategoryGap="30%"
-      >
-        <CartesianGrid
-          strokeDasharray="4 4"
-          vertical={false}
-          stroke="#eadfce"
-        />
+        {financeQuarterData.length === 0 ? (
+          <div className="chart-empty">Chưa có dữ liệu thu chi.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={215}>
+            <BarChart
+              data={financeQuarterData}
+              margin={{ top: 20, right: 24, left: 10, bottom: 10 }}
+              barGap={10}
+              barCategoryGap="30%"
+            >
+              <CartesianGrid
+                strokeDasharray="4 4"
+                vertical={false}
+                stroke="#eadfce"
+              />
 
-        <XAxis
-          dataKey="quarter"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#7a684f", fontSize: 14, fontWeight: 600 }}
-        />
+              <XAxis
+                dataKey="quarter"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#7a684f", fontSize: 14, fontWeight: 600 }}
+              />
 
-        <YAxis
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#7a684f", fontSize: 14 }}
-          tickFormatter={formatShortMoney}
-        />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#7a684f", fontSize: 14 }}
+                tickFormatter={formatShortMoney}
+              />
 
-        <Tooltip
-          formatter={(value, name) => [formatMoney(value), name]}
-          contentStyle={{
-            borderRadius: "12px",
-            border: "1px solid #ecd9bc",
-            background: "#fffaf3",
-          }}
-        />
+              <Tooltip
+                formatter={(value, name) => [formatMoney(value), name]}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "1px solid #ecd9bc",
+                  background: "#fffaf3",
+                }}
+              />
 
-        <Legend
-          wrapperStyle={{
-            paddingTop: 14,
-            fontWeight: 700,
-          }}
-          iconType="circle"
-        />
+              <Legend
+                wrapperStyle={{
+                  paddingTop: 14,
+                  fontWeight: 700,
+                }}
+                iconType="circle"
+              />
 
-        <Bar
-          dataKey="income"
-          name="Thu"
-          fill={FINANCE_COLORS.income}
-          radius={[10, 10, 0, 0]}
-          maxBarSize={54}
-        />
+              <Bar
+                dataKey="income"
+                name="Thu"
+                fill={FINANCE_COLORS.income}
+                radius={[10, 10, 0, 0]}
+                maxBarSize={54}
+              />
 
-        <Bar
-          dataKey="expense"
-          name="Chi"
-          fill={FINANCE_COLORS.expense}
-          radius={[10, 10, 0, 0]}
-          maxBarSize={54}
-        />
-      </BarChart>
-    </ResponsiveContainer>
-  )}
-</div>
+              <Bar
+                dataKey="expense"
+                name="Chi"
+                fill={FINANCE_COLORS.expense}
+                radius={[10, 10, 0, 0]}
+                maxBarSize={54}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="section-card chart-card manager-task-card">
+        <div className="chart-title-row">
+          <div>
+            <h2>Phân công công việc</h2>
+            <p>Danh sách công việc đang được giao gần nhất</p>
+          </div>
+        </div>
+
+        <div className="quick-stats manager-task-list">
+          {tasks.slice(0, 5).map((task) => (
+            <div className="quick-stat-item" key={task.id}>
+              <span>{task.title}</span>
+              <strong className={`status-badge ${task.status}`}>
+                {task.status}
+              </strong>
+            </div>
+          ))}
+
+          {!loading && tasks.length === 0 && (
+            <div className="activity-item">Chưa có công việc nào.</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
