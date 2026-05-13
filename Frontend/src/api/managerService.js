@@ -5,6 +5,54 @@ const BASE_URL = "/api/manager";
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
+
+const isHistoricalRelationWarning = (error) => {
+  const data = error?.data || error?.response?.data || {};
+  return Boolean(data.requiresConfirmation || error?.requiresConfirmation) && data.level === "warning";
+};
+
+const mergeForceSaveFlag = (options = {}) => {
+  let body = {};
+  if (options.body) {
+    try {
+      body = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+    } catch (_) {
+      body = {};
+    }
+  }
+  return {
+    ...options,
+    body: JSON.stringify({
+      ...(body || {}),
+      forceSaveHistoricalRelation: true,
+    }),
+  };
+};
+
+const requestWithHistoricalConfirmation = async (endpoint, options = {}, fallbackError = "Yêu cầu API thất bại") => {
+  try {
+    return await request(endpoint, options, fallbackError);
+  } catch (error) {
+    if (!isHistoricalRelationWarning(error)) throw error;
+
+    const message =
+      error?.data?.message ||
+      error?.message ||
+      "Quan hệ này vi phạm ràng buộc huyết thống/hôn phối. Đây có thể là dữ liệu lịch sử. Bạn có chắc muốn tiếp tục lưu không?";
+
+    const ok = typeof window !== "undefined" ? window.confirm(message) : false;
+    if (!ok) {
+      const cancelError = new Error("Đã hủy lưu quan hệ sau cảnh báo vi phạm.");
+      cancelError.data = error?.data || null;
+      cancelError.status = error?.status || 409;
+      cancelError.code = "HISTORICAL_RELATION_CONFIRMATION_CANCELLED";
+      throw cancelError;
+    }
+
+    return request(endpoint, mergeForceSaveFlag(options), fallbackError);
+  }
+};
+
 const request = async (endpoint, options = {}, fallbackError = "Yêu cầu API thất bại") => {
   try {
     return await apiRequest(`${BASE_URL}${endpoint}`, options);
@@ -32,6 +80,14 @@ const request = async (endpoint, options = {}, fallbackError = "Yêu cầu API t
       error?.data?.billing ||
       error?.response?.data?.billing ||
       null;
+
+    if (
+      normalizedError.data?.level === "error" &&
+      normalizedError.data?.message &&
+      typeof window !== "undefined"
+    ) {
+      window.alert(normalizedError.data.message);
+    }
 
     throw normalizedError;
   }
@@ -133,7 +189,7 @@ export const getMemberRelations = (accountId) =>
   request(`/members/${accountId}/relations`, {}, "Không thể lấy quan hệ thành viên");
 
 export const updateMemberRelations = (accountId, body) =>
-  request(
+  requestWithHistoricalConfirmation(
     `/members/${accountId}/relations`,
     {
       method: "PUT",
@@ -146,7 +202,7 @@ export const getMemberDetail = (accountId) =>
   request(`/members/${accountId}`, {}, "Không thể lấy chi tiết thành viên");
 
 export const updateMemberByManager = (accountId, body) =>
-  request(
+  requestWithHistoricalConfirmation(
     `/members/${accountId}`,
     {
       method: "PUT",
@@ -271,7 +327,7 @@ export const getDashboardData = async () => {
 export const getMediaLibraryData = async () => asArray(await getMediaAPI());
 
 export const createPersonAPI = (data) =>
-  request(
+  requestWithHistoricalConfirmation(
     "/people",
     {
       method: "POST",
@@ -282,7 +338,7 @@ export const createPersonAPI = (data) =>
   );
 
 export const linkRelationsAPI = (data) =>
-  request(
+  requestWithHistoricalConfirmation(
     "/people/link",
     {
       method: "PATCH",
@@ -293,7 +349,7 @@ export const linkRelationsAPI = (data) =>
   );
 
 export const updatePersonAPI = (personId, data) =>
-  request(
+  requestWithHistoricalConfirmation(
     `/people/${personId}`,
     {
       method: "PATCH",

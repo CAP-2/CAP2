@@ -8,6 +8,10 @@ const {
     validateChildAgainstParents,
     validateFamilyParents,
 } = require('./familyValidationService');
+const {
+    normalizeForceFlag,
+    validateSpouseKinshipConflict,
+} = require('./kinshipValidationService');
 
 let hasEnsuredPeopleTreeLayoutColumns = false;
 
@@ -153,7 +157,8 @@ const buildManagedFamilyTree = (peopleRows, familyRows, childRows) => {
     return { roots };
 };
 
-async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, parentMotherId, connection = db) {
+async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, parentMotherId, connection = db, options = {}) {
+    const forceSaveHistoricalRelation = normalizeForceFlag(options.forceSaveHistoricalRelation);
     if (!parentFatherId && !parentMotherId) {
         return {
             ok: false,
@@ -174,13 +179,29 @@ async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, p
         childId: targetPersonId,
         fatherId: parentFatherId,
         motherId: parentMotherId,
+        forceSaveHistoricalRelation,
     });
     if (!childValidation.ok) return childValidation;
 
-    if (false) {
+    const [existingBloodlineRows] = await connection.query(
+        `
+        SELECT c.family_id
+        FROM children c
+        INNER JOIN families f ON f.id = c.family_id
+        WHERE c.person_id = ?
+          AND f.clan_id = ?
+          AND (f.father_id <=> ?)
+          AND (f.mother_id <=> ?)
+        LIMIT 1
+        `,
+        [targetPersonId, clanId, parentFatherId || null, parentMotherId || null]
+    );
+    if (existingBloodlineRows.length) {
         return {
             ok: false,
-            message: 'Cha/mẹ phải là người trong cùng dòng họ hoặc ID không tồn tại',
+            level: 'error',
+            code: 'DUPLICATE_PARENT_CHILD',
+            message: 'Không được tạo duplicate parent-child.',
         };
     }
 
@@ -232,6 +253,7 @@ async function applyBloodlineForPerson(targetPersonId, clanId, parentFatherId, p
 }
 
 async function applyMarriageRelationsForPerson(context, body) {
+    const forceSaveHistoricalRelation = normalizeForceFlag(body?.forceSaveHistoricalRelation || context?.forceSaveHistoricalRelation);
     const { family_id, spouse_id, children_ids } = body;
     const hasFamilyField = Object.prototype.hasOwnProperty.call(body, 'family_id');
     const hasSpouseField = Object.prototype.hasOwnProperty.call(body, 'spouse_id');
@@ -242,7 +264,7 @@ async function applyMarriageRelationsForPerson(context, body) {
     const childrenIds = parseChildrenIds(children_ids);
 
     if (hasChildrenField && hasDuplicateIds(children_ids)) {
-        return { ok: false, message: 'Không được thêm trùng con trong cùng một gia đình.' };
+        return { ok: false, level: 'error', code: 'DUPLICATE_CHILD_IN_FAMILY', message: 'Không được thêm trùng con trong cùng một gia đình.' };
     }
 
     const relationIdsToValidate = [spouseId, ...childrenIds].filter((v) => v !== null);
@@ -312,6 +334,17 @@ async function applyMarriageRelationsForPerson(context, body) {
         familyMotherId = effectiveSpouseId;
     }
 
+    if (hasSpouseField && effectiveSpouseId) {
+        const spouseConflict = await validateSpouseKinshipConflict({
+            connection: db,
+            clanId: context.clan_id,
+            personId,
+            spouseId: effectiveSpouseId,
+            forceSaveHistoricalRelation,
+        });
+        if (!spouseConflict.ok) return spouseConflict;
+    }
+
     if (hasFamilyField && familyIdInput !== null) {
         const [existingFamily] = await db.query(
             'SELECT id, father_id, mother_id, clan_id FROM families WHERE id = ? LIMIT 1', [familyIdInput]
@@ -347,6 +380,7 @@ async function applyMarriageRelationsForPerson(context, body) {
                 childId,
                 fatherId: familyFatherId,
                 motherId: familyMotherId,
+                forceSaveHistoricalRelation,
             });
             if (!childValidation.ok) return childValidation;
         }
@@ -386,6 +420,7 @@ async function applyMarriageRelationsForPerson(context, body) {
                 childId,
                 fatherId: familyFatherId,
                 motherId: familyMotherId,
+                forceSaveHistoricalRelation,
             });
             if (!childValidation.ok) return childValidation;
         }
@@ -397,6 +432,7 @@ async function applyMarriageRelationsForPerson(context, body) {
                 childId,
                 fatherId: familyFatherId,
                 motherId: familyMotherId,
+                forceSaveHistoricalRelation,
             });
             if (childValidation.childGeneration) {
                 await db.query('UPDATE people SET generation = ? WHERE id = ?', [

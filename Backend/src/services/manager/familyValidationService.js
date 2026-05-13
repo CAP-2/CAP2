@@ -5,6 +5,10 @@ const {
     dateOnlyTime,
     loadPeopleByIds,
 } = require('./commonService');
+const {
+    validateBirthDeathDates,
+    validateParentChildSpouseConflict,
+} = require('./kinshipValidationService');
 
 const getDescendantIds = async(connection, personId, clanId) => {
     const rootId = toPositiveId(personId);
@@ -68,15 +72,22 @@ const validateFamilyParents = async({ connection = db, clanId, fatherId, motherI
             SELECT id
             FROM families
             WHERE clan_id = ?
-              AND (father_id <=> ?)
-              AND (mother_id <=> ?)
+              AND (
+                ((father_id <=> ?) AND (mother_id <=> ?))
+                OR ((father_id <=> ?) AND (mother_id <=> ?))
+              )
               AND (? IS NULL OR id <> ?)
             LIMIT 1
             `,
-            [clanId, nextFatherId, nextMotherId, excludeFamilyId, excludeFamilyId]
+            [clanId, nextFatherId, nextMotherId, nextMotherId, nextFatherId, excludeFamilyId, excludeFamilyId]
         );
         if (duplicates.length) {
-            return { ok: false, message: 'Quan hệ vợ chồng này đã tồn tại trong cây gia phả.' };
+            return {
+                ok: false,
+                level: 'error',
+                code: 'DUPLICATE_SPOUSE_FAMILY',
+                message: 'Không được tạo duplicate spouse/family theo chiều ngược hoặc trùng cặp.',
+            };
         }
     }
 
@@ -95,7 +106,7 @@ const getParentGeneration = (parents) => {
     return { ok: true, generation: unique[0] };
 };
 
-const validateChildAgainstParents = async({ connection = db, clanId, childId, fatherId, motherId }) => {
+const validateChildAgainstParents = async({ connection = db, clanId, childId, fatherId, motherId, forceSaveHistoricalRelation = false }) => {
     const nextChildId = toPositiveId(childId);
     const parentIds = uniquePositiveIds([fatherId, motherId]);
     if (!nextChildId || !parentIds.length) {
@@ -117,9 +128,18 @@ const validateChildAgainstParents = async({ connection = db, clanId, childId, fa
     }
 
     const familyValidation = await validateFamilyParents({ connection, clanId, fatherId, motherId });
-    if (!familyValidation.ok && familyValidation.message !== 'Quan hệ vợ chồng này đã tồn tại trong cây gia phả.') {
+    if (!familyValidation.ok && familyValidation.code !== 'DUPLICATE_SPOUSE_FAMILY') {
         return familyValidation;
     }
+
+    const spouseConflict = await validateParentChildSpouseConflict({
+        connection,
+        clanId,
+        childId: nextChildId,
+        parentIds,
+        forceSaveHistoricalRelation,
+    });
+    if (!spouseConflict.ok) return spouseConflict;
 
     const descendants = await getDescendantIds(connection, nextChildId, clanId);
     if (parentIds.some((parentId) => descendants.has(parentId))) {
@@ -259,6 +279,9 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
     return { ok: true };
 };
 
+
+const validatePersonLifeDates = (birthDate, deathDate) => validateBirthDeathDates(birthDate, deathDate);
+
 const assertCanDeleteTreePerson = async(personId) => {
     const [accountRows] = await db.query('SELECT id FROM accounts WHERE person_id = ? LIMIT 1', [personId]);
     if (accountRows.length) {
@@ -289,5 +312,6 @@ module.exports = {
     validatePersonGenerationWithRelations,
     validatePersonGenderWithFamilyRole,
     validatePersonBirthDateWithRelations,
+    validatePersonLifeDates,
     assertCanDeleteTreePerson,
 };

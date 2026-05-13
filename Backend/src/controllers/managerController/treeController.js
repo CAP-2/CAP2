@@ -24,14 +24,36 @@ const {
     validateChildAgainstParents,
     validateFamilyParents,
     validatePersonBirthDateWithRelations,
+    validatePersonLifeDates,
     validatePersonGenderWithFamilyRole,
     validatePersonGenerationWithRelations,
 } = require('../../services/manager/familyValidationService');
+const {
+    normalizeForceFlag,
+    validateSpouseKinshipConflict,
+} = require('../../services/manager/kinshipValidationService');
 const {
     assertCanManagePersonId,
     getManagerClanId,
     resolveManagedClanId,
 } = require('../../services/manager/managerClanService');
+
+const relationHttpStatus = (result) => result?.requiresConfirmation ? 409 : 400;
+const relationPayload = (result) => ({
+    success: false,
+    ok: false,
+    level: result?.level || 'error',
+    code: result?.code || 'RELATION_VALIDATION_ERROR',
+    requiresConfirmation: Boolean(result?.requiresConfirmation),
+    message: result?.message || 'Quan hệ gia phả không hợp lệ',
+});
+const relationErrorFromResult = (result) => {
+    const err = new Error(result?.message || 'Quan hệ gia phả không hợp lệ');
+    err.status = relationHttpStatus(result);
+    err.relationResult = result;
+    return err;
+};
+
 
 const createPerson = async (req, res) => {
     let connection;
@@ -136,6 +158,13 @@ const createPerson = async (req, res) => {
                     ? 1
                     : 0;
 
+        const normalizedBirthDate = birth_date ? String(birth_date).trim() : null;
+        const normalizedDeathDate = livingValue === 1 ? null : death_date ? String(death_date).trim() : null;
+        const lifeDateValidation = validatePersonLifeDates(normalizedBirthDate, normalizedDeathDate);
+        if (!lifeDateValidation.ok) {
+            return res.status(400).json(relationPayload(lifeDateValidation));
+        }
+
         const shouldCreateAccount = livingValue === 1;
         const accountEmail = String(account_email || email || '').trim().toLowerCase();
         const accountPassword = String(account_password || '');
@@ -233,8 +262,8 @@ const createPerson = async (req, res) => {
                 genderValue,
                 Number.isFinite(generationNumber) && generationNumber > 0 ? generationNumber : 1,
                 Number.isFinite(branchNumber) ? branchNumber : null,
-                birth_date ? String(birth_date).trim() : null,
-                livingValue === 1 ? null : death_date ? String(death_date).trim() : null,
+                normalizedBirthDate,
+                normalizedDeathDate,
                 livingValue,
                 phone != null ? String(phone).trim() : null,
                 accountEmail || (email != null ? String(email).trim() : null),
@@ -295,13 +324,12 @@ const createPerson = async (req, res) => {
                 clanId,
                 fatherId,
                 motherId,
-                connection
+                connection,
+                { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }
             );
 
             if (!relation.ok) {
-                const relationError = new Error(relation.message);
-                relationError.status = 400;
-                throw relationError;
+                throw relationErrorFromResult(relation);
             }
         }
 
@@ -324,6 +352,10 @@ const createPerson = async (req, res) => {
 
         console.error('createPerson error:', error);
         const responseStatus = error.status || 500;
+
+        if (error.relationResult) {
+            return res.status(responseStatus).json(relationPayload(error.relationResult));
+        }
 
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({
@@ -382,8 +414,8 @@ const linkRelations = async (req, res) => {
             const fatherId = parseNullableId(body.parent_father_id ?? body.father_person_id);
             const motherId = parseNullableId(body.parent_mother_id ?? body.mother_person_id);
             if (fatherId || motherId) {
-                const relation = await applyBloodlineForPerson(personId, person.clan_id, fatherId, motherId);
-                if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+                const relation = await applyBloodlineForPerson(personId, person.clan_id, fatherId, motherId, db, { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation });
+                if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
             } else {
                 await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
             }
@@ -398,10 +430,10 @@ const linkRelations = async (req, res) => {
             if (has('children_ids') || has('children_person_ids')) relationBody.children_ids = body.children_ids ?? body.children_person_ids;
 
             const relation = await applyMarriageRelationsForPerson(
-                { person_id: personId, clan_id: person.clan_id, gender: person.gender },
-                relationBody
+                { person_id: personId, clan_id: person.clan_id, gender: person.gender, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation },
+                { ...relationBody, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }
             );
-            if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+            if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
         }
 
         return res.json({ success: true, message: 'Đã lưu liên kết gia phả' });
@@ -551,7 +583,11 @@ const updateTreePerson = async (req, res) => {
             ? parseTreeInt(body.display_order, current.display_order || 0)
             : current.display_order || 0;
         const nextBirth = dateOrKeep('birth_date', current.birth_date);
-        const nextDeath = dateOrKeep('death_date', current.death_date);
+        const nextDeath = nextLiving === 1 ? null : dateOrKeep('death_date', current.death_date);
+        const lifeDateValidation = validatePersonLifeDates(nextBirth, nextDeath);
+        if (!lifeDateValidation.ok) {
+            return res.status(400).json(relationPayload(lifeDateValidation));
+        }
 
         const genderValidation = await validatePersonGenderWithFamilyRole(db, personId, nextGender);
         if (!genderValidation.ok) {
@@ -615,8 +651,8 @@ const updateTreePerson = async (req, res) => {
             const fatherId = parseNullableId(body.parent_father_id ?? body.father_person_id);
             const motherId = parseNullableId(body.parent_mother_id ?? body.mother_person_id);
             if (fatherId || motherId) {
-                const relation = await applyBloodlineForPerson(personId, nextClanId, fatherId, motherId);
-                if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+                const relation = await applyBloodlineForPerson(personId, nextClanId, fatherId, motherId, db, { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation });
+                if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
             } else {
                 await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
             }
@@ -635,10 +671,10 @@ const updateTreePerson = async (req, res) => {
             if (has('spouse_id') || has('spouse_person_id')) relationBody.spouse_id = body.spouse_id ?? body.spouse_person_id;
             if (has('children_ids') || has('children_person_ids')) relationBody.children_ids = body.children_ids ?? body.children_person_ids;
             const relation = await applyMarriageRelationsForPerson(
-                { person_id: personId, clan_id: nextClanId, gender: nextGender },
-                relationBody
+                { person_id: personId, clan_id: nextClanId, gender: nextGender, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation },
+                { ...relationBody, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }
             );
-            if (!relation.ok) return res.status(400).json({ success: false, message: relation.message });
+            if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
         }
 
         const [updatedRows] = await db.query(
@@ -793,7 +829,19 @@ const createFamily = async (req, res) => {
             motherId,
         });
         if (!familyValidation.ok) {
-            return res.status(400).json({ success: false, message: familyValidation.message });
+            return res.status(relationHttpStatus(familyValidation)).json(relationPayload(familyValidation));
+        }
+
+        if (fatherId && motherId) {
+            const spouseConflict = await validateSpouseKinshipConflict({
+                clanId,
+                personId: fatherId,
+                spouseId: motherId,
+                forceSaveHistoricalRelation: req.body?.forceSaveHistoricalRelation,
+            });
+            if (!spouseConflict.ok) {
+                return res.status(relationHttpStatus(spouseConflict)).json(relationPayload(spouseConflict));
+            }
         }
 
         const [result] = await db.query(
@@ -854,9 +902,10 @@ const addFamilyChild = async (req, res) => {
             childId,
             fatherId: family.father_id,
             motherId: family.mother_id,
+            forceSaveHistoricalRelation: req.body?.forceSaveHistoricalRelation,
         });
         if (!childValidation.ok) {
-            return res.status(400).json({ success: false, message: childValidation.message });
+            return res.status(relationHttpStatus(childValidation)).json(relationPayload(childValidation));
         }
 
         await db.query('DELETE FROM children WHERE person_id = ?', [childId]);

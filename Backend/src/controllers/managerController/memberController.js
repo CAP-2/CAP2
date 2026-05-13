@@ -23,6 +23,7 @@ const {
 } = require('../../services/manager/familyRelationService');
 const {
     validatePersonBirthDateWithRelations,
+    validatePersonLifeDates,
     validatePersonGenderWithFamilyRole,
     validatePersonGenerationWithRelations,
 } = require('../../services/manager/familyValidationService');
@@ -33,6 +34,17 @@ const {
     loadTreeEditKeyTargets,
     resolveManagedClanId,
 } = require('../../services/manager/managerClanService');
+
+const relationHttpStatus = (result) => result?.requiresConfirmation ? 409 : 400;
+const relationPayload = (result) => ({
+    success: false,
+    ok: false,
+    level: result?.level || 'error',
+    code: result?.code || 'RELATION_VALIDATION_ERROR',
+    requiresConfirmation: Boolean(result?.requiresConfirmation),
+    message: result?.message || 'Quan hệ gia phả không hợp lệ',
+});
+
 
 const getMemberRelations = async(req, res) => {
     try {
@@ -100,11 +112,11 @@ const updateMemberRelations = async(req, res) => {
         if (mode === 'bloodline') {
             const parentFatherId = parseNullableId(req.body.parent_father_id);
             const parentMotherId = parseNullableId(req.body.parent_mother_id);
-            const r = await applyBloodlineForPerson(context.person_id, context.clan_id, parentFatherId, parentMotherId);
-            if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+            const r = await applyBloodlineForPerson(context.person_id, context.clan_id, parentFatherId, parentMotherId, db, { forceSaveHistoricalRelation: req.body.forceSaveHistoricalRelation });
+            if (!r.ok) return res.status(relationHttpStatus(r)).json(relationPayload(r));
         } else if (mode === 'marriage') {
-            const r = await applyMarriageRelationsForPerson(context, req.body);
-            if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+            const r = await applyMarriageRelationsForPerson({ ...context, forceSaveHistoricalRelation: req.body.forceSaveHistoricalRelation }, req.body);
+            if (!r.ok) return res.status(relationHttpStatus(r)).json(relationPayload(r));
         } else {
             return res.status(400).json({ success: false, message: 'mode phải là bloodline hoặc marriage' });
         }
@@ -679,7 +691,11 @@ const updateMemberByManager = async(req, res) => {
         }
 
         const nextBirth = dateOrKeep('birth_date', full.birth_date);
-        const nextDeath = dateOrKeep('death_date', full.death_date);
+        const nextDeath = nextLiving === 1 ? null : dateOrKeep('death_date', full.death_date);
+        const lifeDateValidation = validatePersonLifeDates(nextBirth, nextDeath);
+        if (!lifeDateValidation.ok) {
+            return res.status(400).json(relationPayload(lifeDateValidation));
+        }
 
         let nextClanId = full.clan_id;
         if (req.user.role_id === 1 && has('clan_id')) {
@@ -734,15 +750,15 @@ const updateMemberByManager = async(req, res) => {
             const pf = has('parent_father_id') ? parseNullableId(body.parent_father_id) : null;
             const pm = has('parent_mother_id') ? parseNullableId(body.parent_mother_id) : null;
             if (pf || pm) {
-                const r = await applyBloodlineForPerson(full.person_id, famCtx.clan_id, pf, pm);
-                if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+                const r = await applyBloodlineForPerson(full.person_id, famCtx.clan_id, pf, pm, db, { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation });
+                if (!r.ok) return res.status(relationHttpStatus(r)).json(relationPayload(r));
             }
         }
 
         const hasMarriage = has('family_id') || has('spouse_id') || has('children_ids');
         if (hasMarriage) {
-            const r = await applyMarriageRelationsForPerson(famCtx, body);
-            if (!r.ok) return res.status(400).json({ success: false, message: r.message });
+            const r = await applyMarriageRelationsForPerson({ ...famCtx, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }, body);
+            if (!r.ok) return res.status(relationHttpStatus(r)).json(relationPayload(r));
         }
 
         const updated = await getManagedMemberFullContext(targetAccountId);

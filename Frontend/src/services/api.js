@@ -27,7 +27,14 @@ export async function apiRequest(path, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message || data.error || "Có lỗi xảy ra.");
+    const error = new Error(data.message || data.error || "Có lỗi xảy ra.");
+    error.status = response.status;
+    error.data = data;
+    error.code = data.code || null;
+    error.level = data.level || null;
+    error.requiresConfirmation = Boolean(data.requiresConfirmation);
+    error.billing = data.billing || null;
+    throw error;
   }
 
   return data;
