@@ -9,6 +9,7 @@ import {
 } from "../../api/memberService";
 import ImageUpload from "../../components/ImageUpload/ImageUpload";
 import { formatDateTimeVN } from "../../utils/dateFormat";
+import { getSocket } from "../../services/socket";
 import "./GeneralPosts.css";
 
 const emptyPostForm = {
@@ -379,6 +380,54 @@ export default function GeneralPosts() {
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachPostSocket = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handlePostFeedUpdated = (payload) => {
+      console.log("Realtime post_feed_updated received:", payload);
+
+      loadPosts();
+
+      if (selectedPost?.id && Number(payload?.post_id) === Number(selectedPost.id)) {
+        loadComments(selectedPost.id);
+      }
+    };
+
+    socket.on("post_feed_updated", handlePostFeedUpdated);
+
+    cleanup = () => {
+      socket.off("post_feed_updated", handlePostFeedUpdated);
+    };
+
+    return true;
+  };
+
+  if (!attachPostSocket()) {
+    timer = window.setInterval(() => {
+      if (attachPostSocket()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadPosts, loadComments, selectedPost?.id]);
 
   useEffect(() => {
     if (searchParams.get("compose") === "1") {

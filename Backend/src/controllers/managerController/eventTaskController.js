@@ -258,9 +258,21 @@ const assignTask = async(req, res) => {
             });
         }
 
-        const assigneeIds = Array.isArray(member_account_ids)
-            ? [...new Set(member_account_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
-            : [];
+        const rawAssigneeIds = Array.isArray(member_account_ids)
+            ? member_account_ids
+            : Array.isArray(req.body.member_ids)
+                ? req.body.member_ids
+                : Array.isArray(req.body.assigned_member_ids)
+                    ? req.body.assigned_member_ids
+                    : [];
+
+        const assigneeIds = [
+            ...new Set(
+                rawAssigneeIds
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isFinite(id) && id > 0)
+            ),
+        ];
 
         if (!assigneeIds.length) {
             return res.status(400).json({
@@ -417,20 +429,39 @@ const assignTask = async(req, res) => {
 
         await connection.commit();
 
-        const io = req.app?.get?.('io');
+        const io = req.app?.locals?.io;
 
-        if (io) {
-            for (const member of memberRows) {
-                io.to(`account_${member.account_id}`).emit('notification', {
-                    type: 'task_assigned',
-                    title: 'Bạn có công việc mới',
-                    message: `Bạn được phân công công việc: ${trimmedTitle}`,
-                    task_id: taskId,
-                    event_id: normalizedEventId,
-                });
+       if (io) {
+                for (const member of memberRows) {
+                    const notificationPayload = {
+                        id: `task-assigned-${taskId}-${member.account_id}`,
+                        type: 'task_assigned',
+                        title: 'Bạn có công việc mới',
+                        message: `Bạn được phân công công việc: ${trimmedTitle}`,
+                        link_url: '/user/tasks',
+                        is_read: 0,
+                        created_at: new Date().toISOString(),
+                        task_id: taskId,
+                        event_id: normalizedEventId,
+                    };
+
+                    io.to(`account_${member.account_id}`).emit('new_notification', notificationPayload);
+
+                    io.to(`account_${member.account_id}`).emit('task_assigned', {
+                        task_id: taskId,
+                        event_id: normalizedEventId,
+                        title: trimmedTitle,
+                        description: trimmedDescription,
+                        due_date: due_date || null,
+                        status: 'assigned',
+                        assigned_at: new Date().toISOString(),
+                    });
+
+                    console.log(`✅ Đã emit new_notification + task_assigned tới account_${member.account_id}`);
+                }
+            } else {
+                console.log('⚠️ Không tìm thấy req.app.locals.io trong assignTask');
             }
-        }
-
         const emailSummary = {
             sent: 0,
             skipped: 0,
@@ -769,17 +800,34 @@ const bulkAssignTasks = async(req, res) => {
             }
         }
 
-        await connection.commit();
+const io = req.app?.locals?.io;
 
-        for (const job of notificationJobs) {
-            await emitNotificationToAccount(req, job.member.account_id, {
-                type: 'task_assigned',
-                title: 'Bạn có công việc mới',
-                message: `Bạn được phân công công việc: ${job.title}`,
-                task_id: job.taskId,
-                event_id: eventId || null,
-            });
-        }
+for (const job of notificationJobs) {
+    await emitNotificationToAccount(req, job.member.account_id, {
+        type: 'task_assigned',
+        title: 'Bạn có công việc mới',
+        message: `Bạn được phân công công việc: ${job.title}`,
+        link_url: '/user/tasks',
+        is_read: 0,
+        created_at: new Date().toISOString(),
+        task_id: job.taskId,
+        event_id: eventId || null,
+    });
+
+    if (io) {
+        io.to(`account_${job.member.account_id}`).emit('task_assigned', {
+            task_id: job.taskId,
+            event_id: eventId || null,
+            title: job.title,
+            description: job.description,
+            due_date: job.dueDate || null,
+            status: 'assigned',
+            assigned_at: new Date().toISOString(),
+        });
+
+        console.log(`✅ Đã emit bulk task_assigned tới account_${job.member.account_id}`);
+    }
+}
 
         const emailSummary = {
             sent: 0,

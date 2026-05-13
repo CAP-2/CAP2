@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getMemberDashboard, verifyTreeEditSession } from "../../api/memberService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
+import { getSocket } from "../../services/socket";
 import { clearTreeEditSession, readTreeEditSession, saveTreeEditSession } from "../../services/treeEditSession";
 import "../Member/MemberDashboard.css";
 
@@ -22,6 +23,7 @@ export default function FamilyTreePage() {
     allowedGenerations: [],
   });
   const [permissionExpiry, setPermissionExpiry] = useState("");
+  const treeReloadTimerRef = useRef(null);
 
   const resolvePermissionExpiry = useCallback((response) => {
     const expiresInMs = Number(response?.expires_in_ms);
@@ -50,6 +52,60 @@ export default function FamilyTreePage() {
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachTreeSocket = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handleTreeUpdated = (payload) => {
+      console.log("Member tree realtime tree_updated received:", payload);
+
+      if (treeReloadTimerRef.current) {
+        window.clearTimeout(treeReloadTimerRef.current);
+      }
+
+      treeReloadTimerRef.current = window.setTimeout(() => {
+        loadTree();
+      }, 500);
+    };
+
+    socket.on("tree_updated", handleTreeUpdated);
+
+    cleanup = () => {
+      socket.off("tree_updated", handleTreeUpdated);
+    };
+
+    return true;
+  };
+
+  if (!attachTreeSocket()) {
+    timer = window.setInterval(() => {
+      if (attachTreeSocket()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (treeReloadTimerRef.current) {
+      window.clearTimeout(treeReloadTimerRef.current);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadTree]);
 
   const resetTemporaryPermission = useCallback((message = "") => {
     clearTreeEditSession();

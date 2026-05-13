@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
+import { getSocket } from "../../services/socket";
 import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./NotificationBell.css";
 
@@ -14,6 +15,18 @@ function normalizeLink(linkUrl, role) {
 function formatTime(value) {
   if (!value) return "";
   return formatDateTimeVN(value);
+}
+
+function normalizeRealtimeNotification(notification) {
+  return {
+    id: notification.id || `realtime-${Date.now()}`,
+    title: notification.title || "Thông báo mới",
+    message: notification.message || "Bạn có cập nhật mới trong hệ thống.",
+    link_url: notification.link_url || notification.linkUrl || null,
+    is_read: Number(notification.is_read ?? notification.isRead ?? 0),
+    created_at: notification.created_at || notification.createdAt || new Date().toISOString(),
+    ...notification,
+  };
 }
 
 export default function NotificationBell({ role = "member", buttonClassName = "" }) {
@@ -46,6 +59,40 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
     const timer = window.setInterval(loadNotifications, 15000);
     return () => window.clearInterval(timer);
   }, [loadNotifications]);
+
+  useEffect(() => {
+      const socket = getSocket();
+
+      if (!socket) {
+        return undefined;
+      }
+
+      const handleNewNotification = (notification) => {
+        console.log("New realtime notification:", notification);
+
+        const normalizedNotification = normalizeRealtimeNotification(notification);
+
+        setNotifications((items) => {
+          const exists = items.some((item) => String(item.id) === String(normalizedNotification.id));
+
+          if (exists) {
+            return items;
+          }
+
+          return [normalizedNotification, ...items];
+        });
+
+        if (Number(normalizedNotification.is_read) === 0) {
+          setUnreadCount((count) => count + 1);
+        }
+      };
+
+      socket.on("new_notification", handleNewNotification);
+
+      return () => {
+        socket.off("new_notification", handleNewNotification);
+      };
+    }, []);``
 
   useEffect(() => {
     if (!open) return undefined;

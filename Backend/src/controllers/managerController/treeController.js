@@ -14,6 +14,7 @@ const {
     parseTreeInt,
     saveTreeLayoutSettings,
 } = require('../../services/manager/commonService');
+
 const {
     applyBloodlineForPerson,
     applyMarriageRelationsForPerson,
@@ -37,6 +38,8 @@ const {
     getManagerClanId,
     resolveManagedClanId,
 } = require('../../services/manager/managerClanService');
+
+const { emitTreeUpdated } = require('../../utils/treeRealtime');
 
 const relationHttpStatus = (result) => result?.requiresConfirmation ? 409 : 400;
 const relationPayload = (result) => ({
@@ -335,6 +338,11 @@ const createPerson = async (req, res) => {
 
         await connection.commit();
 
+        emitTreeUpdated(req, clanId, {
+            action: 'person_created',
+            person_id: personId,
+        });
+
         return res.status(201).json({
             success: true,
             message: shouldCreateAccount
@@ -435,6 +443,10 @@ const linkRelations = async (req, res) => {
             );
             if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
         }
+        emitTreeUpdated(req, person.clan_id, {
+         action: 'relations_updated',
+        person_id: personId,
+        });
 
         return res.json({ success: true, message: 'Đã lưu liên kết gia phả' });
     } catch (error) {
@@ -688,6 +700,11 @@ const updateTreePerson = async (req, res) => {
             [personId]
         );
         const updated = updatedRows[0] || null;
+        emitTreeUpdated(req, nextClanId, {
+            action: 'person_updated',
+            person_id: personId,
+        });
+
         return res.json({
             success: true,
             message: 'Da cap nhat thanh vien',
@@ -718,7 +735,11 @@ const updatePersonPosition = async (req, res) => {
         }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
-
+        const [personRows] = await db.query(
+            'SELECT clan_id FROM people WHERE id = ? LIMIT 1',
+            [personId]
+        );
+        const clanId = personRows[0]?.clan_id || null;
         const treeX = parseTreeInt(req.body?.tree_x, 0);
         const treeY = parseTreeInt(req.body?.tree_y, 0);
         const hasOrder = Object.prototype.hasOwnProperty.call(req.body || {}, 'display_order');
@@ -732,6 +753,11 @@ const updatePersonPosition = async (req, res) => {
         } else {
             await db.query('UPDATE people SET tree_x = ?, tree_y = ? WHERE id = ?', [treeX, treeY, personId]);
         }
+
+        emitTreeUpdated(req, clanId, {
+            action: 'person_position_updated',
+            person_id: personId,
+        });
 
         res.json({ success: true, person_id: personId, tree_x: treeX, tree_y: treeY });
     } catch (error) {
@@ -789,7 +815,13 @@ const saveTreeLayout = async (req, res) => {
             );
         }
 
-        res.json({ success: true, updated, layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)) });
+        emitTreeUpdated(req, clanId, {
+    action: 'tree_layout_updated',
+    updated,
+    layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)),
+});
+
+res.json({ success: true, updated, layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)) });
     } catch (error) {
         console.error('saveTreeLayout error:', error);
         res.status(500).json({ success: false, message: 'Loi luu bo cuc cay' });
@@ -848,6 +880,10 @@ const createFamily = async (req, res) => {
             'INSERT INTO families (clan_id, father_id, mother_id, marriage_date) VALUES (?, ?, ?, ?)',
             [clanId, fatherId, motherId, req.body?.marriage_date || null]
         );
+        emitTreeUpdated(req, clanId, {
+            action: 'family_created',
+            family_id: result.insertId,
+        });
 
         res.status(201).json({ success: true, family_id: result.insertId });
     } catch (error) {
@@ -920,6 +956,11 @@ const addFamilyChild = async (req, res) => {
             childId,
             parseTreeInt(req.body?.sort_order, 0),
         ]);
+        emitTreeUpdated(req, family.clan_id, {
+            action: 'family_child_added',
+            family_id: familyId,
+            person_id: childId,
+        });
         res.status(201).json({ success: true });
     } catch (error) {
         console.error('addFamilyChild error:', error);
@@ -939,14 +980,21 @@ const deleteTreePerson = async (req, res) => {
         }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
-
+            const [personRows] = await db.query(
+            'SELECT clan_id FROM people WHERE id = ? LIMIT 1',
+            [personId]
+        );
+        const clanId = personRows[0]?.clan_id || null;
         const deleteGate = await assertCanDeleteTreePerson(personId);
         if (!deleteGate.ok) {
             return res.status(400).json({ success: false, message: deleteGate.message });
         }
 
         const result = await deletePersonCompletely(personId, { deleteAccounts: false });
-
+        emitTreeUpdated(req, clanId, {
+            action: 'person_deleted',
+            person_id: personId,
+        });
         res.json({
             success: true,
             person_id: personId,

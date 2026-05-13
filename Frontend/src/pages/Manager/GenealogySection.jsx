@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
 import { formatDateTimeVN } from "../../utils/dateFormat";
+import { getSocket } from "../../services/socket";
 import "./manager.css";
 
 export default function GenealogySection() {
@@ -27,6 +27,7 @@ export default function GenealogySection() {
   const [clanSaving, setClanSaving] = useState(false);
   const [clanMessage, setClanMessage] = useState("");
   const [clanError, setClanError] = useState("");
+  const treeReloadTimerRef = useRef(null);
 
   const formatPersonName = (person) =>
     person?.display_name ||
@@ -63,6 +64,61 @@ export default function GenealogySection() {
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachTreeSocket = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handleTreeUpdated = (payload) => {
+      console.log("Manager tree realtime tree_updated received:", payload);
+
+      if (treeReloadTimerRef.current) {
+        window.clearTimeout(treeReloadTimerRef.current);
+      }
+
+      treeReloadTimerRef.current = window.setTimeout(() => {
+        loadTree();
+      }, 500);
+    };
+
+    socket.on("tree_updated", handleTreeUpdated);
+
+    cleanup = () => {
+      socket.off("tree_updated", handleTreeUpdated);
+    };
+
+    return true;
+  };
+
+  if (!attachTreeSocket()) {
+    timer = window.setInterval(() => {
+      if (attachTreeSocket()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (treeReloadTimerRef.current) {
+      window.clearTimeout(treeReloadTimerRef.current);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadTree]);
 
   useEffect(() => {
     setClanForm({

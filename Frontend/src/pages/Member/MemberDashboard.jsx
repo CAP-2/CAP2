@@ -9,6 +9,7 @@ import {
   updateMemberTaskStatus,
 } from "../../api/memberService";
 import DateInput from "../../components/common/DateInput";
+import { getSocket } from "../../services/socket";
 import { formatDateTimeVN, formatDateVN, vietnamDateToIso } from "../../utils/dateFormat";
 import "./MemberDashboard.css";
 
@@ -90,6 +91,57 @@ export default function MemberDashboard() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachSocketListener = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handleTaskAssigned = (payload) => {
+      console.log("Dashboard realtime task_assigned received:", payload);
+      loadDashboard(true);
+    };
+
+    const handleNewNotification = (payload) => {
+      console.log("Dashboard realtime new_notification received:", payload);
+      loadDashboard(true);
+    };
+
+    socket.on("task_assigned", handleTaskAssigned);
+    socket.on("new_notification", handleNewNotification);
+
+    cleanup = () => {
+      socket.off("task_assigned", handleTaskAssigned);
+      socket.off("new_notification", handleNewNotification);
+    };
+
+    return true;
+  };
+
+  if (!attachSocketListener()) {
+    timer = window.setInterval(() => {
+      if (attachSocketListener()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadDashboard]);
 
   useEffect(() => {
     const timer = window.setInterval(() => loadDashboard(true), 30000);

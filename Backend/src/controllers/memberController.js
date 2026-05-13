@@ -356,15 +356,26 @@ const ensureTaskTables = async () => {
 };
 
 const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
-  const onlineUsers = req.app?.locals?.onlineUsers || {};
   const io = req.app?.locals?.io;
-  const socketId = onlineUsers[receiverAccountId];
-  if (io && socketId) {
-    io.to(socketId).emit("new_notification", {
-      ...payload,
-      time: new Date().toLocaleTimeString(),
-    });
+
+  if (!io || !receiverAccountId) {
+    return;
   }
+
+  const realtimePayload = {
+    id: payload.id || `member-${Date.now()}`,
+    title: payload.title || "Thông báo mới",
+    message: payload.message || "Bạn có cập nhật mới trong hệ thống.",
+    link_url: payload.link_url || payload.linkUrl || "/manager/tasks",
+    is_read: Number(payload.is_read ?? 0),
+    created_at: payload.created_at || new Date().toISOString(),
+    ...payload,
+    time: new Date().toLocaleTimeString(),
+  };
+
+  io.to(`account_${receiverAccountId}`).emit("new_notification", realtimePayload);
+
+  console.log(`✅ Đã gửi realtime notification tới account_${receiverAccountId}`);
 };
 
 /**
@@ -1233,6 +1244,22 @@ exports.submitMaterial = async (req, res) => {
       "INSERT INTO posts (clan_id, author_id, description, content, image_url, image_media_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [context.clan_id, accountId, postDescription, textContent, imgUrl, imgMediaId, postStatus]
     );
+    
+    if (postStatus === "approved") {
+  const io = req.app?.locals?.io;
+
+  if (io) {
+    io.to(`clan_${context.clan_id}`).emit("post_feed_updated", {
+      action: "post_created",
+      post_id: created.insertId,
+      clan_id: context.clan_id,
+      actor_account_id: accountId,
+      updated_at: new Date().toISOString(),
+    });
+
+    console.log(`📰 Đã emit post_feed_updated post_created tới clan_${context.clan_id}`);
+  }
+}
 
     return res.json({
       success: true,
@@ -1350,6 +1377,21 @@ exports.addPostComment = async (req, res) => {
       [created.insertId]
     );
 
+    const io = req.app?.locals?.io;
+
+if (io) {
+  io.to(`clan_${context.clan_id}`).emit("post_feed_updated", {
+    action: "comment_added",
+    post_id: post.id,
+    comment_id: created.insertId,
+    clan_id: context.clan_id,
+    actor_account_id: accountId,
+    updated_at: new Date().toISOString(),
+  });
+
+  console.log(`💬 Đã emit post_feed_updated comment_added tới clan_${context.clan_id}`);
+}
+
     return res.status(201).json({ success: true, comment: rows[0] });
   } catch (error) {
     console.error("addPostComment error:", error);
@@ -1384,7 +1426,24 @@ exports.togglePostLike = async (req, res) => {
     }
 
     const [countRows] = await db.query("SELECT COUNT(*) AS like_count FROM post_likes WHERE post_id = ?", [post.id]);
-    return res.json({ success: true, liked, like_count: Number(countRows[0]?.like_count || 0) });
+    const likeCount = Number(countRows[0]?.like_count || 0);
+
+const io = req.app?.locals?.io;
+
+if (io) {
+  io.to(`clan_${context.clan_id}`).emit("post_feed_updated", {
+    action: "like_updated",
+    post_id: post.id,
+    clan_id: context.clan_id,
+    actor_account_id: accountId,
+    liked,
+    like_count: likeCount,
+    updated_at: new Date().toISOString(),
+  });
+
+  console.log(`❤️ Đã emit post_feed_updated like_updated tới clan_${context.clan_id}`);
+}
+return res.json({ success: true, liked, like_count: likeCount });
   } catch (error) {
     console.error("togglePostLike error:", error);
     return res.status(500).json({ success: false, message: "Lỗi cập nhật lượt thích." });
@@ -1508,6 +1567,60 @@ exports.updateTaskStatus = async (req, res) => {
       [nextStatus, nextStatus, assignmentId]
     );
 
+    const memberContext = await getAccountContext(req.user.id);
+const memberName =
+  memberContext?.display_name ||
+  [memberContext?.surname, memberContext?.middle_name, memberContext?.first_name].filter(Boolean).join(" ") ||
+  `Thanh vien #${task.member_account_id}`;
+
+const io = req.app?.locals?.io;
+
+if (io) {
+  io.to(`account_${task.manager_account_id}`).emit("task_status_updated", {
+    task_id: task.task_id,
+    assignment_id: assignmentId,
+    status: nextStatus,
+    completed_at: nextStatus === "completed" ? new Date().toISOString() : null,
+    member_account_id: task.member_account_id,
+    member_name: memberName,
+  });
+
+  console.log(`✅ Đã emit task_status_updated "${nextStatus}" tới account_${task.manager_account_id}`);
+}
+
+if (nextStatus === "completed") {
+  const managerContext = await getAccountContext(task.manager_account_id);
+
+  if (managerContext?.account_id) {
+    const notificationTitle = "Công việc đã hoàn thành";
+    const notificationMessage = `${memberName} đã hoàn thành công việc: "${task.title}"`;
+    const notificationLink = `/manager/tasks/${task.task_id}`;
+
+    const [notificationResult] = await db.query(
+      "INSERT INTO notifications (receiver_account_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+      [
+        task.manager_account_id,
+        "task_completed",
+        notificationTitle,
+        notificationMessage,
+        notificationLink,
+      ]
+    );
+
+    await emitNotificationToAccount(req, task.manager_account_id, {
+      id: notificationResult.insertId,
+      type: "task_completed",
+      title: notificationTitle,
+      message: notificationMessage,
+      link_url: notificationLink,
+      is_read: 0,
+      created_at: new Date().toISOString(),
+      taskId: task.task_id,
+    });
+  }
+}
+
+
     if (nextStatus === "completed") {
       const managerContext = await getAccountContext(task.manager_account_id);
       const memberContext = await getAccountContext(req.user.id);
@@ -1517,26 +1630,46 @@ exports.updateTaskStatus = async (req, res) => {
           [memberContext?.surname, memberContext?.middle_name, memberContext?.first_name].filter(Boolean).join(" ") ||
           `Thanh vien #${task.member_account_id}`;
 
-        await db.query(
-          `INSERT INTO notifications
-           (receiver_account_id, receiver_person_id, type, title, message, link_url)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+        const notificationTitle = "Công việc đã hoàn thành";
+        const notificationMessage = `${memberName} đã hoàn thành công việc: "${task.title}"`;
+        const notificationLink = `/manager/tasks/${task.task_id}`;
+
+        const [notificationResult] = await db.query(
+          "INSERT INTO notifications (receiver_account_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
           [
             task.manager_account_id,
-            managerContext.person_id || null,
             "task_completed",
-            `Cong viec da hoan thanh: ${task.title}`,
-            `${memberName} da hoan thanh cong viec "${task.title}".`,
-            `/manager/tasks/${task.task_id}`,
+            notificationTitle,
+            notificationMessage,
+            notificationLink,
           ]
         );
 
         await emitNotificationToAccount(req, task.manager_account_id, {
+          id: notificationResult.insertId,
           type: "task_completed",
-          title: "Cong viec da hoan thanh",
-          message: `${memberName} da hoan thanh cong viec: "${task.title}"`,
+          title: notificationTitle,
+          message: notificationMessage,
+          link_url: notificationLink,
+          is_read: 0,
+          created_at: new Date().toISOString(),
           taskId: task.task_id,
-        });
+        }); 
+        const io = req.app?.locals?.io;
+
+        if (io) {
+          io.to(`account_${task.manager_account_id}`).emit("task_status_updated", {
+            task_id: task.task_id,
+            assignment_id: assignmentId,
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            member_account_id: task.member_account_id,
+            member_name: memberName,
+          });
+
+          console.log(`✅ Đã emit task_status_updated tới account_${task.manager_account_id}`);
+        }
+
       }
     }
 

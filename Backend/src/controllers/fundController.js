@@ -342,27 +342,34 @@ exports.createCampaign = async (req, res) => {
         const onlineUsers = req.app.locals.onlineUsers;
 
         for (const m of members) {
-            await db.query(
-                "INSERT INTO notifications (receiver_account_id, type, title, message) VALUES (?, ?, ?, ?)",
-                [
-                    m.id,
-                    'new_campaign',
-                    'Đợt thu mới',
-                    `Mở đợt thu: ${name}`
-                ]
-            );
+        const title = 'Đợt thu mới';
+        const message = `Mở đợt thu: ${name}`;
 
-            const sid = onlineUsers[m.id];
+        const [notificationResult] = await db.query(
+            "INSERT INTO notifications (receiver_account_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+            [
+                m.id,
+                'new_campaign',
+                title,
+                message,
+                '/manager/fund'
+            ]
+        );
 
-            if (io && sid) {
-                io.to(sid).emit('new_notification', {
-                    type: 'new_campaign',
-                    title: 'Đợt thu mới',
-                    message: `Mở đợt thu: ${name}`
-                });
-            }
+        if (io) {
+            io.to(`account_${m.id}`).emit('new_notification', {
+                id: notificationResult.insertId,
+                type: 'new_campaign',
+                title,
+                message,
+                link_url: '/manager/fund',
+                is_read: 0,
+                created_at: new Date().toISOString(),
+            });
+
+            console.log(`✅ Đã gửi realtime campaign notification tới account_${m.id}`);
         }
-
+    }
         res.json({
             success: true,
             campaignId: result.insertId
@@ -555,16 +562,35 @@ exports.reportPayment = async (req, res) => {
             [clan_id]
         );
 
+        const io = req.app.locals.io;
+
         for (const m of managers) {
-            await db.query(
+            const title = 'Báo cáo nộp quỹ';
+            const message = `${display_name} vừa nộp quỹ.`;
+
+            const [notificationResult] = await db.query(
                 "INSERT INTO notifications (receiver_account_id, type, title, message) VALUES (?, ?, ?, ?)",
                 [
                     m.id,
                     'payment_report',
-                    'Báo cáo nộp quỹ',
-                    `${display_name} vừa nộp quỹ.`
+                    title,
+                    message
                 ]
             );
+
+            if (io) {
+                io.to(`account_${m.id}`).emit('new_notification', {
+                    id: notificationResult.insertId,
+                    type: 'payment_report',
+                    title,
+                    message,
+                    link_url: '/manager/fund',
+                    is_read: 0,
+                    created_at: new Date().toISOString(),
+                });
+
+                console.log(`✅ Đã gửi realtime payment report notification tới account_${m.id}`);
+            }
         }
 
         res.json({

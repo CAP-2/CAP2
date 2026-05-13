@@ -181,23 +181,61 @@ const getPendingPosts = async(req, res) => {
 
 const approvePost = async(req, res) => {
     const postId = req.params.id;
+
     try {
+        const [postRows] = await db.query(
+            'SELECT id, clan_id FROM posts WHERE id = ? LIMIT 1',
+            [postId]
+        );
+
+        const post = postRows[0];
+
+        if (!post) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy bài viết',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query('SELECT clan_id FROM posts WHERE id = ?', [postId]);
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được duyệt bài viết cùng dòng họ' });
+
+            if (Number(post.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được duyệt bài viết cùng dòng họ',
+                });
             }
         }
+
         const sql = "UPDATE posts SET status = 'approved' WHERE id = ?";
         await db.query(sql, [postId]);
-        res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
+
+        const io = req.app?.locals?.io;
+
+        if (io && post.clan_id) {
+            io.to(`clan_${post.clan_id}`).emit("post_feed_updated", {
+                action: "post_approved",
+                post_id: Number(postId),
+                clan_id: post.clan_id,
+                actor_account_id: req.user?.id || req.user?.account_id || null,
+                updated_at: new Date().toISOString(),
+            });
+
+            console.log(`📰 Đã emit post_feed_updated post_approved tới clan_${post.clan_id}`);
+        }
+
+        return res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
     } catch (error) {
         console.error('approvePost error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi phê duyệt bài viết' });
+        return res.status(500).json({ success: false, message: 'Lỗi phê duyệt bài viết' });
     }
 };
 

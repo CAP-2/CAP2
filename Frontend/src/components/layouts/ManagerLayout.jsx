@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { getStoredUser, logout, isAuthenticated } from "../../utils/auth";
 import { formatDateVN } from "../../utils/dateFormat";
 import { apiRequest } from "../../services/api";
+import { connectSocketFromStorage, disconnectSocket } from "../../services/socket";
 import { resolveImageUrl } from "../../utils/media";
 import NotificationBell from "./NotificationBell";
 import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
@@ -48,6 +49,18 @@ export default function ManagerLayout() {
     new_password: "",
     confirm_password: "",
   });
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      return undefined;
+    }
+
+    connectSocketFromStorage();
+
+    return () => {
+      disconnectSocket();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated()) return undefined;

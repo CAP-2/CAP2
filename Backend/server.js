@@ -6,6 +6,7 @@ const multer = require('multer');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const db = require('./src/config/db');
 
 const app = express();
 
@@ -92,12 +93,50 @@ const upload = multer({
 const paymentRoutes = require('./src/routes/paymentRoutes');
 // 5. Socket.IO
 io.on('connection', (socket) => {
-    socket.on('register_user', (userId) => {
-        if (userId) {
-            app.locals.onlineUsers[userId] = socket.id;
-            console.log(`📡 User ${userId} đã kết nối (Socket: ${socket.id})`);
-        }
-    });
+    console.log(`Socket connected: ${socket.id}`);
+
+        socket.on('register_user', async (userId) => {
+            try {
+                if (!userId) {
+                    return;
+                }
+
+                app.locals.onlineUsers[userId] = socket.id;
+
+                // Join room theo account id
+                socket.join(`account_${userId}`);
+
+                console.log(`📡 User ${userId} đã kết nối (Socket: ${socket.id})`);
+                console.log(`📡 User ${userId} joined room account_${userId}`);
+
+                // Join thêm room theo clan để realtime cây gia phả cho cả dòng họ
+                const [rows] = await db.query(
+                    `
+                    SELECT COALESCE(p.clan_id, ac.clan_id) AS clan_id
+                    FROM accounts a
+                    LEFT JOIN account_clans ac
+                        ON ac.account_id = a.id
+                    AND ac.status = 'active'
+                    LEFT JOIN people p
+                        ON p.id = COALESCE(a.person_id, ac.person_id)
+                    WHERE a.id = ?
+                    LIMIT 1
+                    `,
+                    [userId]
+                );
+
+                const clanId = rows[0]?.clan_id;
+
+                if (clanId) {
+                    socket.join(`clan_${clanId}`);
+                    console.log(`🌳 User ${userId} joined room clan_${clanId}`);
+                } else {
+                    console.log(`⚠️ User ${userId} chưa có clan_id nên chưa join room clan`);
+                }
+            } catch (error) {
+                console.error('register_user error:', error);
+            }
+        });
 
     socket.on('send_task', (data) => {
         const { receiverId, title, senderName, dueDate } = data;

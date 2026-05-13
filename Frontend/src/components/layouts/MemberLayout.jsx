@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../../utils/auth";
 import { apiRequest } from "../../services/api";
+import { connectSocketFromStorage, disconnectSocket } from "../../services/socket";
 import { resolveImageUrl } from "../../utils/media";
 import NotificationBell from "./NotificationBell";
 import ProfileDrawer from "../ProfileDrawer/ProfileDrawer";
@@ -26,6 +27,18 @@ export default function MemberLayout() {
   const [currentUser, setCurrentUser] = useState(() => getStoredUser() || {});
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      return undefined;
+    }
+
+    connectSocketFromStorage();
+
+    return () => {
+      disconnectSocket();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated()) return undefined;

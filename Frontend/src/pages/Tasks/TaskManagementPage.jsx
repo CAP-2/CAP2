@@ -13,6 +13,7 @@ import {
 } from "../../api/managerService";
 import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
 import { generateEventFormAI } from "../../api/aiServerService";
+import { getSocket } from "../../services/socket";
 import DateInput from "../../components/common/DateInput";
 import { formatDateTimeVN, formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "./TaskManagementPage.css";
@@ -364,6 +365,62 @@ export default function TaskManagementPage({ role = "member" }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachSocketListeners = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handleTaskAssigned = (payload) => {
+      console.log("Realtime task_assigned received:", payload);
+      loadData();
+    };
+
+    const handleTaskStatusUpdated = (payload) => {
+      console.log("Realtime task_status_updated received:", payload);
+      loadData();
+    };
+
+    if (isMember) {
+      socket.on("task_assigned", handleTaskAssigned);
+    }
+
+    if (isManager || isAdmin) {
+      socket.on("task_status_updated", handleTaskStatusUpdated);
+    }
+
+    cleanup = () => {
+      socket.off("task_assigned", handleTaskAssigned);
+      socket.off("task_status_updated", handleTaskStatusUpdated);
+    };
+
+    return true;
+  };
+
+  if (!attachSocketListeners()) {
+    timer = window.setInterval(() => {
+      if (attachSocketListeners()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadData, isMember, isManager, isAdmin]);
 
   useEffect(() => {
     if (!canAssign || !selectedEventId) return;

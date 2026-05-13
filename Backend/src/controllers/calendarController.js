@@ -217,6 +217,36 @@ const normalizeReminderDays = (value) => {
   if (!Number.isFinite(number)) return 0;
   return Math.min(365, Math.max(0, Math.round(number)));
 };
+const emitCalendarUpdated = (req, event, action = 'calendar_updated') => {
+  const io = req.app?.locals?.io;
+
+  if (!io || !event) {
+    console.log('⚠️ Không thể emit calendar_updated: thiếu io hoặc event');
+    return;
+  }
+
+  const payload = {
+    action,
+    event_id: event.id || event.event_id || null,
+    clan_id: event.clan_id || null,
+    visibility: event.visibility || 'personal',
+    actor_account_id: req.user?.id || req.user?.account_id || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (payload.visibility === 'global' && payload.clan_id) {
+    io.to(`clan_${payload.clan_id}`).emit('calendar_updated', payload);
+    console.log(`📅 Đã emit calendar_updated ${action} tới clan_${payload.clan_id}`);
+    return;
+  }
+
+  const accountId = event.creator_account_id || req.user?.id || req.user?.account_id;
+
+  if (accountId) {
+    io.to(`account_${accountId}`).emit('calendar_updated', payload);
+    console.log(`📅 Đã emit calendar_updated ${action} tới account_${accountId}`);
+  }
+};
 
 
 let managerEventSchemaReady = false;
@@ -868,7 +898,13 @@ exports.createEvent = async (req, res) => {
       created.reminder_sent_at = new Date();
     }
 
-    return res.status(201).json({ success: true, message: 'Đã tạo lịch quan trọng.', event: mapEventRow(created, req) });
+    emitCalendarUpdated(req, created, 'calendar_event_created');
+
+return res.status(201).json({
+  success: true,
+  message: 'Đã tạo lịch quan trọng.',
+  event: mapEventRow(created, req),
+});
   } catch (error) {
     console.error('calendar createEvent error:', error);
     return res.status(500).json({ success: false, message: 'Lỗi tạo lịch.' });
@@ -918,7 +954,15 @@ exports.updateEvent = async (req, res) => {
     );
 
     const [rows] = await db.query('SELECT * FROM calendar_events WHERE id = ? LIMIT 1', [eventId]);
-    return res.json({ success: true, message: 'Đã cập nhật lịch.', event: mapEventRow(rows[0], req) });
+    const updated = rows[0];
+
+    emitCalendarUpdated(req, updated, 'calendar_event_updated');
+
+    return res.json({
+      success: true,
+      message: 'Đã cập nhật lịch.',
+      event: mapEventRow(updated, req),
+    });
   } catch (error) {
     console.error('calendar updateEvent error:', error);
     return res.status(500).json({ success: false, message: 'Lỗi cập nhật lịch.' });
@@ -947,6 +991,9 @@ exports.deleteEvent = async (req, res) => {
     }
 
     await db.query('DELETE FROM calendar_events WHERE id = ?', [eventId]);
+
+    emitCalendarUpdated(req, existing, 'calendar_event_deleted');
+
     return res.json({ success: true, message: 'Đã xóa lịch.' });
   } catch (error) {
     console.error('calendar deleteEvent error:', error);

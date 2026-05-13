@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/api";
 import { getStoredUser } from "../../utils/auth";
+import { getSocket } from "../../services/socket";
 import "./VietnamCalendarPage.css";
 
 const STORAGE_KEY = "gia_pha_viet_calendar_events_v1";
@@ -359,6 +360,50 @@ export default function VietnamCalendarPage() {
   useEffect(() => {
     loadCalendarEvents();
   }, [loadCalendarEvents]);
+  
+  useEffect(() => {
+  let timer = null;
+  let cleanup = null;
+
+  const attachCalendarSocket = () => {
+    const socket = getSocket();
+
+    if (!socket) {
+      return false;
+    }
+
+    const handleCalendarUpdated = (payload) => {
+      console.log("Realtime calendar_updated received:", payload);
+      loadCalendarEvents();
+    };
+
+    socket.on("calendar_updated", handleCalendarUpdated);
+
+    cleanup = () => {
+      socket.off("calendar_updated", handleCalendarUpdated);
+    };
+
+    return true;
+  };
+
+  if (!attachCalendarSocket()) {
+    timer = window.setInterval(() => {
+      if (attachCalendarSocket()) {
+        window.clearInterval(timer);
+      }
+    }, 500);
+  }
+
+  return () => {
+    if (timer) {
+      window.clearInterval(timer);
+    }
+
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}, [loadCalendarEvents]);
 
   const selectedLunar = getLunarInfo(selectedDate);
   const selectedEvents = getDayEvents(selectedDate, savedEvents);

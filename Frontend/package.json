@@ -17,7 +17,8 @@
         "react-is": "^19.2.5",
         "react-router-dom": "^6.30.3",
         "react-zoom-pan-pinch": "^4.0.3",
-        "recharts": "^3.8.1"
+        "recharts": "^3.8.1",
+        "socket.io-client": "^4.8.3"
     },
     "devDependencies": {
         "@vitejs/plugin-react": "^4.7.0",
