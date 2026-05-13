@@ -422,6 +422,7 @@ const assignTask = async(req, res) => {
                 data: {
                     task_id: taskId,
                     event_id: normalizedEventId,
+                    link_url: `/user/tasks?taskId=${taskId}`,
                 },
                 connection,
             });
@@ -438,7 +439,7 @@ const assignTask = async(req, res) => {
                         type: 'task_assigned',
                         title: 'Bạn có công việc mới',
                         message: `Bạn được phân công công việc: ${trimmedTitle}`,
-                        link_url: '/user/tasks',
+                        link_url: `/user/tasks?taskId=${taskId}`,
                         is_read: 0,
                         created_at: new Date().toISOString(),
                         task_id: taskId,
@@ -786,6 +787,7 @@ const bulkAssignTasks = async(req, res) => {
                     data: {
                         task_id: taskId,
                         event_id: eventId || null,
+                        link_url: `/user/tasks?taskId=${taskId}`,
                     },
                     connection,
                 });
@@ -807,7 +809,7 @@ for (const job of notificationJobs) {
         type: 'task_assigned',
         title: 'Bạn có công việc mới',
         message: `Bạn được phân công công việc: ${job.title}`,
-        link_url: '/user/tasks',
+        link_url: `/user/tasks?taskId=${job.taskId}`,
         is_read: 0,
         created_at: new Date().toISOString(),
         task_id: job.taskId,

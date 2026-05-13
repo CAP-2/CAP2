@@ -133,6 +133,15 @@ export const getMemberTasks = async () =>
     "Không thể tải công việc được giao",
   );
 
+export const getMemberEvents = async () =>
+  requestJson(
+    "/events",
+    {
+      headers: getAuthHeaders(),
+    },
+    "Không thể tải danh sách sự kiện",
+  );
+
 export const updateMemberTaskStatus = async (taskId, status) =>
   requestJson(
     `/tasks/${taskId}/status`,

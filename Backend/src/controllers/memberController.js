@@ -1521,6 +1521,56 @@ exports.getAssignedTasks = async (req, res) => {
   }
 };
 
+exports.getAssignedEvents = async (req, res) => {
+  try {
+    const accountId = req.user.id;
+    const context = await getAccountContext(accountId);
+    if (!context || !context.clan_id) {
+      return res.json({ success: true, events: [] });
+    }
+
+    const sql = `
+      SELECT
+        e.id,
+        e.clan_id,
+        e.title,
+        e.event_date,
+        COALESCE(e.start_date, e.event_date) AS start_date,
+        COALESCE(e.end_date, e.start_date, e.event_date) AS end_date,
+        CASE
+            WHEN COALESCE(e.end_date, e.start_date, e.event_date) < CURDATE() THEN 'ended'
+            WHEN COALESCE(e.start_date, e.event_date) <= CURDATE()
+              AND COALESCE(e.end_date, e.start_date, e.event_date) >= CURDATE() THEN 'ongoing'
+            ELSE 'upcoming'
+        END AS status,
+        e.description,
+        (
+          SELECT COUNT(*)
+          FROM manager_tasks mt
+          INNER JOIN manager_task_assignments mta ON mta.task_id = mt.id
+          WHERE mt.event_id = e.id AND mta.member_account_id = ?
+        ) AS my_task_count,
+        (
+          SELECT COUNT(*)
+          FROM manager_tasks mt
+          INNER JOIN manager_task_assignments mta ON mta.task_id = mt.id
+          WHERE mt.event_id = e.id AND mta.member_account_id = ? AND mta.status = 'completed'
+        ) AS my_completed_task_count
+      FROM events e
+      WHERE e.clan_id = ?
+      HAVING status IN ('ongoing', 'upcoming')
+      ORDER BY COALESCE(e.start_date, e.event_date) ASC, e.id ASC
+    `;
+
+    const [rows] = await db.query(sql, [accountId, accountId, context.clan_id]);
+    return res.json({ success: true, events: rows });
+  } catch (error) {
+    console.error("getAssignedEvents error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi lấy danh sách sự kiện" });
+  }
+};
+
+
 exports.updateTaskStatus = async (req, res) => {
   try {
     await ensureTaskTables();

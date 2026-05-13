@@ -1643,3 +1643,50 @@
     flex: 1 1 160px;
   }
 }
+
+.manager-event-card.is-assigned-glow {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: linear-gradient(145deg, rgba(254, 243, 199, 0.9), rgba(255, 251, 235, 0.95));
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.manager-event-card.is-assigned-glow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.manager-event-card.is-assigned-glow .manager-event-icon {
+  color: #b45309;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
+
+.manager-event-card.is-assigned-glow:hover {
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.manager-event-card.is-assigned-glow:hover .manager-event-icon {
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.member-tasks-modal-body {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(185, 130, 44, 0.24);
+}
+
+.member-tasks-modal-body .task-history-card {
+  box-shadow: none;
+  border: none;
+  padding: 0;
+  background: transparent;
+}

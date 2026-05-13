@@ -17,6 +17,7 @@ router.post("/chat", verifyToken, checkRole(["admin", "manager", "member"]), mem
 
 router.post("/reminders", verifyToken, checkRole(["manager", "member"]), memberController.createReminder);
 router.get("/tasks", verifyToken, checkRole(["member"]), memberController.getAssignedTasks);
+router.get("/events", verifyToken, checkRole(["member"]), memberController.getAssignedEvents);
 router.patch("/tasks/:id/status", verifyToken, checkRole(["member"]), memberController.updateTaskStatus);
 
 router.post("/content/profile", verifyToken, checkRole(["admin", "manager", "member"]), memberController.proposeProfileUpdate);

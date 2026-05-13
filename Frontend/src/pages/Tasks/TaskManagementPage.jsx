@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getAdminClanTasks, getAdminClans, getAdminMembers } from "../../api/adminService";
 import {
   assignTaskAPI,
@@ -11,7 +11,7 @@ import {
   getTasksAPI,
   updateManagerEventAPI,
 } from "../../api/managerService";
-import { getMemberTasks, updateMemberTaskStatus } from "../../api/memberService";
+import { getMemberTasks, getMemberEvents, updateMemberTaskStatus } from "../../api/memberService";
 import { generateEventFormAI } from "../../api/aiServerService";
 import { getSocket } from "../../services/socket";
 import DateInput from "../../components/common/DateInput";
@@ -225,6 +225,7 @@ function MemberCombobox({ members, value, onChange, disabled = false }) {
 export default function TaskManagementPage({ role = "member" }) {
   const { clanId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [clans, setClans] = useState([]);
   const [clan, setClan] = useState(null);
   const [members, setMembers] = useState([]);
@@ -319,9 +320,9 @@ export default function TaskManagementPage({ role = "member" }) {
       }
 
       if (isMember) {
-        const data = await getMemberTasks();
-        setTasks(asArray(data.tasks));
-        setEvents([]);
+        const [taskData, eventData] = await Promise.all([getMemberTasks(), getMemberEvents()]);
+        setTasks(asArray(taskData.tasks));
+        setEvents(asArray(eventData.events));
         setMembers([]);
         setClan(null);
         return;
@@ -365,6 +366,19 @@ export default function TaskManagementPage({ role = "member" }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isMember) return;
+    const taskId = searchParams.get("taskId");
+    if (!taskId || !tasks.length) return;
+
+    const task = tasks.find((t) => String(t.task_id || t.id) === String(taskId));
+    if (task && task.event_id) {
+      setSelectedEventId(task.event_id);
+      searchParams.delete("taskId");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, isMember, tasks, setSearchParams]);
 
   useEffect(() => {
   let timer = null;
@@ -948,8 +962,8 @@ const openEvent = (eventId) => {
         <header className="task-hero task-hero-wide">
           <div>
             <span className="task-kicker">Member</span>
-            <h1>Công việc được giao</h1>
-            <p>Bạn chỉ xem được các công việc được giao cho tài khoản của mình.</p>
+            <h1>Sự kiện & Công việc</h1>
+            <p>Danh sách sự kiện đang diễn ra và công việc bạn được phân công.</p>
           </div>
         </header>
         {message && <div className="task-alert is-success">{message}</div>}
@@ -960,7 +974,66 @@ const openEvent = (eventId) => {
           <div className="task-stat"><span className="material-symbols-outlined">sync</span><strong>{stats.inProgress}</strong><small>Đang làm</small></div>
           <div className="task-stat"><span className="material-symbols-outlined">task_alt</span><strong>{stats.completed}</strong><small>Hoàn thành</small></div>
         </div>
-        <TaskList tasks={tasks} isMember savingTaskId={savingTaskId} onUpdateStatus={updateTaskStatus} />
+
+        {events.length > 0 && (
+          <div className="manager-event-grid">
+            {events.map((event) => {
+              const myTaskCount = Number(event.my_task_count || 0);
+              const myCompletedTaskCount = Number(event.my_completed_task_count || 0);
+              const openTasks = Math.max(myTaskCount - myCompletedTaskCount, 0);
+              const hasAssignedTasks = myTaskCount > 0;
+              
+              return (
+                <button 
+                  key={event.id} 
+                  type="button" 
+                  className={`manager-event-card ${openTasks > 0 ? 'is-assigned-glow' : ''}`}
+                  onClick={() => setSelectedEventId(event.id)}
+                >
+                  <span className="manager-event-icon material-symbols-outlined">event_note</span>
+                  <strong>{event.title}</strong>
+                  <small>{formatEventRange(event)}</small>
+                  <span className={`event-status-pill ${eventStatusClass(event.status)}`}>{eventStatusLabel(event.status)}</span>
+                  {event.description && <p>{event.description}</p>}
+                  <div className="manager-event-metrics">
+                    {hasAssignedTasks ? (
+                      <>
+                        <span>{openTasks} việc đang mở</span>
+                        <span>{myCompletedTaskCount} hoàn thành</span>
+                        <span>{myTaskCount} tổng việc</span>
+                      </>
+                    ) : (
+                      <span>Chưa có việc cho bạn</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {selectedEventId && (
+          <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setSelectedEventId("")}>
+            <div className="task-modal-card member-tasks-modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="task-modal-head">
+                <div className="task-card-title">
+                  <span className="material-symbols-outlined">assignment</span>
+                  <h2>{selectedEvent ? selectedEvent.title : "Công việc trong sự kiện"}</h2>
+                </div>
+                <button className="task-icon-btn" type="button" onClick={() => setSelectedEventId("")} aria-label="Đóng">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div className="member-tasks-modal-body">
+                <TaskList tasks={selectedTasks} isMember savingTaskId={savingTaskId} onUpdateStatus={updateTaskStatus} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!events.length && (
+          <TaskList tasks={tasks} isMember savingTaskId={savingTaskId} onUpdateStatus={updateTaskStatus} />
+        )}
       </section>
     );
   }

@@ -70,10 +70,27 @@ const ensureNotificationSchema = async () => {
   schemaReady = true;
 };
 
-const createNotification = async ({ receiverAccountId = null, receiverPersonId = null, type, title, message, linkUrl = null }) => {
+const createNotification = async (payload) => {
   await ensureNotificationSchema();
 
-  if (receiverAccountId == null && receiverPersonId == null) {
+  const {
+    receiverAccountId,
+    accountId,
+    receiverPersonId,
+    personId,
+    type,
+    title,
+    message,
+    linkUrl,
+    link_url,
+    data
+  } = payload;
+
+  const targetAccountId = receiverAccountId || accountId || null;
+  const targetPersonId = receiverPersonId || personId || null;
+  const targetLinkUrl = linkUrl || link_url || data?.link_url || null;
+
+  if (targetAccountId == null && targetPersonId == null) {
     return null;
   }
 
@@ -82,8 +99,9 @@ const createNotification = async ({ receiverAccountId = null, receiverPersonId =
       INSERT INTO notifications (receiver_account_id, receiver_person_id, type, title, message, link_url)
       VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [receiverAccountId, receiverPersonId, type, title, message, linkUrl]
+    [targetAccountId, targetPersonId, type, title, message, targetLinkUrl]
   );
+
 
   return result.insertId;
 };

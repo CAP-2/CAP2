@@ -2909,17 +2909,22 @@ const submitCreateDialog = async () => {
         limitToBounds={false}
         panning={{ disabled: draggingId !== null || draggingLineId !== null, velocityDisabled: false }}
         doubleClick={{ disabled: true }}
-        wheel={{ step: 0.055, smoothStep: 0.004, wheelDisabled: false }}
+
         pinch={{ step: 5 }}
         velocityAnimation={{ sensitivity: 1.05, animationTime: 260 }}
         alignmentAnimation={{ sizeX: 0, sizeY: 0, animationTime: 220 }}
-        onInit={(_, state) => {
-          const scale = state?.scale || 0.85;
+        onInit={(ref) => {
+          const scale = ref?.state?.scale || 0.85;
           scaleRef.current = scale;
           setCurrentScale(scale);
         }}
-        onTransformed={(_, state) => {
-          const scale = state?.scale || 1;
+        onZoom={(ref) => {
+          const scale = ref?.state?.scale || 0.85;
+          scaleRef.current = scale;
+          setCurrentScale(scale);
+        }}
+        onTransformed={(ref) => {
+          const scale = ref?.state?.scale || 0.85;
           scaleRef.current = scale;
           setCurrentScale(scale);
         }}
