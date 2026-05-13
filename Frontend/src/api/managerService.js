@@ -6,9 +6,185 @@ const BASE_URL = "/api/manager";
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
 
+const ensureCenteredNoticeStyles = () => {
+  if (typeof document === "undefined" || document.getElementById("genealogy-centered-notice-style")) return;
+  const style = document.createElement("style");
+  style.id = "genealogy-centered-notice-style";
+  style.textContent = `
+    .genealogy-notice-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.48);
+      backdrop-filter: blur(2px);
+    }
+    .genealogy-notice-card {
+      width: min(520px, 100%);
+      background: #ffffff;
+      color: #111827;
+      border-radius: 18px;
+      box-shadow: 0 22px 70px rgba(15, 23, 42, 0.35);
+      padding: 24px;
+      text-align: center;
+      font-family: inherit;
+      animation: genealogyNoticePop 160ms ease-out;
+    }
+    .genealogy-notice-icon {
+      width: 46px;
+      height: 46px;
+      margin: 0 auto 12px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 800;
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .genealogy-notice-card.is-warning .genealogy-notice-icon {
+      background: #fef3c7;
+      color: #d97706;
+    }
+    .genealogy-notice-title {
+      margin: 0 0 10px;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .genealogy-notice-message {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.55;
+      white-space: pre-line;
+    }
+    .genealogy-notice-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 22px;
+      flex-wrap: wrap;
+    }
+    .genealogy-notice-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 22px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .genealogy-notice-btn.primary {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    .genealogy-notice-btn.danger {
+      background: #dc2626;
+      color: #ffffff;
+    }
+    @keyframes genealogyNoticePop {
+      from { transform: translateY(8px) scale(0.98); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+};
+
+const showCenteredGenealogyNotice = ({
+  message,
+  title = "Thông báo ràng buộc gia phả",
+  type = "error",
+  confirm = false,
+}) => {
+  if (typeof document === "undefined") {
+    return Promise.resolve(false);
+  }
+  ensureCenteredNoticeStyles();
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "genealogy-notice-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.addEventListener("mousedown", (event) => {
+      if (event.target === overlay) close(false);
+    });
+
+    const card = document.createElement("div");
+    card.addEventListener("mousedown", (event) => event.stopPropagation());
+    card.className = `genealogy-notice-card ${type === "warning" ? "is-warning" : "is-error"}`;
+
+    const icon = document.createElement("div");
+    icon.className = "genealogy-notice-icon";
+    icon.textContent = type === "warning" ? "!" : "×";
+
+    const titleEl = document.createElement("h3");
+    titleEl.className = "genealogy-notice-title";
+    titleEl.textContent = title;
+
+    const messageEl = document.createElement("p");
+    messageEl.className = "genealogy-notice-message";
+    messageEl.textContent = message || "Có lỗi xảy ra.";
+
+    const actions = document.createElement("div");
+    actions.className = "genealogy-notice-actions";
+
+    const close = (value) => {
+      document.removeEventListener("keydown", onKeyDown);
+      overlay.remove();
+      resolve(value);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(false);
+      if (!confirm && event.key === "Enter") close(true);
+    };
+
+    if (confirm) {
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "genealogy-notice-btn";
+      cancelBtn.textContent = "Hủy";
+      cancelBtn.onclick = () => close(false);
+
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "genealogy-notice-btn primary";
+      okBtn.textContent = "Vẫn lưu dữ liệu lịch sử";
+      okBtn.onclick = () => close(true);
+
+      actions.append(cancelBtn, okBtn);
+      setTimeout(() => okBtn.focus(), 0);
+    } else {
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "genealogy-notice-btn danger";
+      okBtn.textContent = "Đã hiểu";
+      okBtn.onclick = () => close(true);
+      actions.append(okBtn);
+      setTimeout(() => okBtn.focus(), 0);
+    }
+
+    card.append(icon, titleEl, messageEl, actions);
+    overlay.append(card);
+    document.body.appendChild(overlay);
+    document.addEventListener("keydown", onKeyDown);
+  });
+};
+
 const isHistoricalRelationWarning = (error) => {
   const data = error?.data || error?.response?.data || {};
   return Boolean(data.requiresConfirmation || error?.requiresConfirmation) && data.level === "warning";
+};
+
+const markNoticeShown = (error) => {
+  if (error && typeof error === "object") {
+    error.__centeredNoticeShown = true;
+  }
+  return error;
 };
 
 const mergeForceSaveFlag = (options = {}) => {
@@ -40,13 +216,18 @@ const requestWithHistoricalConfirmation = async (endpoint, options = {}, fallbac
       error?.message ||
       "Quan hệ này vi phạm ràng buộc huyết thống/hôn phối. Đây có thể là dữ liệu lịch sử. Bạn có chắc muốn tiếp tục lưu không?";
 
-    const ok = typeof window !== "undefined" ? window.confirm(message) : false;
+    const ok = await showCenteredGenealogyNotice({
+      message,
+      title: "Cảnh báo quan hệ dữ liệu lịch sử",
+      type: "warning",
+      confirm: true,
+    });
     if (!ok) {
       const cancelError = new Error("Đã hủy lưu quan hệ sau cảnh báo vi phạm.");
       cancelError.data = error?.data || null;
       cancelError.status = error?.status || 409;
       cancelError.code = "HISTORICAL_RELATION_CONFIRMATION_CANCELLED";
-      throw cancelError;
+      throw markNoticeShown(cancelError);
     }
 
     return request(endpoint, mergeForceSaveFlag(options), fallbackError);
@@ -86,7 +267,13 @@ const request = async (endpoint, options = {}, fallbackError = "Yêu cầu API t
       normalizedError.data?.message &&
       typeof window !== "undefined"
     ) {
-      window.alert(normalizedError.data.message);
+      await showCenteredGenealogyNotice({
+        message: normalizedError.data.message,
+        title: "Vi phạm ràng buộc gia phả",
+        type: "error",
+        confirm: false,
+      });
+      markNoticeShown(normalizedError);
     }
 
     throw normalizedError;
@@ -398,7 +585,7 @@ export const deletePersonAPI = (personId) =>
   );
 
 export const createFamilyAPI = (data) =>
-  request(
+  requestWithHistoricalConfirmation(
     "/families",
     {
       method: "POST",

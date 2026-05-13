@@ -15,6 +15,8 @@ import DateInput from "../common/DateInput";
 import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "./FamilyTreeEditor.css";
 
+const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
+
 const CARD_WIDTH = 170;
 const CARD_HEIGHT = 185;
 const MIN_CARD_WIDTH = 130;
@@ -29,6 +31,7 @@ const FAMILY_GAP = Math.round(CARD_WIDTH * 1.2);
 const Y_GAP = LEVEL_HEIGHT;
 const CANVAS_PADDING = 180;
 const SNAP_SIZE = 20;
+const LINE_SNAP_SIZE = 5;
 const EXPORT_BACKGROUND = "#f8edb2";
 const EXPORT_MAX_CANVAS_EDGE = 14000;
 const SOURCE_BRANCH_STEP = 10;
@@ -52,6 +55,7 @@ const toInt = (value, fallback = 0) => {
 };
 
 const snap = (value) => Math.round(toInt(value, 0) / SNAP_SIZE) * SNAP_SIZE;
+const snapLine = (value) => Math.round(toInt(value, 0) / LINE_SNAP_SIZE) * LINE_SNAP_SIZE;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 function getLineRouteStorageKey(clanId) {
@@ -621,24 +625,49 @@ function rightOf(person, cardSizes = {}) {
   return toInt(person.tree_x, 0) + size.width;
 }
 
-function getTreeExportBounds(people) {
+function numbersFromPath(pathText) {
+  return String(pathText || "")
+    .match(/-?\d+(?:\.\d+)?/g)
+    ?.map(Number)
+    .filter(Number.isFinite) || [];
+}
+
+function getTreeExportBounds(people, lines = [], cardSizes = {}) {
   if (!people.length) {
     return { x: 0, y: 0, width: 1200, height: 800 };
   }
 
-  const padding = 90;
-  const titleMinX = 40;
-  const titleMinY = 30;
-  const minX = Math.min(titleMinX, ...people.map((person) => toInt(person.tree_x, 0))) - padding;
-  const minY = Math.min(titleMinY, ...people.map((person) => toInt(person.tree_y, 0))) - padding;
-  const maxX = Math.max(...people.map((person) => toInt(person.tree_x, 0) + CARD_WIDTH)) + padding;
-  const maxY = Math.max(...people.map((person) => toInt(person.tree_y, 0) + CARD_HEIGHT)) + padding;
+  const padding = 110;
+  const xs = [40];
+  const ys = [30];
+
+  people.forEach((person) => {
+    const size = getCardSize(cardSizes, person.id);
+    xs.push(toInt(person.tree_x, 0), toInt(person.tree_x, 0) + size.width);
+    ys.push(toInt(person.tree_y, 0), toInt(person.tree_y, 0) + size.height);
+  });
+
+  lines.forEach((line) => {
+    if (line.type === "route-control") return;
+    const nums = numbersFromPath(line.d);
+    for (let index = 0; index < nums.length; index += 2) {
+      if (Number.isFinite(nums[index])) xs.push(nums[index]);
+      if (Number.isFinite(nums[index + 1])) ys.push(nums[index + 1]);
+    }
+  });
+
+  const rawMinX = Math.min(...xs) - padding;
+  const rawMinY = Math.min(...ys) - padding;
+  const minX = Math.max(0, Math.floor(rawMinX));
+  const minY = Math.max(0, Math.floor(rawMinY));
+  const maxX = Math.ceil(Math.max(...xs) + padding);
+  const maxY = Math.ceil(Math.max(...ys) + padding);
 
   return {
-    x: Math.max(0, Math.floor(minX)),
-    y: Math.max(0, Math.floor(minY)),
-    width: Math.max(900, Math.ceil(maxX - Math.max(0, minX))),
-    height: Math.max(620, Math.ceil(maxY - Math.max(0, minY))),
+    x: minX,
+    y: minY,
+    width: Math.max(900, maxX - minX),
+    height: Math.max(620, maxY - minY),
   };
 }
 
@@ -666,6 +695,201 @@ function downloadBlob(blob, fileName) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Trình duyệt không tạo được dữ liệu PNG từ canvas."));
+      }, "image/png", 0.95);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function drawRoundRect(ctx, x, y, width, height, radius = 12) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawTextFit(ctx, text, x, y, maxWidth, options = {}) {
+  const value = String(text || "").trim();
+  if (!value) return;
+  const fontSize = options.fontSize || 16;
+  const minFontSize = options.minFontSize || 10;
+  const weight = options.weight || "700";
+  const family = options.family || "Georgia, 'Times New Roman', serif";
+  let size = fontSize;
+  ctx.font = `${weight} ${size}px ${family}`;
+  while (size > minFontSize && ctx.measureText(value).width > maxWidth) {
+    size -= 1;
+    ctx.font = `${weight} ${size}px ${family}`;
+  }
+  ctx.fillText(value, x, y);
+}
+
+function drawSvgPathFallback(ctx, pathText) {
+  const nums = numbersFromPath(pathText);
+  if (nums.length < 4) return;
+  ctx.beginPath();
+  ctx.moveTo(nums[0], nums[1]);
+  for (let index = 2; index < nums.length; index += 2) {
+    if (Number.isFinite(nums[index]) && Number.isFinite(nums[index + 1])) {
+      ctx.lineTo(nums[index], nums[index + 1]);
+    }
+  }
+  ctx.stroke();
+}
+
+function drawTreeLine(ctx, line) {
+  if (!line?.d || line.type === "route-control") return;
+  ctx.save();
+  ctx.fillStyle = "transparent";
+  ctx.strokeStyle = line.type === "spouse" ? "#7f1d12" : line.color || "#1E3A8A";
+  ctx.lineWidth = line.type === "spouse" ? 4 : 4.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  try {
+    ctx.stroke(new Path2D(line.d));
+  } catch {
+    drawSvgPathFallback(ctx, line.d);
+  }
+  ctx.restore();
+}
+
+function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
+  const size = getCardSize(cardSizes, person.id);
+  const x = toInt(person.tree_x, 0);
+  const y = toInt(person.tree_y, 0);
+  const width = size.width;
+  const height = size.height;
+  const isFounder = Number(person.generation) === 1 || Number(person.role_id) === 1;
+  const isChief = Number(person.role_id) === 2;
+  const name = String(fullName(person, "Thành viên")).toUpperCase();
+  const birthText = formatDisplayDate(person.birth_date);
+  const deathText = formatDisplayDate(person.death_date);
+  const deceased = Number(person.is_living) === 0;
+  const lifeParts = [];
+  if (birthText) lifeParts.push(`Sinh: ${birthText}`);
+  if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
+  const lifeText = lifeParts.join(" - ");
+
+  ctx.save();
+  ctx.shadowColor = "rgba(69, 38, 8, 0.24)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  drawRoundRect(ctx, x, y, width, height, 12);
+  const grad = ctx.createLinearGradient(x, y, x, y + height);
+  if (isFounder) {
+    grad.addColorStop(0, "#e3352c");
+    grad.addColorStop(1, "#c42a22");
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.strokeStyle = "#9f2a1c";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  } else {
+    grad.addColorStop(0, "#fffbe0");
+    grad.addColorStop(1, "#ffd568");
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.strokeStyle = "#bd7d1f";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  if (isChief) {
+    ctx.fillStyle = "#9b1c12";
+    drawRoundRect(ctx, x + 12, y + 10, Math.min(width - 24, 92), 22, 10);
+    ctx.fill();
+    ctx.fillStyle = "#fff7ce";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 11px Georgia, 'Times New Roman', serif";
+    ctx.fillText("TỘC TRƯỞNG", x + 12 + Math.min(width - 24, 92) / 2, y + 21);
+  }
+
+  const iconY = y + Math.max(24, Math.min(45, height * 0.17));
+  const iconRadius = Math.max(12, Math.min(22, width * 0.12));
+  const iconX = x + width / 2;
+  ctx.beginPath();
+  ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2);
+  ctx.fillStyle = isFounder ? "#ffe5a3" : "#fff7d2";
+  ctx.fill();
+  ctx.strokeStyle = isFounder ? "#fff2c3" : "#9f2a1c";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = isFounder ? "#d1352b" : "#9f2a1c";
+  ctx.beginPath();
+  ctx.arc(iconX, iconY - 4, iconRadius * 0.22, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(iconX, iconY + 7, iconRadius * 0.36, Math.PI, 0);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = isFounder ? "#fffbe8" : "#8a2418";
+  drawTextFit(ctx, name, iconX, y + height * 0.48, width - 24, { fontSize: Math.max(12, Math.min(20, width * 0.105)), minFontSize: 9, weight: "800" });
+  drawTextFit(ctx, `ĐỜI ${person.generation || "?"}`, iconX, y + height * 0.61, width - 28, { fontSize: Math.max(11, Math.min(17, width * 0.09)), minFontSize: 9, weight: "800" });
+  if (lifeText) {
+    ctx.fillStyle = isFounder ? "#fff4c7" : "#9a4f20";
+    drawTextFit(ctx, lifeText, iconX, y + height - 22, width - 18, { fontSize: Math.max(9, Math.min(12, width * 0.06)), minFontSize: 8, weight: "700" });
+  }
+  ctx.restore();
+}
+
+async function renderFamilyTreePngBlob({ people, lines, cardSizes, clan }) {
+  const bounds = getTreeExportBounds(people, lines, cardSizes);
+  const pixelRatio = getExportPixelRatio(bounds);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.ceil(bounds.width * pixelRatio));
+  canvas.height = Math.max(1, Math.ceil(bounds.height * pixelRatio));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Trình duyệt không hỗ trợ canvas export.");
+
+  ctx.save();
+  ctx.scale(pixelRatio, pixelRatio);
+  const bg = ctx.createLinearGradient(0, 0, bounds.width, bounds.height);
+  bg.addColorStop(0, "#fff7c8");
+  bg.addColorStop(0.48, "#f6da82");
+  bg.addColorStop(1, "#dda046");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, bounds.width, bounds.height);
+
+  ctx.translate(-bounds.x, -bounds.y);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.38)";
+  drawRoundRect(ctx, 42, 26, 240, 70, 12);
+  ctx.fill();
+  ctx.fillStyle = "#7d1f13";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "800 15px Georgia, 'Times New Roman', serif";
+  ctx.fillText("GIA PHẢ", 58, 52);
+  ctx.font = "900 32px Georgia, 'Times New Roman', serif";
+  ctx.fillText(String(clan?.clan_name || "Dòng họ").toUpperCase(), 58, 88);
+
+  asArray(lines).forEach((line) => drawTreeLine(ctx, line));
+  asArray(people).forEach((person) => drawPersonCardOnCanvas(ctx, person, cardSizes));
+  ctx.restore();
+
+  return canvasToBlob(canvas);
 }
 
 function buildTreeLines(people, families, childRows, lineRoutes = {}, cardSizes = {}) {
@@ -842,6 +1066,20 @@ function findSpouse(person, families, people) {
   return people.find((item) => Number(item.id) === spouseId) || null;
 }
 
+function spouseIdsForPerson(personId, families) {
+  const id = Number(personId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return asArray(families)
+    .filter((family) => Number(family.father_id) === id || Number(family.mother_id) === id)
+    .map((family) => (Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id)))
+    .filter((spouseId) => Number.isFinite(spouseId) && spouseId > 0);
+}
+
+function hasDifferentSpouse(personId, allowedSpouseId, families) {
+  const allowed = Number(allowedSpouseId);
+  return spouseIdsForPerson(personId, families).some((spouseId) => Number(spouseId) !== allowed);
+}
+
 const relationLabels = {
   spouse: "vợ/chồng",
   child: "con",
@@ -849,16 +1087,22 @@ const relationLabels = {
   mother: "mẹ",
 };
 
-function relationCandidates(relation, selectedPerson, people, linkedIds = new Set()) {
+function relationCandidates(relation, selectedPerson, people, linkedIds = new Set(), families = []) {
   const selectedGeneration = toInt(selectedPerson?.generation, 1) || 1;
+  const selectedId = Number(selectedPerson?.id);
   return asArray(people)
-    .filter((person) => Number(person.id) !== Number(selectedPerson?.id))
+    .filter((person) => Number(person.id) !== selectedId)
     .filter((person) => {
-      if (linkedIds.has(Number(person.id))) return true;
+      const personId = Number(person.id);
+      if (linkedIds.has(personId)) return true;
       if (relation === "father") return Number(person.gender) !== 2;
       if (relation === "mother") return Number(person.gender) !== 1;
       if (relation === "spouse") {
-        return !selectedPerson?.gender || !person.gender || Number(person.gender) !== Number(selectedPerson.gender);
+        const sameGeneration = !selectedPerson?.generation || !person.generation || Number(person.generation) === Number(selectedPerson.generation);
+        const oppositeGender = !selectedPerson?.gender || !person.gender || Number(person.gender) !== Number(selectedPerson.gender);
+        const selectedAvailable = !hasDifferentSpouse(selectedId, personId, families);
+        const candidateAvailable = !hasDifferentSpouse(personId, selectedId, families);
+        return sameGeneration && oppositeGender && selectedAvailable && candidateAvailable;
       }
       return true;
     })
@@ -1405,7 +1649,7 @@ function RelationSelectDialog({
   if (!relation || !selectedPerson) return null;
 
   const linkedIds = relationLinkedIds(relation, selectedPerson, families, childRows);
-  const candidates = relationCandidates(relation, selectedPerson, people, linkedIds);
+  const candidates = relationCandidates(relation, selectedPerson, people, linkedIds, families);
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = candidates.filter((person) => {
     if (!normalizedQuery) return true;
@@ -1488,6 +1732,32 @@ function RelationSelectDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function CenterNoticeDialog({ message, onClose }) {
+  if (!message) return null;
+
+  return createPortal(
+    <div className="fte-centerNoticeOverlay" role="presentation" onMouseDown={onClose}>
+      <div
+        className="fte-centerNoticeDialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-live="assertive"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="fte-centerNoticeIcon">
+          <span className="material-symbols-outlined">warning</span>
+        </div>
+        <div className="fte-centerNoticeContent">
+          <h3>Cảnh báo vi phạm ràng buộc</h3>
+          <p>{message}</p>
+          <small>Bấm ra ngoài khung cảnh báo để đóng.</small>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1808,6 +2078,7 @@ export default function FamilyTreeEditor({
   const [lineRoutes, setLineRoutes] = useState(() => ({ ...loadLineRoutes(clan?.id), ...normalizeLayoutSettings(layoutSettings).line_routes }));
   const [cardSizes, setCardSizes] = useState(() => ({ ...loadCardSizes(clan?.id), ...normalizeLayoutSettings(layoutSettings).card_sizes }));
   const [status, setStatus] = useState("");
+  const [constraintNotice, setConstraintNotice] = useState("");
   const [billingWarning, setBillingWarning] = useState(null);
   const [saving, setSaving] = useState(false);
   const [dialog, setDialog] = useState(null);
@@ -2016,7 +2287,7 @@ const quickCreateSourcePerson = useMemo(
     const sourceId = Number(sourcePerson.id);
     const nextTargetId = Number(targetId);
     if (!Number.isFinite(sourceId) || !Number.isFinite(nextTargetId) || sourceId === nextTargetId) {
-      setStatus("Không thể liên kết thành viên này.");
+      setConstraintNotice("Không thể liên kết thành viên này.");
       return false;
     }
 
@@ -2058,7 +2329,7 @@ const quickCreateSourcePerson = useMemo(
       await onReload?.();
       return true;
     } catch (error) {
-      setStatus(error?.message || "Không thể liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể liên kết quan hệ.");
       return false;
     } finally {
       setDialogSaving(false);
@@ -2076,13 +2347,13 @@ const quickCreateSourcePerson = useMemo(
     }
     const linkedIds = relationLinkedIds(relation, sourcePerson, canonicalTree.families, canonicalTree.childRows);
     if (linkedIds.has(Number(targetPerson.id))) {
-      setStatus("Thành viên này đã được liên kết với quan hệ đang chọn.");
+      setConstraintNotice("Thành viên này đã được liên kết với quan hệ đang chọn.");
       return;
     }
     const candidates = relationCandidates(relation, sourcePerson, people, linkedIds);
     const allowed = candidates.some((item) => Number(item.id) === Number(targetPerson.id));
     if (!allowed) {
-      setStatus("Thành viên này không phù hợp hoặc đã được liên kết. Hãy chọn thành viên khác trên cây.");
+      setConstraintNotice("Thành viên này không phù hợp hoặc đã được liên kết. Hãy chọn thành viên khác trên cây.");
       return;
     }
     linkRelationTarget(relation, sourcePerson, targetPerson.id);
@@ -2129,7 +2400,7 @@ const quickCreateSourcePerson = useMemo(
     const handleMove = (moveEvent) => {
       moveEvent.preventDefault();
       const scale = scaleRef.current || 1;
-      const nextValue = snap(clamp(originY + (moveEvent.clientY - startY) / scale, minY, maxY));
+      const nextValue = snapLine(clamp(originY + (moveEvent.clientY - startY) / scale, minY, maxY));
       lineDragRef.current = { familyId, routeKey, value: nextValue };
       setLineRoutes((current) => ({
         ...current,
@@ -2177,62 +2448,16 @@ const quickCreateSourcePerson = useMemo(
   }, [canEditAll, cardSizes, clan?.id, people, persistFullLayout]);
 
   const handleExport = async () => {
-    if (!treeRef.current) return;
     setSaving(true);
     setStatus("");
-    let exportHost = null;
     try {
-      const bounds = getTreeExportBounds(people);
-      const clonedTree = treeRef.current.cloneNode(true);
-      clonedTree.style.transform = `translate(${-bounds.x}px, ${-bounds.y}px)`;
-      clonedTree.style.transformOrigin = "top left";
-      clonedTree.style.position = "absolute";
-      clonedTree.style.left = "0";
-      clonedTree.style.top = "0";
-      clonedTree.style.background = EXPORT_BACKGROUND;
-      clonedTree.querySelectorAll(".is-selected, .is-dragging").forEach((node) => {
-        node.classList.remove("is-selected", "is-dragging");
-      });
-
-      exportHost = document.createElement("div");
-      exportHost.style.position = "fixed";
-      exportHost.style.left = "0";
-      exportHost.style.top = "0";
-      exportHost.style.width = `${bounds.width}px`;
-      exportHost.style.height = `${bounds.height}px`;
-      exportHost.style.overflow = "hidden";
-      exportHost.style.background = EXPORT_BACKGROUND;
-      exportHost.style.pointerEvents = "none";
-      exportHost.style.zIndex = "-1";
-      exportHost.appendChild(clonedTree);
-      document.body.appendChild(exportHost);
-
-      const blob = await toBlob(exportHost, {
-        pixelRatio: getExportPixelRatio(bounds),
-        cacheBust: true,
-        backgroundColor: EXPORT_BACKGROUND,
-        imagePlaceholder: TRANSPARENT_IMAGE_DATA_URL,
-        skipFonts: true,
-        onImageErrorHandler: () => null,
-        width: bounds.width,
-        height: bounds.height,
-        style: {
-          width: `${bounds.width}px`,
-          height: `${bounds.height}px`,
-        },
-      });
-
-      if (!blob) {
-        throw new Error("Không thể tạo file PNG.");
-      }
-
+      const blob = await renderFamilyTreePngBlob({ people, lines, cardSizes, clan });
       downloadBlob(blob, exportFileName(clan?.clan_name));
       setStatus("Đã xuất PNG.");
     } catch (error) {
       console.error("Export PNG failed:", error);
       setStatus(`Không thể xuất PNG${error?.message ? `: ${error.message}` : "."}`);
     } finally {
-      exportHost?.remove();
       setSaving(false);
     }
   };
@@ -2276,7 +2501,7 @@ const quickCreateSourcePerson = useMemo(
       setStatus("Đã lưu thông tin thành viên.");
       await onReload?.();
     } catch (error) {
-      setStatus(error?.message || "Không thể lưu thông tin.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể lưu thông tin.");
     } finally {
       setSaving(false);
     }
@@ -2317,7 +2542,9 @@ const quickCreateSourcePerson = useMemo(
     return;
   }
 
-  setSelectedId(person.id);
+  // Khi bấm icon thêm liên kết, chỉ mở bảng chọn loại liên kết.
+  // Không chọn/mở panel thông tin thành viên phía sau.
+  setSelectedId(null);
   setQuickCreateDialog({ sourcePersonId: person.id });
 };
 
@@ -2495,7 +2722,7 @@ const submitCreateDialog = async () => {
       return;
     }
 
-    setStatus(error?.message || "Không thể tạo thành viên.");
+    if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể tạo thành viên.");
   } finally {
     setDialogSaving(false);
   }
@@ -2542,7 +2769,7 @@ const submitCreateDialog = async () => {
       setStatus(`Đã liên kết ${relationLabels[relation] || "quan hệ"}.`);
       await onReload?.();
     } catch (error) {
-      setStatus(error?.message || "Không thể liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể liên kết quan hệ.");
     } finally {
       setDialogSaving(false);
     }
@@ -2587,7 +2814,7 @@ const submitCreateDialog = async () => {
       setStatus(`Đã bỏ liên kết ${relationLabels[relation] || "quan hệ"}.`);
       await onReload?.();
     } catch (error) {
-      setStatus(error?.message || "Không thể bỏ liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể bỏ liên kết quan hệ.");
     } finally {
       setDialogSaving(false);
     }
@@ -2710,24 +2937,6 @@ const submitCreateDialog = async () => {
                   <span className="material-symbols-outlined">person_add</span>
                   Thêm người
                 </button>
-                <button
-                  type="button"
-                  disabled={!canEditAll || !selectedPerson || loading || saving}
-                  onClick={() => openCreateDialog("spouse")}
-                  title={canEditAll ? "Chọn vợ/chồng cho người đang chọn" : "Thành viên chỉ được xem quan hệ"}
-                >
-                  <span className="material-symbols-outlined">favorite</span>
-                  Chọn vợ/chồng
-                </button>
-                <button
-                  type="button"
-                  disabled={!canEditAll || !selectedPerson || loading || saving}
-                  onClick={() => openCreateDialog("child")}
-                  title={canEditAll ? "Chọn con cho người đang chọn" : "Thành viên chỉ được xem quan hệ"}
-                >
-                  <span className="material-symbols-outlined">escalator_warning</span>
-                  Chọn con
-                </button>
               </div>
               {canEditLimited ? (
                 <div className="fte-toolbarGroup fte-toolbarGroup--notice">
@@ -2743,15 +2952,6 @@ const submitCreateDialog = async () => {
                 >
                   <span className="material-symbols-outlined">auto_fix_high</span>
                   Tự sắp xếp
-                </button>
-                <button
-                  type="button"
-                  onClick={resetLineRoutes}
-                  disabled={!canEditAll || loading || saving}
-                  title={canEditAll ? "Đưa các đường liên kết về vị trí tự động" : "Thành viên chỉ được xem, không được reset đường nối"}
-                >
-                  <span className="material-symbols-outlined">polyline</span>
-                  Reset đường nối
                 </button>
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
@@ -2807,13 +3007,15 @@ const submitCreateDialog = async () => {
               </div>
             ) : null}
 
-            {status ? <div className="fte-status">{status}</div> : null}
+            {status ? <div className="fte-status" role="status" aria-live="polite">{status}</div> : null}
+            {constraintNotice ? <CenterNoticeDialog message={constraintNotice} onClose={() => setConstraintNotice("")} /> : null}
             {treeRelationPicker ? (
-              <div className="fte-treePickBanner">
-                <span className="material-symbols-outlined">account_tree</span>
-                <strong>Đang chọn {relationLabels[treeRelationPicker.relation] || "quan hệ"}</strong>
-                <span>cho {treeRelationSource ? fullName(treeRelationSource) : "thành viên đã chọn"}. Bấm trực tiếp vào một ô thành viên trên cây để liên kết.</span>
-                <button type="button" onClick={() => setTreeRelationPicker(null)}>Hủy chọn</button>
+              <div className="fte-treePickFloating" role="status" aria-live="polite">
+                <div>
+                  <strong>Đang chọn {relationLabels[treeRelationPicker.relation] || "quan hệ"}</strong>
+                  <span> cho {treeRelationSource ? fullName(treeRelationSource) : "thành viên đã chọn"}. Bấm trực tiếp vào một ô thành viên trên cây để liên kết.</span>
+                </div>
+                <button type="button" onClick={() => { setTreeRelationPicker(null); setStatus(""); }}>Hủy chọn</button>
               </div>
             ) : null}
 
@@ -2916,7 +3118,7 @@ const submitCreateDialog = async () => {
           setTreeRelationPicker({ relation, sourcePersonId: selectedPerson.id });
           setRelationDialog(null);
           setSelectedId(null);
-          setStatus(`Đang chọn ${relationLabels[relation] || "quan hệ"} cho ${fullName(selectedPerson)}. Hãy bấm vào một thành viên trên cây.`);
+          setStatus("");
         }}
       />
       

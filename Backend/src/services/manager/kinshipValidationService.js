@@ -48,6 +48,7 @@ const loadPeopleStatus = async (connection = db, ids = []) => {
       p.gender,
       p.birth_date,
       p.death_date,
+      p.generation,
       p.is_living,
       p.display_name,
       p.surname,
@@ -73,6 +74,18 @@ const labelPerson = (person) => {
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   return parts.join(' ') || `Thành viên #${person.id}`;
+};
+
+const normalizeGender = (gender) => {
+  const value = Number(gender);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const describeGender = (gender) => {
+  const value = normalizeGender(gender);
+  if (value === 1) return 'nam';
+  if (value === 2) return 'nữ';
+  return 'không xác định';
 };
 
 const resolveConflictByHistoricalPolicy = async ({
@@ -194,6 +207,48 @@ const shareParent = async (connection = db, clanId, aId, bId) => {
   return { shared: sameFather || sameMother, sameFather, sameMother };
 };
 
+const getAncestorIdsWithDepth = async (connection = db, clanId, personId, maxDepth = 4) => {
+  const rootId = toPositiveId(personId);
+  const ancestors = new Map();
+  if (!rootId) return ancestors;
+
+  let queue = [{ id: rootId, depth: 0 }];
+  const visited = new Set([rootId]);
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (current.depth >= maxDepth) continue;
+    const parentFamily = await getParentFamily(connection, clanId, current.id);
+    const parentIds = uniquePositiveIds([parentFamily?.father_id, parentFamily?.mother_id]);
+    for (const parentId of parentIds) {
+      const nextDepth = current.depth + 1;
+      const existingDepth = ancestors.get(parentId);
+      if (!existingDepth || nextDepth < existingDepth) ancestors.set(parentId, nextDepth);
+      if (!visited.has(parentId)) {
+        visited.add(parentId);
+        queue.push({ id: parentId, depth: nextDepth });
+      }
+    }
+  }
+
+  return ancestors;
+};
+
+const findCloseCommonAncestor = async (connection = db, clanId, aId, bId) => {
+  const ancestorsA = await getAncestorIdsWithDepth(connection, clanId, aId, 4);
+  const ancestorsB = await getAncestorIdsWithDepth(connection, clanId, bId, 4);
+  for (const [ancestorId, depthA] of ancestorsA.entries()) {
+    const depthB = ancestorsB.get(ancestorId);
+    if (!depthB) continue;
+    // depth 1 + depth 1 is handled by the sibling rule. From grandparents/great-grandparents
+    // onward this catches cousins / close blood relatives in the same clan branch.
+    if (depthA + depthB >= 4) {
+      return { ancestorId, depthA, depthB };
+    }
+  }
+  return null;
+};
+
 const isAncestorDescendant = async (connection = db, clanId, aId, bId) => {
   const descendantsOfA = await getDescendantIds(connection, aId, clanId);
   if (descendantsOfA.has(Number(bId))) return true;
@@ -236,6 +291,12 @@ const getSpouseIds = async (connection = db, clanId, personId) => {
   );
 };
 
+const formatExistingSpouseMessage = (person, existingSpouse) => {
+  const personName = labelPerson(person);
+  const spouseName = labelPerson(existingSpouse);
+  return `${personName} đã có vợ/chồng là ${spouseName}. Không thể tạo thêm quan hệ vợ/chồng mới.`;
+};
+
 const isChildOfAny = async (connection = db, clanId, childId, parentIds = []) => {
   const cleanParentIds = uniquePositiveIds(parentIds);
   if (!cleanParentIds.length) return false;
@@ -271,6 +332,54 @@ const validateSpouseKinshipConflict = async ({
     return errorResult('Vợ/chồng không thể trùng với chính thành viên.', 'SAME_PERSON_AS_SPOUSE');
   }
 
+  const peopleById = await loadPeopleStatus(connection, [aId, bId]);
+  const personA = peopleById.get(aId);
+  const personB = peopleById.get(bId);
+  if (!personA || !personB || Number(personA.clan_id) !== Number(clanId) || Number(personB.clan_id) !== Number(clanId)) {
+    return errorResult('Vợ/chồng phải là người trong cùng dòng họ.', 'SPOUSE_NOT_IN_CLAN');
+  }
+
+  const genderA = normalizeGender(personA.gender);
+  const genderB = normalizeGender(personB.gender);
+  if (genderA && genderB && genderA === genderB) {
+    return errorResult(
+      `Không thể tạo quan hệ vợ/chồng cùng giới: ${labelPerson(personA)} là ${describeGender(personA.gender)} và ${labelPerson(personB)} cũng là ${describeGender(personB.gender)}.`,
+      'SAME_GENDER_SPOUSE'
+    );
+  }
+
+  const generationA = Number(personA.generation);
+  const generationB = Number(personB.generation);
+  if (Number.isFinite(generationA) && Number.isFinite(generationB) && generationA > 0 && generationB > 0 && generationA !== generationB) {
+    return buildPolicyResult({
+      connection,
+      clanId,
+      personIds: [aId, bId],
+      forceSaveHistoricalRelation,
+      message: 'Không được tạo quan hệ vợ/chồng với người khác đời trong cây gia phả.',
+    });
+  }
+
+  const spousesOfAForUniqueness = await getSpouseIds(connection, clanId, aId);
+  const spouseConflictA = spousesOfAForUniqueness.find((id) => Number(id) !== Number(bId));
+  if (spouseConflictA) {
+    const existingPeople = await loadPeopleStatus(connection, [spouseConflictA]);
+    return errorResult(
+      formatExistingSpouseMessage(personA, existingPeople.get(spouseConflictA)),
+      'PERSON_ALREADY_HAS_SPOUSE'
+    );
+  }
+
+  const spousesOfBForUniqueness = await getSpouseIds(connection, clanId, bId);
+  const spouseConflictB = spousesOfBForUniqueness.find((id) => Number(id) !== Number(aId));
+  if (spouseConflictB) {
+    const existingPeople = await loadPeopleStatus(connection, [spouseConflictB]);
+    return errorResult(
+      formatExistingSpouseMessage(personB, existingPeople.get(spouseConflictB)),
+      'SPOUSE_ALREADY_HAS_SPOUSE'
+    );
+  }
+
   if (await areDirectParentChild(connection, clanId, aId, bId)) {
     return buildPolicyResult({
       connection,
@@ -304,6 +413,17 @@ const validateSpouseKinshipConflict = async ({
       personIds: [aId, bId],
       forceSaveHistoricalRelation,
       message: `Không được kết hôn với ${detail}.`,
+    });
+  }
+
+  const closeCommonAncestor = await findCloseCommonAncestor(connection, clanId, aId, bId);
+  if (closeCommonAncestor) {
+    return buildPolicyResult({
+      connection,
+      clanId,
+      personIds: [aId, bId],
+      forceSaveHistoricalRelation,
+      message: 'Không được tạo quan hệ vợ/chồng giữa anh/chị/em họ hoặc người có quan hệ huyết thống gần trong cùng nhánh tổ tiên.',
     });
   }
 

@@ -1633,3 +1633,206 @@ body.fte-bodyFullscreen {
   content: "☾";
   color: #c28a2c;
 }
+
+/* Genealogy constraint violations use a centered dialog. Click outside to close. */
+.fte-centerNoticeOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5600;
+    background: rgba(31, 41, 55, 0.36);
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+
+.fte-centerNoticeDialog {
+    width: min(540px, calc(100vw - 34px));
+    background: #fffdfa;
+    border: 1px solid #d69e2e;
+    border-radius: 18px;
+    box-shadow: 0 24px 72px rgba(120, 53, 15, 0.24);
+    padding: 18px 20px;
+    color: #7c2d12;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 12px 14px;
+}
+
+.fte-centerNoticeIcon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #9a3412;
+    background: #fff1d6;
+    border: 1px solid #e7bd63;
+}
+
+.fte-centerNoticeIcon .material-symbols-outlined {
+    font-size: 28px;
+}
+
+.fte-centerNoticeContent h3 {
+    margin: 0 0 5px;
+    font-size: 1rem;
+    font-weight: 900;
+    color: #7c2d12;
+}
+
+.fte-centerNoticeContent p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: #7c2d12;
+}
+
+.fte-centerNoticeContent small {
+    display: block;
+    margin-top: 8px;
+    color: #9a5a19;
+    font-weight: 700;
+}
+
+/* Relation picking status stays as the top banner below the toolbar, not a modal. */
+.fte-treePickFloating {
+    border: 1px solid #b6d9c1;
+    background: #eef9f1;
+    color: #1f6a3b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fte-treePickFloating strong {
+    font-weight: 900;
+}
+
+.fte-treePickFloating button {
+    border: 1px solid #b6d9c1;
+    background: #fff;
+    color: #1f6a3b;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 14px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.fte-treePickFloating button:hover {
+    background: #e0f3e6;
+}
+
+/* Final requested adjustments: compact toolbar, yellow relation banner, hover-only resize, easier line tuning. */
+.fte-treePickFloating {
+    border: 1px solid #c27a16 !important;
+    background: linear-gradient(135deg, #fff7d6, #ffe8a3) !important;
+    color: #6b2d0c !important;
+    box-shadow: 0 10px 26px rgba(120, 53, 15, 0.12);
+}
+
+.fte-treePickFloating button {
+    border-color: #b45309 !important;
+    background: #fffaf0 !important;
+    color: #7c2d12 !important;
+}
+
+.fte-treePickFloating button:hover {
+    background: #ffe9ad !important;
+}
+
+.fte-resizeHandle {
+    opacity: 0 !important;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.fte-personCard:hover .fte-resizeHandle,
+.fte-personCard:focus-within .fte-resizeHandle,
+.fte-resizeHandle:hover {
+    opacity: 0.86 !important;
+    pointer-events: auto;
+}
+
+.fte-lineControl line {
+    stroke-width: 28 !important;
+}
+
+.fte-lineControl circle {
+    r: 16;
+}
+
+.fte-line.is-draggable {
+    stroke-width: 8;
+}
+
+.fte-line.is-draggable:hover,
+.fte-line.is-draggable.is-dragging {
+    stroke-width: 10 !important;
+}
+
+.fte-inspector {
+    width: min(500px, calc(100vw - 32px));
+    max-height: min(700px, calc(100vh - 42px));
+    padding: 14px;
+}
+
+.fte-inspectorHeader,
+.fte-modalHeader {
+    padding-bottom: 9px;
+    gap: 10px;
+}
+
+.fte-inspectorHeader h3,
+.fte-modalHeader h3 {
+    font-size: 1.18rem;
+    margin: 2px 0;
+}
+
+.fte-inspectorHeader p {
+    font-size: 0.92rem;
+}
+
+.fte-inspectorActions {
+    gap: 7px;
+    margin: 10px 0;
+}
+
+.fte-inspectorActions button {
+    min-height: 42px;
+    padding: 0 12px;
+    font-size: 0.94rem;
+}
+
+.fte-formGrid {
+    gap: 8px;
+}
+
+.fte-formGrid label {
+    gap: 4px;
+    font-size: 0.9rem;
+}
+
+.fte-formGrid input,
+.fte-formGrid select,
+.fte-formGrid textarea {
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 7px;
+}
+
+.fte-formGrid textarea {
+    min-height: 76px;
+}
+
+.fte-inspectorFooter,
+.fte-modalFooter {
+    margin-top: 10px;
+    padding-top: 10px;
+}

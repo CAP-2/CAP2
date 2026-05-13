@@ -152,6 +152,7 @@ export default function FamilyTreePage() {
             <span>Thông tin dòng họ</span>
             <h2>{clanName}</h2>
             <p>Thành viên chỉ được xem thông tin dòng họ do quản trị viên cập nhật.</p>
+            <p className="member-clan-dbId">ID dòng họ trong database: <strong>{clan?.id ?? clan?.clan_id ?? "Chưa có"}</strong></p>
           </div>
           <button type="button" onClick={() => setIsClanInfoOpen(false)} aria-label="Đóng">×</button>
         </div>
@@ -165,7 +166,8 @@ export default function FamilyTreePage() {
             <p>{clan?.hall_address || "Chưa cập nhật địa chỉ nhà thờ hoặc từ đường."}</p>
           </article>
         </div>
-        <div className="member-clan-stats">
+        <div className="member-clan-stats member-clan-stats--four">
+          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>ID dòng họ</span></div>
           <div><strong>{treeMembers.length}</strong><span>Thành viên</span></div>
           <div><strong>{families.length}</strong><span>Gia đình</span></div>
           <div><strong>{children.length}</strong><span>Liên kết con</span></div>

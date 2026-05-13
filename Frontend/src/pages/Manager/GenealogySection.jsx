@@ -247,6 +247,7 @@ export default function GenealogySection() {
             <span>Thông tin dòng họ</span>
             <h2>{clan?.clan_name || "Dòng họ"}</h2>
             <p>Manager có thể chỉnh sửa tên dòng họ, lịch sử và địa chỉ nhà thờ/từ đường.</p>
+            <p className="clan-info-dbId">ID dòng họ trong database: <strong>{clan?.id ?? clan?.clan_id ?? "Chưa có"}</strong></p>
           </div>
           <button className="clan-info-close" type="button" onClick={() => setIsClanInfoOpen(false)} aria-label="Đóng">
             ×
@@ -269,7 +270,8 @@ export default function GenealogySection() {
           <textarea value={clanForm.hall_address} onChange={(event) => handleClanFormChange("hall_address", event.target.value)} rows={3} placeholder="Nhập địa chỉ nhà thờ họ, từ đường hoặc nơi sinh hoạt dòng họ..." />
         </label>
 
-        <div className="clan-info-metaGrid">
+        <div className="clan-info-metaGrid clan-info-metaGrid--four">
+          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>ID dòng họ</span></div>
           <div><strong>{people.length}</strong><span>Thành viên</span></div>
           <div><strong>{families.length}</strong><span>Gia đình</span></div>
           <div><strong>{children.length}</strong><span>Liên kết con</span></div>
@@ -389,9 +391,6 @@ export default function GenealogySection() {
           </div>
           <button className="mgr-btnGhost" type="button" onClick={loadTree} disabled={loading}>
             Tải lại
-          </button>
-          <button className="mgr-btnPrimary" type="button" onClick={() => setIsFullscreen(true)}>
-            Phóng to
           </button>
         </div>
       </div>

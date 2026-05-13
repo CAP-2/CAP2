@@ -14,6 +14,8 @@ import { isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import { compactPayload, fullName } from "./managerData";
 import "./manager.css";
 
+const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
+
 const emptyCreateForm = {
   email: "",
   password: "",
@@ -393,7 +395,7 @@ export default function AccountPage() {
 
       await loadRelationDetails(relationAccountId, "Đã lưu liên kết quan hệ.");
     } catch (err) {
-      setError(err?.message || "Không thể lưu liên kết quan hệ");
+      if (!shouldSuppressInlineRelationError(err)) setError(err?.message || "Không thể lưu liên kết quan hệ");
     } finally {
       setRelationSaving(false);
     }

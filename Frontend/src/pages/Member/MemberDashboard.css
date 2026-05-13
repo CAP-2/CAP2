@@ -978,3 +978,18 @@
   color: #166534;
   font-weight: 500;
 }
+.member-clan-dbId {
+  margin-top: 6px !important;
+  color: #ffe8a3 !important;
+  font-weight: 800 !important;
+}
+
+.member-clan-stats--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 760px) {
+  .member-clan-stats--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
