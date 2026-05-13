@@ -232,3 +232,24 @@ export const getAdminPostsByClan = async (clanId) => {
   if (!res.ok) throw new Error(data.message || "Không lấy được danh sách bài viết");
   return data;
 };
+
+export const updateAdminPostStatus = async (postId, status) => {
+  const res = await fetch(`${BASE_URL}/posts/${postId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Cập nhật trạng thái bài viết thất bại");
+  return data;
+};
+
+export const deleteAdminPost = async (postId) => {
+  const res = await fetch(`${BASE_URL}/posts/${postId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Xóa bài viết thất bại");
+  return data;
+};
