@@ -1159,3 +1159,48 @@ exports.deleteAccount = async (req, res) => {
     connection.release();
   }
 };
+
+exports.updatePostStatus = async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    const { status } = req.body;
+
+    if (!Number.isInteger(postId) || postId <= 0) {
+      return res.status(400).json({ success: false, message: "ID bài viết không hợp lệ" });
+    }
+    if (!["approved", "pending", "rejected"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+    }
+
+    const [rows] = await db.query("SELECT id FROM posts WHERE id = ? LIMIT 1", [postId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    }
+
+    await db.query("UPDATE posts SET status = ? WHERE id = ?", [status, postId]);
+    return res.json({ success: true, message: "Đã cập nhật trạng thái bài viết" });
+  } catch (e) {
+    console.error("updatePostStatus:", e);
+    return res.status(500).json({ success: false, message: "Lỗi cập nhật trạng thái bài viết" });
+  }
+};
+
+exports.deletePost = async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    if (!Number.isInteger(postId) || postId <= 0) {
+      return res.status(400).json({ success: false, message: "ID bài viết không hợp lệ" });
+    }
+
+    const [rows] = await db.query("SELECT id FROM posts WHERE id = ? LIMIT 1", [postId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    }
+
+    await db.query("DELETE FROM posts WHERE id = ?", [postId]);
+    return res.json({ success: true, message: "Đã xóa bài viết thành công" });
+  } catch (e) {
+    console.error("deletePost:", e);
+    return res.status(500).json({ success: false, message: "Lỗi xóa bài viết" });
+  }
+};
