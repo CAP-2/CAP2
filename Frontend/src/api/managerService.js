@@ -597,6 +597,17 @@ export const createFamilyAPI = (data) =>
     "Không thể tạo family"
   );
 
+export const updateFamilyAPI = (familyId, data) =>
+  requestWithHistoricalConfirmation(
+    `/families/${familyId}`,
+    {
+      method: "PATCH",
+      headers: getTreeEditKeyHeader(),
+      body: JSON.stringify(data),
+    },
+    "Khong the cap nhat family"
+  );
+
 export const addFamilyChildAPI = (familyId, data) =>
   request(
     `/families/${familyId}/children`,

@@ -1,8 +1,13 @@
 import { io } from "socket.io-client";
 
-let socket = null;
+const SOCKET_URL = (
+  import.meta.env.VITE_SOCKET_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:3000"
+).replace(/\/$/, "");
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
+let socket = null;
+let currentAccountId = null;
 
 export function connectSocket(accountId, token) {
   if (!accountId || !token) {
@@ -10,13 +15,14 @@ export function connectSocket(accountId, token) {
     return null;
   }
 
-  if (socket?.connected) {
+  if (socket && String(currentAccountId) === String(accountId)) {
     return socket;
   }
 
   if (socket) {
     socket.disconnect();
     socket = null;
+    currentAccountId = null;
 
     if (typeof window !== "undefined") {
       window.socket = null;
@@ -24,14 +30,14 @@ export function connectSocket(accountId, token) {
   }
 
   socket = io(SOCKET_URL, {
-    auth: {
-      token,
-    },
+    auth: { token },
     transports: ["polling", "websocket"],
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
   });
+
+  currentAccountId = accountId;
 
   if (typeof window !== "undefined") {
     window.socket = socket;
@@ -39,7 +45,6 @@ export function connectSocket(accountId, token) {
 
   socket.on("connect", () => {
     console.log("Socket connected:", socket.id);
-
     socket.emit("register_user", accountId);
     console.log("Registered socket for account:", accountId);
   });
@@ -50,6 +55,10 @@ export function connectSocket(accountId, token) {
 
   socket.on("disconnect", (reason) => {
     console.log("Socket disconnected:", reason);
+  });
+
+  socket.onAny((eventName, ...args) => {
+    console.log("[SOCKET EVENT]", eventName, args);
   });
 
   return socket;
@@ -63,6 +72,7 @@ export function disconnectSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
+    currentAccountId = null;
 
     if (typeof window !== "undefined") {
       window.socket = null;

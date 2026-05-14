@@ -55,6 +55,7 @@ const emptyEditForm = {
 const emptyRelationForm = {
   parent_father_id: "",
   parent_mother_id: "",
+  family_id: "",
   spouse_id: "",
   children_ids: "",
 };
@@ -265,6 +266,20 @@ export default function AccountPage() {
 
   const updateRelationField = (event) => {
     const { name, value } = event.target;
+    if (name === "family_id") {
+      const family = (relationDetails?.marriage?.families || []).find(
+        (item) => String(item.family_id || item.id) === String(value)
+      );
+      setRelationForm((prev) => ({
+        ...prev,
+        family_id: value,
+        spouse_id: idText(family?.spouse_id ?? prev.spouse_id),
+        children_ids: Array.isArray(family?.children_ids)
+          ? family.children_ids.join(", ")
+          : prev.children_ids,
+      }));
+      return;
+    }
     setRelationForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -293,11 +308,17 @@ export default function AccountPage() {
 
       try {
         const data = await getMemberRelations(accountId);
+        const families = Array.isArray(data?.marriage?.families) ? data.marriage.families : [];
+        const defaultFamilyId =
+          families.length === 1
+            ? families[0].family_id || families[0].id
+            : data?.marriage?.family_id;
 
         setRelationDetails(data);
         setRelationForm({
           parent_father_id: idText(data?.bloodline?.parent_father_id),
           parent_mother_id: idText(data?.bloodline?.parent_mother_id),
+          family_id: idText(defaultFamilyId),
           spouse_id: idText(data?.marriage?.spouse_id),
           children_ids: Array.isArray(data?.marriage?.children_ids)
             ? data.marriage.children_ids.join(", ")
@@ -372,6 +393,11 @@ export default function AccountPage() {
       return;
     }
 
+    if (relationForm.children_ids.trim() && !relationForm.family_id) {
+      setRelationMessage("Vui long chon family/cuoc hon nhan cu the de them con.");
+      return;
+    }
+
     setRelationSaving(true);
     setRelationMessage("");
     setError("");
@@ -388,6 +414,7 @@ export default function AccountPage() {
       if (shouldSaveMarriage) {
         await updateMemberRelations(relationAccountId, {
           mode: "marriage",
+          family_id: relationForm.family_id || null,
           spouse_id: relationForm.spouse_id || null,
           children_ids: relationForm.children_ids,
         });
@@ -686,6 +713,24 @@ export default function AccountPage() {
                   <>
                     <div className="member-pro-form-grid">
                       <label className="relation-field">
+                        <span>Gia Ä‘Ã¬nh/cuá»™c hÃ´n nhÃ¢n</span>
+                        <select
+                          className="mgr-field"
+                          name="family_id"
+                          value={relationForm.family_id}
+                          onChange={updateRelationField}
+                          disabled={relationLoading}
+                        >
+                          <option value="">Tao/chon family khi them con</option>
+                          {(relationDetails?.marriage?.families || []).map((family) => (
+                            <option key={family.family_id || family.id} value={family.family_id || family.id}>
+                              {`#${family.family_id || family.id} - ${family.spouse_name || "Chua co vo/chong"} (${family.relationship_status || "active"})`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="relation-field">
                         <span>Cha</span>
                         <select
                           className="mgr-field"
@@ -775,6 +820,18 @@ export default function AccountPage() {
                           ? relationDetails.marriage.children.map((child) => child.name).join(", ")
                           : "Chưa có"}
                       </span>
+                    </div>
+
+                    <div className="relation-summary">
+                      {(relationDetails?.marriage?.families || []).map((family) => (
+                        <span key={family.family_id || family.id}>
+                          {`Family #${family.family_id || family.id}: ${family.spouse_name || "Chua co vo/chong"} - ${family.relationship_status || "active"} - con: ${
+                            family.children?.length
+                              ? family.children.map((child) => child.name || child.display_name).join(", ")
+                              : "Chua co"
+                          }`}
+                        </span>
+                      ))}
                     </div>
 
                     {relationMessage && <div className="mgr-subtle">{relationMessage}</div>}

@@ -60,6 +60,10 @@ const getMemberRelations = async(req, res) => {
         if (bloodline?.parent_mother_id) labelIds.push(bloodline.parent_mother_id);
         if (marriage.spouse_id) labelIds.push(marriage.spouse_id);
         if (Array.isArray(marriage.children_ids)) labelIds.push(...marriage.children_ids);
+        for (const family of marriage.families || marriage.marriages || []) {
+            if (family.spouse_id) labelIds.push(family.spouse_id);
+            if (Array.isArray(family.children_ids)) labelIds.push(...family.children_ids);
+        }
         const labelMap = await fetchPeopleLabelsMap(labelIds);
 
         const bloodlineOut = bloodline ? {
@@ -90,8 +94,24 @@ const getMemberRelations = async(req, res) => {
                 family_id: marriage.family_id,
                 spouse_id: marriage.spouse_id,
                 spouse_name: marriage.spouse_id ? labelMap.get(marriage.spouse_id) || null : null,
+                relationship_status: marriage.relationship_status || 'active',
+                marriage_date: fmtSqlDate(marriage.marriage_date),
+                ended_at: fmtSqlDate(marriage.ended_at),
+                relation_note: marriage.relation_note || null,
                 children_ids,
                 children,
+                families: (marriage.families || marriage.marriages || []).map((family) => ({
+                    ...family,
+                    spouse_name: family.spouse_id ? labelMap.get(family.spouse_id) || family.spouse_name || null : null,
+                    marriage_date: fmtSqlDate(family.marriage_date),
+                    ended_at: fmtSqlDate(family.ended_at),
+                    children: (family.children_ids || []).map((cid) => ({
+                        person_id: cid,
+                        id: cid,
+                        name: labelMap.get(cid) || `Ho so #${cid}`,
+                        display_name: labelMap.get(cid) || `Ho so #${cid}`,
+                    })),
+                })),
                 is_married: Boolean(marriage.spouse_id),
             },
         });
@@ -135,6 +155,7 @@ const updateMemberRelations = async(req, res) => {
                 family_id: marriage.family_id,
                 spouse_id: marriage.spouse_id,
                 children_ids: marriage.children_ids,
+                families: marriage.families || marriage.marriages || [],
             },
         });
     } catch (error) {
@@ -755,7 +776,14 @@ const updateMemberByManager = async(req, res) => {
             }
         }
 
-        const hasMarriage = has('family_id') || has('spouse_id') || has('children_ids');
+        const hasMarriage =
+            has('family_id') ||
+            has('spouse_id') ||
+            has('children_ids') ||
+            has('marriage_date') ||
+            has('relationship_status') ||
+            has('ended_at') ||
+            has('relation_note');
         if (hasMarriage) {
             const r = await applyMarriageRelationsForPerson({ ...famCtx, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }, body);
             if (!r.ok) return res.status(relationHttpStatus(r)).json(relationPayload(r));

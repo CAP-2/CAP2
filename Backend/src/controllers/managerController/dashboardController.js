@@ -8,6 +8,7 @@ const {
 } = require('../../services/manager/commonService');
 const {
     buildManagedFamilyTree,
+    ensureFamilyRelationshipColumns,
     ensurePeopleTreeLayoutColumns,
 } = require('../../services/manager/familyRelationService');
 const {
@@ -82,6 +83,7 @@ const getFamilyTree = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         await ensurePeopleTreeLayoutColumns();
+        await ensureFamilyRelationshipColumns();
         const clanId = await resolveManagedClanId(req);
         if (clanId == null) {
             return res.status(404).json({ success: false, message: 'Không xác định được dòng họ cần quản lý' });
@@ -136,7 +138,12 @@ const getFamilyTree = async(req, res) => {
         );
 
         const [familyRows] = await db.query(
-            'SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC', [clanId]
+            `SELECT id, clan_id, father_id, mother_id, marriage_date,
+                    relationship_status, ended_at, relation_note
+             FROM families
+             WHERE clan_id = ?
+             ORDER BY id ASC`,
+            [clanId]
         );
         const [childRows] = await db.query(
             `
@@ -160,6 +167,7 @@ const getFamilyTree = async(req, res) => {
             families: familyRows.map((f) => ({
                 ...f,
                 marriage_date: fmtSqlDate(f.marriage_date),
+                ended_at: fmtSqlDate(f.ended_at),
             })),
             children: childRows,
             layoutSettings,

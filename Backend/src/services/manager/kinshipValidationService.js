@@ -323,6 +323,7 @@ const validateSpouseKinshipConflict = async ({
   personId,
   spouseId,
   forceSaveHistoricalRelation = false,
+  skipSpouseUniqueness = false,
 }) => {
   const aId = toPositiveId(personId);
   const bId = toPositiveId(spouseId);
@@ -360,24 +361,26 @@ const validateSpouseKinshipConflict = async ({
     });
   }
 
-  const spousesOfAForUniqueness = await getSpouseIds(connection, clanId, aId);
-  const spouseConflictA = spousesOfAForUniqueness.find((id) => Number(id) !== Number(bId));
-  if (spouseConflictA) {
-    const existingPeople = await loadPeopleStatus(connection, [spouseConflictA]);
-    return errorResult(
-      formatExistingSpouseMessage(personA, existingPeople.get(spouseConflictA)),
-      'PERSON_ALREADY_HAS_SPOUSE'
-    );
-  }
+  if (!skipSpouseUniqueness) {
+    const spousesOfAForUniqueness = await getSpouseIds(connection, clanId, aId);
+    const spouseConflictA = spousesOfAForUniqueness.find((id) => Number(id) !== Number(bId));
+    if (spouseConflictA) {
+      const existingPeople = await loadPeopleStatus(connection, [spouseConflictA]);
+      return errorResult(
+        formatExistingSpouseMessage(personA, existingPeople.get(spouseConflictA)),
+        'PERSON_ALREADY_HAS_SPOUSE'
+      );
+    }
 
-  const spousesOfBForUniqueness = await getSpouseIds(connection, clanId, bId);
-  const spouseConflictB = spousesOfBForUniqueness.find((id) => Number(id) !== Number(aId));
-  if (spouseConflictB) {
-    const existingPeople = await loadPeopleStatus(connection, [spouseConflictB]);
-    return errorResult(
-      formatExistingSpouseMessage(personB, existingPeople.get(spouseConflictB)),
-      'SPOUSE_ALREADY_HAS_SPOUSE'
-    );
+    const spousesOfBForUniqueness = await getSpouseIds(connection, clanId, bId);
+    const spouseConflictB = spousesOfBForUniqueness.find((id) => Number(id) !== Number(aId));
+    if (spouseConflictB) {
+      const existingPeople = await loadPeopleStatus(connection, [spouseConflictB]);
+      return errorResult(
+        formatExistingSpouseMessage(personB, existingPeople.get(spouseConflictB)),
+        'SPOUSE_ALREADY_HAS_SPOUSE'
+      );
+    }
   }
 
   if (await areDirectParentChild(connection, clanId, aId, bId)) {

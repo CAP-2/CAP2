@@ -12,6 +12,7 @@ import {
 } from "../../api/managerService";
 import { formatLunarFullFromSolar } from "../../utils/lunarCalendar";
 import DateInput from "../common/DateInput";
+import { onSocketEvent } from "../../services/socket";
 import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
 import "./FamilyTreeEditor.css";
 
@@ -1053,14 +1054,72 @@ function findParentFamilyForChild(personId, families, childRows) {
 }
 
 function findFamilyForParent(personId, families) {
-  return asArray(families).find(
+  return getFamiliesForPerson(personId, families)[0] || null;
+}
+
+function getFamiliesForPerson(personId, families) {
+  const id = Number(personId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return asArray(families).filter(
     (family) => Number(family.father_id) === Number(personId) || Number(family.mother_id) === Number(personId),
   );
 }
 
+function findSpouseFamily(personId, spouseId, families) {
+  const person = Number(personId);
+  const spouse = Number(spouseId);
+  if (!Number.isFinite(person) || !Number.isFinite(spouse) || person <= 0 || spouse <= 0) return null;
+  return asArray(families).find((family) => {
+    const fatherId = Number(family.father_id);
+    const motherId = Number(family.mother_id);
+    return (
+      (fatherId === person && motherId === spouse) ||
+      (fatherId === spouse && motherId === person)
+    );
+  }) || null;
+}
+
+function isPersonLiving(personId, people = []) {
+  const person = asArray(people).find((item) => Number(item.id) === Number(personId));
+  if (!person) return true;
+  return Number(person.is_living) !== 0 && !person.death_date;
+}
+
+function isActiveFamilyForPerson(family, personId, people = []) {
+  const id = Number(personId);
+  const spouseId = Number(family?.father_id) === id ? Number(family?.mother_id) : Number(family?.father_id);
+  return (
+    Number.isFinite(spouseId) &&
+    spouseId > 0 &&
+    String(family?.relationship_status || "active") === "active" &&
+    isPersonLiving(spouseId, people)
+  );
+}
+
+function getActiveFamiliesForPerson(personId, families, people = []) {
+  return getFamiliesForPerson(personId, families).filter((family) => isActiveFamilyForPerson(family, personId, people));
+}
+
+function getSpousesForPerson(personId, families, people = []) {
+  return getFamiliesForPerson(personId, families)
+    .map((family) => {
+      const id = Number(personId);
+      const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
+      return asArray(people).find((person) => Number(person.id) === spouseId) || null;
+    })
+    .filter(Boolean);
+}
+
+function getChildrenForFamily(familyId, childRows) {
+  return asArray(childRows)
+    .filter((row) => Number(row.family_id) === Number(familyId))
+    .map((row) => Number(row.person_id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
 function findSpouse(person, families, people) {
   if (!person) return null;
-  const family = findFamilyForParent(person.id, families);
+  const family = getActiveFamiliesForPerson(person.id, families, people)[0] || findFamilyForParent(person.id, families);
   if (!family) return null;
   const spouseId = Number(family.father_id) === Number(person.id) ? Number(family.mother_id) : Number(family.father_id);
   return people.find((item) => Number(item.id) === spouseId) || null;
@@ -1075,9 +1134,13 @@ function spouseIdsForPerson(personId, families) {
     .filter((spouseId) => Number.isFinite(spouseId) && spouseId > 0);
 }
 
-function hasDifferentSpouse(personId, allowedSpouseId, families) {
+function hasDifferentSpouse(personId, allowedSpouseId, families, people = []) {
   const allowed = Number(allowedSpouseId);
-  return spouseIdsForPerson(personId, families).some((spouseId) => Number(spouseId) !== allowed);
+  return getActiveFamiliesForPerson(personId, families, people).some((family) => {
+    const id = Number(personId);
+    const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
+    return Number(spouseId) !== allowed;
+  });
 }
 
 const relationLabels = {
@@ -1100,8 +1163,8 @@ function relationCandidates(relation, selectedPerson, people, linkedIds = new Se
       if (relation === "spouse") {
         const sameGeneration = !selectedPerson?.generation || !person.generation || Number(person.generation) === Number(selectedPerson.generation);
         const oppositeGender = !selectedPerson?.gender || !person.gender || Number(person.gender) !== Number(selectedPerson.gender);
-        const selectedAvailable = !hasDifferentSpouse(selectedId, personId, families);
-        const candidateAvailable = !hasDifferentSpouse(personId, selectedId, families);
+        const selectedAvailable = !hasDifferentSpouse(selectedId, personId, families, people);
+        const candidateAvailable = !hasDifferentSpouse(personId, selectedId, families, people);
         return sameGeneration && oppositeGender && selectedAvailable && candidateAvailable;
       }
       return true;
@@ -1133,18 +1196,16 @@ function relationLinkedIds(relation, selectedPerson, families, childRows) {
     return Number.isFinite(id) && id > 0 ? new Set([id]) : new Set();
   }
 
-  const family = findFamilyForParent(selectedId, families);
-  if (!family) return new Set();
-
   if (relation === "spouse") {
-    const spouseId = Number(family.father_id) === selectedId ? Number(family.mother_id) : Number(family.father_id);
-    return Number.isFinite(spouseId) && spouseId > 0 ? new Set([spouseId]) : new Set();
+    return new Set(spouseIdsForPerson(selectedId, families));
   }
 
   if (relation === "child") {
+    const familyIds = new Set(getFamiliesForPerson(selectedId, families).map((family) => Number(family.id)));
+    if (!familyIds.size) return new Set();
     return new Set(
       asArray(childRows)
-        .filter((row) => Number(row.family_id) === Number(family.id))
+        .filter((row) => familyIds.has(Number(row.family_id)))
         .map((row) => Number(row.person_id))
         .filter((id) => Number.isFinite(id) && id > 0),
     );
@@ -2065,6 +2126,7 @@ export default function FamilyTreeEditor({
   layoutSettings,
   permission,
   readOnly = false,
+  enableRealtime = true,
 }) {
   const treeRef = useRef(null);
   const scaleRef = useRef(0.85);
@@ -2092,6 +2154,25 @@ export default function FamilyTreeEditor({
     setLineRoutes({ ...loadLineRoutes(clan?.id), ...normalizedSettings.line_routes });
     setCardSizes({ ...loadCardSizes(clan?.id), ...normalizedSettings.card_sizes });
   }, [clan?.id, layoutSettings]);
+
+  useEffect(() => {
+    if (!enableRealtime) return undefined;
+
+    const offTreeUpdated = onSocketEvent("tree_updated", async (data) => {
+      console.log("[FamilyTreeEditor] tree_updated:", data);
+
+      if (data?.clan_id && clan?.id && Number(data.clan_id) !== Number(clan.id)) {
+        return;
+      }
+
+      await onReload?.();
+    });
+
+    return () => {
+      offTreeUpdated();
+    };
+  }, [enableRealtime, clan?.id, onReload]);
+
   const resolvedPermission = useMemo(() => {
     if (permission) {
       return {
@@ -2299,17 +2380,19 @@ const quickCreateSourcePerson = useMemo(
       }
 
       if (relation === "child") {
-        const family = findFamilyForParent(sourceId, canonicalTree.families);
-        const existingChildren = family
-          ? asArray(canonicalTree.childRows)
-              .filter((row) => Number(row.family_id) === Number(family.id))
-              .map((row) => Number(row.person_id))
-          : [];
+        const parentFamilies = getFamiliesForPerson(sourceId, canonicalTree.families);
+        if (parentFamilies.length !== 1) {
+          setConstraintNotice(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
+          return false;
+        }
+        const family = parentFamilies[0];
+        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
         const childrenIds = Array.from(new Set([...existingChildren, nextTargetId])).filter(
           (id) => Number(id) !== sourceId,
         );
         await linkRelationsAPI({
           person_id: sourceId,
+          family_id: family.id,
           children_person_ids: childrenIds,
         });
       }
@@ -2350,7 +2433,7 @@ const quickCreateSourcePerson = useMemo(
       setConstraintNotice("Thành viên này đã được liên kết với quan hệ đang chọn.");
       return;
     }
-    const candidates = relationCandidates(relation, sourcePerson, people, linkedIds);
+    const candidates = relationCandidates(relation, sourcePerson, people, linkedIds, canonicalTree.families);
     const allowed = candidates.some((item) => Number(item.id) === Number(targetPerson.id));
     if (!allowed) {
       setConstraintNotice("Thành viên này không phù hợp hoặc đã được liên kết. Hãy chọn thành viên khác trên cây.");
@@ -2654,12 +2737,12 @@ const submitCreateDialog = async () => {
       }
 
       if (relation === "child") {
-        const family = findFamilyForParent(sourcePersonId, canonicalTree.families);
-        const existingChildren = family
-          ? asArray(canonicalTree.childRows)
-              .filter((row) => Number(row.family_id) === Number(family.id))
-              .map((row) => Number(row.person_id))
-          : [];
+        const parentFamilies = getFamiliesForPerson(sourcePersonId, canonicalTree.families);
+        if (parentFamilies.length !== 1) {
+          throw new Error(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
+        }
+        const family = parentFamilies[0];
+        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
 
         const childrenIds = Array.from(new Set([...existingChildren, newPersonId])).filter(
           (id) => Number(id) !== Number(sourcePersonId)
@@ -2667,6 +2750,7 @@ const submitCreateDialog = async () => {
 
         await linkRelationsAPI({
           person_id: sourcePersonId,
+          family_id: family.id,
           children_person_ids: childrenIds,
         });
       }
@@ -2741,17 +2825,19 @@ const submitCreateDialog = async () => {
       }
 
       if (relation === "child") {
-        const family = findFamilyForParent(selectedPerson.id, canonicalTree.families);
-        const existingChildren = family
-          ? asArray(canonicalTree.childRows)
-              .filter((row) => Number(row.family_id) === Number(family.id))
-              .map((row) => Number(row.person_id))
-          : [];
+        const parentFamilies = getFamiliesForPerson(selectedPerson.id, canonicalTree.families);
+        if (parentFamilies.length !== 1) {
+          setConstraintNotice(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
+          return;
+        }
+        const family = parentFamilies[0];
+        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
         const childrenIds = Array.from(new Set([...existingChildren, targetId])).filter(
           (id) => Number(id) !== Number(selectedPerson.id),
         );
         await linkRelationsAPI({
           person_id: selectedPerson.id,
+          family_id: family.id,
           children_person_ids: childrenIds,
         });
       }
@@ -2784,19 +2870,29 @@ const submitCreateDialog = async () => {
     setStatus("");
     try {
       if (relation === "spouse") {
-        await linkRelationsAPI({ person_id: selectedPerson.id, spouse_person_id: null });
+        const family = findSpouseFamily(selectedPerson.id, targetId, canonicalTree.families);
+        await linkRelationsAPI({
+          person_id: selectedPerson.id,
+          family_id: family?.id || null,
+          spouse_person_id: null,
+        });
       }
 
       if (relation === "child") {
-        const family = findFamilyForParent(selectedPerson.id, canonicalTree.families);
-        const existingChildren = family
-          ? asArray(canonicalTree.childRows)
-              .filter((row) => Number(row.family_id) === Number(family.id))
-              .map((row) => Number(row.person_id))
-          : [];
+        const family = asArray(canonicalTree.families).find((item) =>
+          asArray(canonicalTree.childRows).some(
+            (row) => Number(row.family_id) === Number(item.id) && Number(row.person_id) === targetId,
+          ) && (Number(item.father_id) === Number(selectedPerson.id) || Number(item.mother_id) === Number(selectedPerson.id))
+        );
+        if (!family) {
+          setConstraintNotice("Khong tim thay family cua lien ket con nay.");
+          return;
+        }
+        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
         const childrenIds = existingChildren.filter((id) => Number(id) !== targetId);
         await linkRelationsAPI({
           person_id: selectedPerson.id,
+          family_id: family.id,
           children_person_ids: childrenIds,
         });
       }

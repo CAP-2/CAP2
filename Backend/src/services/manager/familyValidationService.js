@@ -72,14 +72,12 @@ const validateFamilyParents = async({ connection = db, clanId, fatherId, motherI
             SELECT id
             FROM families
             WHERE clan_id = ?
-              AND (
-                ((father_id <=> ?) AND (mother_id <=> ?))
-                OR ((father_id <=> ?) AND (mother_id <=> ?))
-              )
+              AND (father_id <=> ?)
+              AND (mother_id <=> ?)
               AND (? IS NULL OR id <> ?)
             LIMIT 1
             `,
-            [clanId, nextFatherId, nextMotherId, nextMotherId, nextFatherId, excludeFamilyId, excludeFamilyId]
+            [clanId, nextFatherId, nextMotherId, excludeFamilyId, excludeFamilyId]
         );
         if (duplicates.length) {
             return {

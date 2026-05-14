@@ -8,6 +8,7 @@ const {
 const { createNotification, ensureNotificationSchema } = require("../utils/notifications");
 const { getTreeLayoutSettings } = require("../utils/treeLayoutSettings");
 const { normalizeMediaId, extractMediaIdFromUrl } = require("../utils/media");
+const { ensureFamilyRelationshipColumns } = require("../services/manager/familyRelationService");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -579,6 +580,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
   );
   if (!crows.length) return { error: "not_found" };
   const clan = crows[0];
+  await ensureFamilyRelationshipColumns();
 
   const [peopleRows] = await db.query(
     `
@@ -601,7 +603,9 @@ exports.loadClanTreeForAdmin = async (clanId) => {
   );
 
   const [familyRows] = await db.query(
-    `SELECT id, father_id, mother_id FROM families WHERE clan_id = ? ORDER BY id ASC`,
+    `SELECT id, clan_id, father_id, mother_id, marriage_date,
+            relationship_status, ended_at, relation_note
+     FROM families WHERE clan_id = ? ORDER BY id ASC`,
     [cid]
   );
   const [childRows] = await db.query(
@@ -627,6 +631,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     families: familyRows.map(f => ({
       ...f,
       marriage_date: f.marriage_date ? String(f.marriage_date).slice(0, 10) : null,
+      ended_at: f.ended_at ? String(f.ended_at).slice(0, 10) : null,
     })),
     children: childRows,
     layoutSettings,
@@ -654,6 +659,7 @@ exports.getDashboard = async (req, res) => {
     let layoutSettings = { line_routes: {}, card_sizes: {} };
 
     if (clanId) {
+      await ensureFamilyRelationshipColumns();
       const [peopleRows] = await db.query(
         `
           SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
@@ -680,7 +686,9 @@ exports.getDashboard = async (req, res) => {
       }));
 
       const [familyRows] = await db.query(
-        `SELECT id, clan_id, father_id, mother_id, marriage_date FROM families WHERE clan_id = ? ORDER BY id ASC`,
+        `SELECT id, clan_id, father_id, mother_id, marriage_date,
+                relationship_status, ended_at, relation_note
+         FROM families WHERE clan_id = ? ORDER BY id ASC`,
         [clanId]
       );
       const [childRows] = await db.query(
@@ -696,6 +704,7 @@ exports.getDashboard = async (req, res) => {
       families = familyRows.map((family) => ({
         ...family,
         marriage_date: family.marriage_date ? String(family.marriage_date).slice(0, 10) : null,
+        ended_at: family.ended_at ? String(family.ended_at).slice(0, 10) : null,
       }));
       children = childRows;
       layoutSettings = await getTreeLayoutSettings(clanId);

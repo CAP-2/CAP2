@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getMemberDashboard, verifyTreeEditSession } from "../../api/memberService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
-import { getSocket } from "../../services/socket";
+import { onSocketEvent, connectSocketFromStorage } from "../../services/socket";
 import { clearTreeEditSession, readTreeEditSession, saveTreeEditSession } from "../../services/treeEditSession";
 import "../Member/MemberDashboard.css";
 
@@ -52,19 +52,22 @@ export default function FamilyTreePage() {
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
   useEffect(() => {
-  let timer = null;
-  let cleanup = null;
+    connectSocketFromStorage();
 
-  const attachTreeSocket = () => {
-    const socket = getSocket();
+    const offTreeUpdated = onSocketEvent("tree_updated", (payload) => {
+      console.log("[Member FamilyTreePage] tree_updated:", payload);
 
-    if (!socket) {
-      return false;
-    }
+      const currentClanId = dashboard?.clan?.id || dashboard?.clan?.clan_id;
 
-    const handleTreeUpdated = (payload) => {
-      console.log("Member tree realtime tree_updated received:", payload);
+      if (
+        payload?.clan_id &&
+        currentClanId &&
+        Number(payload.clan_id) !== Number(currentClanId)
+      ) {
+        return;
+      }
 
       if (treeReloadTimerRef.current) {
         window.clearTimeout(treeReloadTimerRef.current);
@@ -73,39 +76,17 @@ export default function FamilyTreePage() {
       treeReloadTimerRef.current = window.setTimeout(() => {
         loadTree();
       }, 500);
-    };
+    });
 
-    socket.on("tree_updated", handleTreeUpdated);
+    return () => {
+      offTreeUpdated();
 
-    cleanup = () => {
-      socket.off("tree_updated", handleTreeUpdated);
-    };
-
-    return true;
-  };
-
-  if (!attachTreeSocket()) {
-    timer = window.setInterval(() => {
-      if (attachTreeSocket()) {
-        window.clearInterval(timer);
+      if (treeReloadTimerRef.current) {
+        window.clearTimeout(treeReloadTimerRef.current);
+        treeReloadTimerRef.current = null;
       }
-    }, 500);
-  }
-
-  return () => {
-    if (timer) {
-      window.clearInterval(timer);
-    }
-
-    if (treeReloadTimerRef.current) {
-      window.clearTimeout(treeReloadTimerRef.current);
-    }
-
-    if (cleanup) {
-      cleanup();
-    }
-  };
-}, [loadTree]);
+    };
+  }, [loadTree, dashboard?.clan?.id, dashboard?.clan?.clan_id]);
 
   const resetTemporaryPermission = useCallback((message = "") => {
     clearTreeEditSession();
@@ -359,6 +340,7 @@ export default function FamilyTreePage() {
                 readOnly={!permission.canEdit}
                 editPermission={permission}
                 onReload={loadTree}
+                enableRealtime={false}
               />
             </div>
           )}

@@ -69,6 +69,7 @@
     router.patch('/people/:id/position', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.updatePersonPosition);
     router.patch('/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.updateTreePerson);
     router.post('/families', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createFamily);
+    router.patch('/families/:familyId', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.updateFamily);
     router.post('/families/:familyId/children', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.addFamilyChild);
     router.delete('/people/:id', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.deleteTreePerson);
     

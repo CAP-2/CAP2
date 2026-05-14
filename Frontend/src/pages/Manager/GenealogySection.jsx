@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../api/managerService";
 import FamilyTreeEditor from "../../components/PhadoFamilyTree/FamilyTreeEditor";
 import { formatDateTimeVN } from "../../utils/dateFormat";
-import { getSocket } from "../../services/socket";
+import { onSocketEvent } from "../../services/socket";
 import "./manager.css";
 
 export default function GenealogySection() {
@@ -66,18 +67,17 @@ export default function GenealogySection() {
   }, [loadTree]);
 
   useEffect(() => {
-  let timer = null;
-  let cleanup = null;
-
-  const attachTreeSocket = () => {
-    const socket = getSocket();
-
-    if (!socket) {
-      return false;
-    }
-
-    const handleTreeUpdated = (payload) => {
+    const offTreeUpdated = onSocketEvent("tree_updated", (payload) => {
       console.log("Manager tree realtime tree_updated received:", payload);
+
+      const currentClanId = clan?.id || clan?.clan_id;
+      if (
+        payload?.clan_id &&
+        currentClanId &&
+        Number(payload.clan_id) !== Number(currentClanId)
+      ) {
+        return;
+      }
 
       if (treeReloadTimerRef.current) {
         window.clearTimeout(treeReloadTimerRef.current);
@@ -86,39 +86,17 @@ export default function GenealogySection() {
       treeReloadTimerRef.current = window.setTimeout(() => {
         loadTree();
       }, 500);
-    };
+    });
 
-    socket.on("tree_updated", handleTreeUpdated);
+    return () => {
+      offTreeUpdated();
 
-    cleanup = () => {
-      socket.off("tree_updated", handleTreeUpdated);
-    };
-
-    return true;
-  };
-
-  if (!attachTreeSocket()) {
-    timer = window.setInterval(() => {
-      if (attachTreeSocket()) {
-        window.clearInterval(timer);
+      if (treeReloadTimerRef.current) {
+        window.clearTimeout(treeReloadTimerRef.current);
+        treeReloadTimerRef.current = null;
       }
-    }, 500);
-  }
-
-  return () => {
-    if (timer) {
-      window.clearInterval(timer);
-    }
-
-    if (treeReloadTimerRef.current) {
-      window.clearTimeout(treeReloadTimerRef.current);
-    }
-
-    if (cleanup) {
-      cleanup();
-    }
-  };
-}, [loadTree]);
+    };
+  }, [loadTree, clan?.id, clan?.clan_id]);
 
   useEffect(() => {
     setClanForm({
@@ -350,6 +328,7 @@ export default function GenealogySection() {
       loading={loading}
       onReload={loadTree}
       layoutSettings={layoutSettings}
+      enableRealtime={false}
     />
   );
 
