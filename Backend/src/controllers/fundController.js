@@ -7,7 +7,7 @@ const ensureEventCostRecipientColumns = async () => {
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'event_costs'
-          AND COLUMN_NAME IN ('recipient_person_id', 'recipient_note', 'paid_to_manager')
+          AND COLUMN_NAME IN ('recipient_person_id', 'recipient_note', 'paid_to_manager', 'status', 'method')
     `);
 
     const existing = new Set(columns.map(c => c.COLUMN_NAME));
@@ -22,6 +22,14 @@ const ensureEventCostRecipientColumns = async () => {
 
     if (!existing.has('paid_to_manager')) {
         await db.query('ALTER TABLE event_costs ADD COLUMN paid_to_manager TINYINT(1) NOT NULL DEFAULT 0 AFTER recipient_note');
+    }
+
+    if (!existing.has('status')) {
+        await db.query("ALTER TABLE event_costs ADD COLUMN status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved' AFTER category");
+    }
+
+    if (!existing.has('method')) {
+        await db.query("ALTER TABLE event_costs ADD COLUMN method VARCHAR(50) NOT NULL DEFAULT 'Tiền mặt' AFTER status");
     }
 };
 
@@ -52,7 +60,14 @@ exports.getCampaigns = async (req, res) => {
                 [c.id]
             );
 
+            const [expenseRows] = await db.query(
+                "SELECT SUM(amount) as total FROM event_costs WHERE campaign_id = ? AND status = 'approved'",
+                [c.id]
+            );
+
             c.collected_amount = rows[0].total || 0;
+            c.spent_amount = expenseRows[0].total || 0;
+            c.balance = c.collected_amount - c.spent_amount;
 
             const contributionUnitCount = await exports.internalCalculateContributionUnit(
                 c.clan_id,
@@ -82,7 +97,7 @@ exports.getFundOverview = async (req, res) => {
         );
 
         const [expenseResult] = await db.query(
-            'SELECT SUM(amount) as total_expense FROM event_costs WHERE clan_id = ?',
+            "SELECT SUM(amount) as total_expense FROM event_costs WHERE clan_id = ? AND status = 'approved'",
             [clanId]
         );
 
@@ -109,43 +124,47 @@ exports.getTransactions = async (req, res) => {
         if (!clanId && req.user) clanId = await getUserClanId(req.user.id);
         if (!clanId) return res.status(400).json({ success: false, message: 'Clan ID is required' });
 
-        const [income] = await db.query(`
+        const [userRows] = await db.query('SELECT person_id FROM accounts WHERE id = ?', [req.user.id]);
+        const currentUserPersonId = userRows[0]?.person_id;
+        const isManager = ['admin', 'manager'].includes(req.user.role_name);
+
+        let incomeQuery = `
             SELECT 
-                ec.id,
-                ec.amount,
-                ec.contribution_date as date,
-                ec.note,
-                ec.method,
-                'income' as type,
-                ec.status,
-                p.display_name as person_name,
-                fc.name as campaign_name
+                ec.id, ec.amount, ec.contribution_date as date, ec.note, ec.method,
+                'income' as type, ec.status, p.display_name as person_name, fc.name as campaign_name
             FROM event_contributions ec
             LEFT JOIN people p ON ec.person_id = p.id
             LEFT JOIN fund_campaigns fc ON ec.campaign_id = fc.id
             WHERE ec.clan_id = ?
-        `, [clanId]);
+        `;
+        let incomeParams = [clanId];
+
+        if (!isManager) {
+            incomeQuery += " AND (ec.status = 'approved' OR ec.person_id = ?)";
+            incomeParams.push(currentUserPersonId);
+        }
+
+        const [income] = await db.query(incomeQuery, incomeParams);
 
         await ensureEventCostRecipientColumns();
 
-        const [expenses] = await db.query(`
+        let expenseQuery = `
             SELECT 
-                ex.id,
-                ex.amount,
-                ex.created_at as date,
-                ex.item_name as note,
-                'Tiền mặt' as method,
-                'expense' as type,
-                'approved' as status,
-                rp.display_name as person_name,
-                fc.name as campaign_name,
-                ex.recipient_note,
-                ex.paid_to_manager
+                ex.id, ex.amount, ex.created_at as date, ex.item_name as note, ex.method,
+                'expense' as type, ex.status, rp.display_name as person_name, fc.name as campaign_name,
+                ex.recipient_note, ex.paid_to_manager
             FROM event_costs ex
             LEFT JOIN fund_campaigns fc ON ex.campaign_id = fc.id
             LEFT JOIN people rp ON ex.recipient_person_id = rp.id
             WHERE ex.clan_id = ?
-        `, [clanId]);
+        `;
+        let expenseParams = [clanId];
+
+        if (!isManager) {
+            expenseQuery += " AND ex.status = 'approved'";
+        }
+
+        const [expenses] = await db.query(expenseQuery, expenseParams);
 
         const transactions = [...income, ...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -177,19 +196,32 @@ exports.addIncome = async (req, res) => {
             });
         }
 
+        let finalPersonId = person_id;
+        if (!finalPersonId && req.user) {
+            const [userRows] = await db.query('SELECT person_id FROM accounts WHERE id = ?', [req.user.id]);
+            finalPersonId = userRows[0]?.person_id;
+        }
+
+        // Nếu là member nộp, để status là pending
+        let finalStatus = 'approved';
+        if (req.user && req.user.role_id === 3) {
+            finalStatus = 'pending';
+        }
+
         const [result] = await db.query(
             `INSERT INTO event_contributions 
                 (clan_id, event_id, campaign_id, person_id, amount, contribution_date, method, note, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved')`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 clanId,
                 event_id || null,
                 campaign_id || null,
-                person_id || null,
+                finalPersonId || null,
                 amount,
                 date || new Date(),
                 method || 'Tiền mặt',
-                note
+                note,
+                finalStatus
             ]
         );
 
@@ -245,9 +277,11 @@ exports.addExpense = async (req, res) => {
                     recipient_note,
                     paid_to_manager,
                     created_at,
-                    category
+                    category,
+                    status,
+                    method
                 ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 clanId,
                 event_id || null,
@@ -259,7 +293,9 @@ exports.addExpense = async (req, res) => {
                 recipient_note || null,
                 paid_to_manager ? 1 : 0,
                 date || new Date(),
-                category || 'Khác'
+                category || 'Khác',
+                req.body.status || 'approved',
+                req.body.method || 'Tiền mặt'
             ]
         );
 
@@ -668,7 +704,7 @@ exports.getFundStats = async (req, res) => {
         );
 
         const [expenseByYear] = await db.query(
-            "SELECT YEAR(created_at) as year, SUM(amount) as total FROM event_costs WHERE clan_id = ? GROUP BY year ORDER BY year ASC",
+            "SELECT YEAR(created_at) as year, SUM(amount) as total FROM event_costs WHERE clan_id = ? AND status = 'approved' GROUP BY year ORDER BY year ASC",
             [clanId]
         );
 
@@ -681,7 +717,7 @@ exports.getFundStats = async (req, res) => {
                 YEAR(created_at) as year,
                 SUM(amount) as total
             FROM event_costs
-            WHERE clan_id = ? AND YEAR(created_at) IN (?, ?)
+            WHERE clan_id = ? AND status = 'approved' AND YEAR(created_at) IN (?, ?)
             GROUP BY category, year
         `, [clanId, curYear, prevYear]);
 
@@ -766,7 +802,7 @@ exports.exportFundExcel = async (req, res) => {
                 ex.paid_to_manager
             FROM event_costs ex
             LEFT JOIN people rp ON ex.recipient_person_id = rp.id
-            WHERE ex.clan_id = ?
+            WHERE ex.clan_id = ? AND ex.status = 'approved'
         `;
 
         let params = [clanId];

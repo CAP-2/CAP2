@@ -39,6 +39,8 @@ export default function ClanFundPage() {
   const [showGeneralForm, setShowGeneralForm] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [showPendingModal, setShowPendingModal] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -239,12 +241,38 @@ export default function ClanFundPage() {
     loadData();
   }, [loadData]);
 
-  const handleExportExcel = (campaignId = null) => {
-    const url = campaignId
-      ? `${import.meta.env.VITE_API_URL || ""}/api/manager/fund/export?campaign_id=${campaignId}`
-      : `${import.meta.env.VITE_API_URL || ""}/api/manager/fund/export?year=${new Date().getFullYear()}`;
+  const handleExportExcel = async (campaignId = null) => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const baseUrl = import.meta.env.VITE_API_URL || "";
+      const url = campaignId
+        ? `${baseUrl}/api/manager/fund/export?campaign_id=${campaignId}`
+        : `${baseUrl}/api/manager/fund/export?year=${new Date().getFullYear()}`;
 
-    window.open(url, "_blank");
+      const response = await fetch(url, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Không thể xuất báo cáo");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      const filename = campaignId ? `Bao_Cao_Chien_Dich_${campaignId}.xlsx` : `Bao_Cao_Nam_${new Date().getFullYear()}.xlsx`;
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      alert("Lỗi xuất báo cáo: " + error.message);
+    }
   };
 
   const handleImportExcel = async (e) => {
@@ -420,14 +448,17 @@ export default function ClanFundPage() {
   };
 
   const totalIncome = transactions
-    .filter((tx) => tx.type === "income" && tx.status !== "rejected")
+    .filter((tx) => tx.type === "income" && tx.status === "approved")
     .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
   const totalExpense = transactions
-    .filter((tx) => tx.type === "expense")
+    .filter((tx) => tx.type === "expense" && tx.status === "approved")
     .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
   const currentBalance = totalIncome - totalExpense;
+
+  const pendingTransactions = transactions.filter(tx => tx.status === 'pending');
+  const approvedTransactions = transactions.filter(tx => tx.status === 'approved');
 
   const activeCampaignCount = campaigns.filter((c) => c.status === "open").length;
 
@@ -452,6 +483,14 @@ export default function ClanFundPage() {
               disabled={importing}
             />
           </label>
+
+          <button className="btn-premium btn-outline" onClick={() => setShowPendingModal(true)} style={{position: 'relative'}}>
+            <span className="material-symbols-outlined">rule</span>
+            Duyệt Giao Dịch
+            {pendingTransactions.length > 0 && (
+              <span className="badge-count">{pendingTransactions.length}</span>
+            )}
+          </button>
 
           <button className="btn-premium btn-outline" onClick={() => handleExportExcel()}>
             <span className="material-symbols-outlined">download</span>
@@ -549,12 +588,24 @@ export default function ClanFundPage() {
                     ></div>
                   </div>
 
-                  <div className="campaign-card-footer">
-                    <div className="card-bottom">
-                      <span>{formatCurrency(c.collected_amount)}</span>
-                      <span className="target-text">/ {formatCurrency(c.target_amount)}</span>
+                  <div className="card-bottom">
+                    <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center'}}>
+                       <span>{formatCurrency(c.collected_amount)}</span>
+                       <span className="target-text">/ {formatCurrency(c.target_amount)}</span>
                     </div>
+                  </div>
+                  <div className="campaign-stats-mini" style={{marginTop: '8px', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', color: '#e74c3c'}}>
+                       <span>Đã chi:</span>
+                       <strong>{formatCurrency(c.spent_amount)}</strong>
+                    </div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', color: '#27ae60', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '4px'}}>
+                       <span>Còn lại:</span>
+                       <strong>{formatCurrency(c.balance)}</strong>
+                    </div>
+                  </div>
 
+                  <div className="campaign-card-footer">
                     <div className="completion-rate">
                       {((c.collected_amount / (c.target_amount || 1)) * 100).toFixed(1)}%
                     </div>
@@ -581,8 +632,8 @@ export default function ClanFundPage() {
               </thead>
 
               <tbody>
-                {transactions.slice(0, 15).map((tx) => (
-                  <tr key={`${tx.type}-${tx.id}`}>
+                {approvedTransactions.slice(0, 15).map((tx) => (
+                  <tr key={`${tx.type}-${tx.id}`} onClick={() => setSelectedTransaction(tx)} style={{cursor: 'pointer'}}>
                     <td>
                       <div className="tx-name">{tx.note || "Chi chung"}</div>
 
@@ -590,6 +641,9 @@ export default function ClanFundPage() {
                         {tx.person_name && (
                           <span className="tx-person-pill">{tx.person_name}</span>
                         )}
+                        <span className="method-pill" style={{background: 'rgba(52, 152, 219, 0.1)', color: '#2980b9'}}>
+                          {tx.campaign_name || 'Quỹ chung'}
+                        </span>
                         {formatDateVN(tx.date)}
                       </div>
                     </td>
@@ -885,14 +939,17 @@ export default function ClanFundPage() {
 
                   <tbody>
                     {selectedCampaign.transactions.map((tx) => (
-                      <tr key={tx.id}>
+                      <tr key={`${tx.type}-${tx.id}`}>
                         <td>
-                          <strong>{tx.person_name}</strong>
+                          <strong>{tx.person_name || '---'}</strong>
+                          <div style={{fontSize: '0.75rem', color: '#666'}}>{tx.note}</div>
                         </td>
 
-                        <td>{formatDateVN(tx.contribution_date)}</td>
+                        <td>{formatDateVN(tx.contribution_date || tx.created_at)}</td>
 
-                        <td>{formatCurrency(tx.amount)}</td>
+                        <td className={`tx-val ${tx.type}`}>
+                          {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                        </td>
 
                         <td>
                           {tx.status === "pending" ? (
@@ -1236,9 +1293,203 @@ export default function ClanFundPage() {
         </div>
       )}
 
+      {/* Transaction Detail Modal */}
+      {selectedTransaction && (
+        <div className="fund-modal-v2" onClick={() => setSelectedTransaction(null)}>
+          <div className="modal-glass" style={{maxWidth: '450px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header-v2">
+              <h3>Chi Tiết Giao Dịch</h3>
+              <button onClick={() => setSelectedTransaction(null)} className="close-btn">&times;</button>
+            </div>
+            <div className="modal-body-v2">
+              <div className="tx-detail-v3">
+                <div className="detail-row">
+                  <label>Loại:</label>
+                  <span className={`pill ${selectedTransaction.type}`}>{selectedTransaction.type === 'income' ? 'Thu' : 'Chi'}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Số tiền:</label>
+                  <strong style={{color: selectedTransaction.type === 'income' ? '#2ecc71' : '#ff7675'}}>
+                    {formatCurrency(selectedTransaction.amount)}
+                  </strong>
+                </div>
+                <div className="detail-row">
+                  <label>Ngày:</label>
+                  <span>{formatDateVN(selectedTransaction.date)}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Hình thức:</label>
+                  <span>{selectedTransaction.method}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Nội dung:</label>
+                  <span>{selectedTransaction.note}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Hạng mục:</label>
+                  <span>{selectedTransaction.category || 'Khác'}</span>
+                </div>
+                {selectedTransaction.person_name && (
+                  <div className="detail-row">
+                    <label>{selectedTransaction.type === 'income' ? 'Người nộp:' : 'Người nhận:'}</label>
+                    <span>{selectedTransaction.person_name}</span>
+                  </div>
+                )}
+                {selectedTransaction.manager_note && (
+                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem'}}>
+                    <label>Phản hồi của quản lý:</label>
+                    <p style={{fontStyle: 'italic', color: 'rgba(0,0,0,0.7)'}}>{selectedTransaction.manager_note}</p>
+                  </div>
+                )}
+                 {selectedTransaction.recipient_note && (
+                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem'}}>
+                    <label>Ghi chú người nhận:</label>
+                    <p style={{fontStyle: 'italic', color: 'rgba(0,0,0,0.7)'}}>{selectedTransaction.recipient_note}</p>
+                  </div>
+                )}
+                {selectedTransaction.evidence_media_id && (
+                  <div className="detail-row" style={{flexDirection: 'column', alignItems: 'flex-start', marginTop: '1rem'}}>
+                    <label>Minh chứng (Bill):</label>
+                    <img 
+                      src={resolveImageUrl({mediaId: selectedTransaction.evidence_media_id})} 
+                      alt="Bill" 
+                      style={{width: '100%', borderRadius: '12px', marginTop: '8px', border: '1px solid #ddd'}} 
+                      onClick={() => window.open(resolveImageUrl({mediaId: selectedTransaction.evidence_media_id}), '_blank')}
+                    />
+                  </div>
+                )}
+                {selectedTransaction.status === 'pending' && (
+                  <div className="detail-actions" style={{marginTop: '1.5rem', display: 'flex', gap: '10px'}}>
+                    <button 
+                      className="btn-premium btn-green" 
+                      style={{flex: 1}}
+                      onClick={() => {
+                        setApprovalData({
+                          transaction_id: selectedTransaction.id,
+                          status: 'approved',
+                          manager_note: '',
+                          evidence_media_id: selectedTransaction.evidence_media_id,
+                          person_name: selectedTransaction.person_name,
+                          amount: selectedTransaction.amount
+                        });
+                        setSelectedTransaction(null);
+                        setShowApprovalModal(true);
+                      }}
+                    >
+                      Duyệt Giao Dịch
+                    </button>
+                    <button 
+                      className="btn-premium btn-outline" 
+                      style={{flex: 1, color: '#e74c3c'}}
+                      onClick={() => {
+                         setApprovalData({
+                          transaction_id: selectedTransaction.id,
+                          status: 'rejected',
+                          manager_note: '',
+                          evidence_media_id: selectedTransaction.evidence_media_id,
+                          person_name: selectedTransaction.person_name,
+                          amount: selectedTransaction.amount
+                        });
+                        setSelectedTransaction(null);
+                        setShowApprovalModal(true);
+                      }}
+                    >
+                      Từ Chối
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Transactions Modal */}
+      {showPendingModal && (
+        <div className="fund-modal-v2" onClick={() => setShowPendingModal(false)}>
+          <div className="modal-glass ledger-modal" style={{maxWidth: '800px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header-v2">
+              <div>
+                <h3>Danh Sách Chờ Duyệt</h3>
+                <p className="modal-subtitle">Có {pendingTransactions.length} giao dịch đang chờ phê duyệt.</p>
+              </div>
+              <button onClick={() => setShowPendingModal(false)} className="close-btn">&times;</button>
+            </div>
+            <div className="modal-body-v2">
+              <div className="ledger-table-wrapper" style={{maxHeight: '60vh'}}>
+                <table className="fund-table-v3">
+                  <thead>
+                    <tr>
+                      <th>Giao dịch</th>
+                      <th>Người nộp/nhận</th>
+                      <th>Số tiền</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingTransactions.map(tx => (
+                      <tr key={`${tx.type}-${tx.id}`}>
+                        <td>
+                          <div className="tx-name">{tx.note || (tx.type === 'income' ? 'Đóng góp' : 'Chi phí')}</div>
+                          <div className="tx-date">{formatDateVN(tx.date)}</div>
+                        </td>
+                        <td>{tx.person_name || '---'}</td>
+                        <td className={`tx-val ${tx.type}`}>
+                          {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                        </td>
+                        <td>
+                          <button 
+                            className="btn-approve-v3-active"
+                            onClick={() => {
+                              setApprovalData({
+                                transaction_id: tx.id,
+                                status: 'approved',
+                                manager_note: '',
+                                evidence_media_id: tx.evidence_media_id,
+                                person_name: tx.person_name,
+                                amount: tx.amount
+                              });
+                              setShowApprovalModal(true);
+                            }}
+                          >
+                            Duyệt
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!pendingTransactions.length && (
+                      <tr><td colSpan="4" className="table-empty">Không có giao dịch nào chờ duyệt.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style
         dangerouslySetInnerHTML={{
           __html: `
+            .badge-count {
+              position: absolute;
+              top: -8px;
+              right: -8px;
+              background: #e74c3c;
+              color: white;
+              font-size: 0.7rem;
+              font-weight: 900;
+              width: 22px;
+              height: 22px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border: 2px solid #fff;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+              z-index: 10;
+            }
+
             .fund-container {
               padding: 0.65rem 1.15rem 1.25rem;
               max-width: 1480px;

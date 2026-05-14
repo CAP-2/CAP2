@@ -11,6 +11,7 @@ export default function MemberFundPage() {
   const [loading, setLoading] = useState(true);
   const [showPayModal, setShowPayModal] = useState(false);
   const [showGeneralForm, setShowGeneralForm] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   
   const [formData, setFormData] = useState({ amount: "", note: "", method: "Chuyển khoản", evidence_media_id: null });
   const [generalData, setGeneralData] = useState({ amount: "", note: "", method: "Tiền mặt" });
@@ -159,6 +160,14 @@ export default function MemberFundPage() {
                     <label>Đối tượng</label>
                     <span style={{color: 'var(--fund-text)'}}>{c.contribution_unit_definition === 'males_only' ? 'Nam giới' : 'Người trưởng thành'}</span>
                   </div>
+                  <div className="info-row" style={{marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '8px'}}>
+                    <label style={{color: '#ff7675'}}>Đã chi</label>
+                    <strong style={{color: '#ff7675'}}>{formatCurrency(c.spent_amount)}</strong>
+                  </div>
+                  <div className="info-row">
+                    <label style={{color: '#2ecc71'}}>Còn lại</label>
+                    <strong style={{color: '#2ecc71'}}>{formatCurrency(c.balance)}</strong>
+                  </div>
                 </div>
                 <button className="btn-premium btn-green" style={{width: '100%', marginTop: '1.5rem'}} onClick={() => openPayModal(c)}>
                   Đóng Quỹ Ngay
@@ -174,10 +183,15 @@ export default function MemberFundPage() {
           <div className="glass-card ledger-box" style={{padding: '1rem', background: 'rgba(17, 20, 32, 0.6)'}}>
             <div className="tx-scroller" style={{maxHeight: '600px', overflowY: 'auto'}}>
               {transactions.map(tx => (
-                <div key={`${tx.type}-${tx.id}`} className={`tx-card-v2 ${tx.type}`}>
+                <div key={`${tx.type}-${tx.id}`} className={`tx-card-v2 ${tx.type}`} onClick={() => setSelectedTransaction(tx)} style={{cursor: 'pointer'}}>
                   <div className="tx-main">
                     <div className="tx-note">{tx.note || 'Đóng góp dòng họ'}</div>
-                    <div className="tx-meta">{formatDateVN(tx.date)} • {tx.method}</div>
+                    <div className="tx-meta">
+                      {formatDateVN(tx.date)} • {tx.method} 
+                      <span style={{marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', fontSize: '0.7rem'}}>
+                        {tx.campaign_name || 'Quỹ chung'}
+                      </span>
+                    </div>
                   </div>
                   <div className="tx-amount" style={{textAlign: 'right'}}>
                     <div style={{fontWeight: 'bold', color: tx.type === 'income' ? '#2ecc71' : '#ff7675'}}>
@@ -292,11 +306,77 @@ export default function MemberFundPage() {
             <div className="modal-body-v2">
                {successMsg ? <div className="success-screen"><h3>{successMsg}</h3></div> : (
                   <form onSubmit={handleGeneralSubmit} className="premium-form">
+                    <div className="method-switcher-v3" style={{marginBottom: '1.5rem'}}>
+                      <label className={generalData.method === 'Tiền mặt' ? 'active' : ''}>
+                        <input type="radio" value="Tiền mặt" checked={generalData.method === 'Tiền mặt'} onChange={e => setGeneralData({...generalData, method: e.target.value})} />
+                        Tiền mặt
+                      </label>
+                      <label className={generalData.method === 'Chuyển khoản' ? 'active' : ''}>
+                        <input type="radio" value="Chuyển khoản" checked={generalData.method === 'Chuyển khoản'} onChange={e => setGeneralData({...generalData, method: e.target.value})} />
+                        Chuyển khoản
+                      </label>
+                    </div>
                     <div className="form-group"><label>Số tiền</label><input type="number" required value={generalData.amount} onChange={e => setGeneralData({...generalData, amount: e.target.value})} /></div>
                     <div className="form-group"><label>Nội dung</label><textarea required value={generalData.note} onChange={e => setGeneralData({...generalData, note: e.target.value})}></textarea></div>
-                    <button type="submit" className="btn-premium btn-gold" style={{width: '100%'}}>Gửi Đóng Góp</button>
+                    <button type="submit" className="btn-premium btn-gold" style={{width: '100%', marginTop: '1rem'}} disabled={submitting}>Gửi Đóng Góp</button>
                   </form>
                )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction Detail Modal */}
+      {selectedTransaction && (
+        <div className="fund-modal-v2" onClick={() => setSelectedTransaction(null)}>
+          <div className="modal-glass" style={{maxWidth: '450px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header-v2">
+              <h3>Chi Tiết Giao Dịch</h3>
+              <button onClick={() => setSelectedTransaction(null)} className="close-btn">&times;</button>
+            </div>
+            <div className="modal-body-v2">
+              <div className="tx-detail-v3">
+                <div className="detail-row">
+                  <label>Loại:</label>
+                  <span className={`pill ${selectedTransaction.type}`}>{selectedTransaction.type === 'income' ? 'Thu' : 'Chi'}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Số tiền:</label>
+                  <strong style={{color: selectedTransaction.type === 'income' ? '#2ecc71' : '#ff7675'}}>
+                    {formatCurrency(selectedTransaction.amount)}
+                  </strong>
+                </div>
+                <div className="detail-row">
+                  <label>Ngày:</label>
+                  <span>{formatDateVN(selectedTransaction.date)}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Hình thức:</label>
+                  <span>{selectedTransaction.method}</span>
+                </div>
+                <div className="detail-row">
+                  <label>Nội dung:</label>
+                  <span>{selectedTransaction.note}</span>
+                </div>
+                {selectedTransaction.person_name && (
+                  <div className="detail-row">
+                    <label>{selectedTransaction.type === 'income' ? 'Người nộp:' : 'Người nhận:'}</label>
+                    <span>{selectedTransaction.person_name}</span>
+                  </div>
+                )}
+                {selectedTransaction.manager_note && (
+                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem'}}>
+                    <label>Phản hồi của quản lý:</label>
+                    <p style={{fontStyle: 'italic', color: 'rgba(255,255,255,0.7)'}}>{selectedTransaction.manager_note}</p>
+                  </div>
+                )}
+                 {selectedTransaction.recipient_note && (
+                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem'}}>
+                    <label>Ghi chú người nhận:</label>
+                    <p style={{fontStyle: 'italic', color: 'rgba(255,255,255,0.7)'}}>{selectedTransaction.recipient_note}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -148,6 +148,50 @@
     font-weight: 900;
 }
 
+/* NEW STYLES FOR TRANSACTION DETAILS */
+.tx-detail-v3 {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 10px 0;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.detail-row label {
+    font-weight: 800;
+    color: var(--fund-muted);
+    min-width: 120px;
+}
+
+.detail-row span, .detail-row strong, .detail-row p {
+    text-align: right;
+    margin: 0;
+}
+
+.pill {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.pill.income {
+    background: rgba(47, 125, 56, 0.12);
+    color: var(--fund-green);
+}
+
+.pill.expense {
+    background: rgba(142, 36, 27, 0.12);
+    color: var(--fund-red);
+}
+
 .section-title::before {
     content: "";
     position: absolute;
