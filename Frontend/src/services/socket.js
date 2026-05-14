@@ -2,6 +2,8 @@ import { io } from "socket.io-client";
 
 let socket = null;
 
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:3000";
+
 export function connectSocket(accountId, token) {
   if (!accountId || !token) {
     console.warn("Missing accountId or token. Socket not connected.");
@@ -10,35 +12,30 @@ export function connectSocket(accountId, token) {
 
   if (socket?.connected) {
     return socket;
-    }
+  }
 
-    if (socket) {
+  if (socket) {
     socket.disconnect();
     socket = null;
-    window.socket = null;
+
+    if (typeof window !== "undefined") {
+      window.socket = null;
     }
+  }
 
-    socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:3000", {
-        auth: {
-            token,
-        },
-        transports: ["polling"],
-        upgrade: false,
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        });
-
-  socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:3000", {
+  socket = io(SOCKET_URL, {
     auth: {
-        token,
+      token,
     },
-    transports: ["polling"],
-    upgrade: false,
-    });
+    transports: ["polling", "websocket"],
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+  });
 
-  // Tạm gắn vào window để test trong Console
-  window.socket = socket;
+  if (typeof window !== "undefined") {
+    window.socket = socket;
+  }
 
   socket.on("connect", () => {
     console.log("Socket connected:", socket.id);
@@ -51,8 +48,8 @@ export function connectSocket(accountId, token) {
     console.error("Socket connection error:", error.message);
   });
 
-  socket.on("disconnect", () => {
-    console.log("Socket disconnected");
+  socket.on("disconnect", (reason) => {
+    console.log("Socket disconnected:", reason);
   });
 
   return socket;
@@ -66,7 +63,10 @@ export function disconnectSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
-    window.socket = null;
+
+    if (typeof window !== "undefined") {
+      window.socket = null;
+    }
   }
 }
 
@@ -89,8 +89,8 @@ export function connectSocketFromStorage() {
 
     const accountId =
       user?.account_id ||
-      user?.id ||
-      user?.accountId;
+      user?.accountId ||
+      user?.id;
 
     if (!accountId) {
       console.warn("Cannot find account id in auth_user:", user);
@@ -102,4 +102,18 @@ export function connectSocketFromStorage() {
     console.error("Cannot parse auth_user from localStorage:", error);
     return null;
   }
+}
+
+export function onSocketEvent(eventName, handler) {
+  const activeSocket = socket || connectSocketFromStorage();
+
+  if (!activeSocket || !eventName || typeof handler !== "function") {
+    return () => {};
+  }
+
+  activeSocket.on(eventName, handler);
+
+  return () => {
+    activeSocket.off(eventName, handler);
+  };
 }

@@ -11,6 +11,47 @@ const {
     mapManagerMemoryRow,
 } = require('../../services/manager/memoryModerationService');
 
+const emitToAccount = (req, accountId, eventName, payload) => {
+    if (!req?.app?.locals?.emitToAccount || !accountId) return;
+    req.app.locals.emitToAccount(accountId, eventName, payload);
+};
+
+const emitToClan = (req, clanId, eventName, payload) => {
+    if (!req?.app?.locals?.emitToClan || !clanId) return;
+    req.app.locals.emitToClan(clanId, eventName, payload);
+};
+
+const createAndEmitNotification = async (req, accountId, payload) => {
+    if (!accountId) return;
+
+    const [result] = await db.query(
+        `
+        INSERT INTO notifications
+          (receiver_account_id, type, title, message, link_url)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+            accountId,
+            payload.type || "approval_result",
+            payload.title || "Thông báo mới",
+            payload.message || "Bạn có cập nhật mới trong hệ thống.",
+            payload.link_url || payload.linkUrl || "/member/submissions",
+        ]
+    );
+
+    emitToAccount(req, accountId, "new_notification", {
+        id: result.insertId,
+        type: payload.type || "approval_result",
+        title: payload.title || "Thông báo mới",
+        message: payload.message || "Bạn có cập nhật mới trong hệ thống.",
+        link_url: payload.link_url || payload.linkUrl || "/member/submissions",
+        is_read: 0,
+        created_at: new Date().toISOString(),
+        relatedType: payload.relatedType || payload.related_type || null,
+        relatedId: payload.relatedId || payload.related_id || null,
+    });
+};
+
 const getPendingUsers = async(req, res) => {
     try {
         let sql = `
@@ -110,8 +151,26 @@ const approveUser = async(req, res) => {
         }
 
         await db.query(
-            "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?", [accountId]
+            "UPDATE accounts SET role_id = 3, status = 'active' WHERE id = ?",
+            [accountId]
         );
+
+        emitToClan(req, target.clan_id, "pending_approval_changed", {
+            type: "user",
+            action: "approved",
+            id: Number(accountId),
+            clanId: target.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        emitToAccount(req, accountId, "new_notification", {
+            type: "approval_result",
+            title: "Tài khoản đã được duyệt",
+            message: "Tài khoản của bạn đã được trưởng họ duyệt.",
+            relatedType: "user",
+            relatedId: Number(accountId),
+            createdAt: new Date().toISOString(),
+        });
 
         return res.json({
             success: true,
@@ -128,25 +187,80 @@ const approveUser = async(req, res) => {
 
 const rejectUser = async(req, res) => {
     const accountId = req.params.id;
+    const { reason } = req.body || {};
+
     try {
+        const [targetRows] = await db.query(
+            `
+            SELECT 
+                a.id AS account_id,
+                a.status,
+                p.clan_id
+            FROM accounts a
+            JOIN people p ON a.person_id = p.id
+            WHERE a.id = ?
+            LIMIT 1
+            `,
+            [accountId]
+        );
+
+        const target = targetRows[0];
+
+        if (!target) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy tài khoản cần từ chối',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query(
-                `SELECT p.clan_id FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.id = ?`, [accountId]
-            );
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được từ chối thành viên cùng dòng họ' });
+
+            if (Number(target.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được từ chối thành viên cùng dòng họ',
+                });
             }
         }
+
         const sql = "UPDATE accounts SET status = 'rejected' WHERE id = ?";
         await db.query(sql, [accountId]);
-        res.json({ success: true, message: 'Đã từ chối tài khoản (chuyển trạng thái rejected)' });
+
+        emitToClan(req, target.clan_id, "pending_approval_changed", {
+            type: "user",
+            action: "rejected",
+            id: Number(accountId),
+            clanId: target.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        emitToAccount(req, accountId, "new_notification", {
+            type: "approval_result",
+            title: "Tài khoản bị từ chối",
+            message: reason || "Tài khoản của bạn đã bị trưởng họ từ chối.",
+            relatedType: "user",
+            relatedId: Number(accountId),
+            createdAt: new Date().toISOString(),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã từ chối tài khoản (chuyển trạng thái rejected)',
+        });
     } catch (error) {
         console.error('rejectUser error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi từ chối' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi từ chối',
+        });
     }
 };
 
@@ -184,7 +298,15 @@ const approvePost = async(req, res) => {
 
     try {
         const [postRows] = await db.query(
-            'SELECT id, clan_id FROM posts WHERE id = ? LIMIT 1',
+            `
+            SELECT 
+                p.id,
+                p.clan_id,
+                p.author_id AS author_account_id
+            FROM posts p
+            WHERE p.id = ?
+            LIMIT 1
+            `,
             [postId]
         );
 
@@ -218,19 +340,30 @@ const approvePost = async(req, res) => {
         const sql = "UPDATE posts SET status = 'approved' WHERE id = ?";
         await db.query(sql, [postId]);
 
-        const io = req.app?.locals?.io;
+        emitToClan(req, post.clan_id, "pending_approval_changed", {
+            type: "post",
+            action: "approved",
+            id: Number(postId),
+            clanId: post.clan_id,
+            at: new Date().toISOString(),
+        });
 
-        if (io && post.clan_id) {
-            io.to(`clan_${post.clan_id}`).emit("post_feed_updated", {
-                action: "post_approved",
-                post_id: Number(postId),
-                clan_id: post.clan_id,
-                actor_account_id: req.user?.id || req.user?.account_id || null,
-                updated_at: new Date().toISOString(),
-            });
+        emitToClan(req, post.clan_id, "post_feed_updated", {
+            action: "post_approved",
+            post_id: Number(postId),
+            clan_id: post.clan_id,
+            actor_account_id: req.user?.id || req.user?.account_id || null,
+            updated_at: new Date().toISOString(),
+        });
 
-            console.log(`📰 Đã emit post_feed_updated post_approved tới clan_${post.clan_id}`);
-        }
+        emitToAccount(req, post.author_account_id, "new_notification", {
+            type: "approval_result",
+            title: "Bài viết đã được duyệt",
+            message: "Bài viết của bạn đã được trưởng họ duyệt.",
+            relatedType: "post",
+            relatedId: Number(postId),
+            createdAt: new Date().toISOString(),
+        });
 
         return res.json({ success: true, message: 'Đã phê duyệt bài viết!' });
     } catch (error) {
@@ -242,23 +375,80 @@ const approvePost = async(req, res) => {
 const rejectPost = async(req, res) => {
     const postId = req.params.id;
     const { reason } = req.body;
+
     try {
+        const [postRows] = await db.query(
+            `
+            SELECT 
+                id,
+                clan_id,
+                author_id AS author_account_id
+            FROM posts
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [postId]
+        );
+
+        const post = postRows[0];
+
+        if (!post) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy bài viết',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query('SELECT clan_id FROM posts WHERE id = ?', [postId]);
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được từ chối bài viết cùng dòng họ' });
+
+            if (Number(post.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được từ chối bài viết cùng dòng họ',
+                });
             }
         }
+
+        const rejectReason = reason || 'Không có lý do';
+
         const sql = "UPDATE posts SET status = 'rejected', rejection_reason = ? WHERE id = ?";
-        await db.query(sql, [reason || 'Không có lý do', postId]);
-        res.json({ success: true, message: 'Đã từ chối bài viết!' });
+        await db.query(sql, [rejectReason, postId]);
+
+        emitToClan(req, post.clan_id, "pending_approval_changed", {
+            type: "post",
+            action: "rejected",
+            id: Number(postId),
+            clanId: post.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        emitToAccount(req, post.author_account_id, "new_notification", {
+            type: "approval_result",
+            title: "Bài viết bị từ chối",
+            message: rejectReason,
+            relatedType: "post",
+            relatedId: Number(postId),
+            createdAt: new Date().toISOString(),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã từ chối bài viết!',
+        });
     } catch (error) {
         console.error('rejectPost error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi từ chối bài viết' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi từ chối bài viết',
+        });
     }
 };
 
@@ -290,18 +480,49 @@ const getPendingProfileUpdates = async (req, res) => {
 
 const approveProfileUpdate = async (req, res) => {
     const personId = req.params.id;
+
     try {
+        const [personRows] = await db.query(
+            `
+            SELECT 
+                p.id AS person_id,
+                p.clan_id,
+                a.id AS account_id
+            FROM people p
+            LEFT JOIN accounts a ON a.person_id = p.id
+            WHERE p.id = ?
+            LIMIT 1
+            `,
+            [personId]
+        );
+
+        const person = personRows[0];
+
+        if (!person) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hồ sơ',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được duyệt hồ sơ cùng dòng họ' });
+
+            if (Number(person.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được duyệt hồ sơ cùng dòng họ',
+                });
             }
         }
-        
+
         await db.query(`
             UPDATE people 
             SET 
@@ -316,40 +537,121 @@ const approveProfileUpdate = async (req, res) => {
             WHERE id = ?`, 
             [personId]
         );
-        res.json({ success: true, message: 'Đã phê duyệt cập nhật hồ sơ!' });
+
+        emitToClan(req, person.clan_id, "pending_approval_changed", {
+            type: "profile",
+            action: "approved",
+            id: Number(personId),
+            clanId: person.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        await createAndEmitNotification(req, person.account_id, {
+            type: "approval_result",
+            title: "Cập nhật hồ sơ đã được duyệt",
+            message: "Thông tin hồ sơ của bạn đã được trưởng họ duyệt.",
+            link_url: "/member/dashboard",
+            relatedType: "profile",
+            relatedId: Number(personId),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã phê duyệt cập nhật hồ sơ!',
+        });
     } catch (error) {
         console.error('approveProfileUpdate error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi phê duyệt hồ sơ' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi phê duyệt hồ sơ',
+        });
     }
 };
 
 const rejectProfileUpdate = async (req, res) => {
     const personId = req.params.id;
     const { reason } = req.body;
+
     try {
+        const [personRows] = await db.query(
+            `
+            SELECT 
+                p.id AS person_id,
+                p.clan_id,
+                a.id AS account_id
+            FROM people p
+            LEFT JOIN accounts a ON a.person_id = p.id
+            WHERE p.id = ?
+            LIMIT 1
+            `,
+            [personId]
+        );
+
+        const person = personRows[0];
+
+        if (!person) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hồ sơ',
+            });
+        }
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
+
             if (managerClanId == null) {
-                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không xác định được clan của manager',
+                });
             }
-            const [rows] = await db.query('SELECT clan_id FROM people WHERE id = ?', [personId]);
-            if (!rows.length || rows[0].clan_id !== managerClanId) {
-                return res.status(403).json({ success: false, message: 'Chỉ được từ chối hồ sơ cùng dòng họ' });
+
+            if (Number(person.clan_id) !== Number(managerClanId)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Chỉ được từ chối hồ sơ cùng dòng họ',
+                });
             }
         }
-        
+
+        const rejectReason = reason || 'Không có lý do';
+
         await db.query(`
             UPDATE people 
             SET 
                 moderation_status = 'rejected',
                 moderation_reason = ?
             WHERE id = ?`, 
-            [reason || 'Không có lý do', personId]
+            [rejectReason, personId]
         );
-        res.json({ success: true, message: 'Đã từ chối cập nhật hồ sơ!' });
+
+        emitToClan(req, person.clan_id, "pending_approval_changed", {
+            type: "profile",
+            action: "rejected",
+            id: Number(personId),
+            clanId: person.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        await createAndEmitNotification(req, person.account_id, {
+            type: "approval_result",
+            title: "Cập nhật hồ sơ bị từ chối",
+            message: rejectReason,
+            link_url: "/member/dashboard",
+            relatedType: "profile",
+            relatedId: Number(personId),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã từ chối cập nhật hồ sơ!',
+        });
     } catch (error) {
         console.error('rejectProfileUpdate error:', error);
-        res.status(500).json({ success: false, message: 'Lỗi từ chối hồ sơ' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi từ chối hồ sơ',
+        });
     }
 };
 
@@ -402,12 +704,61 @@ const approveMemory = async (req, res) => {
             values.push(clanId);
         }
 
+        const [memoryRows] = await db.query(
+            `
+            SELECT 
+                id,
+                clan_id,
+                author_account_id
+            FROM family_memories
+            WHERE ${where}
+            LIMIT 1
+            `,
+            values
+        );
+
+        const memory = memoryRows[0];
+
+        if (!memory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy kỉ niệm chờ duyệt',
+            });
+        }
+
         const [result] = await db.query(
             `UPDATE family_memories SET status = 'approved', rejection_reason = NULL, approved_by_account_id = ?, approved_at = CURRENT_TIMESTAMP WHERE ${where}`,
             [req.user.id, ...values]
         );
-        if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Không tìm thấy kỉ niệm chờ duyệt' });
-        return res.json({ success: true, message: 'Đã duyệt kỉ niệm dòng họ' });
+
+        if (!result.affectedRows) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy kỉ niệm chờ duyệt',
+            });
+        }
+
+        emitToClan(req, memory.clan_id, "pending_approval_changed", {
+            type: "memory",
+            action: "approved",
+            id: Number(memoryId),
+            clanId: memory.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        emitToAccount(req, memory.author_account_id, "new_notification", {
+            type: "approval_result",
+            title: "Kỷ niệm đã được duyệt",
+            message: "Kỷ niệm của bạn đã được trưởng họ duyệt.",
+            relatedType: "memory",
+            relatedId: Number(memoryId),
+            createdAt: new Date().toISOString(),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã duyệt kỉ niệm dòng họ',
+        });
     } catch (error) {
         console.error('approveMemory error:', error);
         return res.status(500).json({ success: false, message: 'Không thể duyệt kỉ niệm' });
@@ -430,12 +781,61 @@ const rejectMemory = async (req, res) => {
             values.push(clanId);
         }
 
+        const [memoryRows] = await db.query(
+            `
+            SELECT 
+                id,
+                clan_id,
+                author_account_id
+            FROM family_memories
+            WHERE ${where}
+            LIMIT 1
+            `,
+            values
+        );
+
+        const memory = memoryRows[0];
+
+        if (!memory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy kỉ niệm chờ duyệt',
+            });
+        }
+
         const [result] = await db.query(
             `UPDATE family_memories SET status = 'rejected', rejection_reason = ? WHERE ${where}`,
             [reason, ...values]
         );
-        if (!result.affectedRows) return res.status(404).json({ success: false, message: 'Không tìm thấy kỉ niệm chờ duyệt' });
-        return res.json({ success: true, message: 'Đã từ chối kỉ niệm dòng họ' });
+
+        if (!result.affectedRows) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy kỉ niệm chờ duyệt',
+            });
+        }
+
+        emitToClan(req, memory.clan_id, "pending_approval_changed", {
+            type: "memory",
+            action: "rejected",
+            id: Number(memoryId),
+            clanId: memory.clan_id,
+            at: new Date().toISOString(),
+        });
+
+        emitToAccount(req, memory.author_account_id, "new_notification", {
+            type: "approval_result",
+            title: "Kỷ niệm bị từ chối",
+            message: reason,
+            relatedType: "memory",
+            relatedId: Number(memoryId),
+            createdAt: new Date().toISOString(),
+        });
+
+        return res.json({
+            success: true,
+            message: 'Đã từ chối kỉ niệm dòng họ',
+        });
     } catch (error) {
         console.error('rejectMemory error:', error);
         return res.status(500).json({ success: false, message: 'Không thể từ chối kỉ niệm' });

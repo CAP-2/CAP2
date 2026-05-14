@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../../services/api";
-import { getSocket } from "../../services/socket";
+import { onSocketEvent } from "../../services/socket";
 import { formatDateTimeVN } from "../../utils/dateFormat";
 import "./NotificationBell.css";
 
@@ -61,38 +61,34 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
   }, [loadNotifications]);
 
   useEffect(() => {
-      const socket = getSocket();
+    const cleanupNewNotification = onSocketEvent("new_notification", (notification) => {
+      console.log("New realtime notification:", notification);
 
-      if (!socket) {
-        return undefined;
-      }
+      const normalizedNotification = normalizeRealtimeNotification(notification);
 
-      const handleNewNotification = (notification) => {
-        console.log("New realtime notification:", notification);
+      let shouldIncreaseUnread = false;
 
-        const normalizedNotification = normalizeRealtimeNotification(notification);
+      setNotifications((items) => {
+        const safeItems = Array.isArray(items) ? items : [];
+        const exists = safeItems.some(
+          (item) => String(item.id) === String(normalizedNotification.id)
+        );
 
-        setNotifications((items) => {
-          const exists = items.some((item) => String(item.id) === String(normalizedNotification.id));
-
-          if (exists) {
-            return items;
-          }
-
-          return [normalizedNotification, ...items];
-        });
-
-        if (Number(normalizedNotification.is_read) === 0) {
-          setUnreadCount((count) => count + 1);
+        if (exists) {
+          return safeItems;
         }
-      };
 
-      socket.on("new_notification", handleNewNotification);
+        shouldIncreaseUnread = Number(normalizedNotification.is_read) === 0;
+        return [normalizedNotification, ...safeItems];
+      });
 
-      return () => {
-        socket.off("new_notification", handleNewNotification);
-      };
-    }, []);``
+      if (shouldIncreaseUnread) {
+        setUnreadCount((count) => Number(count || 0) + 1);
+      }
+    });
+
+    return cleanupNewNotification;
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;

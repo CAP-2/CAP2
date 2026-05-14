@@ -497,6 +497,8 @@ export const getPendingReviewData = async () => {
   };
 };
 
+export const refreshPendingApprovalsAPI = () => getPendingReviewData();
+
 export const getDashboardData = async () => {
   const [stats, pending, tasks] = await Promise.all([
     getStats(),

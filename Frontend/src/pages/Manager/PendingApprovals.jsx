@@ -10,6 +10,7 @@ import {
   rejectProfileUpdateAPI,
   rejectUserAPI,
 } from "../../api/managerService";
+import { onSocketEvent } from "../../services/socket";
 import { avatarInitial, formatDate, fullName } from "./managerData";
 import "./PendingApprovals.css";
 
@@ -20,6 +21,35 @@ const isVideoUrl = (value = "") =>
 const safeText = (value, fallback = "Chưa có thông tin") => {
   if (value === null || value === undefined || value === "") return fallback;
   return value;
+};
+
+const isImageDataUrl = (value) =>
+  typeof value === "string" && value.startsWith("data:image/");
+
+const isImageUrl = (value) =>
+  typeof value === "string" &&
+  (
+    value.startsWith("http") ||
+    value.startsWith("/api/media/") ||
+    value.startsWith("data:image/") ||
+    /\.(png|jpg|jpeg|gif|webp|avif)(\?|#|$)/i.test(value)
+  );
+
+const getProfileAvatarPreviewUrl = (profile) => {
+  if (profile?.pending_avatar_media_id) {
+    return `/api/media/${profile.pending_avatar_media_id}`;
+  }
+
+  if (isImageUrl(profile?.pending_avatar_url)) {
+    return profile.pending_avatar_url;
+  }
+
+  return "";
+};
+
+const truncateText = (value, max = 160) => {
+  const text = String(value || "");
+  return text.length > max ? `${text.slice(0, max)}...` : text;
 };
 
 function MediaPreview({ url, type = "" }) {
@@ -61,6 +91,7 @@ export default function PendingApprovals() {
   const [actingId, setActingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [previewProfile, setPreviewProfile] = useState(null);
 
   const loadPending = useCallback(async () => {
     setLoading(true);
@@ -80,9 +111,21 @@ export default function PendingApprovals() {
     }
   }, []);
 
-  useEffect(() => {
-    loadPending();
-  }, [loadPending]);
+useEffect(() => {
+  loadPending();
+
+  const cleanupPendingChanged = onSocketEvent(
+    "pending_approval_changed",
+    (payload) => {
+      console.log("Pending approval changed:", payload);
+      loadPending();
+    }
+  );
+
+  return () => {
+    cleanupPendingChanged();
+  };
+}, [loadPending]);
 
   const totalPending =
     pendingUsers.length +
@@ -204,7 +247,6 @@ export default function PendingApprovals() {
       return [
         fullName(profile),
         profile.pending_bio,
-        profile.pending_avatar_url,
         profile.email,
         profile.person_id,
       ]
@@ -516,16 +558,50 @@ export default function PendingApprovals() {
 
                       <div className="pending-pro-change-box">
                         <p>
-                          <b>Bio mới:</b> {profile.pending_bio || "Không thay đổi"}
+                          <b>Bio mới:</b> {truncateText(profile.pending_bio || "Không thay đổi", 160)}
                         </p>
-                        <p>
-                          <b>Ảnh mới:</b> {profile.pending_avatar_url || "Không thay đổi"}
-                        </p>
+
+                        {getProfileAvatarPreviewUrl(profile) ? (
+                          <div className="pending-pro-profile-media">
+                            <b>Ảnh mới:</b>
+                            <a
+                              href={getProfileAvatarPreviewUrl(profile)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="pending-pro-profile-image-link"
+                            >
+                              <img
+                                src={getProfileAvatarPreviewUrl(profile)}
+                                alt="Ảnh hồ sơ chờ duyệt"
+                                className="pending-pro-profile-image"
+                              />
+                            </a>
+                          </div>
+                        ) : (
+                          <p>
+                            <b>Ảnh mới:</b> Không thay đổi
+                          </p>
+                        )}
+
+                        {isImageDataUrl(profile.pending_avatar_url) && (
+                          <p className="pending-pro-muted">
+                            Ảnh được gửi dưới dạng base64. Đã chuyển sang chế độ xem trước.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   <div className="pending-pro-actions">
+                    <button
+                      className="pending-pro-btn pending-pro-btn-light"
+                      type="button"
+                      onClick={() => setPreviewProfile(profile)}
+                    >
+                      <span className="material-symbols-outlined">visibility</span>
+                      Xem trước
+                    </button>
+
                     <button
                       className="pending-pro-approve"
                       type="button"
@@ -633,6 +709,76 @@ export default function PendingApprovals() {
           )}
         </div>
       </section>
+
+      {previewProfile && (
+        <div
+          className="pending-pro-preview-overlay"
+          onClick={() => setPreviewProfile(null)}
+        >
+          <div
+            className="pending-pro-preview-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="pending-pro-preview-head">
+              <h3>Xem trước cập nhật hồ sơ</h3>
+              <button type="button" onClick={() => setPreviewProfile(null)}>
+                ×
+              </button>
+            </div>
+
+            <div className="pending-pro-preview-body">
+              <p>
+                <b>Thành viên:</b> {fullName(previewProfile)}
+              </p>
+
+              <div className="pending-pro-preview-grid">
+                <div>
+                  <h4>Thông tin hiện tại</h4>
+
+                  <p>
+                    <b>Bio hiện tại:</b>{" "}
+                    {previewProfile.current_bio || "Chưa có bio hiện tại"}
+                  </p>
+
+                  {previewProfile.current_avatar_media_id ||
+                  previewProfile.current_avatar_url ? (
+                    <img
+                      src={
+                        previewProfile.current_avatar_media_id
+                          ? `/api/media/${previewProfile.current_avatar_media_id}`
+                          : previewProfile.current_avatar_url
+                      }
+                      alt="Ảnh hiện tại"
+                      className="pending-pro-preview-image"
+                    />
+                  ) : (
+                    <p className="pending-pro-muted">Chưa có ảnh hiện tại</p>
+                  )}
+                </div>
+
+                <div>
+                  <h4>Thông tin mới</h4>
+
+                  <p>
+                    <b>Bio mới:</b>{" "}
+                    {previewProfile.pending_bio || "Không thay đổi bio"}
+                  </p>
+
+                  {getProfileAvatarPreviewUrl(previewProfile) ? (
+                    <img
+                      src={getProfileAvatarPreviewUrl(previewProfile)}
+                      alt="Ảnh mới"
+                      className="pending-pro-preview-image"
+                    />
+                  ) : (
+                    <p className="pending-pro-muted">Không thay đổi ảnh</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

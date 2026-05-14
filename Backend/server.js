@@ -51,6 +51,16 @@ const io = new Server(server, {
 app.locals.io = io;
 app.locals.onlineUsers = {};
 
+app.locals.emitToAccount = (accountId, eventName, payload) => {
+    if (!accountId) return;
+    io.to(`account_${accountId}`).emit(eventName, payload);
+};
+
+app.locals.emitToClan = (clanId, eventName, payload) => {
+    if (!clanId) return;
+    io.to(`clan_${clanId}`).emit(eventName, payload);
+};
+
 // 3. Import routes/controllers sau khi app đã có middleware
 const authRoutes = require('./src/routes/authRoutes');
 const billingRoutes = require('./src/routes/billingRoutes');

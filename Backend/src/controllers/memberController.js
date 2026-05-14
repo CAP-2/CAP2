@@ -378,6 +378,118 @@ const emitNotificationToAccount = async (req, receiverAccountId, payload) => {
   console.log(`✅ Đã gửi realtime notification tới account_${receiverAccountId}`);
 };
 
+const emitToClan = (req, clanId, eventName, payload) => {
+  const io = req.app?.locals?.io;
+
+  if (!io || !clanId) {
+    return;
+  }
+
+  io.to(`clan_${clanId}`).emit(eventName, payload);
+
+  console.log(`📡 Đã emit ${eventName} tới clan_${clanId}`);
+};
+
+const getClanManagerAccounts = async (clanId) => {
+  if (!clanId) return [];
+
+  const [rows] = await db.query(
+    `
+      SELECT DISTINCT a.id AS account_id
+      FROM accounts a
+      LEFT JOIN account_clans ac ON ac.account_id = a.id
+      LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
+      WHERE a.role_id = 2
+        AND a.status = 'active'
+        AND COALESCE(p.clan_id, ac.clan_id) = ?
+    `,
+    [clanId]
+  );
+
+  return rows.map((row) => row.account_id).filter(Boolean);
+};
+
+const notifyManagersAboutPendingApproval = async (req, {
+  clanId,
+  relatedType,
+  relatedId,
+  title,
+  message,
+}) => {
+  if (!clanId) return;
+
+  const realtimePendingPayload = {
+    type: relatedType,
+    action: "created",
+    id: Number(relatedId),
+    clanId,
+    at: new Date().toISOString(),
+  };
+
+  emitToClan(req, clanId, "pending_approval_changed", realtimePendingPayload);
+
+  let managerAccountIds = [];
+
+  try {
+    managerAccountIds = await getClanManagerAccounts(clanId);
+  } catch (error) {
+    console.error("getClanManagerAccounts error:", error);
+    return;
+  }
+
+  const io = req.app?.locals?.io;
+
+  await Promise.all(
+    managerAccountIds.map(async (managerAccountId) => {
+      try {
+        await ensureNotificationSchema();
+
+        const [notificationResult] = await db.query(
+          `
+            INSERT INTO notifications
+              (receiver_account_id, type, title, message, link_url)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+          [
+            managerAccountId,
+            "pending_approval",
+            title,
+            message,
+            "/manager/pending",
+          ]
+        );
+
+        if (io) {
+          io.to(`account_${managerAccountId}`).emit(
+            "pending_approval_changed",
+            realtimePendingPayload
+          );
+        }
+
+        await emitNotificationToAccount(req, managerAccountId, {
+          id: notificationResult.insertId,
+          type: "pending_approval",
+          title,
+          message,
+          link_url: "/manager/pending",
+          is_read: 0,
+          created_at: new Date().toISOString(),
+          relatedType,
+          relatedId: Number(relatedId),
+        });
+      } catch (error) {
+        console.error("notify manager pending approval error:", error);
+
+        if (io) {
+          io.to(`account_${managerAccountId}`).emit(
+            "pending_approval_changed",
+            realtimePendingPayload
+          );
+        }
+      }
+    })
+  );
+}; 
 /**
  * Cây gia phả: gốc = đời 1 (hoặc đời nhỏ nhất nếu không có đời 1).
  * Con cái: bảng children + families; ưu tiên nối con với cha (father_id), không có cha thì mẹ.
@@ -1186,18 +1298,49 @@ exports.proposeProfileUpdate = async (req, res) => {
   try {
     const accountId = req.user.id;
     const { bio, avatar_url, avatar_media_id } = req.body;
-    
+
     const context = await getAccountContext(accountId);
     if (!context || !context.person_id) {
-       return res.status(400).json({ success: false, message: "Tài khoản chưa liên kết hồ sơ" });
+      return res.status(400).json({
+        success: false,
+        message: "Tài khoản chưa liên kết hồ sơ",
+      });
     }
 
     const pendingBio = bio !== undefined && bio !== null ? String(bio).trim() : null;
-    const pendingAvatarUrl = avatar_url !== undefined && avatar_url !== null ? String(avatar_url).trim() : null;
-    const pendingAvatarMediaId = normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(pendingAvatarUrl);
+    const pendingAvatarUrl =
+      avatar_url !== undefined && avatar_url !== null ? String(avatar_url).trim() : null;
+    const pendingAvatarMediaId =
+      normalizeMediaId(avatar_media_id) || extractMediaIdFromUrl(pendingAvatarUrl);
 
     if (pendingBio === null && pendingAvatarUrl === null && pendingAvatarMediaId === null) {
-        return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật" });
+      return res.status(400).json({
+        success: false,
+        message: "Không có dữ liệu cập nhật",
+      });
+    }
+
+    const roleId = Number(req.user?.role_id || context.role_id);
+
+    if (roleId === 1 || roleId === 2) {
+      await db.query(
+        `UPDATE people
+         SET bio = COALESCE(?, bio),
+             avatar_url = COALESCE(?, avatar_url),
+             avatar_media_id = COALESCE(?, avatar_media_id),
+             pending_bio = NULL,
+             pending_avatar_url = NULL,
+             pending_avatar_media_id = NULL,
+             moderation_status = 'none',
+             moderation_reason = NULL
+         WHERE id = ?`,
+        [pendingBio, pendingAvatarUrl, pendingAvatarMediaId, context.person_id]
+      );
+
+      return res.json({
+        success: true,
+        message: "Đã cập nhật hồ sơ thành công.",
+      });
     }
 
     await db.query(
@@ -1211,10 +1354,24 @@ exports.proposeProfileUpdate = async (req, res) => {
       [pendingBio, pendingAvatarUrl, pendingAvatarMediaId, context.person_id]
     );
 
-    return res.json({ success: true, message: "Đã gửi yêu cầu cập nhật, vui lòng đợi quản lý phê duyệt." });
-  } catch(error) {
+    await notifyManagersAboutPendingApproval(req, {
+      clanId: context.clan_id,
+      relatedType: "profile",
+      relatedId: context.person_id,
+      title: "Có hồ sơ chờ duyệt",
+      message: `${context.display_name || "Một thành viên"} vừa gửi yêu cầu cập nhật hồ sơ.`,
+    });
+
+    return res.json({
+      success: true,
+      message: "Đã gửi yêu cầu cập nhật, vui lòng đợi quản lý phê duyệt.",
+    });
+  } catch (error) {
     console.error("proposeProfileUpdate error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi gửi yêu cầu cập nhật hồ sơ" });
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi gửi yêu cầu cập nhật hồ sơ",
+    });
   }
 };
 
@@ -1246,19 +1403,27 @@ exports.submitMaterial = async (req, res) => {
     );
     
     if (postStatus === "approved") {
-  const io = req.app?.locals?.io;
+      const io = req.app?.locals?.io;
 
-  if (io) {
-    io.to(`clan_${context.clan_id}`).emit("post_feed_updated", {
-      action: "post_created",
-      post_id: created.insertId,
-      clan_id: context.clan_id,
-      actor_account_id: accountId,
-      updated_at: new Date().toISOString(),
-    });
+      if (io) {
+        io.to(`clan_${context.clan_id}`).emit("post_feed_updated", {
+          action: "post_created",
+          post_id: created.insertId,
+          clan_id: context.clan_id,
+          actor_account_id: accountId,
+          updated_at: new Date().toISOString(),
+        });
 
-    console.log(`📰 Đã emit post_feed_updated post_created tới clan_${context.clan_id}`);
-  }
+        console.log(`📰 Đã emit post_feed_updated post_created tới clan_${context.clan_id}`);
+      }
+    } else {
+      await notifyManagersAboutPendingApproval(req, {
+        clanId: context.clan_id,
+        relatedType: "post",
+        relatedId: created.insertId,
+        title: "Có bài viết chờ duyệt",
+        message: `${context.display_name || "Một thành viên"} vừa gửi bài viết mới cần duyệt.`,
+      });
 }
 
     return res.json({
@@ -1842,6 +2007,16 @@ exports.createFamilyMemory = async (req, res) => {
         status === 'approved' ? req.user.id : null,
       ]
     );
+
+    if (status === "pending") {
+      await notifyManagersAboutPendingApproval(req, {
+        clanId: context.clan_id,
+        relatedType: "memory",
+        relatedId: created.insertId,
+        title: "Có kỷ niệm chờ duyệt",
+        message: `${context.display_name || "Một thành viên"} vừa gửi kỷ niệm dòng họ cần duyệt.`,
+  });
+}
 
     return res.json({
       success: true,
