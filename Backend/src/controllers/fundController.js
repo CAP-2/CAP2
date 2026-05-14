@@ -7,7 +7,7 @@ const ensureEventCostRecipientColumns = async () => {
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'event_costs'
-          AND COLUMN_NAME IN ('recipient_person_id', 'recipient_note', 'paid_to_manager', 'status', 'method')
+          AND COLUMN_NAME IN ('recipient_person_id', 'recipient_note', 'paid_to_manager', 'status', 'method', 'evidence_media_id')
     `);
 
     const existing = new Set(columns.map(c => c.COLUMN_NAME));
@@ -28,8 +28,21 @@ const ensureEventCostRecipientColumns = async () => {
         await db.query("ALTER TABLE event_costs ADD COLUMN status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved' AFTER category");
     }
 
+    if (!existing.has('evidence_media_id')) {
+        await db.query('ALTER TABLE event_costs ADD COLUMN evidence_media_id INT NULL AFTER category');
+    }
+
     if (!existing.has('method')) {
         await db.query("ALTER TABLE event_costs ADD COLUMN method VARCHAR(50) NOT NULL DEFAULT 'Tiền mặt' AFTER status");
+    }
+
+    // Check fund_campaigns for target_goal
+    const [fcCols] = await db.query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fund_campaigns' AND COLUMN_NAME = 'target_goal'
+    `);
+    if (fcCols.length === 0) {
+        await db.query('ALTER TABLE fund_campaigns ADD COLUMN target_goal DECIMAL(15,2) DEFAULT 0 AFTER description');
     }
 };
 
@@ -74,8 +87,9 @@ exports.getCampaigns = async (req, res) => {
                 c.contribution_unit_definition
             );
 
-            c.contribution_unit_count = contributionUnitCount;
-            c.target_amount = contributionUnitCount * c.amount_per_member;
+            // Use manual goal if set, otherwise use calculated target
+            c.final_target = (c.target_goal && c.target_goal > 0) ? c.target_goal : (contributionUnitCount * c.amount_per_member);
+            c.target_amount = c.final_target;
         }
 
         res.json({ success: true, campaigns });
@@ -127,6 +141,7 @@ exports.getTransactions = async (req, res) => {
         const [userRows] = await db.query('SELECT person_id FROM accounts WHERE id = ?', [req.user.id]);
         const currentUserPersonId = userRows[0]?.person_id;
         const isManager = ['admin', 'manager'].includes(req.user.role_name);
+        const { show_all } = req.query;
 
         let incomeQuery = `
             SELECT 
@@ -318,6 +333,7 @@ exports.createCampaign = async (req, res) => {
         const {
             name,
             description,
+            target_goal,
             year,
             amount_per_member,
             deadline,
@@ -343,6 +359,7 @@ exports.createCampaign = async (req, res) => {
                     clan_id,
                     name,
                     description,
+                    target_goal,
                     year,
                     amount_per_member,
                     deadline,
@@ -353,11 +370,12 @@ exports.createCampaign = async (req, res) => {
                     qr_code_media_id,
                     status
                 ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
             [
                 clanId,
                 name,
                 description,
+                target_goal || 0,
                 year,
                 amount_per_member,
                 deadline,
@@ -378,34 +396,34 @@ exports.createCampaign = async (req, res) => {
         const onlineUsers = req.app.locals.onlineUsers;
 
         for (const m of members) {
-        const title = 'Đợt thu mới';
-        const message = `Mở đợt thu: ${name}`;
+            const title = 'Đợt thu mới';
+            const message = `Mở đợt thu: ${name}`;
 
-        const [notificationResult] = await db.query(
-            "INSERT INTO notifications (receiver_account_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
-            [
-                m.id,
-                'new_campaign',
-                title,
-                message,
-                '/manager/fund'
-            ]
-        );
+            const [notificationResult] = await db.query(
+                "INSERT INTO notifications (receiver_account_id, type, title, message, link_url) VALUES (?, ?, ?, ?, ?)",
+                [
+                    m.id,
+                    'new_campaign',
+                    title,
+                    message,
+                    '/manager/fund'
+                ]
+            );
 
-        if (io) {
-            io.to(`account_${m.id}`).emit('new_notification', {
-                id: notificationResult.insertId,
-                type: 'new_campaign',
-                title,
-                message,
-                link_url: '/manager/fund',
-                is_read: 0,
-                created_at: new Date().toISOString(),
-            });
+            if (io) {
+                io.to(`account_${m.id}`).emit('new_notification', {
+                    id: notificationResult.insertId,
+                    type: 'new_campaign',
+                    title,
+                    message,
+                    link_url: '/manager/fund',
+                    is_read: 0,
+                    created_at: new Date().toISOString(),
+                });
 
-            console.log(`✅ Đã gửi realtime campaign notification tới account_${m.id}`);
+                console.log(`✅ Đã gửi realtime campaign notification tới account_${m.id}`);
+            }
         }
-    }
         res.json({
             success: true,
             campaignId: result.insertId

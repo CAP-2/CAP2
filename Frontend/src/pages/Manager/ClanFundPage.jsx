@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { apiRequest } from "../../services/api";
 import { resolveImageUrl } from "../../utils/media";
 import DateInput from "../../components/common/DateInput";
-import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
+import { formatDateVN, isoToVietnamDate, vietnamDateToIso, pad2 } from "../../utils/dateFormat";
 import "../FundDesign.css";
 import FundAnalytics from "./FundAnalytics";
 
@@ -45,6 +45,7 @@ export default function ClanFundPage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    target_goal: 0,
     year: new Date().getFullYear(),
     amount_per_member: "",
     deadline: "",
@@ -166,7 +167,7 @@ export default function ClanFundPage() {
     note: "",
     purpose_note: "",
     method: "Tiền mặt",
-    date: isoToVietnamDate(new Date().toISOString().split("T")[0]),
+    date: `${pad2(new Date().getDate())}/${pad2(new Date().getMonth() + 1)}/${new Date().getFullYear()}`,
     category: "Khác",
     person_id: "",
     recipient_person_id: "",
@@ -334,6 +335,7 @@ export default function ClanFundPage() {
         body: JSON.stringify({
           ...formData,
           amount_per_member: moneyToNumber(formData.amount_per_member),
+          target_goal: moneyToNumber(formData.target_goal),
           deadline: vietnamDateToIso(formData.deadline) || null
         })
       });
@@ -458,7 +460,12 @@ export default function ClanFundPage() {
   const currentBalance = totalIncome - totalExpense;
 
   const pendingTransactions = transactions.filter(tx => tx.status === 'pending');
-  const approvedTransactions = transactions.filter(tx => tx.status === 'approved');
+  
+  // Nhật ký chính: Ẩn các khoản thu từ đợt thu và đóng góp tự nguyện
+  // Chỉ hiện: 
+  // 1. Tất cả các khoản CHI (Expense) cho dù có thuộc đợt thu hay không
+  // 2. Các khoản THU (Income) KHÔNG thuộc đợt thu và KHÔNG phải đóng góp tự nguyện (thu ngoài)
+  const mainLedgerTransactions = transactions.filter(tx => tx.status === 'approved');
 
   const activeCampaignCount = campaigns.filter((c) => c.status === "open").length;
 
@@ -484,7 +491,7 @@ export default function ClanFundPage() {
             />
           </label>
 
-          <button className="btn-premium btn-outline" onClick={() => setShowPendingModal(true)} style={{position: 'relative'}}>
+          <button className="btn-premium btn-outline" onClick={() => setShowPendingModal(true)} style={{ position: 'relative' }}>
             <span className="material-symbols-outlined">rule</span>
             Duyệt Giao Dịch
             {pendingTransactions.length > 0 && (
@@ -589,19 +596,19 @@ export default function ClanFundPage() {
                   </div>
 
                   <div className="card-bottom">
-                    <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center'}}>
-                       <span>{formatCurrency(c.collected_amount)}</span>
-                       <span className="target-text">/ {formatCurrency(c.target_amount)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                      <span>{formatCurrency(c.collected_amount)}</span>
+                      <span className="target-text">/ {formatCurrency(c.target_amount)}</span>
                     </div>
                   </div>
-                  <div className="campaign-stats-mini" style={{marginTop: '8px', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px'}}>
-                    <div style={{display: 'flex', justifyContent: 'space-between', color: '#e74c3c'}}>
-                       <span>Đã chi:</span>
-                       <strong>{formatCurrency(c.spent_amount)}</strong>
+                  <div className="campaign-stats-mini" style={{ marginTop: '8px', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
+                      <span>Đã chi:</span>
+                      <strong>{formatCurrency(c.spent_amount)}</strong>
                     </div>
-                    <div style={{display: 'flex', justifyContent: 'space-between', color: '#27ae60', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '4px'}}>
-                       <span>Còn lại:</span>
-                       <strong>{formatCurrency(c.balance)}</strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#27ae60', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '4px' }}>
+                      <span>Còn lại:</span>
+                      <strong>{formatCurrency(c.balance)}</strong>
                     </div>
                   </div>
 
@@ -621,19 +628,20 @@ export default function ClanFundPage() {
         <section>
           <h3 className="section-title">Nhật Ký Dòng Tiền</h3>
 
-          <div className="glass-card ledger-box">
+          <div className="glass-card ledger-box" style={{padding: 0, overflow: 'hidden'}}>
+            <div className="ledger-scroll-wrapper" style={{maxHeight: '500px', overflowY: 'auto'}}>
             <table className="fund-table-v3">
               <thead>
                 <tr>
                   <th>Giao dịch</th>
                   <th>Số tiền</th>
-                  <th>Loại</th>
+                  <th>Phương thức</th>
                 </tr>
               </thead>
 
               <tbody>
-                {approvedTransactions.slice(0, 15).map((tx) => (
-                  <tr key={`${tx.type}-${tx.id}`} onClick={() => setSelectedTransaction(tx)} style={{cursor: 'pointer'}}>
+                {mainLedgerTransactions.map((tx) => (
+                  <tr key={`${tx.type}-${tx.id}`} onClick={() => setSelectedTransaction(tx)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="tx-name">{tx.note || "Chi chung"}</div>
 
@@ -641,7 +649,7 @@ export default function ClanFundPage() {
                         {tx.person_name && (
                           <span className="tx-person-pill">{tx.person_name}</span>
                         )}
-                        <span className="method-pill" style={{background: 'rgba(52, 152, 219, 0.1)', color: '#2980b9'}}>
+                        <span className="method-pill" style={{ background: 'rgba(52, 152, 219, 0.1)', color: '#2980b9' }}>
                           {tx.campaign_name || 'Quỹ chung'}
                         </span>
                         {formatDateVN(tx.date)}
@@ -654,20 +662,26 @@ export default function ClanFundPage() {
                     </td>
 
                     <td>
-                      <span className="method-pill">{tx.method}</span>
+                      <span className="method-pill" style={{ 
+                        background: tx.method === 'Chuyển khoản' ? 'rgba(52, 152, 219, 0.1)' : 'rgba(39, 174, 96, 0.1)', 
+                        color: tx.method === 'Chuyển khoản' ? '#2980b9' : '#27ae60' 
+                      }}>
+                        {tx.method || 'Tiền mặt'}
+                      </span>
                     </td>
                   </tr>
                 ))}
 
-                {!transactions.length && (
+                {!mainLedgerTransactions.length && (
                   <tr>
                     <td colSpan="3" className="table-empty">
-                      Chưa có giao dịch nào.
+                      Chưa có giao dịch nào được ghi nhận.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </section>
       </div>
@@ -713,11 +727,20 @@ export default function ClanFundPage() {
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Số tiền / Thành viên</label>
+                    <label>Mục tiêu số tiền (Goal - để trống nếu tính theo suất)</label>
+                    <input
+                      type="text"
+                      placeholder="VD: 50,000,000"
+                      value={formatMoneyInput(formData.target_goal)}
+                      onChange={(e) => setFormData({ ...formData, target_goal: moneyToNumber(e.target.value) })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Mức đóng mỗi suất (Nếu có)</label>
                     <input
                       type="text"
                       inputMode="numeric"
-                      required
                       placeholder="50,000"
                       value={formData.amount_per_member}
                       onChange={(e) =>
@@ -728,7 +751,9 @@ export default function ClanFundPage() {
                       }
                     />
                   </div>
+                </div>
 
+                <div className="form-row-2">
                   <div className="form-group">
                     <label>Hạn đóng</label>
                     <DateInput
@@ -791,6 +816,15 @@ export default function ClanFundPage() {
                 </div>
 
                 <div className="form-group">
+                  <label>Mục tiêu chiến dịch (VND)</label>
+                  <input
+                    type="text"
+                    value={formData.target_goal}
+                    onChange={(e) => setFormData({ ...formData, target_goal: formatMoneyInput(e.target.value) })}
+                    placeholder="Ví dụ: 50,000,000"
+                  />
+                  <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', marginBottom: '1rem' }}>Để trống nếu muốn hệ thống tự tính theo số thành viên.</p>
+
                   <label>Định nghĩa suất đóng</label>
                   <select
                     value={formData.contribution_unit_definition}
@@ -942,7 +976,7 @@ export default function ClanFundPage() {
                       <tr key={`${tx.type}-${tx.id}`}>
                         <td>
                           <strong>{tx.person_name || '---'}</strong>
-                          <div style={{fontSize: '0.75rem', color: '#666'}}>{tx.note}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#666' }}>{tx.note}</div>
                         </td>
 
                         <td>{formatDateVN(tx.contribution_date || tx.created_at)}</td>
@@ -1296,7 +1330,7 @@ export default function ClanFundPage() {
       {/* Transaction Detail Modal */}
       {selectedTransaction && (
         <div className="fund-modal-v2" onClick={() => setSelectedTransaction(null)}>
-          <div className="modal-glass" style={{maxWidth: '450px'}} onClick={e => e.stopPropagation()}>
+          <div className="modal-glass" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-v2">
               <h3>Chi Tiết Giao Dịch</h3>
               <button onClick={() => setSelectedTransaction(null)} className="close-btn">&times;</button>
@@ -1309,7 +1343,7 @@ export default function ClanFundPage() {
                 </div>
                 <div className="detail-row">
                   <label>Số tiền:</label>
-                  <strong style={{color: selectedTransaction.type === 'income' ? '#2ecc71' : '#ff7675'}}>
+                  <strong style={{ color: selectedTransaction.type === 'income' ? '#2ecc71' : '#ff7675' }}>
                     {formatCurrency(selectedTransaction.amount)}
                   </strong>
                 </div>
@@ -1336,33 +1370,33 @@ export default function ClanFundPage() {
                   </div>
                 )}
                 {selectedTransaction.manager_note && (
-                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem'}}>
+                  <div className="detail-row" style={{ marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem' }}>
                     <label>Phản hồi của quản lý:</label>
-                    <p style={{fontStyle: 'italic', color: 'rgba(0,0,0,0.7)'}}>{selectedTransaction.manager_note}</p>
+                    <p style={{ fontStyle: 'italic', color: 'rgba(0,0,0,0.7)' }}>{selectedTransaction.manager_note}</p>
                   </div>
                 )}
-                 {selectedTransaction.recipient_note && (
-                  <div className="detail-row" style={{marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem'}}>
+                {selectedTransaction.recipient_note && (
+                  <div className="detail-row" style={{ marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem' }}>
                     <label>Ghi chú người nhận:</label>
-                    <p style={{fontStyle: 'italic', color: 'rgba(0,0,0,0.7)'}}>{selectedTransaction.recipient_note}</p>
+                    <p style={{ fontStyle: 'italic', color: 'rgba(0,0,0,0.7)' }}>{selectedTransaction.recipient_note}</p>
                   </div>
                 )}
                 {selectedTransaction.evidence_media_id && (
-                  <div className="detail-row" style={{flexDirection: 'column', alignItems: 'flex-start', marginTop: '1rem'}}>
+                  <div className="detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start', marginTop: '1rem' }}>
                     <label>Minh chứng (Bill):</label>
-                    <img 
-                      src={resolveImageUrl({mediaId: selectedTransaction.evidence_media_id})} 
-                      alt="Bill" 
-                      style={{width: '100%', borderRadius: '12px', marginTop: '8px', border: '1px solid #ddd'}} 
-                      onClick={() => window.open(resolveImageUrl({mediaId: selectedTransaction.evidence_media_id}), '_blank')}
+                    <img
+                      src={resolveImageUrl({ mediaId: selectedTransaction.evidence_media_id })}
+                      alt="Bill"
+                      style={{ width: '100%', borderRadius: '12px', marginTop: '8px', border: '1px solid #ddd' }}
+                      onClick={() => window.open(resolveImageUrl({ mediaId: selectedTransaction.evidence_media_id }), '_blank')}
                     />
                   </div>
                 )}
                 {selectedTransaction.status === 'pending' && (
-                  <div className="detail-actions" style={{marginTop: '1.5rem', display: 'flex', gap: '10px'}}>
-                    <button 
-                      className="btn-premium btn-green" 
-                      style={{flex: 1}}
+                  <div className="detail-actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '10px' }}>
+                    <button
+                      className="btn-premium btn-green"
+                      style={{ flex: 1 }}
                       onClick={() => {
                         setApprovalData({
                           transaction_id: selectedTransaction.id,
@@ -1378,11 +1412,11 @@ export default function ClanFundPage() {
                     >
                       Duyệt Giao Dịch
                     </button>
-                    <button 
-                      className="btn-premium btn-outline" 
-                      style={{flex: 1, color: '#e74c3c'}}
+                    <button
+                      className="btn-premium btn-outline"
+                      style={{ flex: 1, color: '#e74c3c' }}
                       onClick={() => {
-                         setApprovalData({
+                        setApprovalData({
                           transaction_id: selectedTransaction.id,
                           status: 'rejected',
                           manager_note: '',
@@ -1407,7 +1441,7 @@ export default function ClanFundPage() {
       {/* Pending Transactions Modal */}
       {showPendingModal && (
         <div className="fund-modal-v2" onClick={() => setShowPendingModal(false)}>
-          <div className="modal-glass ledger-modal" style={{maxWidth: '800px'}} onClick={e => e.stopPropagation()}>
+          <div className="modal-glass ledger-modal" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
                 <h3>Danh Sách Chờ Duyệt</h3>
@@ -1416,7 +1450,7 @@ export default function ClanFundPage() {
               <button onClick={() => setShowPendingModal(false)} className="close-btn">&times;</button>
             </div>
             <div className="modal-body-v2">
-              <div className="ledger-table-wrapper" style={{maxHeight: '60vh'}}>
+              <div className="ledger-table-wrapper" style={{ maxHeight: '60vh' }}>
                 <table className="fund-table-v3">
                   <thead>
                     <tr>
@@ -1438,7 +1472,7 @@ export default function ClanFundPage() {
                           {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
                         </td>
                         <td>
-                          <button 
+                          <button
                             className="btn-approve-v3-active"
                             onClick={() => {
                               setApprovalData({

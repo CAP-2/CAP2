@@ -19,22 +19,28 @@ export function parseDateParts(value) {
 
   if (isVietnamDate(text)) {
     [day, month, year] = text.split("/").map(Number);
-  } else if (isIsoDate(text)) {
-    [year, month, day] = text.split("-").map(Number);
-  } else {
-    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (isoMatch) {
-      year = Number(isoMatch[1]);
-      month = Number(isoMatch[2]);
-      day = Number(isoMatch[3]);
-    } else {
+    } else if (text.includes("T") || text.includes("Z")) {
       const parsed = new Date(text);
-      if (Number.isNaN(parsed.getTime())) return null;
-      day = parsed.getDate();
-      month = parsed.getMonth() + 1;
-      year = parsed.getFullYear();
+      if (!Number.isNaN(parsed.getTime())) {
+        day = parsed.getDate();
+        month = parsed.getMonth() + 1;
+        year = parsed.getFullYear();
+      }
+    } else {
+      const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        year = Number(isoMatch[1]);
+        month = Number(isoMatch[2]);
+        day = Number(isoMatch[3]);
+      } else {
+        const parsed = new Date(text);
+        if (!Number.isNaN(parsed.getTime())) {
+          day = parsed.getDate();
+          month = parsed.getMonth() + 1;
+          year = parsed.getFullYear();
+        }
+      }
     }
-  }
 
   if (!day || !month || !year) return null;
   const date = new Date(year, month - 1, day);
