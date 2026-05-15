@@ -340,7 +340,6 @@ export default function FamilyTreePage() {
                 readOnly={!permission.canEdit}
                 editPermission={permission}
                 onReload={loadTree}
-                enableRealtime={false}
               />
             </div>
           )}

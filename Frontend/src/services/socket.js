@@ -45,8 +45,8 @@ export function connectSocket(accountId, token) {
 
   socket.on("connect", () => {
     console.log("Socket connected:", socket.id);
-    socket.emit("register_user", accountId);
-    console.log("Registered socket for account:", accountId);
+    socket.emit("register_user");
+    console.log("Registered socket for current account");
   });
 
   socket.on("connect_error", (error) => {
@@ -126,4 +126,11 @@ export function onSocketEvent(eventName, handler) {
   return () => {
     activeSocket.off(eventName, handler);
   };
+}
+
+export function emitSocketEvent(eventName, payload = {}) {
+  const activeSocket = socket || connectSocketFromStorage();
+  if (!activeSocket || !eventName) return false;
+  activeSocket.emit(eventName, payload);
+  return true;
 }

@@ -328,7 +328,6 @@ export default function GenealogySection() {
       loading={loading}
       onReload={loadTree}
       layoutSettings={layoutSettings}
-      enableRealtime={false}
     />
   );
 

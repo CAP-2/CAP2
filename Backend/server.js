@@ -6,6 +6,7 @@ const multer = require('multer');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 const db = require('./src/config/db');
 
 const app = express();
@@ -50,6 +51,8 @@ const io = new Server(server, {
 
 app.locals.io = io;
 app.locals.onlineUsers = {};
+app.locals.treeOnline = new Map();
+app.locals.treeEditing = new Map();
 
 app.locals.emitToAccount = (accountId, eventName, payload) => {
     if (!accountId) return;
@@ -102,52 +105,119 @@ const upload = multer({
 // 4.1. Đăng ký route thanh toán VNPAY
 const paymentRoutes = require('./src/routes/paymentRoutes');
 // 5. Socket.IO
+const getSocketAuthToken = (socket) => {
+    const authToken = socket.handshake?.auth?.token;
+    const header = socket.handshake?.headers?.authorization || '';
+    return authToken || (header.startsWith('Bearer ') ? header.slice(7) : null);
+};
+
+io.use(async (socket, next) => {
+    try {
+        const token = getSocketAuthToken(socket);
+        if (!token) return next(new Error('Socket JWT is required'));
+        const secret = process.env.JWT_SECRET || 'GiaPhaViet_Secret_Key_2024_Backup';
+        const decoded = jwt.verify(token, secret);
+        const accountId = Number(decoded.id || decoded.account_id);
+        if (!Number.isFinite(accountId) || accountId <= 0) return next(new Error('Socket JWT account is invalid'));
+        const [rows] = await db.query(
+            `SELECT a.id AS account_id, COALESCE(p.id, ac.person_id) AS person_id, COALESCE(p.clan_id, ac.clan_id) AS clan_id
+             FROM accounts a
+             LEFT JOIN account_clans ac ON ac.account_id = a.id AND ac.status = 'active'
+             LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
+             WHERE a.id = ? LIMIT 1`,
+            [accountId]
+        );
+        if (!rows.length) return next(new Error('Socket account not found'));
+        socket.user = { ...decoded, account_id: accountId };
+        socket.accountContext = rows[0];
+        next();
+    } catch (error) {
+        next(new Error('Socket JWT invalid or expired'));
+    }
+});
+
+const treeSocketKey = (clanId, personId, socketId) => `${Number(clanId)}:${Number(personId)}:${socketId}`;
+const emitTreePresence = (clanId) => {
+    if (!clanId) return;
+    const onlineMap = new Map();
+    for (const item of app.locals.treeOnline.values()) {
+        if (Number(item.clan_id) === Number(clanId)) {
+            onlineMap.set(Number(item.person_id), { clan_id: Number(item.clan_id), person_id: Number(item.person_id), account_id: Number(item.account_id) });
+        }
+    }
+    const editingMap = new Map();
+    for (const item of app.locals.treeEditing.values()) {
+        if (Number(item.clan_id) === Number(clanId)) {
+            editingMap.set(`${Number(item.person_id)}:${Number(item.account_id)}`, { clan_id: Number(item.clan_id), person_id: Number(item.person_id), account_id: Number(item.account_id) });
+        }
+    }
+    io.to(`clan_${clanId}`).emit('family_tree_online_users', { clan_id: Number(clanId), users: [...onlineMap.values()] });
+    io.to(`clan_${clanId}`).emit('family_tree_editing_users', { clan_id: Number(clanId), users: [...editingMap.values()] });
+};
+
 io.on('connection', (socket) => {
+    const context = socket.accountContext || {};
+    const accountId = Number(context.account_id || socket.user?.account_id);
+    const clanId = Number(context.clan_id);
+    const personId = Number(context.person_id);
+
     console.log(`Socket connected: ${socket.id}`);
+    if (accountId) {
+        app.locals.onlineUsers[accountId] = socket.id;
+        socket.join(`account_${accountId}`);
+    }
 
-        socket.on('register_user', async (userId) => {
-            try {
-                if (!userId) {
-                    return;
-                }
+    if (Number.isFinite(clanId) && clanId > 0) {
+        socket.join(`clan_${clanId}`);
+        if (Number.isFinite(personId) && personId > 0) {
+            app.locals.treeOnline.set(treeSocketKey(clanId, personId, socket.id), {
+                clan_id: clanId,
+                person_id: personId,
+                account_id: accountId,
+                socket_id: socket.id,
+            });
+        }
+        emitTreePresence(clanId);
+    }
 
-                app.locals.onlineUsers[userId] = socket.id;
+    socket.on('register_user', () => {
+        if (accountId) socket.join(`account_${accountId}`);
+        if (Number.isFinite(clanId) && clanId > 0) socket.join(`clan_${clanId}`);
+    });
 
-                // Join room theo account id
-                socket.join(`account_${userId}`);
+    socket.on('family_tree_join', () => {
+        if (!Number.isFinite(clanId) || clanId <= 0) return;
+        socket.join(`clan_${clanId}`);
+        emitTreePresence(clanId);
+    });
 
-                console.log(`📡 User ${userId} đã kết nối (Socket: ${socket.id})`);
-                console.log(`📡 User ${userId} joined room account_${userId}`);
+    socket.on('family_tree_leave', () => {
+        if (!Number.isFinite(clanId) || clanId <= 0) return;
+        socket.leave(`clan_${clanId}`);
+    });
 
-                // Join thêm room theo clan để realtime cây gia phả cho cả dòng họ
-                const [rows] = await db.query(
-                    `
-                    SELECT COALESCE(p.clan_id, ac.clan_id) AS clan_id
-                    FROM accounts a
-                    LEFT JOIN account_clans ac
-                        ON ac.account_id = a.id
-                    AND ac.status = 'active'
-                    LEFT JOIN people p
-                        ON p.id = COALESCE(a.person_id, ac.person_id)
-                    WHERE a.id = ?
-                    LIMIT 1
-                    `,
-                    [userId]
-                );
-
-                const clanId = rows[0]?.clan_id;
-
-                if (clanId) {
-                    socket.join(`clan_${clanId}`);
-                    console.log(`🌳 User ${userId} joined room clan_${clanId}`);
-                } else {
-                    console.log(`⚠️ User ${userId} chưa có clan_id nên chưa join room clan`);
-                }
-            } catch (error) {
-                console.error('register_user error:', error);
-            }
+    socket.on('person_editing_start', async (data = {}) => {
+        if (!Number.isFinite(clanId) || clanId <= 0) return;
+        const targetPersonId = Number(data.person_id || data.personId);
+        if (!Number.isFinite(targetPersonId) || targetPersonId <= 0) return;
+        const [targetRows] = await db.query('SELECT id FROM people WHERE id = ? AND clan_id = ? LIMIT 1', [targetPersonId, clanId]);
+        if (!targetRows.length) return;
+        app.locals.treeEditing.set(treeSocketKey(clanId, targetPersonId, socket.id), {
+            clan_id: clanId,
+            person_id: targetPersonId,
+            account_id: accountId,
+            socket_id: socket.id,
         });
+        emitTreePresence(clanId);
+    });
 
+    socket.on('person_editing_stop', (data = {}) => {
+        if (!Number.isFinite(clanId) || clanId <= 0) return;
+        const targetPersonId = Number(data.person_id || data.personId);
+        if (!Number.isFinite(targetPersonId) || targetPersonId <= 0) return;
+        app.locals.treeEditing.delete(treeSocketKey(clanId, targetPersonId, socket.id));
+        emitTreePresence(clanId);
+    });
     socket.on('send_task', (data) => {
         const { receiverId, title, senderName, dueDate } = data;
         const receiverSocketId = app.locals.onlineUsers[receiverId];
@@ -169,6 +239,16 @@ io.on('connection', (socket) => {
                 delete app.locals.onlineUsers[id];
                 break;
             }
+        }
+
+        if (Number.isFinite(clanId) && clanId > 0) {
+            for (const key of [...app.locals.treeOnline.keys()]) {
+                if (key.endsWith(`:${socket.id}`)) app.locals.treeOnline.delete(key);
+            }
+            for (const key of [...app.locals.treeEditing.keys()]) {
+                if (key.endsWith(`:${socket.id}`)) app.locals.treeEditing.delete(key);
+            }
+            emitTreePresence(clanId);
         }
     });
 });

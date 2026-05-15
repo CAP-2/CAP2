@@ -1239,6 +1239,350 @@
     grid-column: 1 / -1;
 }
 
+.fte-searchPanel,
+.fte-viewMode {
+    border: 1px solid rgba(203, 167, 86, 0.5);
+    border-radius: 12px;
+    background: rgba(255, 250, 240, 0.92);
+}
+
+.fte-searchPanel {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+}
+
+.fte-searchForm {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.fte-searchForm label,
+.fte-viewMode label {
+    display: grid;
+    gap: 4px;
+    color: #6b3e0f;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+
+.fte-searchForm input,
+.fte-viewMode select,
+.fte-rootPicker input {
+    min-height: 42px;
+    border: 1px solid #d6bf84;
+    border-radius: 8px;
+    background: #fff;
+    color: #1f2933;
+    padding: 8px 10px;
+    font: inherit;
+    font-weight: 700;
+}
+
+.fte-searchForm input {
+    width: min(360px, calc(100vw - 42px));
+}
+
+.fte-searchResults {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.fte-searchResults button {
+    min-width: 190px;
+    border: 1px solid #e0c684;
+    border-radius: 8px;
+    background: #fff;
+    color: #2b1b0b;
+    padding: 8px 10px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fte-searchResults button:hover {
+    border-color: #f59e0b;
+    background: #fff7db;
+}
+
+.fte-searchResults strong,
+.fte-searchResults small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fte-searchResults small {
+    margin-top: 2px;
+    color: #6b7280;
+    font-weight: 700;
+}
+
+.fte-viewMode {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    padding: 6px;
+    flex-wrap: wrap;
+}
+
+.fte-viewMode button.is-active {
+    background: #8b1e13;
+    color: #fff;
+    border-color: #8b1e13;
+}
+
+.fte-viewModeRoot {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    color: #6b3e0f;
+    font-weight: 900;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fte-rootPicker {
+    position: relative;
+    min-width: 230px;
+}
+
+.fte-rootPicker input {
+    width: 230px;
+}
+
+.fte-rootPickerResults {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 80;
+    width: min(320px, calc(100vw - 36px));
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid rgba(203, 167, 86, 0.65);
+    border-radius: 10px;
+    background: #fffdfa;
+    box-shadow: 0 18px 36px rgba(84, 43, 16, 0.18);
+}
+
+.fte-rootPicker:focus-within .fte-rootPickerResults {
+    display: grid;
+}
+
+.fte-rootPickerResults button {
+    min-height: 0;
+    width: 100%;
+    justify-content: start;
+    display: grid;
+    gap: 2px;
+    padding: 7px 9px;
+    text-align: left;
+    border-radius: 8px;
+}
+
+.fte-rootPickerResults button.is-selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.fte-rootPickerResults strong,
+.fte-rootPickerResults small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fte-rootPickerResults small {
+    color: #6b7280;
+    font-size: 0.72rem;
+}
+
+.fte-validationPanel {
+    border: 1px solid #f59e0b;
+    border-radius: 12px;
+    background: #fff7ed;
+    color: #7c2d12;
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.fte-validationPanelHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 900;
+}
+
+.fte-validationPanelHead span {
+    color: #b45309;
+    font-size: 0.88rem;
+}
+
+.fte-validationList {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.fte-validationList button {
+    min-width: 250px;
+    max-width: 340px;
+    border: 1px solid #fdba74;
+    border-radius: 10px;
+    background: #fff;
+    color: #7c2d12;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 8px;
+    align-items: center;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fte-validationList button:hover {
+    border-color: #dc2626;
+    background: #fff1f2;
+}
+
+.fte-validationList .material-symbols-outlined {
+    grid-row: 1 / span 2;
+    color: #dc2626;
+    font-size: 22px;
+}
+
+.fte-validationList strong,
+.fte-validationList small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fte-validationList small {
+    color: #9a3412;
+    font-weight: 800;
+}
+
+.fte-validationMore {
+    min-width: 240px;
+    display: inline-flex;
+    align-items: center;
+    color: #9a3412;
+    font-weight: 800;
+}
+
+.fte-personCard.is-online {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.36), 0 12px 22px rgba(78, 45, 10, 0.26);
+}
+
+.fte-personCard.is-searchMatch {
+    outline: 5px solid rgba(245, 158, 11, 0.78);
+    outline-offset: 4px;
+}
+
+.fte-personCard.is-self {
+    border-color: #2563eb;
+}
+
+.fte-personCard.is-editing {
+    box-shadow: 0 0 0 4px rgba(147, 51, 234, 0.42), 0 12px 22px rgba(78, 45, 10, 0.26);
+}
+
+.fte-personCard.is-invalid {
+    border-color: #dc2626 !important;
+}
+
+.fte-stateDots {
+    position: absolute;
+    left: 8px;
+    bottom: -10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 35;
+    padding: 3px 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(203, 167, 86, 0.45);
+    box-shadow: 0 6px 14px rgba(78, 45, 10, 0.18);
+}
+
+.fte-stateDots span {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    display: block;
+}
+
+.fte-stateDots .is-self { background: #2563eb; }
+.fte-stateDots .is-online { background: #22c55e; }
+.fte-stateDots .is-search { background: #f59e0b; }
+.fte-stateDots .is-editing { background: #9333ea; }
+.fte-stateDots .is-error { background: #dc2626; }
+
+.fte-nodeBadge {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    z-index: 34;
+    max-width: calc(100% - 16px);
+    border-radius: 999px;
+    padding: 2px 7px;
+    color: #fff;
+    font-size: 0.66rem;
+    font-weight: 900;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fte-nodeBadge.is-editing {
+    background: #9333ea;
+}
+
+.fte-nodeBadge.is-error {
+    background: #dc2626;
+}
+
+.fte-collapseButton {
+    position: absolute;
+    left: 50%;
+    bottom: -18px;
+    transform: translateX(-50%);
+    z-index: 36;
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    border: 1px solid #c98920;
+    border-radius: 999px;
+    background: #fffdf2;
+    color: #7c2d12;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(83, 42, 12, 0.22);
+}
+
+.fte-collapseButton .material-symbols-outlined {
+    font-size: 18px;
+}
+
 
 /* Unified avatar display: every person photo in genealogy is circular. */
 

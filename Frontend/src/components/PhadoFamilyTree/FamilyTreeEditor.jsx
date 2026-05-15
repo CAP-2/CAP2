@@ -14,6 +14,13 @@ import { formatLunarFullFromSolar } from "../../utils/lunarCalendar";
 import DateInput from "../common/DateInput";
 import { onSocketEvent } from "../../services/socket";
 import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../utils/dateFormat";
+import TreeSearchPanel from "./TreeSearchPanel";
+import TreeViewModeSelector from "./TreeViewModeSelector";
+import TreeNodeCard from "./TreeNodeCard";
+import { useTreeSearch } from "../hook/useTreeSearch";
+import { useTreeViewMode } from "../hook/useTreeViewMode";
+import { useTreeRealtime } from "../hook/useTreeRealtime";
+import { validateTreeData } from "../../utils/treeValidationUtils";
 import "./FamilyTreeEditor.css";
 
 const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
@@ -162,6 +169,17 @@ function saveLineRoutes(clanId, routes) {
 }
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
+
+function readCurrentAccount() {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem("auth_user") || window.localStorage.getItem("user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 const dateInput = (value) => isoToVietnamDate(value);
 
@@ -2125,10 +2143,13 @@ export default function FamilyTreeEditor({
   onReload,
   layoutSettings,
   permission,
+  editPermission,
   readOnly = false,
   enableRealtime = true,
 }) {
   const treeRef = useRef(null);
+  const viewportRef = useRef(null);
+  const transformApiRef = useRef(null);
   const scaleRef = useRef(0.85);
   const [currentScale, setCurrentScale] = useState(0.85);
   const lastDragRef = useRef(null);
@@ -2148,6 +2169,9 @@ export default function FamilyTreeEditor({
   const [quickCreateDialog, setQuickCreateDialog] = useState(null);
   const [treeRelationPicker, setTreeRelationPicker] = useState(null);
   const [dialogSaving, setDialogSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState(() => new Map());
+  const [selfPersonId, setSelfPersonId] = useState(null);
+  const currentAccount = useMemo(readCurrentAccount, []);
 
   useEffect(() => {
     const normalizedSettings = normalizeLayoutSettings(layoutSettings);
@@ -2174,18 +2198,19 @@ export default function FamilyTreeEditor({
   }, [enableRealtime, clan?.id, onReload]);
 
   const resolvedPermission = useMemo(() => {
-    if (permission) {
+    const activePermission = permission || editPermission;
+    if (activePermission) {
       return {
-        canEdit: permission.canEdit === true,
-        editScope: permission.editScope || "none",
-        allowedNodeIds: asArray(permission.allowedNodeIds).map((id) => Number(id)).filter((id) => Number.isFinite(id)),
+        canEdit: activePermission.canEdit === true,
+        editScope: activePermission.editScope || "none",
+        allowedNodeIds: asArray(activePermission.allowedNodeIds).map((id) => Number(id)).filter((id) => Number.isFinite(id)),
       };
     }
     if (readOnly) {
       return { canEdit: false, editScope: "none", allowedNodeIds: [] };
     }
     return { canEdit: true, editScope: "all", allowedNodeIds: [] };
-  }, [permission, readOnly]);
+  }, [editPermission, permission, readOnly]);
   const canEditAll = resolvedPermission.canEdit && resolvedPermission.editScope === "all";
   const canEditLimited = resolvedPermission.canEdit && resolvedPermission.editScope === "limited";
   const allowedNodeSet = useMemo(() => new Set(resolvedPermission.allowedNodeIds.map((id) => Number(id))), [resolvedPermission.allowedNodeIds]);
@@ -2241,9 +2266,54 @@ const quickCreateSourcePerson = useMemo(
     (personId) => canEditAll || (canEditLimited && allowedNodeSet.has(Number(personId))),
     [allowedNodeSet, canEditAll, canEditLimited],
   );
+  const treeSearch = useTreeSearch(people);
+  const treeViewMode = useTreeViewMode({
+    people,
+    families: canonicalTree.families,
+    childRows: canonicalTree.childRows,
+  });
+  const treeRealtime = useTreeRealtime({
+    clanId: clan?.id,
+    enabled: enableRealtime,
+  });
+  const visiblePeople = treeViewMode.visibleData.people;
+  const visibleFamilies = treeViewMode.visibleData.families;
+  const visibleChildRows = treeViewMode.visibleData.childRows;
+  const renderOffset = useMemo(() => {
+    if (!visiblePeople.length) return { x: 0, y: 0 };
+    const minX = Math.min(...visiblePeople.map((person) => toInt(person.tree_x, 0)));
+    const minY = Math.min(...visiblePeople.map((person) => toInt(person.tree_y, 0)));
+    return {
+      x: Math.max(0, CANVAS_PADDING - minX),
+      y: Math.max(0, CANVAS_PADDING - minY),
+    };
+  }, [visiblePeople]);
+  const renderPeople = useMemo(
+    () => visiblePeople.map((person) => ({
+      ...person,
+      tree_x: toInt(person.tree_x, 0) + renderOffset.x,
+      tree_y: toInt(person.tree_y, 0) + renderOffset.y,
+    })),
+    [renderOffset.x, renderOffset.y, visiblePeople],
+  );
+  const renderPersonById = useMemo(
+    () => new Map(renderPeople.map((person) => [Number(person.id), person])),
+    [renderPeople],
+  );
+  const childCountByParentId = useMemo(() => {
+    const counts = new Map();
+    asArray(canonicalTree.childRows).forEach((row) => {
+      const family = asArray(canonicalTree.families).find((item) => Number(item.id) === Number(row.family_id));
+      if (!family) return;
+      [family.father_id, family.mother_id].filter(Boolean).forEach((parentId) => {
+        counts.set(Number(parentId), (counts.get(Number(parentId)) || 0) + 1);
+      });
+    });
+    return counts;
+  }, [canonicalTree.childRows, canonicalTree.families]);
   const lines = useMemo(
-    () => buildTreeLines(people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes),
-    [people, canonicalTree.families, canonicalTree.childRows, lineRoutes, cardSizes],
+    () => buildTreeLines(renderPeople, visibleFamilies, visibleChildRows, lineRoutes, cardSizes),
+    [renderPeople, visibleFamilies, visibleChildRows, lineRoutes, cardSizes],
   );
 
   const persistFullLayout = useCallback(async (nextPeople = people, nextLineRoutes = lineRoutes, nextCardSizes = cardSizes) => {
@@ -2280,10 +2350,88 @@ const quickCreateSourcePerson = useMemo(
   }, [canEditAll, canonicalTree, persistFullLayout, lineRoutes, cardSizes, onReload]);
 
   const canvasSize = useMemo(() => {
-    const maxX = Math.max(2400, ...people.map((person) => toInt(person.tree_x, 0) + getCardSize(cardSizes, person.id).width + CANVAS_PADDING));
-    const maxY = Math.max(1400, ...people.map((person) => toInt(person.tree_y, 0) + getCardSize(cardSizes, person.id).height + CANVAS_PADDING));
+    const maxX = Math.max(2400, ...renderPeople.map((person) => toInt(person.tree_x, 0) + getCardSize(cardSizes, person.id).width + CANVAS_PADDING));
+    const maxY = Math.max(1400, ...renderPeople.map((person) => toInt(person.tree_y, 0) + getCardSize(cardSizes, person.id).height + CANVAS_PADDING));
     return { width: maxX, height: maxY };
-  }, [people, cardSizes]);
+  }, [renderPeople, cardSizes]);
+
+  const focusPerson = useCallback((personId, options = {}) => {
+    const id = Number(personId);
+    if (!Number.isFinite(id) || id <= 0) return false;
+    const target = renderPersonById.get(id) || people.find((person) => Number(person.id) === id);
+    if (!target) return false;
+    treeViewMode.expandPathToPerson(id);
+    setSelectedId(id);
+    if (options.search) treeSearch.markResult(id);
+    if (options.self) setSelfPersonId(id);
+
+    window.setTimeout(() => {
+      const api = transformApiRef.current;
+      const viewport = viewportRef.current;
+      const size = getCardSize(cardSizes, id);
+      if (api?.setTransform && viewport) {
+        const rect = viewport.getBoundingClientRect();
+        const nextScale = options.scale || 1.25;
+        const targetCenterX = toInt(target.tree_x, 0) + size.width / 2;
+        const targetCenterY = toInt(target.tree_y, 0) + size.height / 2;
+        const nextX = rect.width / 2 - targetCenterX * nextScale;
+        const nextY = rect.height / 2 - targetCenterY * nextScale;
+        api.setTransform(nextX, nextY, nextScale, 320);
+        return;
+      }
+
+      const element = document.getElementById(`fte-person-${id}`);
+      if (element?.scrollIntoView) {
+        element.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      }
+    }, 120);
+    return true;
+  }, [cardSizes, people, renderPersonById, treeSearch, treeViewMode]);
+
+  const handleFindMe = useCallback(() => {
+    const accountId = Number(currentAccount?.account_id || currentAccount?.accountId || currentAccount?.id);
+    const personIdFromAccount = Number(currentAccount?.person_id || currentAccount?.personId);
+    const matched = Number.isFinite(personIdFromAccount) && personIdFromAccount > 0
+      ? people.find((person) => Number(person.id) === personIdFromAccount)
+      : people.find((person) => Number(person.account_id) === accountId);
+
+    if (!matched) {
+      setStatus("Tài khoản hiện tại chưa liên kết person_id trong cây gia phả.");
+      return;
+    }
+    setStatus("");
+    if (!visiblePeople.some((person) => Number(person.id) === Number(matched.id))) {
+      treeViewMode.setFullMode();
+    }
+    focusPerson(matched.id, { self: true });
+  }, [currentAccount, focusPerson, people, treeViewMode, visiblePeople]);
+
+  const handleValidateTree = useCallback(() => {
+    const errors = validateTreeData(people, canonicalTree.families, canonicalTree.childRows);
+    setValidationErrors(errors);
+    setStatus(errors.size ? `Kiểm tra cây: phát hiện ${errors.size} node có lỗi dữ liệu.` : "Kiểm tra cây: chưa phát hiện lỗi dữ liệu.");
+  }, [canonicalTree.childRows, canonicalTree.families, people]);
+
+  useEffect(() => {
+    if (!validationErrors.size) return;
+    const errors = validateTreeData(people, canonicalTree.families, canonicalTree.childRows);
+    setValidationErrors(errors);
+    if (!errors.size) setStatus("Kiểm tra cây: các lỗi dữ liệu đã được xử lý.");
+  }, [canonicalTree.childRows, canonicalTree.families, people]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const validationIssueRows = useMemo(() => {
+    if (!validationErrors.size) return [];
+    const peopleById = new Map(people.map((person) => [Number(person.id), person]));
+    return Array.from(validationErrors.entries()).flatMap(([personId, messages]) => {
+      const person = peopleById.get(Number(personId));
+      return asArray(messages).map((message) => ({
+        personId: Number(personId),
+        personName: fullName(person, `Node #${personId}`),
+        generation: person?.generation || "",
+        message,
+      }));
+    });
+  }, [people, validationErrors]);
 
   const beginDrag = useCallback((event, person) => {
     if (event.button != null && event.button !== 0) return;
@@ -2338,8 +2486,9 @@ const quickCreateSourcePerson = useMemo(
 
   const openPersonEditor = useCallback((person) => {
     if (!person) return;
+    if (canEditPerson(person.id)) treeRealtime.startEditing(person.id);
     setSelectedId(person.id);
-  }, []);
+  }, [canEditPerson, treeRealtime]);
 
   const handleDeletePersonByCard = useCallback(async (person) => {
     if (!person || !canEditAll) {
@@ -2534,7 +2683,7 @@ const quickCreateSourcePerson = useMemo(
     setSaving(true);
     setStatus("");
     try {
-      const blob = await renderFamilyTreePngBlob({ people, lines, cardSizes, clan });
+      const blob = await renderFamilyTreePngBlob({ people: renderPeople, lines, cardSizes, clan });
       downloadBlob(blob, exportFileName(clan?.clan_name));
       setStatus("Đã xuất PNG.");
     } catch (error) {
@@ -2575,17 +2724,31 @@ const quickCreateSourcePerson = useMemo(
       }
       const result = await updatePersonAPI(selectedPerson.id, payload);
       if (result.person) {
+        let nextPeopleForValidation = null;
+        let clearedAllValidationErrors = false;
         setPeople((current) =>
-          current.map((person) =>
-            person.id === selectedPerson.id ? normalizePerson({ ...person, ...result.person }) : person,
-          ),
+          {
+            nextPeopleForValidation = current.map((person) =>
+              person.id === selectedPerson.id ? normalizePerson({ ...person, ...result.person }) : person,
+            );
+            return nextPeopleForValidation;
+          },
         );
+        if (validationErrors.size && nextPeopleForValidation) {
+          const errors = validateTreeData(nextPeopleForValidation, canonicalTree.families, canonicalTree.childRows);
+          setValidationErrors(errors);
+          clearedAllValidationErrors = !errors.size;
+          if (clearedAllValidationErrors) setStatus("Đã lưu thông tin thành viên. Các lỗi dữ liệu đã được xử lý.");
+        }
+        if (!clearedAllValidationErrors) setStatus("Đã lưu thông tin thành viên.");
+      } else {
+        setStatus("Đã lưu thông tin thành viên.");
       }
-      setStatus("Đã lưu thông tin thành viên.");
       await onReload?.();
     } catch (error) {
       if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể lưu thông tin.");
     } finally {
+      treeRealtime.stopEditing(selectedPerson.id);
       setSaving(false);
     }
   };
@@ -3010,6 +3173,7 @@ const submitCreateDialog = async () => {
         velocityAnimation={{ sensitivity: 1.05, animationTime: 260 }}
         alignmentAnimation={{ sizeX: 0, sizeY: 0, animationTime: 220 }}
         onInit={(ref) => {
+          transformApiRef.current = ref;
           const scale = ref?.state?.scale || 0.85;
           scaleRef.current = scale;
           setCurrentScale(scale);
@@ -3044,6 +3208,16 @@ const submitCreateDialog = async () => {
                   <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: đời hiện tại ±1</span>
                 </div>
               ) : null}
+              <TreeViewModeSelector
+                people={people}
+                mode={treeViewMode.mode}
+                rootPersonId={treeViewMode.rootPersonId}
+                onFullMode={treeViewMode.setFullMode}
+                onRootMode={(personId) => {
+                  treeViewMode.setRootMode(personId);
+                  focusPerson(personId);
+                }}
+              />
               <div className="fte-toolbarGroup fte-toolbarGroup--actions">
                 <button
                   type="button"
@@ -3057,6 +3231,10 @@ const submitCreateDialog = async () => {
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
                   Export PNG
+                </button>
+                <button type="button" onClick={handleValidateTree} disabled={loading || saving}>
+                  <span className="material-symbols-outlined">rule</span>
+                  Kiểm tra cây
                 </button>
               </div>
               <div className="fte-toolbarGroup fte-toolbarGroup--icons">
@@ -3090,6 +3268,22 @@ const submitCreateDialog = async () => {
               </div>
             </div>
 
+            <TreeSearchPanel
+              query={treeSearch.query}
+              onQueryChange={treeSearch.setQuery}
+              onSubmit={treeSearch.submitSearch}
+              onClear={treeSearch.clearSearch}
+              submittedQuery={treeSearch.submittedQuery}
+              results={treeSearch.results}
+              onFindMe={handleFindMe}
+              onResultClick={(person) => {
+                if (!visiblePeople.some((item) => Number(item.id) === Number(person.id))) {
+                  treeViewMode.setFullMode();
+                }
+                focusPerson(person.id, { search: true });
+              }}
+            />
+
             {billingWarning ? (
               <div className="fte-billingWarning">
                 <div>
@@ -3109,6 +3303,30 @@ const submitCreateDialog = async () => {
             ) : null}
 
             {status ? <div className="fte-status" role="status" aria-live="polite">{status}</div> : null}
+            {validationIssueRows.length ? (
+              <div className="fte-validationPanel" role="status" aria-live="polite">
+                <div className="fte-validationPanelHead">
+                  <strong>Lỗi dữ liệu trong cây</strong>
+                  <span>{validationErrors.size} node cần sửa</span>
+                </div>
+                <div className="fte-validationList">
+                  {validationIssueRows.slice(0, 12).map((issue, index) => (
+                    <button
+                      key={`${issue.personId}-${index}-${issue.message}`}
+                      type="button"
+                      onClick={() => focusPerson(issue.personId, { scale: 1.2 })}
+                    >
+                      <span className="material-symbols-outlined">warning</span>
+                      <strong>{issue.personName}{issue.generation ? ` - Đời ${issue.generation}` : ""}</strong>
+                      <small>{issue.message}</small>
+                    </button>
+                  ))}
+                  {validationIssueRows.length > 12 ? (
+                    <span className="fte-validationMore">Còn {validationIssueRows.length - 12} lỗi khác. Bấm vào node đỏ để xem tooltip chi tiết.</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             {constraintNotice ? <CenterNoticeDialog message={constraintNotice} onClose={() => setConstraintNotice("")} /> : null}
             {treeRelationPicker ? (
               <div className="fte-treePickFloating" role="status" aria-live="polite">
@@ -3121,7 +3339,7 @@ const submitCreateDialog = async () => {
             ) : null}
 
             <div className="fte-workspace">
-              <div className="fte-viewport">
+              <div className="fte-viewport" ref={viewportRef}>
                 {loading ? (
                   <div className="fte-loading">Đang tải cây gia phả...</div>
                 ) : (
@@ -3159,10 +3377,12 @@ const submitCreateDialog = async () => {
                           </g>
                         )) : null}
                       </svg>
-                      {people.map((person) => (
-                        <PersonCard
+                      {visiblePeople.map((person) => {
+                        const renderPerson = renderPersonById.get(Number(person.id)) || person;
+                        return (
+                        <TreeNodeCard
                         key={person.id}
-                        person={person}
+                        person={renderPerson}
                         selected={selectedId === person.id}
                         dragging={draggingId === person.id}
                         canDrag={canEditPerson(person.id)}
@@ -3170,13 +3390,24 @@ const submitCreateDialog = async () => {
                         canDelete={canEditAll && canEditPerson(person.id)}
                         founder={founderIds.has(Number(person.id))}
                         size={getCardSize(cardSizes, person.id)}
-                        onPointerDown={handleCardPointerDown}
-                        onResizePointerDown={beginCardResize}
-                        onEdit={openPersonEditor}
-                        onDelete={handleDeletePersonByCard}
-                        onQuickCreate={openQuickCreateDialog}
+                        hasChildren={(childCountByParentId.get(Number(person.id)) || 0) > 0}
+                        collapsed={treeViewMode.collapsedIds.has(Number(person.id))}
+                        highlightOptions={{
+                          onlinePersonIds: treeRealtime.onlinePersonIds,
+                          editingPersonIds: treeRealtime.editingPersonIds,
+                          searchPersonId: treeSearch.highlightedPersonId,
+                          selfPersonId,
+                          validationErrors,
+                        }}
+                        onPointerDown={(event) => handleCardPointerDown(event, person)}
+                        onResizePointerDown={(event) => beginCardResize(event, person)}
+                        onEdit={() => openPersonEditor(person)}
+                        onDelete={() => handleDeletePersonByCard(person)}
+                        onQuickCreate={() => openQuickCreateDialog(person)}
+                        onToggleCollapse={treeViewMode.toggleCollapse}
                       />
-                      ))}
+                        );
+                      })}
                     </div>
                   </TransformComponent>
                 )}
@@ -3195,7 +3426,10 @@ const submitCreateDialog = async () => {
         canEditRelations={canEditAll && selectedCanEdit}
         canDelete={canEditAll && selectedCanEdit}
         notice={selectedNotice}
-        onClose={() => setSelectedId(null)}
+        onClose={() => {
+          if (selectedPerson && selectedCanEdit) treeRealtime.stopEditing(selectedPerson.id);
+          setSelectedId(null);
+        }}
         onSave={handleSavePerson}
         onDelete={handleDeletePerson}
         onCreateRelation={openCreateDialog}
