@@ -1,41 +1,47 @@
 # AI-server
 
-Python Flask server dùng Groq và MySQL cho trợ lý Gia Phả Việt.
+AI-server la Flask service cho cac tinh nang AI cua Gia Pha Viet: hoi dap du lieu gia pha, tra loi tu nhien, va ho tro tao form su kien/cong viec. Server uu tien luong an toan: intent detection + SQL whitelist/fixed query, khong de model tu sinh SQL roi chay truc tiep.
 
-Luồng an toàn hiện tại:
+## Cau truc thu muc
 
 ```text
-User hỏi
--> normalize tiếng Việt
+AI-server/
+├── tests/                     # Test/kiem tra endpoint va logic AI
+├── __pycache__/               # Python cache, sinh ra khi chay
+├── .venv/                     # Virtual environment rieng cua AI-server
+├── .env                       # Cau hinh local, khong commit
+├── .env.ai                    # Cau hinh AI phu neu can
+├── .env.example               # Mau bien moi truong
+├── .gitignore                 # Ignore Python env/cache
+├── app.py                     # Flask app entry va API handlers
+├── sql/
+│   ├── demo_data_checks.sql   # SQL kiem tra du lieu demo
+│   └── demo_data_seed.sql     # SQL seed du lieu demo
+├── requirements.txt           # Python dependencies
+└── README.md                  # Tai lieu AI-server
+```
+
+Khong dung `.venv` cua AI-server cho voice worker. Voice worker co virtual environment rieng o repo root: `.venv-whisper/`.
+
+## Luong xu ly AI an toan
+
+```text
+User prompt
+-> normalize tieng Viet/context nguoi dung
 -> detect intent
--> câu hỏi thường: Groq trả lời tự nhiên
--> câu hỏi cần database: fixed SQL whitelist -> MySQL -> Groq diễn giải dữ liệu thật
+-> neu hoi DB: chay fixed SQL theo whitelist
+-> lay rows tu MySQL
+-> model dien giai ket qua thanh cau tra loi tieng Viet
+-> neu khong can DB: model tra loi tu nhien theo guardrail
 ```
 
-Server không để AI tự sinh SQL để chạy trực tiếp.
-
-## Cai dat
-
-```bash
-cd AI-server
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## Chay server
-
-```bash
-cd AI-server
-copy .env.example .env
-python app.py
-```
-
-Mac dinh server chay tai `http://localhost:8001`.
-
-## API
+## API chinh
 
 ### `POST /ask-db`
+
+Dung cho hoi dap du lieu gia pha theo context account/person/clan.
+
+Request mau:
 
 ```json
 {
@@ -47,7 +53,7 @@ Mac dinh server chay tai `http://localhost:8001`.
 }
 ```
 
-Response:
+Response mau:
 
 ```json
 {
@@ -64,8 +70,61 @@ Response:
 }
 ```
 
-## Gioi han
+## Cai dat
 
-- Chỉ dùng fixed SQL whitelist theo intent, không chạy SQL do AI sinh ra.
-- Server chặn các lệnh SQL thay đổi dữ liệu như `INSERT`, `UPDATE`, `DELETE`, `DROP`.
-- Câu hỏi không cần database sẽ được trả lời tự nhiên bằng Groq.
+```powershell
+cd D:\cap2\AI-server
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+## Chay server
+
+```powershell
+cd D:\cap2\AI-server
+.\.venv\Scripts\Activate.ps1
+python app.py
+```
+
+Mac dinh server chay tai:
+
+```text
+http://localhost:8001
+```
+
+Backend can tro toi AI-server bang:
+
+```text
+AI_SERVER_URL=http://localhost:8001
+```
+
+## Bien moi truong
+
+Ten bien phu thuoc `app.py`, nhung thuong gom:
+
+```text
+GROQ_API_KEY=...
+DB_HOST=...
+DB_PORT=...
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=...
+```
+
+## Gioi han va quy tac
+
+- Khong chay SQL do AI sinh truc tiep.
+- Chi dung fixed SQL/whitelist theo intent.
+- Chan cac cau lenh thay doi du lieu nhu `INSERT`, `UPDATE`, `DELETE`, `DROP`.
+- Endpoint AI tao su kien/cong viec chi nen tra ve cau truc JSON hop le de frontend/backend xu ly tiep.
+- Khong dung chung virtual environment voi voice worker.
+
+## Kiem tra nhanh
+
+```powershell
+cd D:\cap2\AI-server
+.\.venv\Scripts\python.exe -m py_compile app.py
+python app.py
+```

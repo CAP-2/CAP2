@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 
 const path = require('path');
 const db = require('../src/config/db');
-const { createMediaFromLocalFile, getMediaUrl } = require('../src/utils/media');
+const { createMediaFromLocalFile, getMediaUrl } = require('../src/shared/utils/media');
 
 const backendRoot = path.resolve(__dirname, '..');
 

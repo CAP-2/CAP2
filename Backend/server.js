@@ -65,18 +65,18 @@ app.locals.emitToClan = (clanId, eventName, payload) => {
 };
 
 // 3. Import routes/controllers sau khi app đã có middleware
-const authRoutes = require('./src/routes/authRoutes');
-const billingRoutes = require('./src/routes/billingRoutes');
-const managerRoutes = require('./src/routes/managerRoutes');
-const memberRoutes = require('./src/routes/memberRoutes');
-const adminRoutes = require('./src/routes/adminRoutes');
-const aiRoutes = require('./src/routes/aiRoutes');
-const voiceRoutes = require('../voice/backendRoutes');
-const mediaRoutes = require('./src/routes/mediaRoutes');
-const calendarRoutes = require('./src/routes/calendarRoutes');
-const { startCalendarReminderScheduler } = require('./src/controllers/calendarController');
+const authRoutes = require('./src/modules/auth/auth.routes');
+const billingRoutes = require('./src/modules/billing/billing.routes');
+const managerRoutes = require('./src/modules/manager/manager.routes');
+const memberRoutes = require('./src/modules/member/member.routes');
+const adminRoutes = require('./src/modules/admin/admin.routes');
+const aiRoutes = require('./src/modules/ai/ai.routes');
+const voiceRoutes = require('../voice/backend/backendRoutes');
+const mediaRoutes = require('./src/modules/media/media.routes');
+const calendarRoutes = require('./src/modules/calendar/calendar.routes');
+const { startCalendarReminderScheduler } = require('./src/modules/calendar/calendar.controller');
 
-const managerController = require('./src/controllers/managerController');
+const managerController = require('./src/modules/manager/manager.controller');
 
 const {
     MAX_IMAGE_SIZE_BYTES,
@@ -86,7 +86,7 @@ const {
     getMediaUrl,
     createMediaFile,
     getUploadContext,
-} = require('./src/utils/media');
+} = require('./src/shared/utils/media');
 
 const { verifyToken, checkRole } = require('./src/middleware/authMiddleware');
 
@@ -103,7 +103,7 @@ const upload = multer({
 });
 
 // 4.1. Đăng ký route thanh toán VNPAY
-const paymentRoutes = require('./src/routes/paymentRoutes');
+const paymentRoutes = require('./src/modules/payment/payment.routes');
 // 5. Socket.IO
 const getSocketAuthToken = (socket) => {
     const authToken = socket.handshake?.auth?.token;
