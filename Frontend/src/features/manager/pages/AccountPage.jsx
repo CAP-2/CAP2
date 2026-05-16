@@ -263,7 +263,12 @@ export default function AccountPage() {
 
   const updateCreateField = (event) => {
     const { name, value } = event.target;
-    setCreateForm((prev) => ({ ...prev, [name]: value }));
+    if (["surname", "middle_name", "first_name"].includes(name)) {
+      const cleanValue = value.replace(/[^\p{L}\s]/gu, "");
+      setCreateForm((prev) => ({ ...prev, [name]: cleanValue }));
+    } else {
+      setCreateForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const updateRelationField = (event) => {
@@ -292,7 +297,12 @@ export default function AccountPage() {
 
   const updateEditField = (event) => {
     const { name, value } = event.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
+    if (["surname", "middle_name", "first_name"].includes(name)) {
+      const cleanValue = value.replace(/[^\p{L}\s]/gu, "");
+      setEditForm((prev) => ({ ...prev, [name]: cleanValue }));
+    } else {
+      setEditForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const loadRelationDetails = useCallback(

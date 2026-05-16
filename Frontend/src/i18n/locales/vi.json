@@ -48,6 +48,7 @@
     "noInfo": "Chưa có thông tin",
     "edit": "Sửa",
     "search": "Tìm kiếm",
+    "address": "Địa chỉ",
     "actions": "Thao tác",
     "status": {
       "title": "Trạng thái",
@@ -99,7 +100,7 @@
     "member": "Thành viên",
     "guest": "Khách",
     "footer": {
-      "tagline": "©2024 Gia Phả Việt - Lưu giữ bản sắc Việt",
+      "tagline": "©2026 Gia Phả Việt - Lưu giữ bản sắc Việt",
       "contact": "Liên hệ",
       "privacy": "Chính sách bảo mật",
       "terms": "Điều khoản sử dụng",
@@ -257,6 +258,7 @@
         "createTitle": "Tạo thành viên",
         "createDescription": "Thêm tài khoản và hồ sơ thành viên mới.",
         "editTitle": "Chỉnh sửa thành viên",
+        "editDescription": "Cập nhật thông tin tài khoản và hồ sơ thành viên.",
         "linkTitle": "Liên kết quan hệ",
         "linkDescription": "Cập nhật cha, mẹ, vợ/chồng và con cái.",
         "selectMember": "Thành viên cần liên kết",
@@ -287,6 +289,8 @@
         "statusLiving": "Còn sống",
         "statusDead": "Đã mất",
         "currentRelations": "Quan hệ hiện tại",
+        "branch": "Nhánh/Chi",
+        "note": "Ghi chú",
         "noInfo": "Chưa có"
       },
       "messages": {

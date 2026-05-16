@@ -46,6 +46,7 @@
     "noInfo": "No information",
     "edit": "Edit",
     "search": "Search",
+    "address": "Address",
     "actions": "Actions",
     "status": {
       "title": "Status",
@@ -98,7 +99,7 @@
     "homeAria": "Go to Gia Pha Viet homepage",
     "userFallback": "User",
     "footer": {
-      "tagline": "©2024 Gia Pha Viet - Preserving Vietnamese identity",
+      "tagline": "©2026 Gia Pha Viet - Preserving Vietnamese identity",
       "contact": "Contact",
       "privacy": "Privacy Policy",
       "terms": "Terms of Use",
@@ -256,6 +257,7 @@
         "createTitle": "Create Member",
         "createDescription": "Add new user account and profile.",
         "editTitle": "Edit Member",
+        "editDescription": "Update user account information and member profile.",
         "linkTitle": "Link Relations",
         "linkDescription": "Update parents, spouse and children.",
         "selectMember": "Select member to link",
@@ -286,6 +288,8 @@
         "statusLiving": "Living",
         "statusDead": "Deceased",
         "currentRelations": "Current Relations",
+        "branch": "Branch",
+        "note": "Note",
         "noInfo": "None"
       },
       "messages": {
