@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatDateTimeVN, formatDateVN } from "../../../shared/utils/dateFormat";
 import {
   getBillingPlans,
@@ -145,6 +146,7 @@ function formatMoney(value) {
 }
 
 export default function BillingPage() {
+  const { t } = useTranslation();
   const [clanId, setClanId] = useState(null);
   const [adminClans, setAdminClans] = useState([]);
   const [billing, setBilling] = useState(null);
@@ -198,30 +200,30 @@ const isPlanDowngrade = (planCode) => {
   return isBillingActive && getPlanRank(planCode) < currentPlanRank;
 };
 
-const getPaymentStatusText = (payment) => {
+const getPaymentStatusText = (payment, t) => {
   const status = String(payment?.status || "pending").toLowerCase();
 
   if (status === "paid") {
-    return "Giao dịch đã thanh toán, không thể thanh toán lại.";
+    return t("billingPayment.status.paid");
   }
 
   if (status === "pending") {
     if (isPaymentExpired(payment)) {
-      return "Giao dịch đã quá 24 giờ, hệ thống sẽ tự hủy.";
+      return t("billingPayment.status.pendingExpired");
     }
 
     if (isPlanDowngrade(payment.plan_code)) {
-      return "Không thể thanh toán gói thấp hơn khi gói hiện tại vẫn còn hiệu lực.";
+      return t("billingPayment.status.pendingDowngrade");
     }
 
-    return "Có thể tiếp tục thanh toán giao dịch này.";
+    return t("billingPayment.status.pendingActive");
   }
 
   if (status === "cancelled") {
-  return "Giao dịch đã bị hủy hoặc đã quá hạn, không thể thanh toán tiếp.";
-}
+    return t("billingPayment.status.cancelled");
+  }
 
-return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
+  return t("billingPayment.status.ended");
 };
 
   const loadBillingForClan = async (targetClanId) => {
@@ -248,7 +250,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
       console.error("loadBillingForClan error:", error);
       setBilling(null);
       setPayments([]);
-      setMessage(error.message || "Không tải được thông tin gói sử dụng.");
+      setMessage(error.message || t("billingPayment.messages.loadError"));
     } finally {
       setBillingLoading(false);
     }
@@ -271,7 +273,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
           setClanId(null);
           setBilling(null);
           setPayments([]);
-          setMessage("Chưa có cây gia phả nào để kiểm tra gói sử dụng.");
+          setMessage(t("billingPayment.messages.noClans"));
           return;
         }
 
@@ -293,7 +295,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
         setClanId(null);
         setBilling(null);
         setPayments([]);
-        setMessage("Không xác định được dòng họ của manager.");
+        setMessage(t("billingPayment.messages.unknownClan"));
         return;
       }
 
@@ -301,7 +303,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
       await loadBillingForClan(resolvedClanId);
     } catch (error) {
       console.error("loadInitialData error:", error);
-      setMessage(error.message || "Không tải được dữ liệu billing.");
+      setMessage(error.message || t("billingPayment.messages.loadDataError"));
     } finally {
       setLoading(false);
     }
@@ -322,16 +324,12 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
       setMessage("");
       if (activePendingPayment) {
         setSelectedPayment(activePendingPayment);
-        setMessage(
-          "Bạn đang có giao dịch chờ thanh toán. Vui lòng thanh toán hoặc hủy giao dịch đó trước khi tạo giao dịch mới."
-        );
+        setMessage(t("billingPayment.messages.pendingExists"));
         return;
       }
 
       if (isPlanDowngrade(plan.code)) {
-        setMessage(
-          "Không thể mua gói thấp hơn khi gói hiện tại vẫn còn hiệu lực."
-        );
+        setMessage(t("billingPayment.messages.downgradeError"));
         return;
       }
 
@@ -358,7 +356,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
         status: "pending",
       });
     } catch (error) {
-      setMessage(error.message || "Không tạo được thanh toán.");
+      setMessage(error.message || t("billingPayment.messages.createError"));
     }
   };
 
@@ -383,7 +381,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
         );
 
         await loadBillingForClan(clanId);
-        setMessage("Thanh toán thành công. Gói sử dụng đã được cập nhật.");
+        setMessage(t("billingPayment.messages.paySuccess"));
         return;
       }
 
@@ -396,9 +394,9 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
           : prev
       );
 
-      setMessage("Thanh toán chưa được xác nhận. Vui lòng kiểm tra lại sau.");
+      setMessage(t("billingPayment.messages.payNotConfirmed"));
     } catch (error) {
-      setMessage(error.message || "Không kiểm tra được trạng thái thanh toán.");
+      setMessage(error.message || t("billingPayment.messages.checkStatusError"));
     } finally {
       setPaymentChecking(false);
     }
@@ -409,7 +407,7 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
     return;
   }
 
-  const ok = window.confirm("Bạn có chắc muốn hủy giao dịch này không?");
+  const ok = window.confirm(t("billingPayment.messages.cancelConfirm"));
 
   if (!ok) {
     return;
@@ -426,9 +424,9 @@ return "Giao dịch đã kết thúc, không thể thanh toán tiếp.";
 
     await loadBillingForClan(clanId);
 
-    setMessage("Đã hủy giao dịch chờ thanh toán.");
+    setMessage(t("billingPayment.messages.cancelSuccess"));
   } catch (error) {
-    setMessage(error.message || "Không thể hủy giao dịch.");
+    setMessage(error.message || t("billingPayment.messages.cancelError"));
   } finally {
     setPaymentActionLoading(false);
   }
@@ -442,30 +440,28 @@ const handlePaySelectedPayment = (payment) => {
   const status = String(payment.status || "").toLowerCase();
 
   if (status === "paid") {
-    setMessage("Giao dịch này đã được thanh toán, không thể thanh toán lại.");
+    setMessage(t("billingPayment.status.paid"));
     return;
   }
 
   if (status !== "pending") {
-    setMessage("Chỉ giao dịch đang chờ thanh toán mới có thể tiếp tục thanh toán.");
+    setMessage(t("billingPayment.status.ended"));
     return;
   }
 
   if (isPaymentExpired(payment)) {
-    setMessage(
-      "Giao dịch đã quá 24 giờ. Vui lòng tải lại trang để hệ thống cập nhật trạng thái."
-    );
+    setMessage(t("billingPayment.messages.expiredAlert"));
     return;
   }
 
   if (isPlanDowngrade(payment.plan_code)) {
-    setMessage("Không thể thanh toán gói thấp hơn khi gói hiện tại vẫn còn hiệu lực.");
+    setMessage(t("billingPayment.status.pendingDowngrade"));
     return;
   }
 
   setPaymentDialog({
     plan: {
-      name: payment.plan_name || payment.plan_code || "Không rõ",
+      name: payment.plan_name || payment.plan_code || t("billingPayment.history.unknown"),
       code: payment.plan_code,
     },
     orderCode: payment.order_code,
@@ -491,8 +487,8 @@ const handlePaySelectedPayment = (payment) => {
       <div className="billing-page billing-page--loading">
         <div className="billing-card billing-loading-card">
           <span className="material-symbols-outlined">hourglass_top</span>
-          <h1>Đang tải gói sử dụng...</h1>
-          <p>Hệ thống đang kiểm tra thông tin dòng họ và lịch sử thanh toán.</p>
+          <h1>{t("billingPayment.messages.loading")}</h1>
+          <p>{t("billingPayment.messages.loadingDesc")}</p>
         </div>
       </div>
     );
@@ -502,13 +498,13 @@ const handlePaySelectedPayment = (payment) => {
     <div className="billing-page">
       <section className="billing-hero">
         <div>
-          <span className="billing-kicker">Gói sử dụng dòng họ</span>
-          <h1>Quản lý dung lượng & nâng cấp</h1>
-          <p>Theo dõi giới hạn hồ sơ, tài khoản đăng nhập và nâng cấp gói bằng thanh toán VietQR.</p>
+          <span className="billing-kicker">{t("billingPayment.hero.kicker")}</span>
+          <h1>{t("billingPayment.hero.title")}</h1>
+          <p>{t("billingPayment.hero.subtitle")}</p>
         </div>
         {billing && (
           <div className="billing-current-pill">
-            <span>Gói hiện tại</span>
+            <span>{t("billingPayment.currentPlan.title")}</span>
             <strong>{billing.plan_name}</strong>
           </div>
         )}
@@ -518,9 +514,9 @@ const handlePaySelectedPayment = (payment) => {
         <section className="billing-alert billing-alert--admin">
           <span className="material-symbols-outlined">admin_panel_settings</span>
           <div>
-            <strong>Chế độ quản trị hệ thống</strong>
-            <p>Bạn có thể chọn cây gia phả để kiểm tra hoặc nâng cấp thử nghiệm gói sử dụng.</p>
-            <label>Chọn cây gia phả</label>
+            <strong>{t("billingPayment.alerts.adminTitle")}</strong>
+            <p>{t("billingPayment.alerts.adminDesc")}</p>
+            <label>{t("billingPayment.alerts.adminSelectClan")}</label>
             <select value={clanId || ""} onChange={handleClanChange}>
               {adminClans.map((clan) => (
                 <option key={clan.id} value={clan.id}>
@@ -536,8 +532,8 @@ const handlePaySelectedPayment = (payment) => {
         <section className="billing-alert billing-alert--pay">
           <span className="material-symbols-outlined">qr_code_2</span>
           <div>
-            <strong>Thanh toán SePay / VietQR đã sẵn sàng</strong>
-            <p>Tài khoản manager có thể nâng cấp gói cho dòng họ bằng chuyển khoản VietQR.</p>
+            <strong>{t("billingPayment.alerts.payReadyTitle")}</strong>
+            <p>{t("billingPayment.alerts.payReadyDesc")}</p>
           </div>
         </section>
       )}
@@ -546,7 +542,7 @@ const handlePaySelectedPayment = (payment) => {
       {billingLoading && (
         <section className="billing-alert billing-alert--loading">
           <span className="material-symbols-outlined">sync</span>
-          <div>Đang tải gói sử dụng của cây gia phả đã chọn...</div>
+          <div>{t("billingPayment.alerts.loadingBilling")}</div>
         </section>
       )}
 
@@ -555,7 +551,7 @@ const handlePaySelectedPayment = (payment) => {
     <article className="billing-card billing-current-card">
       <div className="billing-card-head">
         <div>
-          <span className="billing-kicker">Gói hiện tại</span>
+          <span className="billing-kicker">{t("billingPayment.currentPlan.title")}</span>
           <h2>{billing.plan_name}</h2>
         </div>
         <span className="billing-status-badge">{billing.status}</span>
@@ -567,18 +563,18 @@ const handlePaySelectedPayment = (payment) => {
           <strong>#{clanId}</strong>
         </div>
         <div>
-          <span>Ngày hết hạn</span>
+          <span>{t("billingPayment.currentPlan.expiresAt")}</span>
           <strong>
             {billing.expires_at
               ? formatDateVN(billing.expires_at)
-              : "Không giới hạn"}
+              : t("billingPayment.currentPlan.unlimited")}
           </strong>
         </div>
       </div>
 
       <div className="billing-usage-block">
         <div className="billing-usage-title">
-          <span>Hồ sơ gia phả</span>
+          <span>{t("billingPayment.currentPlan.records")}</span>
           <strong>
             {billing.current_people} / {billing.person_limit}
           </strong>
@@ -590,7 +586,7 @@ const handlePaySelectedPayment = (payment) => {
 
       <div className="billing-usage-block">
         <div className="billing-usage-title">
-          <span>Tài khoản đăng nhập</span>
+          <span>{t("billingPayment.currentPlan.accounts")}</span>
           <strong>
             {billing.current_accounts} / {billing.account_limit}
           </strong>
@@ -604,8 +600,7 @@ const handlePaySelectedPayment = (payment) => {
         <div className="billing-limit-warning">
           <span className="material-symbols-outlined">warning</span>
           <span>
-            Dòng họ đã đạt một số giới hạn của gói hiện tại. Hãy nâng cấp để
-            tiếp tục mở rộng.
+            {t("billingPayment.currentPlan.limitReached")}
           </span>
         </div>
       )}
@@ -614,16 +609,16 @@ const handlePaySelectedPayment = (payment) => {
     <article className="billing-card billing-history-card">
       <div className="billing-card-head">
         <div>
-          <span className="billing-kicker">Thanh toán</span>
-          <h2>Lịch sử nâng cấp</h2>
+          <span className="billing-kicker">{t("billingPayment.transactionDetail.title")}</span>
+          <h2>{t("billingPayment.history.title")}</h2>
         </div>
-        <span className="billing-count-pill">{payments.length} giao dịch</span>
+        <span className="billing-count-pill">{t("billingPayment.history.count", { count: payments.length })}</span>
       </div>
 
       {payments.length === 0 ? (
         <div className="billing-empty-state">
           <span className="material-symbols-outlined">receipt_long</span>
-          <p>Chưa có giao dịch nào.</p>
+          <p>{t("billingPayment.history.noTransactions")}</p>
         </div>
       ) : (
         <div className="billing-payment-list">
@@ -643,10 +638,10 @@ const handlePaySelectedPayment = (payment) => {
             >
               <div>
                 <strong>
-                  {payment.plan_name || payment.plan_code || "Không rõ"}
+                  {payment.plan_name || payment.plan_code || t("billingPayment.history.unknown")}
                 </strong>
                 <span>
-                  {payment.payer_email || "Không rõ"} ·{" "}
+                  {payment.payer_email || t("billingPayment.history.unknown")} ·{" "}
                   {payment.provider || "manual"}
                 </span>
               </div>
@@ -656,7 +651,7 @@ const handlePaySelectedPayment = (payment) => {
                 <span>
                   {payment.paid_at
                     ? formatDateTimeVN(payment.paid_at)
-                    : "Chưa thanh toán"}
+                    : t("billingPayment.history.unpaid")}
                 </span>
               </div>
 
@@ -679,11 +674,11 @@ const handlePaySelectedPayment = (payment) => {
   <section className="billing-card billing-transaction-detail">
     <div className="billing-card-head">
       <div>
-        <span className="billing-kicker">Chi tiết giao dịch</span>
+        <span className="billing-kicker">{t("billingPayment.transactionDetail.title")}</span>
         <h2>
           {selectedPayment.plan_name ||
             selectedPayment.plan_code ||
-            "Không rõ"}
+            t("billingPayment.history.unknown")}
         </h2>
       </div>
 
@@ -692,66 +687,66 @@ const handlePaySelectedPayment = (payment) => {
         className="billing-secondary-btn"
         onClick={() => setSelectedPayment(null)}
       >
-        Đóng
+        {t("common.close") || "Close"}
       </button>
     </div>
 
     <div className="billing-info-list is-payment">
       <div>
-        <span>Mã giao dịch</span>
+        <span>{t("billingPayment.transactionDetail.orderCode")}</span>
         <strong>{selectedPayment.order_code || selectedPayment.id}</strong>
       </div>
 
       <div>
-        <span>Gói</span>
+        <span>{t("billingPayment.transactionDetail.plan")}</span>
         <strong>
           {selectedPayment.plan_name ||
             selectedPayment.plan_code ||
-            "Không rõ"}
+            t("billingPayment.history.unknown")}
         </strong>
       </div>
 
       <div>
-        <span>Số tiền</span>
+        <span>{t("billingPayment.transactionDetail.amount")}</span>
         <strong>{formatMoney(selectedPayment.amount_vnd)}</strong>
       </div>
 
       <div>
-        <span>Trạng thái</span>
+        <span>{t("billingPayment.transactionDetail.status")}</span>
         <strong>{selectedPayment.status || "pending"}</strong>
       </div>
 
       <div>
-        <span>Ngày tạo</span>
+        <span>{t("billingPayment.transactionDetail.createdAt")}</span>
         <strong>
           {selectedPayment.created_at
             ? formatDateTimeVN(selectedPayment.created_at)
-            : "Không rõ"}
+            : t("billingPayment.history.unknown")}
         </strong>
       </div>
 
       <div>
-        <span>Ngày thanh toán</span>
+        <span>{t("billingPayment.transactionDetail.paidAt")}</span>
         <strong>
           {selectedPayment.paid_at
             ? formatDateTimeVN(selectedPayment.paid_at)
-            : "Chưa thanh toán"}
+            : t("billingPayment.history.unpaid")}
         </strong>
       </div>
 
       <div>
-        <span>Email thanh toán</span>
-        <strong>{selectedPayment.payer_email || "Không rõ"}</strong>
+        <span>{t("billingPayment.transactionDetail.email")}</span>
+        <strong>{selectedPayment.payer_email || t("billingPayment.history.unknown")}</strong>
       </div>
 
       <div>
-        <span>Nhà cung cấp</span>
+        <span>{t("billingPayment.transactionDetail.provider")}</span>
         <strong>{selectedPayment.provider || "manual"}</strong>
       </div>
     </div>
 
     <div className="billing-transaction-note">
-      {getPaymentStatusText(selectedPayment)}
+      {getPaymentStatusText(selectedPayment, t)}
     </div>
 
     <div className="billing-actions-row">
@@ -767,12 +762,12 @@ const handlePaySelectedPayment = (payment) => {
         onClick={() => handlePaySelectedPayment(selectedPayment)}
       >
         {String(selectedPayment.status || "").toLowerCase() === "paid"
-          ? "Đã thanh toán"
+          ? t("billingPayment.transactionDetail.actions.paid")
           : isPaymentExpired(selectedPayment)
-            ? "Giao dịch đã hủy"
+            ? t("billingPayment.transactionDetail.actions.cancelled")
             : isPlanDowngrade(selectedPayment.plan_code)
-              ? "Không thể thanh toán gói thấp hơn"
-              : "Thanh toán giao dịch này"}
+              ? t("billingPayment.transactionDetail.actions.cannotDowngrade")
+              : t("billingPayment.transactionDetail.actions.payNow")}
       </button>
 
       {String(selectedPayment.status || "").toLowerCase() === "pending" &&
@@ -783,7 +778,7 @@ const handlePaySelectedPayment = (payment) => {
             disabled={paymentActionLoading}
             onClick={() => handleCancelPendingPayment(selectedPayment)}
           >
-            {paymentActionLoading ? "Đang xử lý..." : "Hủy giao dịch"}
+            {paymentActionLoading ? t("common.submitting") : t("billingPayment.transactionDetail.actions.cancel")}
           </button>
         )}
     </div>
@@ -793,7 +788,7 @@ const handlePaySelectedPayment = (payment) => {
         <section className="billing-card billing-payment-dialog">
           <div className="billing-card-head">
             <div>
-              <span className="billing-kicker">Thanh toán SePay</span>
+              <span className="billing-kicker">{t("billingPayment.paymentDialog.title")}</span>
               <h2>{paymentDialog.plan?.name}</h2>
             </div>
             <span className="billing-status-badge">{paymentDialog.status}</span>
@@ -802,26 +797,26 @@ const handlePaySelectedPayment = (payment) => {
           <div className="billing-payment-content">
             <div>
               <div className="billing-info-list is-payment">
-                <div><span>Số tiền</span><strong>{formatMoney(paymentDialog.amountVnd)}</strong></div>
-                <div><span>Nội dung chuyển khoản</span><strong>{paymentDialog.transferContent}</strong></div>
-                <div><span>Tài khoản nhận</span><strong>{paymentDialog.bankAccount || "Chưa cấu hình"} - {paymentDialog.accountName || "Chưa cấu hình"}</strong></div>
+                <div><span>{t("billingPayment.paymentDialog.amount")}</span><strong>{formatMoney(paymentDialog.amountVnd)}</strong></div>
+                <div><span>{t("billingPayment.paymentDialog.content")}</span><strong>{paymentDialog.transferContent}</strong></div>
+                <div><span>{t("billingPayment.paymentDialog.recipient")}</span><strong>{paymentDialog.bankAccount || t("billingPayment.paymentDialog.notConfigured")} - {paymentDialog.accountName || t("billingPayment.paymentDialog.notConfigured")}</strong></div>
               </div>
               <div className="billing-actions-row">
                 <button type="button" className="billing-primary-btn" onClick={checkCurrentPaymentStatus} disabled={paymentChecking}>
-                  {paymentChecking ? "Đang kiểm tra..." : "Tôi đã thanh toán - kiểm tra"}
+                  {paymentChecking ? t("billingPayment.paymentDialog.checking") : t("billingPayment.paymentDialog.verify")}
                 </button>
                 <button type="button" className="billing-secondary-btn" onClick={() => setPaymentDialog(null)}>
-                  Đóng
+                  {t("common.close") || "Close"}
                 </button>
               </div>
             </div>
             {paymentDialog.qrUrl ? (
               <div className="billing-qr-box">
                 <img src={paymentDialog.qrUrl} alt="QR thanh toán SePay" />
-                <span>Quét mã để thanh toán</span>
+                <span>{t("billingPayment.paymentDialog.scanQR")}</span>
               </div>
             ) : (
-              <div className="billing-qr-box is-empty">Chưa tạo được mã QR.</div>
+              <div className="billing-qr-box is-empty">{t("billingPayment.paymentDialog.qrError")}</div>
             )}
           </div>
         </section>
@@ -845,8 +840,8 @@ const handlePaySelectedPayment = (payment) => {
 
       <section className="billing-plans-section">
   <div className="billing-section-title">
-    <span className="billing-kicker">Danh sách gói</span>
-    <h2>Chọn gói phù hợp với quy mô dòng họ</h2>
+    <span className="billing-kicker">{t("billingPayment.plans.title")}</span>
+    <h2>{t("billingPayment.plans.subtitle")}</h2>
   </div>
         <div className="billing-plan-grid">
           {plans.map((plan) => {
@@ -857,39 +852,39 @@ const handlePaySelectedPayment = (payment) => {
 
             return (
               <article key={plan.id} className={`billing-plan-card ${isCurrent ? "is-current" : ""} ${isFeatured ? "is-featured" : ""}`}>
-                {isCurrent && <span className="billing-plan-ribbon">Đang dùng</span>}
-                {isFeatured && !isCurrent && <span className="billing-plan-ribbon is-featured-ribbon">Phổ biến</span>}
+                {isCurrent && <span className="billing-plan-ribbon">{t("billingPayment.plans.current")}</span>}
+                {isFeatured && !isCurrent && <span className="billing-plan-ribbon is-featured-ribbon">{t("billingPayment.plans.featured")}</span>}
                 <h3>{plan.name}</h3>
                 <p>{plan.description}</p>
                 <div className="billing-plan-price">
                   <strong>{formatMoney(plan.price_vnd)}</strong>
-                  {plan.billing_cycle === "monthly" ? <span>/tháng</span> : null}
+                  {plan.billing_cycle === "monthly" ? <span>{t("billingPayment.plans.monthly")}</span> : null}
                 </div>
                 <ul>
-                  <li><span className="material-symbols-outlined">account_tree</span>{plan.person_limit} hồ sơ trong cây gia phả</li>
-                  <li><span className="material-symbols-outlined">group</span>{plan.account_limit} tài khoản đăng nhập</li>
+                  <li><span className="material-symbols-outlined">account_tree</span>{plan.person_limit} {t("billingPayment.plans.recordsUnit")}</li>
+                  <li><span className="material-symbols-outlined">group</span>{plan.account_limit} {t("billingPayment.plans.accountsUnit")}</li>
                 </ul>
 
                 {isCurrent ? (
-                  <button type="button" className="billing-disabled-btn" disabled>Gói hiện tại</button>
+                  <button type="button" className="billing-disabled-btn" disabled>{t("billingPayment.plans.current")}</button>
                 ) : isAdmin ? (
                   <button
                     type="button"
                     className="billing-primary-btn"
                     onClick={async () => {
-                      const ok = window.confirm(`Nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}?`);
+                      const ok = window.confirm(t("billingPayment.messages.upgradeTestConfirm", { id: clanId, name: plan.name }));
                       if (!ok) return;
                       try {
                         setMessage("");
                         await manualUpgradeClan(clanId, { plan_code: plan.code, months: 1 });
                         await loadBillingForClan(clanId);
-                        setMessage(`Đã nâng cấp thử nghiệm cây gia phả #${clanId} lên gói ${plan.name}.`);
+                        setMessage(t("billingPayment.messages.upgradeTestSuccess", { id: clanId, name: plan.name }));
                       } catch (error) {
-                        setMessage(error.message || "Không thể nâng cấp thử nghiệm.");
+                        setMessage(error.message || t("billingPayment.messages.upgradeTestError"));
                       }
                     }}
                   >
-                    Nâng cấp thử nghiệm
+                    {t("billingPayment.plans.upgradeTest")}
                   </button>
                 ) : (
                   <button
@@ -899,10 +894,10 @@ const handlePaySelectedPayment = (payment) => {
                     onClick={() => handleCreateSepayPayment(plan)}
                   >
                     {hasActivePending
-                      ? "Đang có giao dịch chờ"
+                      ? t("billingPayment.plans.pending")
                       : isDowngrade
-                        ? "Không thể hạ gói"
-                        : "Nâng cấp ngay"}
+                        ? t("billingPayment.plans.cannotDowngrade")
+                        : t("billingPayment.plans.upgradeNow")}
                   </button>
                 )}
               </article>

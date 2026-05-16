@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 const featuredPosts = [
   {
     image: "https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=900&q=80",
@@ -40,20 +42,22 @@ const latestNews = [
   },
 ];
 
-const categories = [
-  { name: "Lịch Sử Dòng Họ", count: 28 },
-  { name: "Nghi Lễ & Phong Tục", count: 19 },
-  { name: "Công Nghệ & Số Hóa", count: 14 },
-  { name: "Nhân Vật Kiệt Xuất", count: 8 },
-];
-
 export default function NewsDetailPage() {
+  const { t } = useTranslation();
+
+  const categories = [
+    { name: t("public.news.categoryList.history"), count: 28 },
+    { name: t("public.news.categoryList.rituals"), count: 19 },
+    { name: t("public.news.categoryList.tech"), count: 14 },
+    { name: t("public.news.categoryList.people"), count: 8 },
+  ];
+
   return (
     <section className="news-page">
       <div className="news-hero">
         <div className="container">
-          <h1>Bản Tin Di Sản</h1>
-          <p>Gìn giữ cội nguồn - Phát huy truyền thống</p>
+          <h1>{t("public.news.title")}</h1>
+          <p>{t("public.news.subtitle")}</p>
           <span className="news-hero-divider" />
         </div>
       </div>
@@ -67,7 +71,7 @@ export default function NewsDetailPage() {
                 <span className="news-date">{featuredPosts[0].date}</span>
                 <h2>{featuredPosts[0].title}</h2>
                 <p>{featuredPosts[0].desc}</p>
-                <a href="#">Xem thêm »</a>
+                <a href="#">{t("public.news.readMore")}</a>
               </div>
             </article>
 
@@ -77,7 +81,7 @@ export default function NewsDetailPage() {
                 <span className="news-date">{featuredPosts[1].date}</span>
                 <h2>{featuredPosts[1].title}</h2>
                 <p>{featuredPosts[1].desc}</p>
-                <a href="#">Xem thêm »</a>
+                <a href="#">{t("public.news.readMore")}</a>
               </div>
             </article>
 
@@ -87,7 +91,7 @@ export default function NewsDetailPage() {
                 <span className="news-date">{featuredPosts[2].date}</span>
                 <h2>{featuredPosts[2].title}</h2>
                 <p>{featuredPosts[2].desc}</p>
-                <a href="#">Xem thêm »</a>
+                <a href="#">{t("public.news.readMore")}</a>
               </div>
             </article>
 
@@ -97,7 +101,7 @@ export default function NewsDetailPage() {
                 <span className="news-date">{featuredPosts[3].date}</span>
                 <h2>{featuredPosts[3].title}</h2>
                 <p>{featuredPosts[3].desc}</p>
-                <a href="#">Xem thêm »</a>
+                <a href="#">{t("public.news.readMore")}</a>
               </div>
             </article>
 
@@ -112,7 +116,7 @@ export default function NewsDetailPage() {
 
           <aside className="news-sidebar">
             <section className="sidebar-block sidebar-latest">
-              <h3>Tin Tức Nổi Bật</h3>
+              <h3>{t("public.news.featured")}</h3>
               <div className="latest-list">
                 {latestNews.map((item) => (
                   <article key={item.title} className="latest-item">
@@ -125,14 +129,18 @@ export default function NewsDetailPage() {
 
             <section className="sidebar-block subscribe-card">
               <div className="subscribe-icon">✉</div>
-              <h3>Đăng Ký Nhận Tin</h3>
-              <p>Để cập nhật tin tức mới nhất, hãy nhập email của bạn.</p>
-              <input type="email" placeholder="Địa chỉ Email của bạn" aria-label="Địa chỉ Email của bạn" />
-              <button type="button">ĐĂNG KÝ NGAY</button>
+              <h3>{t("public.news.subscribe.title")}</h3>
+              <p>{t("public.news.subscribe.desc")}</p>
+              <input
+                type="email"
+                placeholder={t("public.news.subscribe.placeholder")}
+                aria-label={t("public.news.subscribe.placeholder")}
+              />
+              <button type="button">{t("public.news.subscribe.submit")}</button>
             </section>
 
             <section className="sidebar-block category-card">
-              <h3>Chuyên Mục</h3>
+              <h3>{t("public.news.categories")}</h3>
               <ul>
                 {categories.map((item) => (
                   <li key={item.name}>

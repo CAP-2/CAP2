@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
 import { normalizeSearchText } from "../hooks/useTreeSearch";
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
@@ -14,6 +15,7 @@ export default function TreeViewModeSelector({
   onFullMode,
   onRootMode,
 }) {
+  const { t } = useLanguage();
   const [rootQuery, setRootQuery] = useState("");
   const rootPerson = asArray(people).find((person) => Number(person.id) === Number(rootPersonId));
   const rootResults = useMemo(() => {
@@ -32,15 +34,15 @@ export default function TreeViewModeSelector({
     <div className="fte-viewMode">
       <button type="button" className={mode === "full" ? "is-active" : ""} onClick={onFullMode}>
         <span className="material-symbols-outlined">account_tree</span>
-        Toàn bộ cây
+        {t("tree.viewMode.full")}
       </button>
       <div className="fte-rootPicker">
         <label>
-          <span>Làm gốc</span>
+          <span>{t("tree.viewMode.setRoot")}</span>
           <input
             type="search"
             value={rootQuery}
-            placeholder="Nhập tên để chọn"
+            placeholder={t("tree.viewMode.rootPlaceholder")}
             onChange={(event) => setRootQuery(event.target.value)}
           />
         </label>
@@ -50,19 +52,19 @@ export default function TreeViewModeSelector({
               key={person.id}
               type="button"
               className={Number(rootPersonId) === Number(person.id) ? "is-selected" : ""}
-              onClick={() => {
+               onClick={() => {
                 onRootMode(Number(person.id));
                 setRootQuery(personLabel(person));
               }}
             >
               <strong>{personLabel(person)}</strong>
-              <small>Đời {person.generation || 1}</small>
+              <small>{t("tree.card.generation", { count: person.generation || 1 })}</small>
             </button>
           ))}
         </div>
       </div>
       {mode === "root" && rootPerson ? (
-        <span className="fte-viewModeRoot">Root: {personLabel(rootPerson)}</span>
+        <span className="fte-viewModeRoot">{t("tree.viewMode.rootLabel", { name: personLabel(rootPerson) })}</span>
       ) : null}
     </div>
   );

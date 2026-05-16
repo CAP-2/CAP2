@@ -1,10 +1,11 @@
+import { useLanguage } from "../../../i18n/LanguageContext";
 import { formatDateVN } from "../../../shared/utils/dateFormat";
 import { getPersonHighlightState, highlightClassNames } from "../utils/treeHighlight";
 
 const CARD_WIDTH = 170;
 const CARD_HEIGHT = 185;
 
-function fullName(person, fallback = "Thành viên") {
+function fullName(person, fallback) {
   return person?.display_name || [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() || fallback;
 }
 
@@ -27,7 +28,8 @@ export default function TreeNodeCard({
   onQuickCreate,
   onToggleCollapse,
 }) {
-  const name = fullName(person);
+  const { t } = useLanguage();
+  const name = fullName(person, t("tree.card.fallbackName"));
   const genderClass = Number(person.gender) === 1 ? "is-male" : Number(person.gender) === 2 ? "is-female" : "is-unknown";
   const birthText = formatDateVN(person.birth_date);
   const deathText = formatDateVN(person.death_date);
@@ -36,17 +38,17 @@ export default function TreeNodeCard({
   const state = getPersonHighlightState(person, { ...highlightOptions, selectedPersonId: selected ? person.id : highlightOptions.selectedPersonId });
   const stateClasses = highlightClassNames(state);
   const badges = [
-    state.self ? "Tôi" : "",
-    state.online ? "Online" : "",
-    state.search ? "Kết quả tìm" : "",
-    state.editing ? "Đang sửa" : "",
-    state.error ? "Lỗi dữ liệu" : "",
+    state.self ? t("tree.card.badges.self") : "",
+    state.online ? t("tree.card.badges.online") : "",
+    state.search ? t("tree.card.badges.search") : "",
+    state.editing ? t("tree.card.badges.editing") : "",
+    state.error ? t("tree.card.badges.error") : "",
   ].filter(Boolean);
   const tooltip = [name, ...badges, ...state.errors].join("\n");
 
   const lifeParts = [];
-  if (birthText) lifeParts.push(`Sinh: ${birthText}`);
-  if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
+  if (birthText) lifeParts.push(t("tree.card.born", { date: birthText }));
+  if (deceased && deathText) lifeParts.push(t("tree.card.died", { date: deathText }));
 
   const stopActionPointer = (event) => {
     event.preventDefault();
@@ -74,7 +76,7 @@ export default function TreeNodeCard({
         <button
           type="button"
           className="fte-collapseButton"
-          title={collapsed ? "Mở nhánh con" : "Thu gọn nhánh con"}
+          title={collapsed ? t("tree.card.collapse.expand") : t("tree.card.collapse.collapse")}
           onPointerDown={stopActionPointer}
           onClick={(event) => {
             event.stopPropagation();
@@ -96,36 +98,36 @@ export default function TreeNodeCard({
       ) : null}
 
       {canEdit || canDelete ? (
-        <div className="fte-cardHoverActions" aria-label="Thao tác thành viên">
+        <div className="fte-cardHoverActions" aria-label={t("posts.modal.create.tabs.ariaLabel")}>
           {canEdit ? (
-            <button type="button" className="is-create" title="Thêm người liên kết" onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onQuickCreate?.(person); }}>
+            <button type="button" className="is-create" title={t("tree.card.addRelation")} onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onQuickCreate?.(person); }}>
               <span className="material-symbols-outlined">add</span>
             </button>
           ) : null}
           {canEdit ? (
-            <button type="button" title="Sửa thành viên" onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onEdit(person); }}>
+            <button type="button" title={t("tree.card.edit")} onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onEdit(person); }}>
               <span className="material-symbols-outlined">edit</span>
             </button>
           ) : null}
           {canDelete ? (
-            <button type="button" className="is-danger" title="Xóa thành viên" onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onDelete(person); }}>
+            <button type="button" className="is-danger" title={t("tree.card.delete")} onPointerDown={stopActionPointer} onClick={(event) => { event.stopPropagation(); onDelete(person); }}>
               <span className="material-symbols-outlined">delete</span>
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {isClanChief ? <span className="fte-chiefBadge">Tộc trưởng</span> : null}
+      {isClanChief ? <span className="fte-chiefBadge">{t("tree.card.chief")}</span> : null}
       <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`}>
         {person.avatar_url ? <img className="fte-mainPhoto" src={person.avatar_url} alt="" /> : <span className="material-symbols-outlined">person</span>}
       </div>
       <div className="fte-cardName">{name}</div>
-      <div className="fte-cardGeneration">Đời {person.generation || 1}</div>
-      <div className="fte-cardMeta">{lifeParts.join(" - ") || "Chưa có ngày sinh"}</div>
-      {state.editing ? <span className="fte-nodeBadge is-editing">Đang sửa</span> : null}
+      <div className="fte-cardGeneration">{t("tree.card.generation", { count: person.generation || 1 })}</div>
+      <div className="fte-cardMeta">{lifeParts.length > 0 ? lifeParts.join(" - ") : t("tree.card.noBirthDate")}</div>
+      {state.editing ? <span className="fte-nodeBadge is-editing">{t("tree.card.badges.editing")}</span> : null}
       {state.error ? <span className="fte-nodeBadge is-error">!</span> : null}
       {canEdit ? (
-        <span className="fte-resizeHandle" role="presentation" onPointerDown={(event) => onResizePointerDown(event, person)} />
+        <span className="fte-resizeHandle" role="presentation" title={t("tree.card.resize")} onPointerDown={(event) => onResizePointerDown(event, person)} />
       ) : null}
     </div>
   );

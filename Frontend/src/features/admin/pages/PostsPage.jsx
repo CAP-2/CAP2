@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getAdminClans, getAdminPostsByClan, updateAdminPostStatus, deleteAdminPost } from "../../../api/adminService";
-import { formatDateVN } from "../../../shared/utils/dateFormat";
+import { formatDate } from "../../../shared/utils/dateFormat";
 import { resolveImageUrl } from "../../../shared/utils/media";
 import "./PostsPage.css";
 
 export default function PostsPage() {
+    const { t, i18n } = useTranslation();
     const { clanId } = useParams();
     const navigate = useNavigate();
     const [clans, setClans] = useState([]);
@@ -37,7 +39,7 @@ export default function PostsPage() {
                 const res = await getAdminClans();
                 setClans(res.clans || []);
             } catch (err) {
-                setError(err.message);
+                setError(err.message || t("admin.posts.messages.loadError"));
             } finally {
                 if (!clanId) setLoading(false);
             }
@@ -73,13 +75,17 @@ export default function PostsPage() {
             );
             setToast({
                 show: true,
-                message: `Đã chuyển bài viết sang "${newStatus === 'approved' ? 'Đã duyệt' : 'Đã ẩn'}" thành công!`,
+                message: t("admin.posts.messages.statusUpdateSuccess", {
+                    status: newStatus === 'approved' 
+                        ? t("admin.posts.list.table.statuses.approved") 
+                        : t("admin.posts.list.table.statuses.rejected")
+                }),
                 type: "success"
             });
         } catch (err) {
             setToast({
                 show: true,
-                message: "Lỗi khi cập nhật bài viết: " + err.message,
+                message: t("admin.posts.messages.statusUpdateError", { error: err.message }),
                 type: "error"
             });
         }
@@ -101,13 +107,13 @@ export default function PostsPage() {
             }
             setToast({
                 show: true,
-                message: "Đã xóa vĩnh viễn bài viết hoàn tất!",
+                message: t("admin.posts.messages.deleteSuccess"),
                 type: "success"
             });
         } catch (err) {
             setToast({
                 show: true,
-                message: "Lỗi khi xóa bài viết: " + err.message,
+                message: t("admin.posts.messages.deleteError", { error: err.message }),
                 type: "error"
             });
         }
@@ -115,7 +121,7 @@ export default function PostsPage() {
 
     const selectedClan = clans.find(c => String(c.id) === String(clanId));
 
-    if (loading) return <div className="loading-container"><div className="loader"></div><p>Đang tải dữ liệu...</p></div>;
+    if (loading) return <div className="loading-container"><div className="loader"></div><p>{t("admin.posts.messages.loading")}</p></div>;
 
     // Tính toán dữ liệu phân trang
     const indexOfLastPost = currentPage * postsPerPage;
@@ -127,17 +133,17 @@ export default function PostsPage() {
         <div className="posts-management-page">
             <header className="page-header">
                 <div className="breadcrumb-nav">
-                    <Link to="/dashboard">Tổng quan</Link>
+                    <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
                     <span className="separator">/</span>
-                    <Link to="/dashboard/posts" className={!clanId ? "active" : ""}>Quản lý bài viết</Link>
+                    <Link to="/dashboard/posts" className={!clanId ? "active" : ""}>{t("admin.posts.breadcrumbs.posts")}</Link>
                     {clanId && (
                         <>
                             <span className="separator">/</span>
-                            <span className="active">{selectedClan?.clan_name || `Clan #${clanId}`}</span>
+                            <span className="active">{selectedClan?.clan_name || t("admin.posts.list.clanId", { id: clanId })}</span>
                         </>
                     )}
                 </div>
-                <h1>{clanId ? `Bài viết dòng họ ${selectedClan?.clan_name}` : "Chọn dòng họ để quản lý"}</h1>
+                <h1>{clanId ? t("admin.posts.subtitle", { name: selectedClan?.clan_name }) : t("admin.posts.selectClan")}</h1>
             </header>
 
             {!clanId ? (
@@ -150,7 +156,7 @@ export default function PostsPage() {
                             </div>
                             <div className="folder-info">
                                 <h3>{clan.clan_name}</h3>
-                                <p>{clan.owner_name || "Chưa có chủ quản"}</p>
+                                <p>{clan.owner_name || t("admin.posts.folders.noOwner")}</p>
                             </div>
                         </div>
                     ))}
@@ -160,19 +166,19 @@ export default function PostsPage() {
                     {posts.length === 0 ? (
                         <div className="empty-state">
                             <span className="material-symbols-outlined">article</span>
-                            <p>Dòng họ này chưa có bài viết nào.</p>
-                            <Link to="/dashboard/posts" className="btn-secondary">Quay lại danh sách</Link>
+                            <p>{t("admin.posts.list.empty")}</p>
+                            <Link to="/dashboard/posts" className="btn-secondary">{t("admin.posts.list.back")}</Link>
                         </div>
                     ) : (
                         <>
                             <table className="premium-table">
                                 <thead>
                                     <tr>
-                                        <th>Người đăng</th>
-                                        <th>Nội dung</th>
-                                        <th>Ngày đăng</th>
-                                        <th>Trạng thái</th>
-                                        <th>Thao tác</th>
+                                        <th>{t("admin.posts.list.table.cols.author")}</th>
+                                        <th>{t("admin.posts.list.table.cols.content")}</th>
+                                        <th>{t("admin.posts.list.table.cols.date")}</th>
+                                        <th>{t("admin.posts.list.table.cols.status")}</th>
+                                        <th>{t("admin.posts.list.table.cols.actions")}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -187,7 +193,7 @@ export default function PostsPage() {
                                                 <td>
                                                     <div className="author-cell">
                                                         <div className="author-avatar">{post.author_name?.charAt(0) || "U"}</div>
-                                                        <span>{post.author_name || "Ẩn danh"}</span>
+                                                        <span>{post.author_name || t("admin.posts.list.table.anonymous")}</span>
                                                     </div>
                                                 </td>
                                                 <td>
@@ -199,16 +205,20 @@ export default function PostsPage() {
                                                                 <span className="material-symbols-outlined has-image-icon">image</span>
                                                                 <div className="image-hover-popup">
                                                                     <img src={postImageUrl} alt="Preview" loading="lazy" />
-                                                                    <div className="popup-caption">Xem trước ảnh</div>
+                                                                    <div className="popup-caption">{t("admin.posts.list.table.previewImage")}</div>
                                                                 </div>
                                                             </div>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td>{formatDateVN(post.created_at)}</td>
+                                                <td>{formatDate(post.created_at, i18n)}</td>
                                                 <td>
                                                     <span className={`status-badge ${post.status}`}>
-                                                        {post.status === 'approved' ? 'Đã duyệt' : post.status === 'pending' ? 'Chờ duyệt' : 'Đã ẩn'}
+                                                        {post.status === 'approved' 
+                                                            ? t("admin.posts.list.table.statuses.approved") 
+                                                            : post.status === 'pending' 
+                                                                ? t("admin.posts.list.table.statuses.pending") 
+                                                                : t("admin.posts.list.table.statuses.rejected")}
                                                     </span>
                                                 </td>
                                                 <td>
@@ -216,7 +226,7 @@ export default function PostsPage() {
                                                         {post.status !== 'approved' && (
                                                             <button 
                                                                 className="icon-btn-check" 
-                                                                title="Duyệt bài viết"
+                                                                title={t("admin.posts.actions.approve")}
                                                                 onClick={() => handleUpdateStatus(post.id, 'approved')}
                                                             >
                                                                 <span className="material-symbols-outlined">check_circle</span>
@@ -225,7 +235,7 @@ export default function PostsPage() {
                                                         {post.status !== 'rejected' && (
                                                             <button 
                                                                 className="icon-btn-hide" 
-                                                                title="Ẩn bài viết"
+                                                                title={t("admin.posts.actions.hide")}
                                                                 onClick={() => handleUpdateStatus(post.id, 'rejected')}
                                                             >
                                                                 <span className="material-symbols-outlined">visibility_off</span>
@@ -233,7 +243,7 @@ export default function PostsPage() {
                                                         )}
                                                         <button 
                                                             className="icon-btn-delete" 
-                                                            title="Xóa vĩnh viễn"
+                                                            title={t("admin.posts.actions.delete")}
                                                             onClick={() => setConfirmDelete({ show: true, postId: post.id })}
                                                         >
                                                             <span className="material-symbols-outlined">delete</span>
@@ -249,7 +259,11 @@ export default function PostsPage() {
                             {totalPages > 1 && (
                                 <div className="table-pagination">
                                     <span className="pagination-info">
-                                        Hiển thị {indexOfFirstPost + 1} - {Math.min(indexOfLastPost, posts.length)} trong {posts.length} bài
+                                        {t("admin.posts.list.pagination", {
+                                            start: indexOfFirstPost + 1,
+                                            end: Math.min(indexOfLastPost, posts.length),
+                                            total: posts.length
+                                        })}
                                     </span>
                                     <div className="pagination-controls">
                                         <button 
@@ -306,14 +320,14 @@ export default function PostsPage() {
                         <div className="modal-warning-icon">
                             <span className="material-symbols-outlined">warning</span>
                         </div>
-                        <h2>Xác nhận xóa bài viết?</h2>
-                        <p>Thao tác này sẽ xóa vĩnh viễn nội dung bài viết khỏi hệ thống và KHÔNG THỂ phục hồi lại.</p>
+                        <h2>{t("admin.posts.confirmDelete.title")}</h2>
+                        <p>{t("admin.posts.confirmDelete.subtitle")}</p>
                         <div className="modal-buttons">
                             <button className="modal-btn-cancel" onClick={() => setConfirmDelete({ show: false, postId: null })}>
-                                Hủy bỏ
+                                {t("admin.posts.confirmDelete.cancel")}
                             </button>
                             <button className="modal-btn-danger" onClick={confirmAndPerformDelete}>
-                                Xác nhận Xóa
+                                {t("admin.posts.confirmDelete.confirm")}
                             </button>
                         </div>
                     </div>

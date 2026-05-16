@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getStoredUser, logout, isAuthenticated } from "../shared/utils/auth";
-import { formatDateVN } from "../shared/utils/dateFormat";
+import { formatDate } from "../shared/utils/dateFormat";
 import { apiRequest } from "../services/api";
 import { connectSocketFromStorage } from "../services/socket";
 import { resolveImageUrl } from "../shared/utils/media";
@@ -25,7 +25,7 @@ const menuItems = [
 ];
 
 export default function ManagerLayout() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -330,7 +330,7 @@ export default function ManagerLayout() {
         <header className="manager-top-header glass-effect">
           <div className="header-context">
             <h1>{t("layout.managerTitle")}</h1>
-            <p>{t("layout.session", { date: formatDateVN(new Date()) })}</p>
+            <p>{t("layout.session", { date: formatDate(new Date(), { language: i18n.language }) })}</p>
           </div>
           <div className="header-utils">
             <NotificationBell role="manager" buttonClassName="util-btn" />

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
   createMemberReminder,
@@ -14,26 +15,27 @@ import { getSocket } from "../../../services/socket";
 import { formatDateTimeVN, formatDateVN, vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import "./MemberDashboard.css";
 
-function formatDate(value, withTime = false) {
-  if (!value) return "Chưa cập nhật";
+function formatDate(value, t, withTime = false) {
+  if (!value) return t("posts.card.notUpdated");
   return withTime ? formatDateTimeVN(value) : formatDateVN(value);
 }
 
-function getTaskLabel(status) {
-  if (status === "completed") return "Đã hoàn thành";
-  if (status === "in_progress") return "Đang làm";
-  return "Đã giao";
+function getTaskLabel(status, t) {
+  if (status === "completed") return t("member.dashboard.tasks.status.completed");
+  if (status === "in_progress") return t("member.dashboard.tasks.status.inProgress");
+  return t("member.dashboard.tasks.status.assigned");
 }
 
-function buildDisplayName(profile) {
+function buildDisplayName(profile, t) {
   return (
     profile?.display_name ||
     [profile?.surname, profile?.middle_name, profile?.first_name].filter(Boolean).join(" ").trim() ||
-    "Thành viên"
+    t("posts.modal.detail.member")
   );
 }
 
 export default function MemberDashboard() {
+  const { t } = useTranslation();
   const [dashboard, setDashboard] = useState(null);
   const [chat, setChat] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -71,7 +73,7 @@ export default function MemberDashboard() {
             : [
                 {
                   role: "ai",
-                  text: "Chào bạn, tôi có thể hỗ trợ tra cứu thông tin dòng họ, công việc được giao và lịch nhắc.",
+                  text: t("member.dashboard.aiChat.welcome"),
                 },
               ],
         );
@@ -83,7 +85,7 @@ export default function MemberDashboard() {
         setPosts([]);
       }
     } catch (err) {
-      setError(err?.message || "Không thể tải dữ liệu trang thành viên.");
+      setError(err?.message || t("member.dashboard.messages.loadError"));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -182,37 +184,37 @@ export default function MemberDashboard() {
 
     return [
       {
-        label: "Thành viên trong dòng họ",
+        label: t("member.dashboard.stats.treeMembers"),
         value: treeMembers.length,
         icon: "groups",
         tone: "green",
       },
       {
-        label: "Số đời đã ghi nhận",
+        label: t("member.dashboard.stats.generations"),
         value: generations.size || 0,
         icon: "account_tree",
         tone: "gold",
       },
       {
-        label: "Công việc đang mở",
+        label: t("member.dashboard.stats.openTasks"),
         value: openTasks,
         icon: "assignment",
         tone: "blue",
       },
       {
-        label: "Hồ sơ hoàn thiện",
+        label: t("member.dashboard.stats.profileComplete"),
         value: `${Math.round((completeFields / profileFields.length) * 100)}%`,
         icon: "badge",
         tone: "red",
       },
       {
-        label: "Thông báo chưa đọc",
+        label: t("member.dashboard.stats.unreadNotifications"),
         value: unreadNotifications,
         icon: "notifications",
         tone: "violet",
       },
     ];
-  }, [notifications, profile, tasks, treeMembers]);
+  }, [notifications, profile, tasks, treeMembers, t]);
 
   const handleTaskStatus = async (taskId, status) => {
     setSavingTaskId(taskId);
@@ -220,10 +222,10 @@ export default function MemberDashboard() {
     setNotice("");
     try {
       await updateMemberTaskStatus(taskId, status);
-      setNotice(status === "completed" ? "Đã đánh dấu hoàn thành công việc." : "Đã cập nhật trạng thái công việc.");
+      setNotice(status === "completed" ? t("member.dashboard.messages.taskUpdateSuccess") : t("member.dashboard.messages.taskUpdateGeneralSuccess"));
       await loadDashboard(true);
     } catch (err) {
-      setError(err?.message || "Không thể cập nhật công việc.");
+      setError(err?.message || t("member.dashboard.messages.taskUpdateError"));
     } finally {
       setSavingTaskId(null);
     }
@@ -232,7 +234,7 @@ export default function MemberDashboard() {
   const handleCreateReminder = async (event) => {
     event.preventDefault();
     if (!reminderForm.title.trim() || !reminderForm.date) {
-      setError("Vui lòng nhập tiêu đề và ngày nhắc.");
+      setError(t("member.dashboard.messages.reminderRequired"));
       return;
     }
 
@@ -246,10 +248,10 @@ export default function MemberDashboard() {
         note: reminderForm.note.trim(),
       });
       setReminderForm({ title: "", date: "", note: "" });
-      setNotice("Đã thêm nhắc việc vào lịch dòng họ.");
+      setNotice(t("member.dashboard.messages.reminderSuccess"));
       await loadDashboard(true);
     } catch (err) {
-      setError(err?.message || "Không thể tạo nhắc việc.");
+      setError(err?.message || t("member.dashboard.messages.reminderError"));
     } finally {
       setSavingReminder(false);
     }
@@ -274,7 +276,7 @@ export default function MemberDashboard() {
         })),
       );
     } catch (err) {
-      setError(err?.message || "Không thể gửi tin nhắn.");
+      setError(err?.message || t("member.dashboard.messages.chatError"));
     } finally {
       setSendingChat(false);
     }
@@ -284,7 +286,7 @@ export default function MemberDashboard() {
     return (
       <div className="member-portal-page">
         <section className="member-panel">
-          <div className="member-empty">Đang tải dữ liệu thành viên...</div>
+          <div className="member-empty">{t("member.dashboard.messages.loading")}</div>
         </section>
       </div>
     );
@@ -300,22 +302,22 @@ export default function MemberDashboard() {
 
       <section className="member-hero-panel">
         <div>
-          <span className="member-kicker">Trang thành viên</span>
-          <h1>{buildDisplayName(profile)}</h1>
+          <span className="member-kicker">{t("member.dashboard.kicker")}</span>
+          <h1>{buildDisplayName(profile, t)}</h1>
           <p>
             {clan.clan_name
-              ? `Bạn đang xem dữ liệu của dòng họ ${clan.clan_name}.`
-              : "Tài khoản chưa được gắn với dòng họ nào."}
+              ? t("member.dashboard.clanConnected", { name: clan.clan_name })
+              : t("member.dashboard.clanNotConnected")}
           </p>
         </div>
         <div className="member-hero-actions">
           <Link to="/user/family-tree" className="member-btn member-btn-primary">
             <span className="material-symbols-outlined">account_tree</span>
-            Xem cây gia phả
+            {t("member.dashboard.viewTree")}
           </Link>
           <Link to="/user/profile" className="member-btn member-btn-ghost">
             <span className="material-symbols-outlined">manage_accounts</span>
-            Cập nhật hồ sơ
+            {t("member.dashboard.updateProfile")}
           </Link>
         </div>
       </section>
@@ -336,14 +338,14 @@ export default function MemberDashboard() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Công việc được giao</h2>
-              <p>Theo dõi và cập nhật tiến độ cho quản lý dòng họ.</p>
+              <h2>{t("member.dashboard.tasks.title")}</h2>
+              <p>{t("member.dashboard.tasks.subtitle")}</p>
             </div>
           </div>
 
           <div className="member-list">
             {tasks.length === 0 ? (
-              <div className="member-empty">Bạn chưa có công việc được giao.</div>
+              <div className="member-empty">{t("member.dashboard.tasks.empty")}</div>
             ) : (
               tasks.map((task) => (
                 <article className="member-task-card" key={task.id}>
@@ -351,9 +353,9 @@ export default function MemberDashboard() {
                     <div className="member-row-title">{task.title}</div>
                     {task.description && <p>{task.description}</p>}
                     <div className="member-meta">
-                      <span>Người giao: {task.manager_name || "Manager"}</span>
-                      <span>Hạn: {formatDate(task.due_date)}</span>
-                      <span className={`member-status status-${task.status}`}>{getTaskLabel(task.status)}</span>
+                      <span>{t("member.dashboard.tasks.manager", { name: task.manager_name || "Manager" })}</span>
+                      <span>{t("member.dashboard.tasks.deadline", { date: formatDate(task.due_date, t) })}</span>
+                      <span className={`member-status status-${task.status}`}>{getTaskLabel(task.status, t)}</span>
                     </div>
                   </div>
                   {task.status !== "completed" && (
@@ -364,7 +366,7 @@ export default function MemberDashboard() {
                         disabled={savingTaskId === task.id || task.status === "in_progress"}
                         onClick={() => handleTaskStatus(task.id, "in_progress")}
                       >
-                        Đang làm
+                        {t("member.dashboard.tasks.actions.start")}
                       </button>
                       <button
                         className="member-btn member-btn-primary"
@@ -372,7 +374,7 @@ export default function MemberDashboard() {
                         disabled={savingTaskId === task.id}
                         onClick={() => handleTaskStatus(task.id, "completed")}
                       >
-                        Hoàn thành
+                        {t("member.dashboard.tasks.actions.complete")}
                       </button>
                     </div>
                   )}
@@ -385,8 +387,8 @@ export default function MemberDashboard() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Nhắc việc và sự kiện</h2>
-              <p>Thêm lịch nhắc chung cho dòng họ.</p>
+              <h2>{t("member.dashboard.reminders.title")}</h2>
+              <p>{t("member.dashboard.reminders.subtitle")}</p>
             </div>
           </div>
 
@@ -394,7 +396,7 @@ export default function MemberDashboard() {
             <input
               value={reminderForm.title}
               onChange={(event) => setReminderForm((current) => ({ ...current, title: event.target.value }))}
-              placeholder="Tiêu đề nhắc việc"
+              placeholder={t("member.dashboard.reminders.placeholderTitle")}
             />
             <DateInput
               value={reminderForm.date}
@@ -403,11 +405,11 @@ export default function MemberDashboard() {
             <textarea
               value={reminderForm.note}
               onChange={(event) => setReminderForm((current) => ({ ...current, note: event.target.value }))}
-              placeholder="Ghi chú"
+              placeholder={t("member.dashboard.reminders.placeholderNote")}
               rows={3}
             />
             <button className="member-btn member-btn-primary" type="submit" disabled={savingReminder}>
-              Thêm nhắc việc
+              {t("member.dashboard.reminders.submit")}
             </button>
           </form>
 
@@ -415,10 +417,10 @@ export default function MemberDashboard() {
             {reminders.slice(0, 5).map((reminder) => (
               <article className="member-mini-row" key={reminder.id}>
                 <strong>{reminder.title}</strong>
-                <span>{formatDate(reminder.event_date)}</span>
+                <span>{formatDate(reminder.event_date, t)}</span>
               </article>
             ))}
-            {reminders.length === 0 && <div className="member-empty">Chưa có sự kiện hoặc nhắc việc.</div>}
+            {reminders.length === 0 && <div className="member-empty">{t("member.dashboard.reminders.empty")}</div>}
           </div>
         </section>
       </div>
@@ -427,11 +429,11 @@ export default function MemberDashboard() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Bảng tin dòng họ</h2>
-              <p>Các bài viết đã được quản lý phê duyệt.</p>
+              <h2>{t("member.dashboard.posts.title")}</h2>
+              <p>{t("member.dashboard.posts.subtitle")}</p>
             </div>
             <Link to="/user/posts?compose=1" className="member-btn member-btn-ghost">
-              Thêm bài đăng
+              {t("member.dashboard.posts.addPost")}
             </Link>
           </div>
 
@@ -440,21 +442,21 @@ export default function MemberDashboard() {
               <article className="member-post-card" key={post.id}>
                 {post.image_url && <img src={post.image_url} alt="" />}
                 <div>
-                  <strong>{post.author_name || "Thành viên"}</strong>
-                  <span>{formatDate(post.created_at, true)}</span>
-                  <p>{post.description || post.content || "Bài viết hình ảnh"}</p>
+                  <strong>{post.author_name || t("posts.modal.detail.member")}</strong>
+                  <span>{formatDate(post.created_at, t, true)}</span>
+                  <p>{post.description || post.content || t("posts.card.imagePost")}</p>
                 </div>
               </article>
             ))}
-            {posts.length === 0 && <div className="member-empty">Chưa có bài viết nào được phê duyệt.</div>}
+            {posts.length === 0 && <div className="member-empty">{t("member.dashboard.posts.empty")}</div>}
           </div>
         </section>
 
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Trợ lý AI</h2>
-              <p>Hỏi nhanh về dữ liệu gia phả và thông tin dòng họ.</p>
+              <h2>{t("member.dashboard.aiChat.title")}</h2>
+              <p>{t("member.dashboard.aiChat.subtitle")}</p>
             </div>
           </div>
 
@@ -473,10 +475,10 @@ export default function MemberDashboard() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") handleSendChat();
                 }}
-                placeholder="Nhập câu hỏi..."
+                placeholder={t("member.dashboard.aiChat.placeholder")}
               />
               <button className="member-btn member-btn-primary" type="button" disabled={sendingChat} onClick={handleSendChat}>
-                Gửi
+                {t("member.dashboard.aiChat.send")}
               </button>
             </div>
           </div>
@@ -486,19 +488,19 @@ export default function MemberDashboard() {
       <section className="member-panel">
         <div className="member-panel-header">
           <div>
-            <h2>Thông báo gần đây</h2>
-            <p>Cập nhật từ quản lý và hệ thống.</p>
+            <h2>{t("member.dashboard.notifications.title")}</h2>
+            <p>{t("member.dashboard.notifications.subtitle")}</p>
           </div>
         </div>
         <div className="member-list compact">
           {notifications.slice(0, 8).map((item) => (
             <article className="member-mini-row" key={item.id}>
-              <strong>{item.title || "Thông báo"}</strong>
+              <strong>{item.title || t("member.dashboard.notifications.defaultTitle")}</strong>
               <span>{item.message}</span>
-              <small>{formatDate(item.created_at, true)}</small>
+              <small>{formatDate(item.created_at, t, true)}</small>
             </article>
           ))}
-          {notifications.length === 0 && <div className="member-empty">Chưa có thông báo mới.</div>}
+          {notifications.length === 0 && <div className="member-empty">{t("member.dashboard.notifications.empty")}</div>}
         </div>
       </section>
     </div>

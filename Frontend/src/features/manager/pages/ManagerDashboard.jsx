@@ -10,8 +10,10 @@ import {
 import ManagerDashboardCharts from "../components/ManagerDashboardCharts";
 import { getStoredUser } from "../../../shared/utils/auth";
 import { formatDateTime } from "../utils/managerData";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 export default function ManagerDashboard() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const [stats, setStats] = useState({ total_members: 0, total_managers: 0, total_pending: 0 });
@@ -69,7 +71,7 @@ export default function ManagerDashboard() {
       setFundTransactions(transactionData?.transactions || []);
       setFamilies(treeData?.families || []);
     } catch (err) {
-      setError(err?.message || "Không thể tải dữ liệu tổng quan");
+      setError(err?.message || t("manager.dashboard.messages.loadError"));
     } finally {
       setLoading(false);
     }
@@ -90,19 +92,19 @@ export default function ManagerDashboard() {
   const statCards = [
     {
       icon: "group",
-      label: "Thành viên dòng họ",
+      label: t("manager.dashboard.stats.members"),
       value: stats.total_members || 0,
       color: "#8b0000",
     },
     {
       icon: "pending_actions",
-      label: "Đang chờ duyệt",
+      label: t("manager.dashboard.stats.pending"),
       value: totalPending,
       color: "#c99a2c",
     },
     {
       icon: "account_balance_wallet",
-      label: "Tổng tiền trong quỹ",
+      label: t("manager.dashboard.stats.fund"),
       value: formatMoney(
         fundOverview?.balance ||
           fundOverview?.current_balance ||
@@ -113,7 +115,7 @@ export default function ManagerDashboard() {
     },
     {
       icon: "assignment",
-      label: "Nhiệm vụ active",
+      label: t("manager.dashboard.stats.tasks"),
       value: activeTasks,
       color: "#2c3e50",
     },
@@ -129,14 +131,12 @@ export default function ManagerDashboard() {
 
     <div>
       <h2>
-        Chào mừng trở lại,{" "}
-        {currentUser?.name || currentUser?.display_name || "Manager"}!
+        {t("manager.dashboard.welcome", { name: currentUser?.name || currentUser?.display_name || "Manager" })}
       </h2>
 
-      <p>
-        Hôm nay có <strong>{totalPending}</strong> yêu cầu cần xử lý từ dữ liệu
-        trong hệ thống.
-      </p>
+      <p dangerouslySetInnerHTML={{ 
+        __html: t("manager.dashboard.pendingSummary", { count: totalPending }) 
+      }} />
     </div>
   </div>
 
@@ -147,7 +147,7 @@ export default function ManagerDashboard() {
     disabled={loading}
   >
     <span className="material-symbols-outlined">refresh</span>
-    Tải lại
+    {t("manager.accounts.actions.refresh")}
   </button>
 </div>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getStoredUser, logout, isAuthenticated } from "../shared/utils/auth";
-import { formatDateVN } from "../shared/utils/dateFormat";
+import { formatDate } from "../shared/utils/dateFormat";
 import LanguageToggle from "../shared/components/LanguageToggle";
 import "./AdminLayout.css";
 
@@ -19,7 +19,7 @@ const menuItems = [
 ];
 
 export default function AdminLayout() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -93,7 +93,7 @@ export default function AdminLayout() {
         <header className="admin-top-header glass-effect">
           <div className="header-context">
             <h1>{t("layout.adminTitle")}</h1>
-            <p>{currentTime.toLocaleTimeString('vi-VN')} | {formatDateVN(currentTime)}</p>
+            <p>{currentTime.toLocaleTimeString(i18n.language === "vi" ? "vi-VN" : "en-US")} | {formatDate(currentTime, { language: i18n.language })}</p>
           </div>
           <div className="admin-header-utils">
             <LanguageToggle className="admin-util-btn" />

@@ -9,3 +9,4 @@ Backend/storage/
 .venv-whisper/
 __pycache__/
 *.pyc*
+backend/.env

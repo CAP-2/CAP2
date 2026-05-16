@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getAdminSettings, updateAdminSettings } from "../../../api/adminService";
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState({
     site_name: "Gia Phả Việt",
     site_description: "Hệ thống quản lý gia phả trực tuyến",
@@ -40,7 +42,7 @@ export default function SettingsPage() {
     setSuccess("");
     try {
       await updateAdminSettings(settings);
-      setSuccess("Cài đặt đã được lưu thành công!");
+      setSuccess(t("admin.settings.messages.saveSuccess"));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -48,14 +50,14 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div className="loading-state">Đang tải...</div>;
+  if (loading) return <div className="loading-state">{t("admin.settings.messages.loading")}</div>;
 
   return (
     <section className="settings-management">
       <div className="section-header">
         <div>
-          <h2>Cài đặt hệ thống</h2>
-          <p>Cấu hình các thông tin cơ bản và tùy chọn vận hành của trang web.</p>
+          <h2>{t("admin.settings.title")}</h2>
+          <p>{t("admin.settings.subtitle")}</p>
         </div>
       </div>
 
@@ -63,9 +65,9 @@ export default function SettingsPage() {
         <form onSubmit={handleSave} className="settings-form">
           <div className="form-grid">
             <div className="settings-card">
-              <h3>Thông tin chung</h3>
+              <h3>{t("admin.settings.sections.general")}</h3>
               <div className="form-group">
-                <label>Tên trang web</label>
+                <label>{t("admin.settings.fields.siteName")}</label>
                 <input 
                   type="text" 
                   value={settings.site_name}
@@ -73,7 +75,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="form-group">
-                <label>Mô tả ngắn</label>
+                <label>{t("admin.settings.fields.siteDescription")}</label>
                 <textarea 
                   rows="3"
                   value={settings.site_description}
@@ -83,9 +85,9 @@ export default function SettingsPage() {
             </div>
 
             <div className="settings-card">
-              <h3>Liên hệ & Hỗ trợ</h3>
+              <h3>{t("admin.settings.sections.contact")}</h3>
               <div className="form-group">
-                <label>Email hỗ trợ</label>
+                <label>{t("admin.settings.fields.supportEmail")}</label>
                 <input 
                   type="email" 
                   value={settings.contact_email}
@@ -93,7 +95,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="form-group">
-                <label>Số điện thoại</label>
+                <label>{t("admin.settings.fields.phone")}</label>
                 <input 
                   type="text" 
                   value={settings.phone_number}
@@ -101,7 +103,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="form-group">
-                <label>Địa chỉ văn phòng</label>
+                <label>{t("admin.settings.fields.address")}</label>
                 <input 
                   type="text" 
                   value={settings.address}
@@ -111,7 +113,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="settings-card">
-              <h3>Trạng thái hệ thống</h3>
+              <h3>{t("admin.settings.sections.status")}</h3>
               <div className="form-group checkbox-group">
                 <label className="switch">
                   <input 
@@ -122,8 +124,8 @@ export default function SettingsPage() {
                   <span className="slider round"></span>
                 </label>
                 <div className="label-text">
-                  <strong>Chế độ bảo trì</strong>
-                  <p>Khi bật, chỉ Admin mới có thể truy cập hệ thống.</p>
+                  <strong>{t("admin.settings.fields.maintenanceMode")}</strong>
+                  <p>{t("admin.settings.fields.maintenanceHint")}</p>
                 </div>
               </div>
             </div>
@@ -133,7 +135,7 @@ export default function SettingsPage() {
             {error && <span className="error-text">{error}</span>}
             {success && <span className="success-text">{success}</span>}
             <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? "Đang lưu..." : "Lưu thay đổi"}
+              {saving ? t("admin.settings.actions.saving") : t("admin.settings.actions.save")}
             </button>
           </div>
         </form>

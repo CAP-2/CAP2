@@ -193,7 +193,7 @@ const birthTime = (person) => {
   return Number.isFinite(time) ? time : null;
 };
 
-const fullName = (person, fallback = "Chưa có tên") =>
+const fullName = (person, fallback) =>
   person?.display_name ||
   [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
   fallback;
@@ -718,12 +718,12 @@ function downloadBlob(blob, fileName) {
 }
 
 
-function canvasToBlob(canvas) {
+function canvasToBlob(canvas, t) {
   return new Promise((resolve, reject) => {
     try {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
-        else reject(new Error("Trình duyệt không tạo được dữ liệu PNG từ canvas."));
+        else reject(new Error(t ? t("tree.messages.exportError") : "Export failed"));
       }, "image/png", 0.95);
     } catch (error) {
       reject(error);
@@ -791,7 +791,7 @@ function drawTreeLine(ctx, line) {
   ctx.restore();
 }
 
-function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
+function drawPersonCardOnCanvas(ctx, person, cardSizes = {}, t) {
   const size = getCardSize(cardSizes, person.id);
   const x = toInt(person.tree_x, 0);
   const y = toInt(person.tree_y, 0);
@@ -799,13 +799,16 @@ function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
   const height = size.height;
   const isFounder = Number(person.generation) === 1 || Number(person.role_id) === 1;
   const isChief = Number(person.role_id) === 2;
-  const name = String(fullName(person, "Thành viên")).toUpperCase();
+  const name = String(fullName(person, t ? t("tree.card.fallbackName") : "Thành viên")).toUpperCase();
   const birthText = formatDisplayDate(person.birth_date);
   const deathText = formatDisplayDate(person.death_date);
   const deceased = Number(person.is_living) === 0;
   const lifeParts = [];
-  if (birthText) lifeParts.push(`Sinh: ${birthText}`);
-  if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
+  if (birthText && t) lifeParts.push(t("tree.card.born", { date: birthText }));
+  else if (birthText) lifeParts.push(`Sinh: ${birthText}`);
+
+  if (deceased && deathText && t) lifeParts.push(t("tree.card.died", { date: deathText }));
+  else if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
   const lifeText = lifeParts.join(" - ");
 
   ctx.save();
@@ -842,7 +845,7 @@ function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "700 11px Georgia, 'Times New Roman', serif";
-    ctx.fillText("TỘC TRƯỞNG", x + 12 + Math.min(width - 24, 92) / 2, y + 21);
+    ctx.fillText(t ? t("tree.card.chief").toUpperCase() : "TỘC TRƯỞNG", x + 12 + Math.min(width - 24, 92) / 2, y + 21);
   }
 
   const iconY = y + Math.max(24, Math.min(45, height * 0.17));
@@ -867,7 +870,8 @@ function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
   ctx.textBaseline = "middle";
   ctx.fillStyle = isFounder ? "#fffbe8" : "#8a2418";
   drawTextFit(ctx, name, iconX, y + height * 0.48, width - 24, { fontSize: Math.max(12, Math.min(20, width * 0.105)), minFontSize: 9, weight: "800" });
-  drawTextFit(ctx, `ĐỜI ${person.generation || "?"}`, iconX, y + height * 0.61, width - 28, { fontSize: Math.max(11, Math.min(17, width * 0.09)), minFontSize: 9, weight: "800" });
+  const genText = t ? t("tree.card.generation", { count: person.generation || "?" }).toUpperCase() : `ĐỜI ${person.generation || "?"}`;
+  drawTextFit(ctx, genText, iconX, y + height * 0.61, width - 28, { fontSize: Math.max(11, Math.min(17, width * 0.09)), minFontSize: 9, weight: "800" });
   if (lifeText) {
     ctx.fillStyle = isFounder ? "#fff4c7" : "#9a4f20";
     drawTextFit(ctx, lifeText, iconX, y + height - 22, width - 18, { fontSize: Math.max(9, Math.min(12, width * 0.06)), minFontSize: 8, weight: "700" });
@@ -875,14 +879,14 @@ function drawPersonCardOnCanvas(ctx, person, cardSizes = {}) {
   ctx.restore();
 }
 
-async function renderFamilyTreePngBlob({ people, lines, cardSizes, clan }) {
+async function renderFamilyTreePngBlob({ people, lines, cardSizes, clan, t }) {
   const bounds = getTreeExportBounds(people, lines, cardSizes);
   const pixelRatio = getExportPixelRatio(bounds);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.ceil(bounds.width * pixelRatio));
   canvas.height = Math.max(1, Math.ceil(bounds.height * pixelRatio));
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Trình duyệt không hỗ trợ canvas export.");
+  if (!ctx) throw new Error(t ? t("tree.messages.exportError") : "Export failed");
 
   ctx.save();
   ctx.scale(pixelRatio, pixelRatio);
@@ -901,15 +905,15 @@ async function renderFamilyTreePngBlob({ people, lines, cardSizes, clan }) {
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.font = "800 15px Georgia, 'Times New Roman', serif";
-  ctx.fillText("GIA PHẢ", 58, 52);
+  ctx.fillText(t ? t("tree.title").toUpperCase() : "GIA PHẢ", 58, 52);
   ctx.font = "900 32px Georgia, 'Times New Roman', serif";
-  ctx.fillText(String(clan?.clan_name || "Dòng họ").toUpperCase(), 58, 88);
+  ctx.fillText(String(clan?.clan_name || (t ? t("tree.card.fallbackName") : "Dòng họ")).toUpperCase(), 58, 88);
 
   asArray(lines).forEach((line) => drawTreeLine(ctx, line));
-  asArray(people).forEach((person) => drawPersonCardOnCanvas(ctx, person, cardSizes));
+  asArray(people).forEach((person) => drawPersonCardOnCanvas(ctx, person, cardSizes, t));
   ctx.restore();
 
-  return canvasToBlob(canvas);
+  return canvasToBlob(canvas, t);
 }
 
 function buildTreeLines(people, families, childRows, lineRoutes = {}, cardSizes = {}) {
@@ -1163,10 +1167,10 @@ function hasDifferentSpouse(personId, allowedSpouseId, families, people = []) {
 }
 
 const relationLabels = {
-  spouse: "vợ/chồng",
-  child: "con",
-  father: "cha",
-  mother: "mẹ",
+  spouse: "tree.relations.spouse",
+  child: "tree.relations.child",
+  father: "tree.relations.father",
+  mother: "tree.relations.mother",
 };
 
 function relationCandidates(relation, selectedPerson, people, linkedIds = new Set(), families = []) {
@@ -1291,10 +1295,12 @@ function blankCreateForm(relation, selectedPerson, spouse) {
 };
 }
 
-function LunarDateHint({ value, label = "Âm lịch" }) {
+function LunarDateHint({ value, label }) {
+  const { t } = useLanguage();
   const text = formatLunarFullFromSolar(value);
   if (!text) return null;
-  return <small className="fte-lunarHint">{label}: {text}</small>;
+  const displayLabel = label || t("tree.inspector.fields.lunarBirth");
+  return <small className="fte-lunarHint">{displayLabel}: {text}</small>;
 }
 
 function personToForm(person) {
@@ -1357,7 +1363,8 @@ function PersonCard({
   onDelete,
   onQuickCreate,
 }) {
-  const name = fullName(person, "Thành viên");
+  const { t } = useLanguage();
+  const name = fullName(person, t("tree.card.fallbackName"));
   const genderClass =
     Number(person.gender) === 1
       ? "is-male"
@@ -1371,8 +1378,8 @@ function PersonCard({
   const isClanChief = Number(person.role_id) === 2;
 
   const lifeParts = [];
-  if (birthText) lifeParts.push(`Sinh: ${birthText}`);
-  if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
+  if (birthText) lifeParts.push(t("tree.card.born", { date: birthText }));
+  if (deceased && deathText) lifeParts.push(t("tree.card.died", { date: deathText }));
   const lifeText = lifeParts.join(" - ");
 
   const stopActionPointer = (event) => {
@@ -1399,12 +1406,12 @@ function PersonCard({
       }}
     >
       {canEdit || canDelete ? (
-        <div className="fte-cardHoverActions" aria-label="Thao tác thành viên">
+        <div className="fte-cardHoverActions" aria-label={t("posts.modal.create.tabs.ariaLabel")}>
           {canEdit ? (
             <button
               type="button"
               className="is-create"
-              title="Thêm người liên kết với thành viên này"
+              title={t("tree.card.addRelation")}
               onPointerDown={stopActionPointer}
               onClick={(event) => {
                 event.stopPropagation();
@@ -1418,7 +1425,7 @@ function PersonCard({
           {canEdit ? (
             <button
               type="button"
-              title="Sửa thành viên"
+              title={t("tree.card.edit")}
               onPointerDown={stopActionPointer}
               onClick={(event) => {
                 event.stopPropagation();
@@ -1433,7 +1440,7 @@ function PersonCard({
             <button
               type="button"
               className="is-danger"
-              title="Xóa thành viên"
+              title={t("tree.card.delete")}
               onPointerDown={stopActionPointer}
               onClick={(event) => {
                 event.stopPropagation();
@@ -1446,7 +1453,7 @@ function PersonCard({
         </div>
       ) : null}
 
-      {isClanChief ? <div className="fte-chiefBadge">Tộc trưởng</div> : null}
+      {isClanChief ? <div className="fte-chiefBadge">{t("tree.card.chief")}</div> : null}
 
       <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
         {person.avatar_url ? (
@@ -1457,13 +1464,13 @@ function PersonCard({
       </div>
 
       <div className="fte-cardName">{String(name).toUpperCase()}</div>
-      <div className="fte-cardGeneration">ĐỜI {person.generation || "?"}</div>
+      <div className="fte-cardGeneration">{t("tree.card.generation", { count: person.generation || "?" })}</div>
       {lifeText ? <div className="fte-cardMeta">{lifeText}</div> : null}
 
       {canDrag ? (
         <span
           className="fte-resizeHandle"
-          title="Kéo để đổi kích thước ô"
+          title={t("tree.card.resize")}
           onPointerDown={(event) => onResizePointerDown?.(event, person)}
         />
       ) : null}
@@ -1485,6 +1492,7 @@ function PersonInspector({
   canDelete = false,
   notice = "",
 }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState(() => personToForm(person));
 
   useEffect(() => {
@@ -1536,11 +1544,11 @@ function PersonInspector({
       <aside className="fte-inspector" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <div className="fte-inspectorHeader">
           <div>
-            <span>Thông tin thành viên</span>
-            <h3>{fullName(person, "Thành viên")}</h3>
-            <p>{spouse ? `Vợ/chồng: ${fullName(spouse)}` : "Thông tin hồ sơ gia phả"}</p>
+            <span>{t("tree.inspector.title")}</span>
+            <h3>{fullName(person, t("tree.card.fallbackName"))}</h3>
+            <p>{spouse ? t("tree.inspector.spouseLabel", { name: fullName(spouse) }) : t("tree.inspector.fallbackSubtitle")}</p>
           </div>
-          <button type="button" className="fte-iconButton" onClick={onClose} title="Đóng panel">
+          <button type="button" className="fte-iconButton" onClick={onClose} title={t("tree.inspector.closePanel")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -1549,19 +1557,19 @@ function PersonInspector({
           <div className="fte-inspectorActions">
             <button type="button" onClick={() => onCreateRelation("spouse")}>
               <span className="material-symbols-outlined">favorite</span>
-              Chọn vợ/chồng
+              {t("tree.inspector.actions.addSpouse")}
             </button>
             <button type="button" onClick={() => onCreateRelation("child")}>
               <span className="material-symbols-outlined">person_add</span>
-              Chọn con
+              {t("tree.inspector.actions.addChild")}
             </button>
             <button type="button" onClick={() => onCreateRelation("father")}>
               <span className="material-symbols-outlined">man</span>
-              Chọn cha
+              {t("tree.inspector.actions.addFather")}
             </button>
             <button type="button" onClick={() => onCreateRelation("mother")}>
               <span className="material-symbols-outlined">woman</span>
-              Chọn mẹ
+              {t("tree.inspector.actions.addMother")}
             </button>
           </div>
         ) : null}
@@ -1570,77 +1578,77 @@ function PersonInspector({
 
         <div className="fte-formGrid">
           <label>
-            Tên hiển thị
+            {t("tree.inspector.fields.displayName")}
             <input value={form.display_name} onChange={handleFullNameChange} disabled={!canEdit} />
           </label>
 
           <label>
-            Họ
+            {t("tree.inspector.fields.surname")}
             <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label>
-            Tên đệm
+            {t("tree.inspector.fields.middleName")}
             <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label>
-            Tên
+            {t("tree.inspector.fields.firstName")}
             <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label>
-            Giới tính
+            {t("tree.inspector.fields.gender")}
             <select value={form.gender} onChange={(event) => setField("gender", event.target.value)} disabled={!canEdit}>
-              <option value="">Không rõ</option>
-              <option value="1">Nam</option>
-              <option value="2">Nữ</option>
+              <option value="">{t("tree.inspector.fields.genderOptions.unknown")}</option>
+              <option value="1">{t("tree.inspector.fields.genderOptions.male")}</option>
+              <option value="2">{t("tree.inspector.fields.genderOptions.female")}</option>
             </select>
           </label>
 
           <label>
-            Vai trò
+            {t("tree.inspector.fields.role")}
             <select
               value={form.role_id}
               onChange={(event) => setField("role_id", event.target.value)}
               disabled={!canEditRole || !person.account_id}
             >
-              <option value="">Chưa có tài khoản</option>
-              <option value="2">Tộc trưởng</option>
-              <option value="3">Thành viên</option>
+              <option value="">{t("tree.inspector.fields.roleOptions.noAccount")}</option>
+              <option value="2">{t("tree.inspector.fields.roleOptions.chief")}</option>
+              <option value="3">{t("tree.inspector.fields.roleOptions.member")}</option>
             </select>
           </label>
 
           <label>
-            Tình trạng
+            {t("tree.inspector.fields.status")}
             <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)} disabled={!canEdit}>
-              <option value="1">Còn sống</option>
-              <option value="0">Đã mất</option>
+              <option value="1">{t("tree.inspector.fields.statusOptions.living")}</option>
+              <option value="0">{t("tree.inspector.fields.statusOptions.deceased")}</option>
             </select>
           </label>
 
           <label>
-            Ngày sinh
+            {t("tree.inspector.fields.birthDate")}
             <DateInput
               value={form.birth_date}
               onChange={(event) => setField("birth_date", event.target.value)}
               disabled={!canEdit}
             />
-            <LunarDateHint value={form.birth_date} label="Ngày sinh âm lịch" />
+            <LunarDateHint value={form.birth_date} label={t("tree.inspector.fields.lunarBirth")} />
           </label>
 
           <label>
-            Ngày mất
+            {t("tree.inspector.fields.deathDate")}
             <DateInput
               value={form.death_date}
               onChange={(event) => setField("death_date", event.target.value)}
               disabled={!canEdit || form.is_living === "1"}
             />
-            <LunarDateHint value={form.death_date} label="Ngày mất âm lịch" />
+            <LunarDateHint value={form.death_date} label={t("tree.inspector.fields.lunarDeath")} />
           </label>
 
           <label>
-            Đời thứ
+            {t("tree.inspector.fields.generation")}
             <input
               type="number"
               min="1"
@@ -1651,42 +1659,42 @@ function PersonInspector({
           </label>
 
           <label>
-            Chi nhánh
+            {t("tree.inspector.fields.branch")}
             <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label className="is-wide">
-            Quê quán
+            {t("tree.inspector.fields.hometown")}
             <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label className="is-wide">
-            Địa chỉ
+            {t("tree.inspector.fields.address")}
             <input value={form.address} onChange={(event) => setField("address", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label>
-            Điện thoại
+            {t("tree.inspector.fields.phone")}
             <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label>
-            Email
+            {t("tree.inspector.fields.email")}
             <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label className="is-wide">
-            Ảnh đại diện URL
+            {t("tree.inspector.fields.avatarUrl")}
             <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label className="is-wide">
-            Giới thiệu
+            {t("tree.inspector.fields.bio")}
             <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
           </label>
 
           <label className="is-wide">
-            Ghi chú
+            {t("tree.inspector.fields.note")}
             <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} disabled={!canEdit} />
           </label>
         </div>
@@ -1695,13 +1703,13 @@ function PersonInspector({
           <div className="fte-inspectorFooter">
             <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
               <span className="material-symbols-outlined">save</span>
-              {saving ? "Đang lưu..." : "Lưu"}
+              {saving ? t("tree.inspector.actions.saving") : t("tree.inspector.actions.save")}
             </button>
 
             {canDelete ? (
               <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
                 <span className="material-symbols-outlined">delete</span>
-                Xóa
+                {t("tree.inspector.actions.delete")}
               </button>
             ) : null}
           </div>
@@ -1725,6 +1733,7 @@ function RelationSelectDialog({
   onPickOnTree,
   saving,
 }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   if (!relation || !selectedPerson) return null;
 
@@ -1735,7 +1744,7 @@ function RelationSelectDialog({
     if (!normalizedQuery) return true;
     return `${fullName(person)} ${person.email || ""} ${person.phone || ""}`.toLowerCase().includes(normalizedQuery);
   });
-  const title = `Chọn ${relationLabels[relation] || "quan hệ"}`;
+  const title = t(`tree.relationModal.titles.${relation}`) || t("tree.relationModal.titles.generic");
   const selectedLinked = linkedIds.has(Number(value));
   const canUnlink = linkedIds.size > 0 && (relation !== "child" || selectedLinked);
 
@@ -1744,10 +1753,10 @@ function RelationSelectDialog({
       <div className="fte-modal fte-relationModal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <div className="fte-modalHeader">
           <div>
-            <span>{fullName(selectedPerson)}</span>
+            <span>{fullName(selectedPerson, t("tree.card.fallbackName"))}</span>
             <h3>{title}</h3>
           </div>
-          <button type="button" className="fte-iconButton" onClick={onCancel} title="Đóng">
+          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -1755,15 +1764,15 @@ function RelationSelectDialog({
         <div className="fte-relationPicker">
           <button type="button" className="fte-pickOnTreeButton" disabled={saving} onClick={onPickOnTree}>
             <span className="material-symbols-outlined">account_tree</span>
-            Chọn trực tiếp trên cây phả hệ
+            {t("tree.relationModal.pickOnTree")}
           </button>
-          <div className="fte-relationDivider"><span>hoặc</span></div>
+          <div className="fte-relationDivider"><span>{t("tree.relationModal.divider")}</span></div>
           <label>
-            Tìm trong thành viên đã có
+            {t("tree.relationModal.searchLabel")}
             <input
               autoFocus
               value={query}
-              placeholder="Nhập tên, email hoặc số điện thoại"
+              placeholder={t("tree.relationModal.searchPlaceholder")}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
@@ -1782,17 +1791,17 @@ function RelationSelectDialog({
                     {person.avatar_url ? <img src={person.avatar_url} alt={fullName(person)} /> : fullName(person).charAt(0).toUpperCase()}
                   </span>
                   <span>
-                    <strong>{fullName(person, "Thành viên")}</strong>
+                    <strong>{fullName(person, t("tree.card.fallbackName"))}</strong>
                     <small>
-                      Đời {person.generation || "?"}
-                      {person.gender ? ` · ${Number(person.gender) === 1 ? "Nam" : "Nữ"}` : ""}
+                      {t("tree.card.generation", { count: person.generation || "?" })}
+                      {person.gender ? ` · ${Number(person.gender) === 1 ? t("tree.inspector.fields.genderOptions.male") : t("tree.inspector.fields.genderOptions.female")}` : ""}
                     </small>
                   </span>
-                  {linkedIds.has(Number(person.id)) ? <em>Đang liên kết</em> : null}
+                  {linkedIds.has(Number(person.id)) ? <em>{t("tree.relationModal.isLinked")}</em> : null}
                 </button>
               ))
             ) : (
-              <div className="fte-relationEmpty">Không có thành viên phù hợp.</div>
+              <div className="fte-relationEmpty">{t("tree.relationModal.noResults")}</div>
             )}
           </div>
         </div>
@@ -1800,14 +1809,14 @@ function RelationSelectDialog({
         <div className="fte-modalFooter">
           <button type="button" className="fte-dangerButton" disabled={saving || !canUnlink} onClick={onUnlink}>
             <span className="material-symbols-outlined">link_off</span>
-            Bỏ liên kết
+            {t("tree.relationModal.actions.unlink")}
           </button>
           <button type="button" className="fte-primaryButton" disabled={saving || !value} onClick={onSubmit}>
             <span className="material-symbols-outlined">link</span>
-            {saving ? "Đang liên kết..." : "Liên kết"}
+            {saving ? t("tree.relationModal.actions.linking") : t("tree.relationModal.actions.link")}
           </button>
           <button type="button" className="fte-ghostButton" disabled={saving} onClick={onCancel}>
-            Hủy
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -1816,6 +1825,7 @@ function RelationSelectDialog({
 }
 
 function CenterNoticeDialog({ message, onClose }) {
+  const { t } = useLanguage();
   if (!message) return null;
 
   return createPortal(
@@ -1831,9 +1841,9 @@ function CenterNoticeDialog({ message, onClose }) {
           <span className="material-symbols-outlined">warning</span>
         </div>
         <div className="fte-centerNoticeContent">
-          <h3>Cảnh báo vi phạm ràng buộc</h3>
+          <h3>{t("tree.messages.constraintViolation")}</h3>
           <p>{message}</p>
-          <small>Bấm ra ngoài khung cảnh báo để đóng.</small>
+          <small>{t("tree.messages.constraintHint")}</small>
         </div>
       </div>
     </div>,
@@ -1846,6 +1856,7 @@ function QuickCreateRelationDialog({
   onChoose,
   onCancel,
 }) {
+  const { t } = useLanguage();
   if (!sourcePerson) return null;
 
   return (
@@ -1858,10 +1869,10 @@ function QuickCreateRelationDialog({
       >
         <div className="fte-modalHeader">
           <div>
-            <span>{fullName(sourcePerson)}</span>
-            <h3>Chọn loại liên kết cần tạo</h3>
+            <span>{fullName(sourcePerson, t("tree.card.fallbackName"))}</span>
+            <h3>{t("tree.quickCreate.title")}</h3>
           </div>
-          <button type="button" className="fte-iconButton" onClick={onCancel} title="Đóng">
+          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -1873,8 +1884,8 @@ function QuickCreateRelationDialog({
             onClick={() => onChoose("spouse")}
           >
             <span className="material-symbols-outlined">favorite</span>
-            <strong>Tạo vợ/chồng</strong>
-            <small>Tạo thành viên mới và liên kết vợ/chồng với người này</small>
+            <strong>{t("tree.quickCreate.spouse.title")}</strong>
+            <small>{t("tree.quickCreate.spouse.desc")}</small>
           </button>
 
           <button
@@ -1883,14 +1894,14 @@ function QuickCreateRelationDialog({
             onClick={() => onChoose("child")}
           >
             <span className="material-symbols-outlined">person_add</span>
-            <strong>Tạo con</strong>
-            <small>Tạo thành viên mới và tự nối làm con của người này</small>
+            <strong>{t("tree.quickCreate.child.title")}</strong>
+            <small>{t("tree.quickCreate.child.desc")}</small>
           </button>
         </div>
 
         <div className="fte-modalFooter">
           <button type="button" className="fte-ghostButton" onClick={onCancel}>
-            Hủy
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -1898,27 +1909,28 @@ function QuickCreateRelationDialog({
   );
 }
 function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel, onSubmit, saving }) {
+  const { t } = useLanguage();
   if (!relation || !form) return null;
 
   const titleMap = {
-    person: "Thêm người",
-    spouse: "Thêm vợ/chồng",
-    child: "Thêm con",
-    father: "Thêm cha",
-    mother: "Thêm mẹ",
+    person: t("tree.createModal.titles.person"),
+    spouse: t("tree.createModal.titles.spouse"),
+    child: t("tree.createModal.titles.child"),
+    father: t("tree.createModal.titles.father"),
+    mother: t("tree.createModal.titles.mother"),
   };
 
   const relationTextMap = {
-    spouse: "vợ/chồng",
-    child: "con",
-    father: "cha",
-    mother: "mẹ",
+    spouse: t("tree.relations.spouse"),
+    child: t("tree.relations.child"),
+    father: t("tree.relations.father"),
+    mother: t("tree.relations.mother"),
   };
 
   const dialogTitle =
     relation !== "person" && selectedPerson
-      ? `${titleMap[relation] || "Thêm người"} cho ${fullName(selectedPerson)}`
-      : titleMap[relation] || "Thêm người";
+      ? t("tree.createModal.titles.for", { title: t(`tree.createModal.titles.${relation}`), name: fullName(selectedPerson, t("tree.card.fallbackName")) })
+      : t(`tree.createModal.titles.${relation}`) || t("tree.createModal.titles.person");
 
   const setField = (field, value) => {
     if (field === "is_living" && value === "1") {
@@ -1981,30 +1993,30 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           <div>
             <span>
               {relation !== "person" && selectedPerson
-                ? `Tạo ${relationTextMap[relation] || "quan hệ"} mới`
-                : "Gia phả"}
+                ? t("tree.createModal.titles.new", { relation: t(`tree.relations.${relation}`) })
+                : t("tree.title")}
             </span>
             <h3>{dialogTitle}</h3>
           </div>
 
-          <button type="button" className="fte-iconButton" onClick={onCancel} title="Đóng">
+          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
         <div className="fte-formGrid fte-formGrid--modal">
           <label className="is-wide">
-            Tên hiển thị
+            {t("tree.inspector.fields.displayName")}
             <input
               autoFocus
               value={form.display_name || ""}
               onChange={handleFullNameChange}
-              placeholder="Ví dụ: Hà Văn Hải Đăng"
+              placeholder={t("tree.createModal.fields.displayPlaceholder")}
             />
           </label>
 
           <label>
-            Họ
+            {t("tree.inspector.fields.surname")}
             <input
               value={form.surname || ""}
               onChange={(event) => setField("surname", event.target.value)}
@@ -2012,7 +2024,7 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           </label>
 
           <label>
-            Tên đệm
+            {t("tree.inspector.fields.middleName")}
             <input
               value={form.middle_name || ""}
               onChange={(event) => setField("middle_name", event.target.value)}
@@ -2020,7 +2032,7 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           </label>
 
           <label>
-            Tên
+            {t("tree.inspector.fields.firstName")}
             <input
               value={form.first_name || ""}
               onChange={(event) => setField("first_name", event.target.value)}
@@ -2028,16 +2040,16 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           </label>
 
           <label>
-            Giới tính
+            {t("tree.inspector.fields.gender")}
             <select value={form.gender || ""} onChange={(event) => setField("gender", event.target.value)}>
-              <option value="1">Nam</option>
-              <option value="2">Nữ</option>
-              <option value="">Không rõ</option>
+              <option value="1">{t("tree.inspector.fields.genderOptions.male")}</option>
+              <option value="2">{t("tree.inspector.fields.genderOptions.female")}</option>
+              <option value="">{t("tree.inspector.fields.genderOptions.unknown")}</option>
             </select>
           </label>
 
           <label>
-            Đời thứ
+            {t("tree.inspector.fields.generation")}
             <input
               type="number"
               min="1"
@@ -2047,10 +2059,10 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           </label>
 
           <label>
-            Tình trạng
+            {t("tree.inspector.fields.status")}
             <select value={form.is_living || "1"} onChange={(event) => setField("is_living", event.target.value)}>
-              <option value="1">Còn sống</option>
-              <option value="0">Đã mất</option>
+              <option value="1">{t("tree.inspector.fields.statusOptions.living")}</option>
+              <option value="0">{t("tree.inspector.fields.statusOptions.deceased")}</option>
             </select>
           </label>
 
@@ -2058,11 +2070,11 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
             <div className="fte-accountCreateBox is-wide">
               <div className="fte-accountCreateTitle">
                 <span className="material-symbols-outlined">manage_accounts</span>
-                Tạo tài khoản đăng nhập cho người này
+                {t("tree.createModal.fields.accountBoxTitle")}
               </div>
 
               <label>
-                Email đăng nhập
+                {t("tree.createModal.fields.accountEmail")}
                 <input
                   type="email"
                   value={form.account_email || ""}
@@ -2073,12 +2085,12 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
               </label>
 
               <label>
-                Mật khẩu đăng nhập
+                {t("tree.createModal.fields.accountPassword")}
                 <input
                   type="password"
                   value={form.account_password || ""}
                   onChange={(event) => setField("account_password", event.target.value)}
-                  placeholder="Tối thiểu 6 ký tự"
+                  placeholder={t("tree.createModal.fields.passwordHint")}
                   autoComplete="new-password"
                 />
               </label>
@@ -2086,26 +2098,26 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           ) : null}
 
           <label>
-            Ngày sinh
+            {t("tree.inspector.fields.birthDate")}
             <DateInput
               value={form.birth_date || ""}
               onChange={(event) => setField("birth_date", event.target.value)}
             />
-            <LunarDateHint value={form.birth_date} label="Ngày sinh âm lịch" />
+            <LunarDateHint value={form.birth_date} label={t("tree.inspector.fields.lunarBirth")} />
           </label>
 
           <label>
-            Ngày mất
+            {t("tree.inspector.fields.deathDate")}
             <DateInput
               value={form.death_date || ""}
               onChange={(event) => setField("death_date", event.target.value)}
               disabled={form.is_living === "1"}
             />
-            <LunarDateHint value={form.death_date} label="Ngày mất âm lịch" />
+            <LunarDateHint value={form.death_date} label={t("tree.inspector.fields.lunarDeath")} />
           </label>
 
           <label className="is-wide">
-            Quê quán
+            {t("tree.inspector.fields.hometown")}
             <input
               value={form.hometown || ""}
               onChange={(event) => setField("hometown", event.target.value)}
@@ -2113,7 +2125,7 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
           </label>
 
           <label className="is-wide">
-            Ảnh đại diện URL
+            {t("tree.inspector.fields.avatarUrl")}
             <input
               value={form.avatar_url || ""}
               onChange={(event) => setField("avatar_url", event.target.value)}
@@ -2124,11 +2136,11 @@ function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel
         <div className="fte-modalFooter">
           <button type="button" className="fte-primaryButton" disabled={saving} onClick={onSubmit}>
             <span className="material-symbols-outlined">person_add</span>
-            {saving ? "Đang tạo..." : "Tạo"}
+            {saving ? t("tree.createModal.actions.creating") : t("tree.createModal.actions.create")}
           </button>
 
           <button type="button" className="fte-ghostButton" disabled={saving} onClick={onCancel}>
-            Hủy
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -2329,14 +2341,14 @@ const quickCreateSourcePerson = useMemo(
       saveCardSizes(clan?.id, nextCardSizes);
       return true;
     } catch (error) {
-      setStatus(error?.message || "Không thể lưu bố cục cây vào database.");
+      setStatus(error?.message || t("tree.messages.saveLayoutError"));
       return false;
     }
   }, [canEditAll, cardSizes, clan?.id, lineRoutes, people]);
 
   const applyAutoLayoutAndSave = useCallback(async () => {
     if (!canEditAll) return;
-    const ok = window.confirm(t("Tự động sắp xếp lại sẽ ghi đè vị trí thủ công hiện tại. Bạn có chắc muốn tiếp tục?"));
+    const ok = window.confirm(t("tree.messages.autoLayoutConfirm"));
     if (!ok) return;
     setSaving(true);
     setStatus("");
@@ -2344,7 +2356,7 @@ const quickCreateSourcePerson = useMemo(
     try {
       setPeople(nextPeople);
       const saved = await persistFullLayout(nextPeople, lineRoutes, cardSizes);
-      setStatus(saved ? "Đã tự động sắp xếp và lưu bố cục mới vào database." : "Không thể lưu bố cục mới.");
+      setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.autoLayoutError"));
       await onReload?.();
     } finally {
       setSaving(false);
@@ -2398,7 +2410,7 @@ const quickCreateSourcePerson = useMemo(
       : people.find((person) => Number(person.account_id) === accountId);
 
     if (!matched) {
-      setStatus("Tài khoản hiện tại chưa liên kết person_id trong cây gia phả.");
+      setStatus(t("tree.messages.noAccountLinked"));
       return;
     }
     setStatus("");
@@ -2411,15 +2423,15 @@ const quickCreateSourcePerson = useMemo(
   const handleValidateTree = useCallback(() => {
     const errors = validateTreeData(people, canonicalTree.families, canonicalTree.childRows);
     setValidationErrors(errors);
-    setStatus(errors.size ? `Kiểm tra cây: phát hiện ${errors.size} node có lỗi dữ liệu.` : "Kiểm tra cây: chưa phát hiện lỗi dữ liệu.");
-  }, [canonicalTree.childRows, canonicalTree.families, people]);
+    setStatus(errors.size ? t("tree.messages.validationErrorCount", { count: errors.size }) : t("tree.messages.validationSuccess"));
+  }, [canonicalTree.childRows, canonicalTree.families, people, t]);
 
   useEffect(() => {
     if (!validationErrors.size) return;
     const errors = validateTreeData(people, canonicalTree.families, canonicalTree.childRows);
     setValidationErrors(errors);
-    if (!errors.size) setStatus("Kiểm tra cây: các lỗi dữ liệu đã được xử lý.");
-  }, [canonicalTree.childRows, canonicalTree.families, people]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!errors.size) setStatus(t("tree.messages.validationFixed"));
+  }, [canonicalTree.childRows, canonicalTree.families, people, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const validationIssueRows = useMemo(() => {
     if (!validationErrors.size) return [];
@@ -2428,7 +2440,7 @@ const quickCreateSourcePerson = useMemo(
       const person = peopleById.get(Number(personId));
       return asArray(messages).map((message) => ({
         personId: Number(personId),
-        personName: fullName(person, `Node #${personId}`),
+        personName: fullName(person, t("tree.card.fallbackName")),
         generation: person?.generation || "",
         message,
       }));
@@ -2471,13 +2483,13 @@ const quickCreateSourcePerson = useMemo(
           const nextPeople = people.map((item) => (Number(item.id) === Number(person.id) ? { ...item, ...finalPosition } : item));
           if (canEditAll) {
             await persistFullLayout(nextPeople, lineRoutes, cardSizes);
-            setStatus("Đã lưu vị trí và bố cục cây vào database.");
+            setStatus(t("tree.messages.autoLayoutSuccess"));
           } else {
             await updatePersonPositionAPI(person.id, finalPosition);
-            setStatus("Đã lưu vị trí.");
+            setStatus(t("tree.messages.saveSuccess"));
           }
         } catch (error) {
-          setStatus(error?.message || "Không thể lưu vị trí.");
+          setStatus(error?.message || t("tree.messages.saveError"));
         }
       }
     };
@@ -2494,10 +2506,10 @@ const quickCreateSourcePerson = useMemo(
 
   const handleDeletePersonByCard = useCallback(async (person) => {
     if (!person || !canEditAll) {
-      setStatus("Bạn không có quyền xóa node trong chế độ hiện tại.");
+      setStatus(t("tree.messages.noPermissionAction"));
       return;
     }
-    const ok = window.confirm(t("Xóa thành viên khỏi cây gia phả?").replace("thành viên", fullName(person)).replace("member", fullName(person)));
+    const ok = window.confirm(t("tree.messages.deleteConfirm", { name: fullName(person) }));
     if (!ok) return;
     setSaving(true);
     setStatus("");
@@ -2505,10 +2517,10 @@ const quickCreateSourcePerson = useMemo(
       await deletePersonAPI(person.id);
       setPeople((current) => current.filter((item) => item.id !== person.id));
       setSelectedId((current) => (Number(current) === Number(person.id) ? null : current));
-      setStatus("Đã xóa thành viên khỏi cây.");
+      setStatus(t("tree.messages.deleteSuccess"));
       await onReload?.();
     } catch (error) {
-      setStatus(error?.message || "Không thể xóa thành viên.");
+      setStatus(error?.message || t("tree.messages.deleteError"));
     } finally {
       setSaving(false);
     }
@@ -2519,7 +2531,7 @@ const quickCreateSourcePerson = useMemo(
     const sourceId = Number(sourcePerson.id);
     const nextTargetId = Number(targetId);
     if (!Number.isFinite(sourceId) || !Number.isFinite(nextTargetId) || sourceId === nextTargetId) {
-      setConstraintNotice("Không thể liên kết thành viên này.");
+      setConstraintNotice(t("tree.messages.linkTargetError"));
       return false;
     }
 
@@ -2559,11 +2571,11 @@ const quickCreateSourcePerson = useMemo(
 
       setRelationDialog(null);
       setTreeRelationPicker(null);
-      setStatus(`Đã liên kết ${relationLabels[relation] || "quan hệ"}.`);
+      setStatus(t("tree.messages.linkSuccess", { relation: t(`tree.relations.${relation}`) }));
       await onReload?.();
       return true;
     } catch (error) {
-      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || t("tree.messages.linkError"));
       return false;
     } finally {
       setDialogSaving(false);
@@ -2576,18 +2588,18 @@ const quickCreateSourcePerson = useMemo(
     const sourcePerson = people.find((item) => Number(item.id) === Number(treeRelationPicker.sourcePersonId));
     if (!sourcePerson) {
       setTreeRelationPicker(null);
-      setStatus("Không tìm thấy thành viên gốc để liên kết.");
+      setStatus(t("tree.messages.linkSourceNotFound"));
       return;
     }
     const linkedIds = relationLinkedIds(relation, sourcePerson, canonicalTree.families, canonicalTree.childRows);
     if (linkedIds.has(Number(targetPerson.id))) {
-      setConstraintNotice("Thành viên này đã được liên kết với quan hệ đang chọn.");
+      setConstraintNotice(t("tree.messages.linkAlreadyExists"));
       return;
     }
     const candidates = relationCandidates(relation, sourcePerson, people, linkedIds, canonicalTree.families);
     const allowed = candidates.some((item) => Number(item.id) === Number(targetPerson.id));
     if (!allowed) {
-      setConstraintNotice("Thành viên này không phù hợp hoặc đã được liên kết. Hãy chọn thành viên khác trên cây.");
+      setConstraintNotice(t("tree.messages.linkNotAllowed"));
       return;
     }
     linkRelationTarget(relation, sourcePerson, targetPerson.id);
@@ -2606,7 +2618,7 @@ const quickCreateSourcePerson = useMemo(
         event.stopPropagation();
         setSelectedId(person.id);
         if (resolvedPermission.editScope === "limited") {
-          setStatus("Bạn chỉ được chỉnh sửa node thuộc đời hiện tại, trên 1 đời và dưới 1 đời.");
+          setStatus(t("tree.toolbar.limitedEdit"));
         }
         return;
       }
@@ -2656,10 +2668,10 @@ const quickCreateSourcePerson = useMemo(
         saveLineRoutes(clan?.id, next);
         if (canEditAll) {
           persistFullLayout(people, next, cardSizes).then((saved) => {
-            setStatus(saved ? "Đã lưu đường liên kết vào database." : "Không thể lưu đường liên kết vào database.");
+            setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.saveLayoutError"));
           });
         } else {
-          setStatus("Đã lưu vị trí đường liên kết trên trình duyệt.");
+          setStatus(t("tree.messages.saveSuccess"));
         }
         return next;
       });
@@ -2674,23 +2686,24 @@ const quickCreateSourcePerson = useMemo(
     saveLineRoutes(clan?.id, {});
     if (canEditAll) {
       persistFullLayout(people, {}, cardSizes).then((saved) => {
-        setStatus(saved ? "Đã reset và lưu đường liên kết vào database." : "Không thể lưu reset đường liên kết.");
+        setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.saveLayoutError"));
       });
     } else {
-      setStatus("Đã đưa đường liên kết về mặc định.");
+      setStatus(t("tree.messages.saveSuccess"));
     }
-  }, [canEditAll, cardSizes, clan?.id, people, persistFullLayout]);
+  }, [canEditAll, cardSizes, clan?.id, people, persistFullLayout, t]);
 
   const handleExport = async () => {
     setSaving(true);
     setStatus("");
+    const renderPeople = visiblePeople.length ? visiblePeople : people;
     try {
-      const blob = await renderFamilyTreePngBlob({ people: renderPeople, lines, cardSizes, clan });
+      const blob = await renderFamilyTreePngBlob({ people: renderPeople, lines, cardSizes, clan, t });
       downloadBlob(blob, exportFileName(clan?.clan_name));
-      setStatus("Đã xuất PNG.");
+      setStatus(t("tree.messages.exportSuccess"));
     } catch (error) {
       console.error("Export PNG failed:", error);
-      setStatus(`Không thể xuất PNG${error?.message ? `: ${error.message}` : "."}`);
+      setStatus(`${t("tree.messages.exportError")}${error?.message ? `: ${error.message}` : "."}`);
     } finally {
       setSaving(false);
     }
@@ -2698,7 +2711,7 @@ const quickCreateSourcePerson = useMemo(
 
   const handleSavePerson = async (form) => {
     if (!selectedPerson || !canEditPerson(selectedPerson.id)) {
-      setStatus("Node này nằm ngoài phạm vi chỉnh sửa của bạn.");
+      setStatus(t("tree.messages.noPermissionAction"));
       return;
     }
     setSaving(true);
@@ -2740,15 +2753,15 @@ const quickCreateSourcePerson = useMemo(
           const errors = validateTreeData(nextPeopleForValidation, canonicalTree.families, canonicalTree.childRows);
           setValidationErrors(errors);
           clearedAllValidationErrors = !errors.size;
-          if (clearedAllValidationErrors) setStatus("Đã lưu thông tin thành viên. Các lỗi dữ liệu đã được xử lý.");
+          if (clearedAllValidationErrors) setStatus(t("tree.messages.validationFixed"));
         }
-        if (!clearedAllValidationErrors) setStatus("Đã lưu thông tin thành viên.");
+        if (!clearedAllValidationErrors) setStatus(t("tree.messages.saveSuccess"));
       } else {
-        setStatus("Đã lưu thông tin thành viên.");
+        setStatus(t("tree.messages.saveSuccess"));
       }
       await onReload?.();
     } catch (error) {
-      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể lưu thông tin.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || t("tree.messages.saveError"));
     } finally {
       treeRealtime.stopEditing(selectedPerson.id);
       setSaving(false);
@@ -2757,10 +2770,10 @@ const quickCreateSourcePerson = useMemo(
 
   const handleDeletePerson = async () => {
     if (!selectedPerson || !canEditAll) {
-      setStatus("Bạn không có quyền xóa node trong chế độ hiện tại.");
+      setStatus(t("tree.messages.noPermissionAction"));
       return;
     }
-    const ok = window.confirm(t("Xóa thành viên khỏi cây gia phả?").replace("thành viên", fullName(selectedPerson)).replace("member", fullName(selectedPerson)));
+    const ok = window.confirm(t("tree.messages.deleteConfirm", { name: fullName(selectedPerson) }));
     if (!ok) return;
     setSaving(true);
     setStatus("");
@@ -2768,10 +2781,10 @@ const quickCreateSourcePerson = useMemo(
       await deletePersonAPI(selectedPerson.id);
       setPeople((current) => current.filter((person) => person.id !== selectedPerson.id));
       setSelectedId(null);
-      setStatus("Đã xóa thành viên khỏi cây.");
+      setStatus(t("tree.messages.deleteSuccess"));
       await onReload?.();
     } catch (error) {
-      setStatus(error?.message || "Không thể xóa thành viên.");
+      setStatus(error?.message || t("tree.messages.deleteError"));
     } finally {
       setSaving(false);
     }
@@ -2781,12 +2794,12 @@ const quickCreateSourcePerson = useMemo(
   setBillingWarning(null);
 
   if (!canEditAll) {
-    setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
+    setStatus(t("tree.inspector.limitedNote"));
     return;
   }
 
   if (!person?.id) {
-    setStatus("Không xác định được thành viên nguồn.");
+    setStatus(t("tree.messages.linkSourceNotFound"));
     return;
   }
 
@@ -2800,7 +2813,7 @@ const openCreateDialogFromQuickRelation = (relation) => {
   const sourcePerson = quickCreateSourcePerson;
 
   if (!sourcePerson) {
-    setStatus("Không xác định được thành viên nguồn để tạo liên kết.");
+    setStatus(t("tree.messages.linkSourceNotFound"));
     setQuickCreateDialog(null);
     return;
   }
@@ -2819,11 +2832,11 @@ const openCreateDialogFromQuickRelation = (relation) => {
   const openCreateDialog = (relation) => {
     setBillingWarning(null);
     if (!canEditAll) {
-      setStatus("Temporary edit key không cho phép tạo node hoặc đổi quan hệ.");
+      setStatus(t("tree.inspector.limitedNote"));
       return;
     }
     if (relation !== "person" && !selectedPerson) {
-      setStatus("Hãy chọn một thành viên trước.");
+      setStatus(t("tree.messages.linkSourceNotFound"));
       return;
     }
     if (relation !== "person") {
@@ -2849,7 +2862,7 @@ const submitCreateDialog = async () => {
   const parts = [form.surname, form.middle_name, form.first_name].filter(Boolean).join(" ").trim();
 
   if (!display && !parts) {
-    setStatus("Cần nhập tên thành viên mới.");
+    setStatus(t("tree.messages.genericError"));
     return;
   }
 
@@ -2858,12 +2871,12 @@ const submitCreateDialog = async () => {
     const password = String(form.account_password || "");
 
     if (!email) {
-      setStatus("Người còn sống cần có email để tạo tài khoản.");
+      setStatus(t("tree.messages.genericError"));
       return;
     }
 
     if (!password || password.length < 6) {
-      setStatus("Mật khẩu tài khoản tối thiểu 6 ký tự.");
+      setStatus(t("tree.createModal.fields.passwordHint"));
       return;
     }
   }
@@ -2891,7 +2904,7 @@ const submitCreateDialog = async () => {
 
     if (sourcePersonId && relation !== "person") {
       if (!newPersonId) {
-        throw new Error("Đã tạo người mới nhưng không lấy được ID để liên kết quan hệ.");
+        throw new Error(t("tree.messages.linkError"));
       }
 
       if (relation === "spouse") {
@@ -2940,9 +2953,9 @@ const submitCreateDialog = async () => {
     setDialog(null);
 
     if (sourcePersonId && relation !== "person") {
-      setStatus(`Đã tạo thành viên mới và liên kết ${relationLabels[relation] || "quan hệ"} thành công.`);
+      setStatus(t("tree.messages.saveSuccess"));
     } else {
-      setStatus("Đã tạo thành viên mới.");
+      setStatus(t("tree.messages.saveSuccess"));
     }
 
     await onReload?.();
@@ -2953,11 +2966,11 @@ const submitCreateDialog = async () => {
     if (errorCode === "PERSON_LIMIT_REACHED") {
       const currentPeople = billing?.current_people;
       const personLimit = billing?.person_limit;
-      const planName = billing?.plan_name || "gói hiện tại";
+      const planName = billing?.plan_name || t("common.currentPlan");
       const message =
         currentPeople != null && personLimit != null
-          ? `Dòng họ đã đạt giới hạn ${currentPeople}/${personLimit} người của ${planName}. Vui lòng nâng cấp gói để thêm tiếp.`
-          : "Dòng họ đã đạt giới hạn số người của gói hiện tại. Vui lòng nâng cấp gói để thêm tiếp.";
+          ? t("tree.messages.personLimitReached", { current: currentPeople, limit: personLimit, plan: planName })
+          : t("tree.messages.personLimitReached", { current: currentPeople, limit: "?", plan: planName });
 
       setBillingWarning({ message });
       setStatus(message);
@@ -2965,13 +2978,13 @@ const submitCreateDialog = async () => {
     }
 
     if (errorCode === "SUBSCRIPTION_EXPIRED") {
-      const message = "Gói sử dụng đã hết hạn. Vui lòng gia hạn để tiếp tục thêm người.";
+      const message = t("tree.messages.subscriptionExpired");
       setBillingWarning({ message });
       setStatus(message);
       return;
     }
 
-    if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể tạo thành viên.");
+    if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || t("tree.messages.saveError"));
   } finally {
     setDialogSaving(false);
   }
@@ -2992,7 +3005,7 @@ const submitCreateDialog = async () => {
       if (relation === "child") {
         const parentFamilies = getFamiliesForPerson(selectedPerson.id, canonicalTree.families);
         if (parentFamilies.length !== 1) {
-          setConstraintNotice(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
+          setConstraintNotice(parentFamilies.length > 1 ? t("tree.messages.multipleFamiliesError") : t("tree.messages.noFamilyError"));
           return;
         }
         const family = parentFamilies[0];
@@ -3017,10 +3030,10 @@ const submitCreateDialog = async () => {
       }
 
       setRelationDialog(null);
-      setStatus(`Đã liên kết ${relationLabels[relation] || "quan hệ"}.`);
+      setStatus(t("tree.messages.linkSuccess", { relation: t(`tree.relations.${relation}`) }));
       await onReload?.();
     } catch (error) {
-      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || t("tree.messages.linkError"));
     } finally {
       setDialogSaving(false);
     }
@@ -3050,7 +3063,7 @@ const submitCreateDialog = async () => {
           ) && (Number(item.father_id) === Number(selectedPerson.id) || Number(item.mother_id) === Number(selectedPerson.id))
         );
         if (!family) {
-          setConstraintNotice("Khong tim thay family cua lien ket con nay.");
+          setConstraintNotice(t("tree.messages.unlinkError"));
           return;
         }
         const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
@@ -3072,10 +3085,10 @@ const submitCreateDialog = async () => {
       }
 
       setRelationDialog(null);
-      setStatus(`Đã bỏ liên kết ${relationLabels[relation] || "quan hệ"}.`);
+      setStatus(t("tree.messages.unlinkSuccess", { relation: t(`tree.relations.${relation}`) }));
       await onReload?.();
     } catch (error) {
-      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || "Không thể bỏ liên kết quan hệ.");
+      if (!shouldSuppressInlineRelationError(error)) setConstraintNotice(error?.message || t("tree.messages.unlinkError"));
     } finally {
       setDialogSaving(false);
     }
@@ -3115,10 +3128,10 @@ const submitCreateDialog = async () => {
         saveCardSizes(clan?.id, next);
         if (canEditAll) {
           persistFullLayout(people, lineRoutes, next).then((saved) => {
-            setStatus(saved ? "Đã lưu kích thước ô vào database." : "Không thể lưu kích thước ô vào database.");
+            setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.saveLayoutError"));
           });
         } else {
-          setStatus("Đã lưu kích thước ô thành viên trên trình duyệt.");
+          setStatus(t("tree.messages.saveSuccess"));
         }
         return next;
       });
@@ -3133,10 +3146,10 @@ const submitCreateDialog = async () => {
     ? canEditAll
       ? ""
       : selectedCanEdit
-        ? "Bạn có quyền chỉnh sửa tạm thời trong phạm vi cho phép. Không thể tạo, xóa hoặc đổi quan hệ node."
+        ? t("tree.inspector.limitedNote")
         : canEditLimited
-          ? "Node này nằm ngoài phạm vi chỉnh sửa tạm thời của bạn."
-          : "Chế độ chỉ xem. Thành viên không có quyền chỉnh sửa cây gia phả."
+          ? t("tree.toolbar.limitedEdit")
+          : t("tree.inspector.readOnlyNote")
     : "";
 
   const [treeFullscreen, setTreeFullscreen] = useState(false);
@@ -3199,15 +3212,15 @@ const submitCreateDialog = async () => {
                   type="button"
                   onClick={() => openCreateDialog("person")}
                   disabled={!canEditAll || loading || saving}
-                  title={canEditAll ? "Thêm người vào cây gia phả" : "Chỉ quản trị viên dòng họ mới được thêm người"}
+                  title={canEditAll ? t("tree.toolbar.addPersonHint") : t("tree.toolbar.addPersonAdminOnly")}
                 >
                   <span className="material-symbols-outlined">person_add</span>
-                  Thêm người
+                  {t("tree.toolbar.addPerson")}
                 </button>
               </div>
               {canEditLimited ? (
                 <div className="fte-toolbarGroup fte-toolbarGroup--notice">
-                  <span className="fte-readOnlyBadge">Chỉnh sửa tạm thời: đời hiện tại ±1</span>
+                  <span className="fte-readOnlyBadge">{t("tree.toolbar.limitedEdit")}</span>
                 </div>
               ) : null}
               <TreeViewModeSelector
@@ -3225,26 +3238,26 @@ const submitCreateDialog = async () => {
                   type="button"
                   onClick={applyAutoLayoutAndSave}
                   disabled={!canEditAll || loading || saving}
-                  title={canEditAll ? "Tự động sắp xếp lại và lưu vào database" : "Thành viên chỉ được xem, không được tự sắp xếp"}
+                  title={canEditAll ? t("tree.toolbar.autoLayoutHint") : t("tree.toolbar.autoLayoutViewerHint")}
                 >
                   <span className="material-symbols-outlined">auto_fix_high</span>
-                  Tự sắp xếp
+                  {t("tree.toolbar.autoLayout")}
                 </button>
                 <button type="button" onClick={handleExport} disabled={loading || saving}>
                   <span className="material-symbols-outlined">download</span>
-                  Export PNG
+                  {t("tree.toolbar.exportPng")}
                 </button>
                 <button type="button" onClick={handleValidateTree} disabled={loading || saving}>
                   <span className="material-symbols-outlined">rule</span>
-                  Kiểm tra cây
+                  {t("tree.toolbar.validate")}
                 </button>
               </div>
               <div className="fte-toolbarGroup fte-toolbarGroup--icons">
-                <button type="button" onClick={() => zoomIn(0.16, 180)} title="Phóng to mượt">
+                <button type="button" onClick={() => zoomIn(0.16, 180)} title={t("tree.toolbar.zoomIn")}>
                   <span className="material-symbols-outlined">zoom_in</span>
                 </button>
                 <span className="fte-zoomValue">{Math.round(currentScale * 100)}%</span>
-                <button type="button" onClick={() => zoomOut(0.16, 180)} title="Thu nhỏ mượt">
+                <button type="button" onClick={() => zoomOut(0.16, 180)} title={t("tree.toolbar.zoomOut")}>
                   <span className="material-symbols-outlined">zoom_out</span>
                 </button>
                 <button
@@ -3262,7 +3275,7 @@ const submitCreateDialog = async () => {
                       }, 80);
                     }
                   }}
-                  title={treeFullscreen ? "Thoát toàn màn hình" : "Phóng toàn màn hình cây"}
+                  title={treeFullscreen ? t("tree.toolbar.exitFullscreen") : t("tree.toolbar.fullscreen")}
                   className={treeFullscreen ? "is-active" : ""}
                 >
                   <span className="material-symbols-outlined">{treeFullscreen ? "close_fullscreen" : "open_in_full"}</span>
@@ -3289,7 +3302,7 @@ const submitCreateDialog = async () => {
             {billingWarning ? (
               <div className="fte-billingWarning">
                 <div>
-                  <strong>Đã đạt giới hạn gói sử dụng</strong>
+                  <strong>{t("tree.messages.billingLimit")}</strong>
                   <p>{billingWarning.message}</p>
                 </div>
                 <button
@@ -3299,7 +3312,7 @@ const submitCreateDialog = async () => {
                   }}
                 >
                   <span className="material-symbols-outlined">workspace_premium</span>
-                  Xem gói nâng cấp
+                  {t("tree.messages.billingUpgrade")}
                 </button>
               </div>
             ) : null}
@@ -3308,8 +3321,8 @@ const submitCreateDialog = async () => {
             {validationIssueRows.length ? (
               <div className="fte-validationPanel" role="status" aria-live="polite">
                 <div className="fte-validationPanelHead">
-                  <strong>Lỗi dữ liệu trong cây</strong>
-                  <span>{validationErrors.size} node cần sửa</span>
+                  <strong>{t("tree.messages.validationTitle")}</strong>
+                  <span>{t("tree.messages.validationSummary", { count: validationErrors.size })}</span>
                 </div>
                 <div className="fte-validationList">
                   {validationIssueRows.slice(0, 12).map((issue, index) => (
@@ -3319,12 +3332,12 @@ const submitCreateDialog = async () => {
                       onClick={() => focusPerson(issue.personId, { scale: 1.2 })}
                     >
                       <span className="material-symbols-outlined">warning</span>
-                      <strong>{issue.personName}{issue.generation ? ` - Đời ${issue.generation}` : ""}</strong>
+                      <strong>{issue.personName}{issue.generation ? ` - ${t("tree.card.generation", { count: issue.generation })}` : ""}</strong>
                       <small>{issue.message}</small>
                     </button>
                   ))}
                   {validationIssueRows.length > 12 ? (
-                    <span className="fte-validationMore">Còn {validationIssueRows.length - 12} lỗi khác. Bấm vào node đỏ để xem tooltip chi tiết.</span>
+                    <span className="fte-validationMore">{t("tree.messages.validationMore", { count: validationIssueRows.length - 12 })}</span>
                   ) : null}
                 </div>
               </div>
@@ -3333,17 +3346,16 @@ const submitCreateDialog = async () => {
             {treeRelationPicker ? (
               <div className="fte-treePickFloating" role="status" aria-live="polite">
                 <div>
-                  <strong>Đang chọn {relationLabels[treeRelationPicker.relation] || "quan hệ"}</strong>
-                  <span> cho {treeRelationSource ? fullName(treeRelationSource) : "thành viên đã chọn"}. Bấm trực tiếp vào một ô thành viên trên cây để liên kết.</span>
+                  <strong>{t("tree.messages.treePickHint", { relation: t(`tree.relations.${treeRelationPicker.relation}`), name: treeRelationSource ? fullName(treeRelationSource) : t("tree.card.fallbackName") })}</strong>
                 </div>
-                <button type="button" onClick={() => { setTreeRelationPicker(null); setStatus(""); }}>Hủy chọn</button>
+                <button type="button" onClick={() => { setTreeRelationPicker(null); setStatus(""); }}>{t("common.cancel")}</button>
               </div>
             ) : null}
 
             <div className="fte-workspace">
               <div className="fte-viewport" ref={viewportRef}>
                 {loading ? (
-                  <div className="fte-loading">Đang tải cây gia phả...</div>
+                  <div className="fte-loading">{t("tree.messages.loading")}</div>
                 ) : (
                   <TransformComponent wrapperClass="fte-transformWrapper" contentClass="fte-transformContent">
                     <div
@@ -3353,8 +3365,8 @@ const submitCreateDialog = async () => {
                       style={{ width: canvasSize.width, height: canvasSize.height }}
                     >
                       <div className="fte-canvasTitle">
-                        <span>Gia phả</span>
-                        <strong>{String(clan?.clan_name || "Dòng họ").toUpperCase()}</strong>
+                        <span>{t("tree.title")}</span>
+                        <strong>{String(clan?.clan_name || t("tree.card.fallbackName")).toUpperCase()}</strong>
                       </div>
                       <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden={false}>
                         {lines.filter((line) => line.type !== "route-control").map((line, index) => (

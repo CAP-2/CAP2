@@ -1,23 +1,23 @@
 import { formatDateTimeVN, formatDateVN } from "../../../shared/utils/dateFormat";
 export const asArray = (value) => (Array.isArray(value) ? value : []);
 
-export const fullName = (item, fallback = "Chưa có tên") =>
+export const fullName = (item, fallback = "N/A") =>
   item?.display_name ||
   [item?.surname, item?.middle_name, item?.first_name].filter(Boolean).join(" ").trim() ||
   item?.email ||
   fallback;
 
-export const personName = (person) => fullName(person, "Thành viên");
+export const personName = (person) => fullName(person, "Member");
 
 export const avatarInitial = (item) => fullName(item).charAt(0).toUpperCase();
 
 export const formatDate = (value) => {
-  if (!value) return "Chưa có ngày";
+  if (!value) return "N/A";
   return formatDateVN(value);
 };
 
 export const formatDateTime = (value) => {
-  if (!value) return "Chưa có thời gian";
+  if (!value) return "N/A";
   return formatDateTimeVN(value);
 };
 
@@ -37,8 +37,8 @@ export const mapTreeNode = (node) => ({
   person_id: node.person.id,
   account_id: node.person.account_id,
   name: personName(node.person),
-  title: node.spouse ? `Vợ/chồng: ${personName(node.spouse)}` : node.person.hometown || "Chưa có quê quán",
-  generation: `Đời ${node.person.generation || "?"}`,
+  title: node.spouse ? `Spouse: ${personName(node.spouse)}` : node.person.hometown || "N/A",
+  generation: `Gen ${node.person.generation || "?"}`,
   birth: yearOf(node.person.birth_date),
   death: yearOf(node.person.death_date),
   raw: node.person,

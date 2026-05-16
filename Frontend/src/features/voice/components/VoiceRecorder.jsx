@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getVoiceRecording, uploadVoiceRecording } from "../../../api/voiceService";
 import "./VoiceRecorder.css";
 
@@ -11,6 +12,7 @@ const pickMimeType = () => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => {
+  const { t } = useTranslation();
   const [state, setState] = useState("idle");
   const [seconds, setSeconds] = useState(0);
   const [message, setMessage] = useState("");
@@ -40,25 +42,25 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
       if (recording.status === "completed") {
         const transcript = String(recording.transcript || "").trim();
         onTranscript?.(transcript, recording);
-        setMessage(transcript ? "Da nhan transcript." : "Transcript trong.");
+        setMessage(transcript ? t("voice.recorder.receiveSuccess") : t("voice.recorder.receiveEmpty"));
         setState("completed");
         return;
       }
 
       if (recording.status === "failed") {
-        throw new Error(recording.error_message || "Chuyen giong noi that bai.");
+        throw new Error(recording.error_message || t("voice.recorder.errors.transcriptionFailed"));
       }
 
       await wait(2500);
     }
 
-    throw new Error("Het thoi gian cho transcript.");
+    throw new Error(t("voice.recorder.errors.timeout"));
   };
 
   const uploadBlob = async (blob) => {
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
     setState("uploading");
-    setMessage("Dang tai ghi am...");
+    setMessage(t("voice.recorder.uploading"));
 
     const result = await uploadVoiceRecording(blob, {
       durationSeconds,
@@ -66,18 +68,18 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
     });
     const recordingId = result.recording?.id;
     if (!recordingId) {
-      throw new Error("May chu chua tra ve ID ghi am.");
+      throw new Error(t("voice.recorder.errors.noId"));
     }
 
     setState("transcribing");
-    setMessage("Dang chuyen giong noi...");
+    setMessage(t("voice.recorder.transcribing"));
     await pollTranscript(recordingId);
   };
 
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-        throw new Error("Trinh duyet khong ho tro ghi am.");
+        throw new Error(t("voice.recorder.errors.unsupported"));
       }
 
       setMessage("");
@@ -101,13 +103,13 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         if (blob.size <= 0) {
           setState("idle");
-          setMessage("Khong co du lieu ghi am.");
+          setMessage(t("voice.recorder.noData"));
           return;
         }
 
         uploadBlob(blob).catch((error) => {
           setState("failed");
-          setMessage(error?.message || "Xu ly ghi am that bai.");
+          setMessage(error?.message || t("voice.recorder.errors.failed"));
         });
       };
 
@@ -125,7 +127,7 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
       }, 500);
     } catch (error) {
       setState("failed");
-      setMessage(error?.message || "Khong the bat dau ghi am.");
+      setMessage(error?.message || t("voice.recorder.errors.startFailed"));
     }
   };
 
@@ -136,7 +138,7 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
   };
 
   const busy = ["recording", "uploading", "transcribing"].includes(state);
-  const label = state === "recording" ? `${seconds}s` : state === "transcribing" ? "..." : "Mic";
+  const label = state === "recording" ? `${seconds}s` : state === "transcribing" ? "..." : t("voice.recorder.idle");
 
   return (
     <div className="voice-recorder">
@@ -145,8 +147,8 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
         className={`voice-recorder-button is-${state}`}
         onClick={state === "recording" ? stopRecording : startRecording}
         disabled={disabled || (busy && state !== "recording")}
-        title={state === "recording" ? "Dung ghi am" : "Ghi am cau hoi"}
-        aria-label={state === "recording" ? "Dung ghi am" : "Ghi am cau hoi"}
+        title={state === "recording" ? t("voice.recorder.title.stop") : t("voice.recorder.title.start")}
+        aria-label={state === "recording" ? t("voice.recorder.title.stop") : t("voice.recorder.title.start")}
       >
         {label}
       </button>

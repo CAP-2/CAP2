@@ -1,7 +1,9 @@
+import { useLanguage } from "../../../i18n/LanguageContext";
+
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
-function personName(person) {
-  return person?.display_name || [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() || "Thành viên";
+function personName(person, fallback) {
+  return person?.display_name || [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() || fallback;
 }
 
 export default function TreeSearchPanel({
@@ -15,6 +17,7 @@ export default function TreeSearchPanel({
   onFindMe,
   findMeDisabled = false,
 }) {
+  const { t } = useLanguage();
   const hasSubmitted = String(submittedQuery || "").trim().length > 0;
 
   return (
@@ -27,23 +30,23 @@ export default function TreeSearchPanel({
         }}
       >
         <label>
-          <span>Tìm người</span>
+          <span>{t("tree.sidebar.title")}</span>
           <input
             type="search"
             value={query}
-            placeholder="Tên, đời, ngày sinh, năm sinh"
+            placeholder={t("tree.sidebar.placeholder")}
             onChange={(event) => onQueryChange?.(event.target.value)}
           />
         </label>
         <button type="submit">
           <span className="material-symbols-outlined">search</span>
-          Tìm
+          {t("tree.sidebar.search")}
         </button>
         <button type="button" onClick={onFindMe} disabled={findMeDisabled}>
           <span className="material-symbols-outlined">my_location</span>
-          Tìm tôi
+          {t("tree.sidebar.findMe")}
         </button>
-        <button type="button" onClick={onClear}>
+        <button type="button" onClick={onClear} title={t("common.close")}>
           <span className="material-symbols-outlined">close</span>
         </button>
       </form>
@@ -53,12 +56,12 @@ export default function TreeSearchPanel({
           {asArray(results).length ? (
             asArray(results).map((person) => (
               <button key={person.id} type="button" onClick={() => onResultClick?.(person)}>
-                <strong>{personName(person)}</strong>
-                <small>Đời {person.generation || 1}{person.birth_date ? ` - ${person.birth_date}` : ""}</small>
+                <strong>{personName(person, t("tree.card.fallbackName"))}</strong>
+                <small>{t("tree.card.generation", { count: person.generation || 1 })}{person.birth_date ? ` - ${person.birth_date}` : ""}</small>
               </button>
             ))
           ) : (
-            <span>Không tìm thấy người phù hợp.</span>
+            <span>{t("tree.sidebar.noResults")}</span>
           )}
         </div>
       ) : null}

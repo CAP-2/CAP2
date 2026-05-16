@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getAdminDashboardStats } from "../../../api/adminService";
 import {
     Area,
@@ -19,7 +20,8 @@ import {
 } from "recharts";
 import "./DashboardHome.css";
 
-const formatNumber = (value) => Number(value || 0).toLocaleString("vi-VN");
+const formatNumber = (value, i18n) => 
+    Number(value || 0).toLocaleString(i18n?.language === "vi" ? "vi-VN" : "en-US");
 
 const PLAN_COLORS = ["#8f1717", "#d4af37", "#7c2d12", "#182236", "#b45309", "#991b1b"];
 
@@ -36,26 +38,27 @@ function ChartTooltip({ active, payload, label }) {
             <strong>{label}</strong>
             {payload.map((item) => (
                 <span key={`${item.name}-${item.value}`}>
-                    {item.name}: {formatNumber(item.value)}
+                    {item.name}: {formatNumber(item.value, item.i18n)}
                 </span>
             ))}
         </div>
     );
 }
 
-function PlanTooltip({ active, payload }) {
+function PlanTooltip({ active, payload, t }) {
     if (!active || !payload?.length) return null;
     const item = payload[0]?.payload || {};
     return (
         <div className="admin-chart-tooltip">
-            <strong>{item.plan_name || "Không rõ gói"}</strong>
-            <span>{formatNumber(item.total)} dòng họ</span>
-            <span>{percent(item.percent)} hệ thống</span>
+            <strong>{item.plan_name || t("admin.dashboard.plans.unknownPlan")}</strong>
+            <span>{t("admin.dashboard.plans.clanCount", { count: item.total })}</span>
+            <span>{percent(item.percent)} {t("admin.dashboard.plans.systemPercent")}</span>
         </div>
     );
 }
 
 export default function DashboardHome() {
+    const { t, i18n } = useTranslation();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -68,7 +71,7 @@ export default function DashboardHome() {
                 const statsRes = await getAdminDashboardStats();
                 setData(statsRes);
             } catch (err) {
-                setError(err.message || "Không tải được dữ liệu dashboard");
+                setError(err.message || t("admin.dashboard.messages.loadError"));
             } finally {
                 setLoading(false);
             }
@@ -91,49 +94,49 @@ export default function DashboardHome() {
     const statItems = [
         {
             icon: "account_tree",
-            label: "Tổng số dòng họ",
+            label: t("admin.dashboard.stats.totalClans"),
             value: stats.total_clans || 0,
             color: "var(--primary-gradient)",
-            note: "Tất cả dòng họ trong hệ thống",
+            note: t("admin.dashboard.stats.totalClansNote"),
         },
         {
             icon: "groups",
-            label: "Tổng số thành viên",
+            label: t("admin.dashboard.stats.totalMembers"),
             value: stats.total_members || 0,
             color: "var(--accent-gradient)",
-            note: "Hồ sơ thành viên gia phả",
+            note: t("admin.dashboard.stats.totalMembersNote"),
         },
         {
             icon: "event_available",
-            label: "Tổng số sự kiện",
+            label: t("admin.dashboard.stats.totalEvents"),
             value: stats.total_events || 0,
             color: "var(--warm-gradient)",
-            note: "Sự kiện dòng họ đã tạo",
+            note: t("admin.dashboard.stats.totalEventsNote"),
         },
         {
             icon: "perm_media",
-            label: "Tổng media đã tải",
+            label: t("admin.dashboard.stats.totalMedia"),
             value: stats.total_media || 0,
             color: "var(--cool-gradient)",
-            note: "Ảnh, video và tệp media",
+            note: t("admin.dashboard.stats.totalMediaNote"),
         },
     ];
 
     if (loading && !data) {
-        return <div className="loading-container"><div className="loader"></div><p>Đang tải dữ liệu hệ thống...</p></div>;
+        return <div className="loading-container"><div className="loader"></div><p>{t("admin.dashboard.messages.loading")}</p></div>;
     }
 
     return (
         <div className="premium-dashboard premium-dashboard-v2 admin-analytics-dashboard">
             <section className="dashboard-hero-panel">
                 <div>
-                    <span className="eyebrow">Bảng điều khiển quản trị</span>
-                    <h1>Tổng quan hệ thống</h1>
-                    <p>Thống kê riêng cho Admin: dòng họ, thành viên, sự kiện, media, gói sử dụng và cảnh báo nâng cấp.</p>
+                    <span className="eyebrow">{t("admin.dashboard.title")}</span>
+                    <h1>{t("admin.dashboard.overview")}</h1>
+                    <p>{t("admin.dashboard.subtitle")}</p>
                 </div>
                 <div className="admin-only-pill">
                     <span className="material-symbols-outlined">admin_panel_settings</span>
-                    Chỉ tài khoản Admin
+                    {t("admin.dashboard.adminOnly")}
                 </div>
             </section>
 
@@ -147,7 +150,7 @@ export default function DashboardHome() {
                         </div>
                         <div className="stat-info">
                             <span className="label">{item.label}</span>
-                            <h2 className="value">{formatNumber(item.value)}</h2>
+                            <h2 className="value">{formatNumber(item.value, i18n)}</h2>
                             <span className="trend">{item.note}</span>
                         </div>
                     </div>
@@ -158,10 +161,10 @@ export default function DashboardHome() {
                 <article className="card-glass chart-card">
                     <div className="card-header dashboard-card-header">
                         <div>
-                            <span className="section-kicker">Gói sử dụng</span>
-                            <h2>Tỷ lệ gói đăng ký</h2>
+                            <span className="section-kicker">{t("admin.dashboard.plans.title")}</span>
+                            <h2>{t("admin.dashboard.plans.subtitle")}</h2>
                         </div>
-                        <span className="chart-badge">{formatNumber(totalPlanClans)} dòng họ</span>
+                        <span className="chart-badge">{t("admin.dashboard.plans.countLabel", { count: totalPlanClans })}</span>
                     </div>
 
                     <div className="donut-chart-layout">
@@ -182,12 +185,12 @@ export default function DashboardHome() {
                                             <Cell key={entry.plan_name || index} fill={PLAN_COLORS[index % PLAN_COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip content={<PlanTooltip />} />
+                                    <Tooltip content={<PlanTooltip t={t} />} />
                                 </PieChart>
                             </ResponsiveContainer>
                             <div className="donut-center">
-                                <strong>{formatNumber(totalPlanClans)}</strong>
-                                <span>Dòng họ</span>
+                                <strong>{formatNumber(totalPlanClans, i18n)}</strong>
+                                <span>{t("admin.dashboard.plans.donutLabel")}</span>
                             </div>
                         </div>
 
@@ -196,12 +199,12 @@ export default function DashboardHome() {
                                 <div className="plan-legend-item" key={`${item.plan_name}-${index}`}>
                                     <span className="legend-dot" style={{ background: PLAN_COLORS[index % PLAN_COLORS.length] }} />
                                     <div>
-                                        <strong>{item.plan_name || "Không rõ gói"}</strong>
-                                        <small>{formatNumber(item.total)} dòng họ · {percent(item.percent)}</small>
+                                        <strong>{item.plan_name || t("admin.dashboard.plans.unknownPlan")}</strong>
+                                        <small>{t("admin.dashboard.plans.clanCount", { count: item.total })} · {percent(item.percent)}</small>
                                     </div>
                                 </div>
                             ))}
-                            {!planDistribution.length && <p className="empty-note">Chưa có dữ liệu gói sử dụng.</p>}
+                            {!planDistribution.length && <p className="empty-note">{t("admin.dashboard.plans.empty")}</p>}
                         </div>
                     </div>
                 </article>
@@ -209,10 +212,10 @@ export default function DashboardHome() {
                 <article className="card-glass chart-card">
                     <div className="card-header dashboard-card-header">
                         <div>
-                            <span className="section-kicker">Dòng họ nổi bật</span>
-                            <h2>Top dòng họ nhiều thành viên</h2>
+                            <span className="section-kicker">{t("admin.dashboard.topClans.title")}</span>
+                            <h2>{t("admin.dashboard.topClans.subtitle")}</h2>
                         </div>
-                        <span className="chart-badge">Top 8</span>
+                        <span className="chart-badge">{t("admin.dashboard.topClans.badge", { count: 8 })}</span>
                     </div>
 
                     <div className="bar-chart-box">
@@ -227,7 +230,7 @@ export default function DashboardHome() {
                                     tick={{ fill: "#2f211d", fontWeight: 800, fontSize: 12 }}
                                 />
                                 <Tooltip content={<ChartTooltip />} />
-                                <Bar dataKey="member_count" name="Thành viên" radius={[0, 12, 12, 0]} fill="#8f1717" />
+                                <Bar dataKey="member_count" name={t("admin.dashboard.topClans.memberCount")} radius={[0, 12, 12, 0]} fill="#8f1717" />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -238,10 +241,10 @@ export default function DashboardHome() {
                 <article className="card-glass chart-card">
                     <div className="card-header dashboard-card-header">
                         <div>
-                            <span className="section-kicker">Tăng trưởng tài khoản</span>
-                            <h2>Số tài khoản được tạo</h2>
+                            <span className="section-kicker">{t("admin.dashboard.growth.accountsTitle")}</span>
+                            <h2>{t("admin.dashboard.growth.accountsSubtitle")}</h2>
                         </div>
-                        <span className="chart-badge">12 tháng gần nhất</span>
+                        <span className="chart-badge">{t("admin.dashboard.growth.last12Months")}</span>
                     </div>
 
                     <ResponsiveContainer width="100%" height={300}>
@@ -254,7 +257,7 @@ export default function DashboardHome() {
                             <Line
                                 type="monotone"
                                 dataKey="total"
-                                name="Tài khoản mới"
+                                name={t("admin.dashboard.growth.newAccounts")}
                                 stroke="#8f1717"
                                 strokeWidth={3}
                                 dot={{ r: 4, strokeWidth: 2 }}
@@ -267,10 +270,10 @@ export default function DashboardHome() {
                 <article className="card-glass chart-card">
                     <div className="card-header dashboard-card-header">
                         <div>
-                            <span className="section-kicker">Tăng trưởng dòng họ</span>
-                            <h2>Số dòng tộc được tạo</h2>
+                            <span className="section-kicker">{t("admin.dashboard.growth.clansTitle")}</span>
+                            <h2>{t("admin.dashboard.growth.clansSubtitle")}</h2>
                         </div>
-                        <span className="chart-badge">12 tháng gần nhất</span>
+                        <span className="chart-badge">{t("admin.dashboard.growth.last12Months")}</span>
                     </div>
 
                     <ResponsiveContainer width="100%" height={300}>
@@ -289,7 +292,7 @@ export default function DashboardHome() {
                             <Area
                                 type="monotone"
                                 dataKey="total"
-                                name="Dòng họ mới"
+                                name={t("admin.dashboard.growth.newClans")}
                                 stroke="#a87310"
                                 strokeWidth={3}
                                 fill="url(#clanAreaFill)"
@@ -302,10 +305,10 @@ export default function DashboardHome() {
             <section className="card-glass upgrade-alert-card">
                 <div className="card-header dashboard-card-header">
                     <div>
-                        <span className="section-kicker">Cảnh báo nâng cấp</span>
-                        <h2>Dòng họ gần vượt giới hạn gói</h2>
+                        <span className="section-kicker">{t("admin.dashboard.upgrades.title")}</span>
+                        <h2>{t("admin.dashboard.upgrades.subtitle")}</h2>
                     </div>
-                    <span className="chart-badge">{formatNumber(upgradeAlerts.length)} cảnh báo</span>
+                    <span className="chart-badge">{t("admin.dashboard.upgrades.alertCount", { count: upgradeAlerts.length })}</span>
                 </div>
 
                 {upgradeAlerts.length ? (
@@ -316,15 +319,15 @@ export default function DashboardHome() {
                                     <span className="material-symbols-outlined">warning</span>
                                     <div>
                                         <strong>{item.clan_name}</strong>
-                                        <small>Gói hiện tại: {item.plan_name || "Chưa có gói"}</small>
+                                        <small>{t("admin.dashboard.upgrades.currentPlan", { name: item.plan_name || t("admin.dashboard.upgrades.noPlan") })}</small>
                                     </div>
                                 </div>
 
                                 <div className="upgrade-meter-group">
                                     <div className="upgrade-meter">
                                         <div className="upgrade-meter-label">
-                                            <span>Thành viên</span>
-                                            <b>{formatNumber(item.current_people)} / {formatNumber(item.person_limit)}</b>
+                                            <span>{t("admin.dashboard.upgrades.people")}</span>
+                                            <b>{formatNumber(item.current_people, i18n)} / {formatNumber(item.person_limit, i18n)}</b>
                                         </div>
                                         <div className="upgrade-progress">
                                             <span style={{ width: `${Math.min(100, Number(item.people_usage_percent || 0))}%` }} />
@@ -333,8 +336,8 @@ export default function DashboardHome() {
 
                                     <div className="upgrade-meter">
                                         <div className="upgrade-meter-label">
-                                            <span>Tài khoản</span>
-                                            <b>{formatNumber(item.current_accounts)} / {formatNumber(item.account_limit)}</b>
+                                            <span>{t("admin.dashboard.upgrades.accounts")}</span>
+                                            <b>{formatNumber(item.current_accounts, i18n)} / {formatNumber(item.account_limit, i18n)}</b>
                                         </div>
                                         <div className="upgrade-progress">
                                             <span style={{ width: `${Math.min(100, Number(item.account_usage_percent || 0))}%` }} />
@@ -343,7 +346,9 @@ export default function DashboardHome() {
                                 </div>
 
                                 <div className="upgrade-status-pill">
-                                    {Number(item.max_usage_percent) >= 100 ? "Đã vượt giới hạn" : `Đã dùng ${percent(item.max_usage_percent)}`}
+                                    {Number(item.max_usage_percent) >= 100 
+                                        ? t("admin.dashboard.upgrades.exceeded") 
+                                        : t("admin.dashboard.upgrades.usage", { percent: percent(item.max_usage_percent) })}
                                 </div>
                             </article>
                         ))}
@@ -352,8 +357,8 @@ export default function DashboardHome() {
                     <div className="empty-alert-state">
                         <span className="material-symbols-outlined">verified</span>
                         <div>
-                            <strong>Chưa có dòng họ nào cần cảnh báo.</strong>
-                            <p>Các dòng họ hiện vẫn nằm trong giới hạn gói sử dụng.</p>
+                            <strong>{t("admin.dashboard.upgrades.emptyTitle")}</strong>
+                            <p>{t("admin.dashboard.upgrades.emptySubtitle")}</p>
                         </div>
                     </div>
                 )}

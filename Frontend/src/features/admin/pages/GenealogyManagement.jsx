@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
     createAdminClan,
     deleteAdminClan,
@@ -21,6 +22,7 @@ const emptyClanForm = {
 };
 
 export default function GenealogyManagement() {
+    const { t } = useTranslation();
     const [clans, setClans] = useState([]);
     const [selectedClanId, setSelectedClanId] = useState(null);
     const [treeData, setTreeData] = useState({ people: [], families: [], children: [] });
@@ -48,7 +50,7 @@ export default function GenealogyManagement() {
             }
         } catch (err) {
             console.error(err);
-            alert(err.message || "Không tải được danh sách dòng họ");
+            alert(err.message || t("admin.genealogy.messages.loadClansError"));
         } finally {
             setLoading(false);
         }
@@ -124,20 +126,20 @@ export default function GenealogyManagement() {
         event.preventDefault();
         const clanName = clanForm.clan_name.trim();
         if (!clanName) {
-            setFormError("Vui lòng nhập tên dòng họ.");
+            setFormError(t("admin.genealogy.messages.clanNameRequired"));
             return;
         }
         if (modalMode === "create") {
             if (!clanForm.manager_email.trim() || !clanForm.manager_password.trim()) {
-                setFormError("Vui lòng nhập email và mật khẩu tài khoản Manager phụ trách dòng họ.");
+                setFormError(t("admin.genealogy.messages.managerAccountRequired"));
                 return;
             }
             if (clanForm.manager_password.trim().length < 6) {
-                setFormError("Mật khẩu Manager tối thiểu 6 ký tự.");
+                setFormError(t("admin.genealogy.messages.passwordMinLength"));
                 return;
             }
             if (!clanForm.manager_surname.trim() && !clanForm.manager_first_name.trim()) {
-                setFormError("Vui lòng nhập ít nhất họ hoặc tên của Manager phụ trách.");
+                setFormError(t("admin.genealogy.messages.managerNameRequired"));
                 return;
             }
         }
@@ -153,7 +155,7 @@ export default function GenealogyManagement() {
             }
             setModalMode(null);
         } catch (err) {
-            setFormError(err.message || "Thao tác thất bại.");
+            setFormError(err.message || t("admin.genealogy.messages.operationFailed"));
         } finally {
             setSaving(false);
         }
@@ -161,26 +163,26 @@ export default function GenealogyManagement() {
 
     const handleDeleteClan = async (clan) => {
         if (!clan?.id) return;
-        const ok = window.confirm(`Xóa dòng họ "${clan.clan_name}"? Toàn bộ phả hệ, thành viên, bài viết, sự kiện và dữ liệu liên quan của dòng họ này sẽ bị xóa.`);
+        const ok = window.confirm(t("admin.genealogy.messages.deleteConfirm", { name: clan.clan_name }));
         if (!ok) return;
         try {
             await deleteAdminClan(clan.id);
             await fetchClans();
         } catch (err) {
-            alert(err.message || "Xóa dòng họ thất bại");
+            alert(err.message || t("admin.genealogy.messages.deleteError"));
         }
     };
 
-    if (loading && clans.length === 0) return <div className="loading-container"><div className="loader"></div><p>Đang tải danh sách dòng họ...</p></div>;
+    if (loading && clans.length === 0) return <div className="loading-container"><div className="loader"></div><p>{t("admin.genealogy.messages.loading")}</p></div>;
 
     return (
         <div className="genealogy-management premium-page">
             <aside className="clan-sidebar">
                 <div className="sidebar-header">
-                    <h3>Danh sách Dòng họ</h3>
+                    <h3>{t("admin.genealogy.sidebar.title")}</h3>
                     <button className="add-clan-btn" onClick={openCreateModal} type="button">
                         <span className="material-symbols-outlined">add</span>
-                        Thêm dòng họ
+                        {t("admin.genealogy.sidebar.addBtn")}
                     </button>
                 </div>
 
@@ -189,10 +191,10 @@ export default function GenealogyManagement() {
                     <input
                         value={searchTerm}
                         onChange={(event) => setSearchTerm(event.target.value)}
-                        placeholder="Tìm kiếm dòng họ..."
+                        placeholder={t("admin.genealogy.sidebar.searchPlaceholder")}
                     />
                     {searchTerm && (
-                        <button type="button" onClick={() => setSearchTerm("")} aria-label="Xóa tìm kiếm">
+                        <button type="button" onClick={() => setSearchTerm("")} aria-label={t("admin.genealogy.sidebar.clearSearch")}>
                             <span className="material-symbols-outlined">close</span>
                         </button>
                     )}
@@ -200,7 +202,7 @@ export default function GenealogyManagement() {
 
                 <div className="clan-list">
                     {filteredClans.length === 0 ? (
-                        <div className="empty-clan-list">Không tìm thấy dòng họ phù hợp.</div>
+                        <div className="empty-clan-list">{t("admin.genealogy.sidebar.empty")}</div>
                     ) : filteredClans.map(clan => (
                         <div
                             key={clan.id}
@@ -210,14 +212,14 @@ export default function GenealogyManagement() {
                             <span className="material-symbols-outlined">account_balance</span>
                             <div className="clan-info">
                                 <strong>{clan.clan_name}</strong>
-                                <span>{clan.member_count} thành viên · {clan.manager_count || 0} manager</span>
-                                {clan.owner_name ? <small>QL: {clan.owner_name}</small> : null}
+                                <span>{t("admin.genealogy.sidebar.stats", { count: clan.member_count, managerCount: clan.manager_count || 0 })}</span>
+                                {clan.owner_name ? <small>{t("admin.genealogy.sidebar.owner", { name: clan.owner_name })}</small> : null}
                             </div>
                             <div className="clan-actions" onClick={(event) => event.stopPropagation()}>
-                                <button type="button" title="Sửa dòng họ" onClick={() => { setSelectedClanId(clan.id); openEditModal(clan); }}>
+                                <button type="button" title={t("admin.genealogy.modal.editTitle")} onClick={() => { setSelectedClanId(clan.id); openEditModal(clan); }}>
                                     <span className="material-symbols-outlined">edit</span>
                                 </button>
-                                <button type="button" className="danger" title="Xóa dòng họ" onClick={() => handleDeleteClan(clan)}>
+                                <button type="button" className="danger" title={t("admin.genealogy.messages.deleteError")} onClick={() => handleDeleteClan(clan)}>
                                     <span className="material-symbols-outlined">delete</span>
                                 </button>
                             </div>
@@ -239,7 +241,7 @@ export default function GenealogyManagement() {
                             onReload={fetchTree}
                         />
                     ) : (
-                        <div className="empty-tree-state">Chưa có dòng họ nào. Hãy bấm “Thêm dòng họ” để tạo phả hệ mới.</div>
+                        <div className="empty-tree-state">{t("admin.genealogy.main.empty")}</div>
                     )}
                 </div>
             </main>
@@ -250,31 +252,31 @@ export default function GenealogyManagement() {
                         <button type="button" className="close-modal" onClick={closeModal}>
                             <span className="material-symbols-outlined">close</span>
                         </button>
-                        <h3>{modalMode === "edit" ? "Sửa dòng họ" : "Thêm dòng họ"}</h3>
+                        <h3>{modalMode === "edit" ? t("admin.genealogy.modal.editTitle") : t("admin.genealogy.modal.createTitle")}</h3>
                         <label>
-                            Tên dòng họ <b>*</b>
+                            {t("admin.genealogy.modal.fields.clanName")} <b>*</b>
                             <input
                                 value={clanForm.clan_name}
                                 onChange={(event) => setClanForm(prev => ({ ...prev, clan_name: event.target.value }))}
-                                placeholder="Ví dụ: Hà Văn"
+                                placeholder={t("admin.genealogy.modal.fields.clanNamePlaceholder")}
                                 autoFocus
                             />
                         </label>
                         <label>
-                            Lịch sử dòng họ
+                            {t("admin.genealogy.modal.fields.history")}
                             <textarea
                                 value={clanForm.history}
                                 onChange={(event) => setClanForm(prev => ({ ...prev, history: event.target.value }))}
-                                placeholder="Nhập mô tả/lịch sử dòng họ nếu có"
+                                placeholder={t("admin.genealogy.modal.fields.historyPlaceholder")}
                                 rows={4}
                             />
                         </label>
                         <label>
-                            Địa chỉ nhà thờ họ
+                            {t("admin.genealogy.modal.fields.hallAddress")}
                             <input
                                 value={clanForm.hall_address}
                                 onChange={(event) => setClanForm(prev => ({ ...prev, hall_address: event.target.value }))}
-                                placeholder="Nhập địa chỉ nếu có"
+                                placeholder={t("admin.genealogy.modal.fields.hallAddressPlaceholder")}
                             />
                         </label>
                         {modalMode === "create" && (
@@ -282,12 +284,12 @@ export default function GenealogyManagement() {
                                 <div className="manager-section-title">
                                     <span className="material-symbols-outlined">manage_accounts</span>
                                     <div>
-                                        <strong>Tài khoản Manager phụ trách</strong>
-                                        <p>Manager này sẽ được gán quyền quản lý dòng họ vừa tạo và có quyền thêm người vào cây gia phả.</p>
+                                        <strong>{t("admin.genealogy.modal.fields.managerSection.title")}</strong>
+                                        <p>{t("admin.genealogy.modal.fields.managerSection.subtitle")}</p>
                                     </div>
                                 </div>
                                 <label>
-                                    Email Manager <b>*</b>
+                                    {t("admin.genealogy.modal.fields.managerSection.email")} <b>*</b>
                                     <input
                                         type="email"
                                         value={clanForm.manager_email}
@@ -296,38 +298,38 @@ export default function GenealogyManagement() {
                                     />
                                 </label>
                                 <label>
-                                    Mật khẩu Manager <b>*</b>
+                                    {t("admin.genealogy.modal.fields.managerSection.password")} <b>*</b>
                                     <input
                                         type="password"
                                         value={clanForm.manager_password}
                                         onChange={(event) => setClanForm(prev => ({ ...prev, manager_password: event.target.value }))}
-                                        placeholder="Tối thiểu 6 ký tự"
+                                        placeholder={t("admin.genealogy.modal.fields.managerSection.passwordHint")}
                                         autoComplete="new-password"
                                     />
                                 </label>
                                 <div className="manager-name-grid">
                                     <label>
-                                        Họ Manager <b>*</b>
+                                        {t("admin.genealogy.modal.fields.managerSection.surname")} <b>*</b>
                                         <input
                                             value={clanForm.manager_surname}
                                             onChange={(event) => setClanForm(prev => ({ ...prev, manager_surname: event.target.value }))}
-                                            placeholder="Ví dụ: Nguyễn"
+                                            placeholder={t("admin.genealogy.modal.fields.managerSection.surnamePlaceholder")}
                                         />
                                     </label>
                                     <label>
-                                        Tên đệm
+                                        {t("admin.genealogy.modal.fields.managerSection.middleName")}
                                         <input
                                             value={clanForm.manager_middle_name}
                                             onChange={(event) => setClanForm(prev => ({ ...prev, manager_middle_name: event.target.value }))}
-                                            placeholder="Ví dụ: Văn"
+                                            placeholder={t("admin.genealogy.modal.fields.managerSection.middleNamePlaceholder")}
                                         />
                                     </label>
                                     <label>
-                                        Tên Manager <b>*</b>
+                                        {t("admin.genealogy.modal.fields.managerSection.firstName")} <b>*</b>
                                         <input
                                             value={clanForm.manager_first_name}
                                             onChange={(event) => setClanForm(prev => ({ ...prev, manager_first_name: event.target.value }))}
-                                            placeholder="Ví dụ: An"
+                                            placeholder={t("admin.genealogy.modal.fields.managerSection.firstNamePlaceholder")}
                                         />
                                     </label>
                                 </div>
@@ -335,8 +337,10 @@ export default function GenealogyManagement() {
                         )}
                         {formError && <p className="clan-form-error">{formError}</p>}
                         <div className="clan-modal-actions">
-                            <button type="button" className="secondary" onClick={closeModal} disabled={saving}>Hủy</button>
-                            <button type="submit" disabled={saving}>{saving ? "Đang lưu..." : "Lưu"}</button>
+                            <button type="button" className="secondary" onClick={closeModal} disabled={saving}>{t("admin.genealogy.modal.actions.cancel")}</button>
+                            <button type="submit" disabled={saving}>
+                                {saving ? t("admin.genealogy.modal.actions.saving") : t("admin.genealogy.modal.actions.save")}
+                            </button>
                         </div>
                     </form>
                 </div>

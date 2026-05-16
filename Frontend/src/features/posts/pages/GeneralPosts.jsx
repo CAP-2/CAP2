@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import {
   addPostComment,
@@ -20,22 +21,22 @@ const emptyPostForm = {
   media_type: "",
 };
 
-function formatDate(value) {
-  if (!value) return "Chưa cập nhật";
+function formatDate(value, t) {
+  if (!value) return t("posts.card.notUpdated");
   return formatDateTimeVN(value);
 }
 
-function buildPostDescription(post) {
+function buildPostDescription(post, t) {
   const description = String(post?.description || "").trim();
   if (description) return description;
 
   const content = String(post?.content || "").trim();
-  if (!content) return "Bài viết hình ảnh";
+  if (!content) return t("posts.card.imagePost");
   return content.length > 180 ? `${content.slice(0, 177)}...` : content;
 }
 
-function getAuthorName(post) {
-  return post?.author_name || post?.created_by_name || post?.email || "Thành viên dòng họ";
+function getAuthorName(post, t) {
+  return post?.author_name || post?.created_by_name || post?.email || t("posts.card.clanMember");
 }
 
 function getPostMediaUrl(post) {
@@ -48,7 +49,7 @@ function isVideoMedia(value, explicitType = "") {
   return type.startsWith("video/") || /[?&]media=video(?:&|$)/.test(url) || /\.(mp4|webm|mov|m4v)(\?|#|$)/.test(url);
 }
 
-function PostMedia({ url, mediaType = "", detail = false }) {
+function PostMedia({ url, mediaType = "", detail = false, t }) {
   if (!url) return null;
   if (isVideoMedia(url, mediaType)) {
     return (
@@ -62,11 +63,11 @@ function PostMedia({ url, mediaType = "", detail = false }) {
       />
     );
   }
-  return <img src={url} alt="Media bài đăng" />;
+  return <img src={url} alt={t("posts.card.postMediaAlt")} />;
 }
 
-function PostCard({ post, onOpen, onLike, liking }) {
-  const text = post.content || post.description || "Bài viết hình ảnh";
+function PostCard({ post, onOpen, onLike, liking, t }) {
+  const text = post.content || post.description || t("posts.card.imagePost");
   const mediaUrl = getPostMediaUrl(post);
 
   return (
@@ -77,8 +78,8 @@ function PostCard({ post, onOpen, onLike, liking }) {
             <img src="/logo.png" alt="" />
           </span>
           <span className="feed-author-text">
-            <strong>{getAuthorName(post)}</strong>
-            <time>{formatDate(post.created_at)}</time>
+            <strong>{getAuthorName(post, t)}</strong>
+            <time>{formatDate(post.created_at, t)}</time>
           </span>
         </button>
       </header>
@@ -89,34 +90,34 @@ function PostCard({ post, onOpen, onLike, liking }) {
 
       {mediaUrl ? (
         <button type="button" className="feed-post-media" onClick={() => onOpen(post)}>
-          <PostMedia url={mediaUrl} mediaType={post.media_type || post.mime_type || ""} />
+          <PostMedia url={mediaUrl} mediaType={post.media_type || post.mime_type || ""} t={t} />
         </button>
       ) : null}
 
       <div className="feed-post-stats">
-        <span>{Number(post.like_count || 0)} lượt thích</span>
-        <span>{Number(post.comment_count || 0)} bình luận</span>
+        <span>{t("posts.card.likes", { count: Number(post.like_count || 0) })}</span>
+        <span>{t("posts.card.comments", { count: Number(post.comment_count || 0) })}</span>
       </div>
 
       <div className="feed-post-actions">
         <button type="button" className={post.liked_by_me ? "is-liked" : ""} onClick={() => onLike(post)} disabled={liking}>
           <span className="material-symbols-outlined">{post.liked_by_me ? "favorite" : "favorite_border"}</span>
-          <span>Thích</span>
+          <span>{t("posts.card.like")}</span>
         </button>
         <button type="button" onClick={() => onOpen(post)}>
           <span className="material-symbols-outlined">chat_bubble</span>
-          <span>Bình luận</span>
+          <span>{t("posts.card.comment")}</span>
         </button>
         <button type="button" onClick={() => onOpen(post)}>
           <span className="material-symbols-outlined">visibility</span>
-          <span>Xem</span>
+          <span>{t("posts.card.view")}</span>
         </button>
       </div>
     </article>
   );
 }
 
-function FeedComposer({ onOpen }) {
+function FeedComposer({ onOpen, t }) {
   return (
     <section className="feed-composer-card">
       <div className="feed-composer-top">
@@ -124,39 +125,39 @@ function FeedComposer({ onOpen }) {
           <img src="/logo.png" alt="" />
         </span>
         <button type="button" className="feed-composer-input" onClick={() => onOpen("story")}>
-          Chia sẻ điều gì với dòng họ...
+          {t("posts.composer.placeholder")}
         </button>
       </div>
       <div className="feed-composer-actions">
         <button type="button" onClick={() => onOpen("media")}>
           <span className="material-symbols-outlined">perm_media</span>
-          Ảnh / Video
+          {t("posts.composer.media")}
         </button>
         <button type="button" onClick={() => onOpen("story")}>
           <span className="material-symbols-outlined">history_edu</span>
-          Câu chuyện
+          {t("posts.composer.story")}
         </button>
       </div>
     </section>
   );
 }
 
-function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSubmit }) {
+function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSubmit, t }) {
   return (
     <div className="post-modal-backdrop" onMouseDown={onClose}>
       <section className="post-modal post-compose-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="post-modal-head">
           <div>
-            <h2>Tạo bài đăng</h2>
-            <p>Bài của thành viên sẽ hiển thị sau khi quản lý duyệt.</p>
+            <h2>{t("posts.modal.create.title")}</h2>
+            <p>{t("posts.modal.create.subtitle")}</p>
           </div>
-          <button type="button" className="post-icon-btn" onClick={onClose} aria-label="Đóng">
+          <button type="button" className="post-icon-btn" onClick={onClose} aria-label={t("common.close") || "Close"}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </header>
 
         <form className="post-compose-form" onSubmit={onSubmit}>
-          <div className="post-type-tabs" role="tablist" aria-label="Loại bài đăng">
+          <div className="post-type-tabs" role="tablist" aria-label={t("posts.modal.create.tabs.ariaLabel")}>
             <button
               type="button"
               className={form.type === "media" ? "is-active" : ""}
@@ -164,7 +165,7 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
               disabled={submitting}
             >
               <span className="material-symbols-outlined">perm_media</span>
-              Ảnh / Video
+              {t("posts.modal.create.tabs.media")}
             </button>
             <button
               type="button"
@@ -173,28 +174,28 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
               disabled={submitting}
             >
               <span className="material-symbols-outlined">history_edu</span>
-              Câu chuyện
+              {t("posts.modal.create.tabs.story")}
             </button>
           </div>
 
           <label className="post-field">
-            <span>Tiêu đề / mô tả ngắn</span>
+            <span>{t("posts.modal.create.fields.title")}</span>
             <input
               value={form.description}
               onChange={(event) => onChange("description", event.target.value)}
-              placeholder="Ví dụ: Ngày họp mặt dòng họ, ảnh kỷ niệm..."
+              placeholder={t("posts.modal.create.fields.titlePlaceholder")}
               maxLength={255}
               disabled={submitting}
             />
           </label>
 
           <label className="post-field">
-            <span>Nội dung bài viết</span>
+            <span>{t("posts.modal.create.fields.content")}</span>
             <textarea
               rows={8}
               value={form.content}
               onChange={(event) => onChange("content", event.target.value)}
-              placeholder="Bạn muốn chia sẻ điều gì với dòng họ?"
+              placeholder={t("posts.modal.create.fields.contentPlaceholder")}
               disabled={submitting}
             />
           </label>
@@ -203,7 +204,7 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
             <ImageUpload
               value={form.image_url}
               disabled={submitting}
-              label="Tải ảnh hoặc video bài đăng"
+              label={t("posts.modal.create.fields.uploadLabel")}
               accept="image/*,video/*"
               allowVideo
               usageType="post_image"
@@ -222,10 +223,10 @@ function AddPostModal({ form, error, notice, submitting, onChange, onClose, onSu
 
           <div className="post-modal-actions">
             <button type="button" className="post-secondary-btn" onClick={onClose} disabled={submitting}>
-              Hủy
+              {t("common.cancel")}
             </button>
             <button type="submit" className="post-primary-btn" disabled={submitting}>
-              {submitting ? "Đang gửi..." : "Gửi bài đăng"}
+              {submitting ? t("common.submitting") : t("posts.modal.create.submit")}
             </button>
           </div>
         </form>
@@ -246,6 +247,7 @@ function PostDetailModal({
   onLike,
   onCommentChange,
   onCommentSubmit,
+  t,
 }) {
   if (!post) return null;
 
@@ -258,50 +260,50 @@ function PostDetailModal({
               <img src="/logo.png" alt="" />
             </span>
             <div>
-              <h2>{getAuthorName(post)}</h2>
-              <p>{formatDate(post.created_at)}</p>
+              <h2>{getAuthorName(post, t)}</h2>
+              <p>{formatDate(post.created_at, t)}</p>
             </div>
           </div>
-          <button type="button" className="post-icon-btn" onClick={onClose} aria-label="Đóng">
+          <button type="button" className="post-icon-btn" onClick={onClose} aria-label={t("common.close")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </header>
 
         <div className="post-detail-body">
-          <h3>{buildPostDescription(post)}</h3>
-          <p>{post.content || post.description || "Bài viết hình ảnh"}</p>
+          <h3>{buildPostDescription(post, t)}</h3>
+          <p>{post.content || post.description || t("posts.card.imagePost")}</p>
         </div>
 
         {getPostMediaUrl(post) && (
           <div className="post-detail-image">
-            <PostMedia url={getPostMediaUrl(post)} mediaType={post.media_type || post.mime_type || ""} detail />
+            <PostMedia url={getPostMediaUrl(post)} mediaType={post.media_type || post.mime_type || ""} detail t={t} />
           </div>
         )}
 
         <div className="post-detail-toolbar">
           <button type="button" className={`post-like-btn ${post.liked_by_me ? "is-liked" : ""}`} onClick={() => onLike(post)} disabled={liking}>
             <span className="material-symbols-outlined">{post.liked_by_me ? "favorite" : "favorite_border"}</span>
-            <span>{Number(post.like_count || 0)} lượt thích</span>
+            <span>{t("posts.card.likes", { count: Number(post.like_count || 0) })}</span>
           </button>
           <div className="post-comment-count">
             <span className="material-symbols-outlined">chat_bubble</span>
-            <span>{Number(post.comment_count || 0)} bình luận</span>
+            <span>{t("posts.card.comments", { count: Number(post.comment_count || 0) })}</span>
           </div>
         </div>
 
         <section className="post-comments">
-          <h3>Bình luận</h3>
+          <h3>{t("posts.modal.detail.comments")}</h3>
           {commentsLoading ? (
-            <div className="post-empty-state">Đang tải bình luận...</div>
+            <div className="post-empty-state">{t("posts.modal.detail.loadingComments")}</div>
           ) : comments.length === 0 ? (
-            <div className="post-empty-state">Chưa có bình luận.</div>
+            <div className="post-empty-state">{t("posts.modal.detail.noComments")}</div>
           ) : (
             <div className="post-comment-list">
               {comments.map((comment) => (
                 <article className="post-comment" key={comment.id}>
-                  <strong>{comment.author_name || "Thành viên"}</strong>
+                  <strong>{comment.author_name || t("posts.modal.detail.member")}</strong>
                   <p>{comment.content}</p>
-                  <time>{formatDate(comment.created_at)}</time>
+                  <time>{formatDate(comment.created_at, t)}</time>
                 </article>
               ))}
             </div>
@@ -312,12 +314,12 @@ function PostDetailModal({
               rows={3}
               value={commentText}
               onChange={(event) => onCommentChange(event.target.value)}
-              placeholder="Viết bình luận..."
+              placeholder={t("posts.modal.detail.commentPlaceholder")}
               disabled={commenting}
             />
             {commentError && <div className="post-form-message is-error">{commentError}</div>}
             <button type="submit" className="post-primary-btn" disabled={commenting}>
-              {commenting ? "Đang gửi..." : "Bình luận"}
+              {commenting ? t("common.submitting") : t("posts.modal.detail.submitComment")}
             </button>
           </form>
         </section>
@@ -327,6 +329,7 @@ function PostDetailModal({
 }
 
 export default function GeneralPosts() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -356,7 +359,7 @@ export default function GeneralPosts() {
       const data = await getGeneralPosts();
       setPosts(data.posts || []);
     } catch (err) {
-      setError(err?.message || "Không thể tải bài viết.");
+      setError(err?.message || t("posts.messages.loadError"));
       setPosts([]);
     } finally {
       setLoading(false);
@@ -370,7 +373,7 @@ export default function GeneralPosts() {
       const data = await getPostComments(postId);
       setComments(data.comments || []);
     } catch (err) {
-      setCommentError(err?.message || "Không thể tải bình luận.");
+      setCommentError(err?.message || t("posts.messages.loadCommentsError"));
       setComments([]);
     } finally {
       setCommentsLoading(false);
@@ -471,17 +474,17 @@ export default function GeneralPosts() {
     const postType = form.type === "media" ? "media" : "story";
 
     if (!description) {
-      setFormError("Vui lòng nhập tiêu đề hoặc mô tả ngắn cho bài đăng.");
+      setFormError(t("posts.messages.titleRequired"));
       return;
     }
 
     if (postType === "media" && !imageUrl) {
-      setFormError("Vui lòng chọn ảnh hoặc video cho bài đăng.");
+      setFormError(t("posts.messages.mediaRequired"));
       return;
     }
 
     if (postType === "story" && !content) {
-      setFormError("Vui lòng nhập nội dung câu chuyện.");
+      setFormError(t("posts.messages.contentRequired"));
       return;
     }
 
@@ -496,11 +499,11 @@ export default function GeneralPosts() {
         media_type: form.media_type || "",
       });
       setForm(emptyPostForm);
-      setFormNotice(result.message || "Đã gửi bài đăng.");
+      setFormNotice(result.message || t("posts.messages.postSuccess"));
       await loadPosts();
       window.setTimeout(closeAddModal, 700);
     } catch (err) {
-      setFormError(err?.message || "Không thể gửi bài đăng.");
+      setFormError(err?.message || t("posts.messages.postError"));
     } finally {
       setSubmitting(false);
     }
@@ -515,7 +518,7 @@ export default function GeneralPosts() {
         like_count: result.like_count,
       });
     } catch (err) {
-      setCommentError(err?.message || "Không thể cập nhật lượt thích.");
+      setCommentError(err?.message || t("posts.messages.likeError"));
     } finally {
       setLikingPostId(null);
     }
@@ -539,7 +542,7 @@ export default function GeneralPosts() {
 
     const content = commentText.trim();
     if (!content) {
-      setCommentError("Vui lòng nhập bình luận.");
+      setCommentError(t("posts.messages.commentRequired"));
       return;
     }
 
@@ -553,7 +556,7 @@ export default function GeneralPosts() {
         comment_count: Number(selectedPostData.comment_count || 0) + 1,
       });
     } catch (err) {
-      setCommentError(err?.message || "Không thể gửi bình luận.");
+      setCommentError(err?.message || t("posts.messages.commentError"));
     } finally {
       setCommenting(false);
     }
@@ -563,25 +566,25 @@ export default function GeneralPosts() {
     <div className="general-posts-page feed-page">
       <header className="general-posts-hero">
         <div>
-          <span className="general-posts-kicker">Bảng tin dòng họ</span>
-          <h1>Bảng tin dòng họ</h1>
-          <p>Nơi lưu giữ câu chuyện, hình ảnh và kỷ niệm của các thành viên.</p>
+          <span className="general-posts-kicker">{t("posts.sidebar.title")}</span>
+          <h1>{t("posts.title")}</h1>
+          <p>{t("posts.subtitle")}</p>
         </div>
       </header>
 
       <div className="feed-layout">
         <main className="feed-main-column">
-          <FeedComposer onOpen={openAddModal} />
+          <FeedComposer onOpen={openAddModal} t={t} />
           {error && <div className="post-form-message is-error">{error}</div>}
 
           {loading ? (
-            <div className="post-empty-state">Đang tải bài viết...</div>
+            <div className="post-empty-state">{t("common.loading")}</div>
           ) : posts.length === 0 ? (
-            <div className="post-empty-state">Chưa có bài viết nào được phê duyệt.</div>
+            <div className="post-empty-state">{t("posts.messages.noPosts")}</div>
           ) : (
             <div className="feed-post-list">
               {posts.map((post) => (
-                <PostCard key={post.id} post={post} onOpen={openPost} onLike={handleToggleLike} liking={likingPostId === post.id} />
+                <PostCard key={post.id} post={post} onOpen={openPost} onLike={handleToggleLike} liking={likingPostId === post.id} t={t} />
               ))}
             </div>
           )}
@@ -589,11 +592,11 @@ export default function GeneralPosts() {
 
         <aside className="feed-right-panel">
           <section className="feed-mini-card">
-            <h3>Bảng tin</h3>
-            <p>Các bài viết đã duyệt sẽ hiển thị cho thành viên trong dòng họ.</p>
+            <h3>{t("posts.sidebar.title")}</h3>
+            <p>{t("posts.sidebar.description")}</p>
             <button type="button" className="post-primary-btn" onClick={() => openAddModal("story")}>
               <span className="material-symbols-outlined">add</span>
-              Thêm bài đăng
+              {t("posts.sidebar.addPost")}
             </button>
           </section>
         </aside>
@@ -608,6 +611,7 @@ export default function GeneralPosts() {
           onChange={changeFormField}
           onClose={closeAddModal}
           onSubmit={handleSubmitPost}
+          t={t}
         />
       )}
 
@@ -627,6 +631,7 @@ export default function GeneralPosts() {
             setCommentError("");
           }}
           onCommentSubmit={handleSubmitComment}
+          t={t}
         />
       )}
     </div>

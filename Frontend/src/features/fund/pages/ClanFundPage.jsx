@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../../services/api";
 import { resolveImageUrl } from "../../../shared/utils/media";
 import DateInput from "../../../shared/components/DateInput";
@@ -29,6 +30,7 @@ const getCurrentUserFromStorage = () => {
 };
 
 export default function ClanFundPage() {
+  const { t } = useTranslation();
   const [campaigns, setCampaigns] = useState([]);
   const [members, setMembers] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -148,7 +150,7 @@ export default function ClanFundPage() {
             m.member_name ||
             m.username ||
             m.email ||
-            (id ? `Thành viên #${id}` : "Thành viên")
+            (id ? t("fund.placeholders.memberId", { id }) : t("fund.placeholders.member"))
         };
       })
       .filter((m) => m.id);
@@ -176,6 +178,21 @@ export default function ClanFundPage() {
     paid_to_manager: false,
     campaign_id: ""
   });
+
+  const translateCategory = (cat) => {
+    if (cat === "Khác") return t("common.other");
+    if (cat === "Sự kiện") return t("common.event");
+    if (cat === "Khuyến học") return t("fund.modal.cashExpense.categories.study");
+    if (cat === "Thăm hỏi") return t("fund.modal.cashExpense.categories.visit");
+    if (cat === "Vận hành") return t("fund.modal.cashExpense.categories.ops");
+    return cat;
+  };
+
+  const translateMethod = (m) => {
+    if (m === "Tiền mặt") return t("fund.methods.cash");
+    if (m === "Chuyển khoản") return t("fund.methods.transfer");
+    return m;
+  };
 
   const [generalTx, setGeneralTx] = useState(initialGeneralTx);
 
@@ -224,7 +241,7 @@ export default function ClanFundPage() {
             break;
           }
         } catch (error) {
-          console.warn("Không lấy được danh sách từ:", url, error.message);
+          console.warn("Could not load member list from:", url, error.message);
         }
       }
 
@@ -260,21 +277,23 @@ export default function ClanFundPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Không thể xuất báo cáo");
+        throw new Error(errorData.message || t("fund.messages.exportError"));
       }
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      const filename = campaignId ? `Bao_Cao_Chien_Dich_${campaignId}.xlsx` : `Bao_Cao_Nam_${new Date().getFullYear()}.xlsx`;
+      const filename = campaignId 
+        ? t("fund.export.campaignFilename", { campaignId }) 
+        : t("fund.export.yearlyFilename", { year: new Date().getFullYear() });
       link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
-      alert("Lỗi xuất báo cáo: " + error.message);
+      alert(t("fund.messages.exportError") + ": " + error.message);
     }
   };
 
@@ -294,10 +313,10 @@ export default function ClanFundPage() {
         headers: {}
       });
 
-      alert("Nhập dữ liệu thành công!");
+      alert(t("fund.messages.importSuccess"));
       loadData();
     } catch (error) {
-      alert("Lỗi khi nhập Excel: " + error.message);
+      alert(t("fund.messages.importError") + ": " + error.message);
     } finally {
       setImporting(false);
     }
@@ -323,7 +342,7 @@ export default function ClanFundPage() {
         qr_code_media_id: res.mediaId
       }));
     } catch (error) {
-      alert("Lỗi khi tải mã QR lên");
+      alert(t("fund.messages.qrUploadError"));
     }
   };
 
@@ -345,7 +364,7 @@ export default function ClanFundPage() {
       setShowCampaignModal(false);
       loadData();
     } catch (error) {
-      alert(error.message || "Lỗi khi tạo đợt thu");
+      alert(error.message || t("fund.messages.createCampaignError"));
     } finally {
       setSubmitting(false);
     }
@@ -371,7 +390,7 @@ export default function ClanFundPage() {
 
       loadData();
     } catch (error) {
-      alert("Lỗi khi cập nhật đợt thu");
+      alert(t("fund.messages.updateCampaignError"));
     }
   };
 
@@ -398,7 +417,7 @@ export default function ClanFundPage() {
 
       loadData();
     } catch (error) {
-      alert("Lỗi khi duyệt giao dịch");
+      alert(t("fund.messages.approveError"));
     } finally {
       setSubmitting(false);
     }
@@ -428,7 +447,7 @@ export default function ClanFundPage() {
       setGeneralTx(initialGeneralTx());
       loadData();
     } catch (error) {
-      alert(error.message || "Lỗi khi ghi nhận khoản chi");
+      alert(error.message || t("fund.messages.expenseError"));
     } finally {
       setSubmitting(false);
     }
@@ -440,7 +459,7 @@ export default function ClanFundPage() {
       setSelectedCampaign(data);
       setShowLedgerModal(true);
     } catch (error) {
-      alert("Không thể tải chi tiết đợt thu");
+      alert(t("fund.messages.loadCampaignDetailError"));
     }
   };
 
@@ -488,15 +507,15 @@ export default function ClanFundPage() {
     <div className="fund-container glass-bg">
       <header className="glass-card premium-header">
         <div className="header-info">
-          <span className="header-kicker">Quản lý tài chính dòng họ</span>
-          <h1>Hệ thống Quản trị Quỹ</h1>
-          <p>Tối ưu hóa dòng tiền, đợt thu và các khoản chi minh bạch.</p>
+          <span className="header-kicker">{t("fund.title")}</span>
+          <h1>{t("fund.subtitle")}</h1>
+          <p>{t("fund.description")}</p>
         </div>
 
         <div className="header-actions">
           <label className="btn-premium btn-outline">
             <span className="material-symbols-outlined">upload_file</span>
-            {importing ? "Đang xử lý..." : "Nhập Excel"}
+            {importing ? t("fund.actions.processing") : t("fund.actions.importExcel")}
             <input
               type="file"
               hidden
@@ -508,7 +527,7 @@ export default function ClanFundPage() {
 
           <button className="btn-premium btn-outline" onClick={() => setShowPendingModal(true)} style={{ position: 'relative' }}>
             <span className="material-symbols-outlined">rule</span>
-            Duyệt Giao Dịch
+            {t("fund.actions.approveTransactions")}
             {pendingTransactions.length > 0 && (
               <span className="badge-count">{pendingTransactions.length}</span>
             )}
@@ -516,17 +535,17 @@ export default function ClanFundPage() {
 
           <button className="btn-premium btn-outline" onClick={() => handleExportExcel()}>
             <span className="material-symbols-outlined">download</span>
-            Báo Cáo Năm
+            {t("fund.actions.yearlyReport")}
           </button>
 
           <button className="btn-premium btn-gold" onClick={() => setShowGeneralForm(true)}>
             <span className="material-symbols-outlined">payments</span>
-            Chi Tiền Mặt
+            {t("fund.actions.expenseCash")}
           </button>
 
           <button className="btn-premium btn-green" onClick={() => setShowCampaignModal(true)}>
             <span className="material-symbols-outlined">add_circle</span>
-            Đợt Thu Mới
+            {t("fund.actions.newCampaign")}
           </button>
         </div>
       </header>
@@ -537,7 +556,7 @@ export default function ClanFundPage() {
             <span className="material-symbols-outlined">account_balance_wallet</span>
           </div>
           <div>
-            <p>Số dư hiện tại</p>
+            <p>{t("fund.stats.balance")}</p>
             <strong>{formatCurrency(currentBalance)}</strong>
           </div>
         </div>
@@ -547,7 +566,7 @@ export default function ClanFundPage() {
             <span className="material-symbols-outlined">trending_up</span>
           </div>
           <div>
-            <p>Tổng thu</p>
+            <p>{t("fund.stats.totalIncome")}</p>
             <strong>{formatCurrency(totalIncome)}</strong>
           </div>
         </div>
@@ -557,7 +576,7 @@ export default function ClanFundPage() {
             <span className="material-symbols-outlined">trending_down</span>
           </div>
           <div>
-            <p>Tổng chi</p>
+            <p>{t("fund.stats.totalExpense")}</p>
             <strong>{formatCurrency(totalExpense)}</strong>
           </div>
         </div>
@@ -567,7 +586,7 @@ export default function ClanFundPage() {
             <span className="material-symbols-outlined">flag</span>
           </div>
           <div>
-            <p>Đợt thu đang mở</p>
+            <p>{t("fund.stats.activeCampaigns")}</p>
             <strong>{activeCampaignCount}</strong>
           </div>
         </div>
@@ -581,15 +600,15 @@ export default function ClanFundPage() {
         <section>
           <div className="section-header-v3">
             <h3 className="section-title">
-              {filterMonth ? `Danh Sách Đợt T${filterMonth}` : "Danh Sách Đợt Thu"}
-              {filterYear && filterMonth ? `/${filterYear}` : filterYear ? ` Năm ${filterYear}` : ""}
+              {filterMonth ? t("fund.campaigns.monthLabel", { month: filterMonth }) : t("fund.campaigns.title")}
+              {filterYear && filterMonth ? `/${filterYear}` : filterYear ? ` ${t("common.year")} ${filterYear}` : ""}
             </h3>
 
             <div className="fund-filters">
               <div className="filter-item">
                 <span className="material-symbols-outlined">calendar_today</span>
                 <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
-                  <option value="">Tất cả năm</option>
+                  <option value="">{t("fund.campaigns.allYears")}</option>
                   {years.map(y => (
                     <option key={y} value={y}>{y}</option>
                   ))}
@@ -599,9 +618,9 @@ export default function ClanFundPage() {
               <div className="filter-item">
                 <span className="material-symbols-outlined">filter_list</span>
                 <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
-                  <option value="">Tất cả tháng</option>
+                  <option value="">{t("fund.campaigns.allMonths")}</option>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m}>Tháng {m}</option>
+                    <option key={m} value={m}>{t("fund.campaigns.monthLabel", { month: m })}</option>
                   ))}
                 </select>
               </div>
@@ -610,7 +629,7 @@ export default function ClanFundPage() {
 
           <div className="campaign-grid-v3 vertical-scroll">
             {loading ? (
-              <div className="empty-state-card">Đang tải dữ liệu...</div>
+              <div className="empty-state-card">{t("common.loading")}</div>
             ) : filteredCampaigns.length ? (
               filteredCampaigns.map((c) => (
                 <div
@@ -645,11 +664,11 @@ export default function ClanFundPage() {
                   </div>
                   <div className="campaign-stats-mini" style={{ marginTop: '8px', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
-                      <span>Đã chi:</span>
+                      <span>{t("fund.campaigns.spent")}:</span>
                       <strong>{formatCurrency(c.spent_amount)}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#27ae60', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '4px' }}>
-                      <span>Còn lại:</span>
+                      <span>{t("fund.campaigns.balance")}:</span>
                       <strong>{formatCurrency(c.balance)}</strong>
                     </div>
                   </div>
@@ -662,22 +681,22 @@ export default function ClanFundPage() {
                 </div>
               ))
             ) : (
-              <div className="empty-state-card">Không tìm thấy đợt thu nào phù hợp.</div>
+              <div className="empty-state-card">{t("fund.campaigns.noCampaignFound")}</div>
             )}
           </div>
         </section>
 
         <section>
-          <h3 className="section-title">Nhật Ký Dòng Tiền</h3>
+          <h3 className="section-title">{t("fund.ledger.title")}</h3>
 
           <div className="glass-card ledger-box" style={{padding: 0, overflow: 'hidden'}}>
             <div className="ledger-scroll-wrapper" style={{maxHeight: '500px', overflowY: 'auto'}}>
             <table className="fund-table-v3">
               <thead>
                 <tr>
-                  <th>Giao dịch</th>
-                  <th>Số tiền</th>
-                  <th>Phương thức</th>
+                  <th>{t("fund.ledger.transaction")}</th>
+                  <th>{t("fund.ledger.amount")}</th>
+                  <th>{t("fund.ledger.method")}</th>
                 </tr>
               </thead>
 
@@ -685,14 +704,14 @@ export default function ClanFundPage() {
                 {mainLedgerTransactions.map((tx) => (
                   <tr key={`${tx.type}-${tx.id}`} onClick={() => setSelectedTransaction(tx)} style={{ cursor: 'pointer' }}>
                     <td>
-                      <div className="tx-name">{tx.note || "Chi chung"}</div>
+                      <div className="tx-name">{tx.note || t("fund.ledger.generalExpense")}</div>
 
                       <div className="tx-date">
                         {tx.person_name && (
                           <span className="tx-person-pill">{tx.person_name}</span>
                         )}
                         <span className="method-pill" style={{ background: 'rgba(52, 152, 219, 0.1)', color: '#2980b9' }}>
-                          {tx.campaign_name || 'Quỹ chung'}
+                          {tx.campaign_name || t("fund.ledger.generalFund")}
                         </span>
                         {formatDateVN(tx.date)}
                       </div>
@@ -705,10 +724,10 @@ export default function ClanFundPage() {
 
                     <td>
                       <span className="method-pill" style={{ 
-                        background: tx.method === 'Chuyển khoản' ? 'rgba(52, 152, 219, 0.1)' : 'rgba(39, 174, 96, 0.1)', 
-                        color: tx.method === 'Chuyển khoản' ? '#2980b9' : '#27ae60' 
+                        background: tx.method === "Chuyển khoản" ? 'rgba(52, 152, 219, 0.1)' : 'rgba(39, 174, 96, 0.1)', 
+                        color: tx.method === "Chuyển khoản" ? '#2980b9' : '#27ae60' 
                       }}>
-                        {tx.method || 'Tiền mặt'}
+                        {translateMethod(tx.method || "Tiền mặt")}
                       </span>
                     </td>
                   </tr>
@@ -717,7 +736,7 @@ export default function ClanFundPage() {
                 {!mainLedgerTransactions.length && (
                   <tr>
                     <td colSpan="3" className="table-empty">
-                      Chưa có giao dịch nào được ghi nhận.
+                      {t("fund.ledger.noTransaction")}
                     </td>
                   </tr>
                 )}
@@ -733,8 +752,8 @@ export default function ClanFundPage() {
           <div className="modal-glass fund-create-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
-                <h3>Tạo Đợt Thu</h3>
-                <p className="modal-subtitle">Thiết lập chiến dịch thu quỹ mới cho dòng họ.</p>
+                <h3>{t("fund.modal.createCampaign.title")}</h3>
+                <p className="modal-subtitle">{t("fund.modal.createCampaign.subtitle")}</p>
               </div>
 
               <button onClick={() => setShowCampaignModal(false)} className="close-btn">
@@ -746,18 +765,18 @@ export default function ClanFundPage() {
               <form onSubmit={handleCreateCampaign} className="premium-form">
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Tên chiến dịch</label>
+                    <label>{t("fund.modal.form.campaignName")}</label>
                     <input
                       type="text"
                       required
-                      placeholder="VD: Quỹ Khuyến Học 2026"
+                      placeholder={t("fund.modal.placeholders.campaignName")}
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Năm</label>
+                    <label>{t("fund.modal.form.year")}</label>
                     <input
                       type="number"
                       required
@@ -769,21 +788,21 @@ export default function ClanFundPage() {
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Mục tiêu số tiền (Goal - để trống nếu tính theo suất)</label>
+                    <label>{t("fund.modal.form.targetGoal")}</label>
                     <input
                       type="text"
-                      placeholder="VD: 50,000,000"
+                      placeholder={t("fund.modal.placeholders.targetGoal")}
                       value={formatMoneyInput(formData.target_goal)}
                       onChange={(e) => setFormData({ ...formData, target_goal: moneyToNumber(e.target.value) })}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Mức đóng mỗi suất (Nếu có)</label>
+                    <label>{t("fund.modal.form.amountPerMember")}</label>
                     <input
                       type="text"
                       inputMode="numeric"
-                      placeholder="50,000"
+                      placeholder={t("fund.modal.placeholders.amountPerMember")}
                       value={formData.amount_per_member}
                       onChange={(e) =>
                         setFormData({
@@ -797,7 +816,7 @@ export default function ClanFundPage() {
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Hạn đóng</label>
+                    <label>{t("fund.modal.form.deadline")}</label>
                     <DateInput
                       required
                       value={formData.deadline}
@@ -806,21 +825,21 @@ export default function ClanFundPage() {
                   </div>
                 </div>
 
-                <h4 className="sub-title-v3">Thông tin nhận tiền</h4>
+                <h4 className="sub-title-v3">{t("fund.modal.form.paymentInfo")}</h4>
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Ngân hàng</label>
+                    <label>{t("fund.modal.form.bankName")}</label>
                     <input
                       type="text"
-                      placeholder="Vietcombank"
+                      placeholder={t("fund.modal.form.bankName")}
                       value={formData.bank_name}
                       onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Số tài khoản</label>
+                    <label>{t("fund.modal.form.bankAccount")}</label>
                     <input
                       type="text"
                       placeholder="10293..."
@@ -834,7 +853,7 @@ export default function ClanFundPage() {
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Chủ tài khoản</label>
+                    <label>{t("fund.modal.form.bankOwner")}</label>
                     <input
                       type="text"
                       placeholder="NGUYEN VAN A"
@@ -844,30 +863,30 @@ export default function ClanFundPage() {
                   </div>
 
                   <div className="form-group">
-                    <label>Tải lên Mã QR</label>
+                    <label>{t("fund.modal.form.qrCode")}</label>
 
                     <div className="upload-box-v2">
                       <input type="file" hidden id="qr-upload" onChange={handleQRUpload} />
 
                       <label htmlFor="qr-upload" className="upload-label-v3">
                         <span className="material-symbols-outlined">qr_code_2</span>
-                        {formData.qr_code_media_id ? "Đã có QR" : "Chọn ảnh QR"}
+                        {formData.qr_code_media_id ? t("common.uploaded") : t("common.selectImage")}
                       </label>
                     </div>
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label>Mục tiêu chiến dịch (VND)</label>
+                  <label>{t("fund.modal.form.targetGoal")} (VND)</label>
                   <input
                     type="text"
                     value={formData.target_goal}
                     onChange={(e) => setFormData({ ...formData, target_goal: formatMoneyInput(e.target.value) })}
-                    placeholder="Ví dụ: 50,000,000"
+                    placeholder={t("fund.modal.placeholders.targetGoal")}
                   />
-                  <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', marginBottom: '1rem' }}>Để trống nếu muốn hệ thống tự tính theo số thành viên.</p>
+                  <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px', marginBottom: '1rem' }}>{t("fund.modal.createCampaign.goalHelp")}</p>
 
-                  <label>Định nghĩa suất đóng</label>
+                  <label>{t("fund.modal.form.contributionUnit")}</label>
                   <select
                     value={formData.contribution_unit_definition}
                     onChange={(e) =>
@@ -877,9 +896,9 @@ export default function ClanFundPage() {
                       })
                     }
                   >
-                    <option value="males_only">Chỉ nam giới (theo truyền thống)</option>
-                    <option value="adults_all">Tất cả người trưởng thành (trên 18 tuổi)</option>
-                    <option value="per_family">Tính theo từng hộ gia đình</option>
+                    <option value="males_only">{t("fund.modal.form.contributionUnits.males_only")}</option>
+                    <option value="adults_all">{t("fund.modal.form.contributionUnits.adults_all")}</option>
+                    <option value="per_family">{t("fund.modal.form.contributionUnits.per_family")}</option>
                   </select>
                 </div>
 
@@ -889,11 +908,11 @@ export default function ClanFundPage() {
                     onClick={() => setShowCampaignModal(false)}
                     className="btn-premium btn-outline"
                   >
-                    Hủy
+                    {t("common.cancel")}
                   </button>
 
                   <button type="submit" className="btn-premium btn-green" disabled={submitting}>
-                    Tạo Chiến Dịch
+                    {t("fund.actions.newCampaign")}
                   </button>
                 </div>
               </form>
@@ -907,8 +926,8 @@ export default function ClanFundPage() {
           <div className="modal-glass ledger-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
-                <h3>Quản lý: {selectedCampaign.campaign.name}</h3>
-                <p className="modal-subtitle">Theo dõi đóng góp và trạng thái đợt thu.</p>
+                <h3>{t("fund.actions.manage")}: {selectedCampaign.campaign.name}</h3>
+                <p className="modal-subtitle">{t("fund.modal.ledger.subtitle")}</p>
               </div>
 
               <div className="header-actions-v2">
@@ -916,7 +935,7 @@ export default function ClanFundPage() {
                   className="btn-export-v2"
                   onClick={() => handleExportExcel(selectedCampaign.campaign.id)}
                 >
-                  Xuất Excel Đợt Thu
+                  {t("fund.actions.exportExcel")}
                 </button>
 
                 <button onClick={() => setShowLedgerModal(false)} className="close-btn">
@@ -928,7 +947,7 @@ export default function ClanFundPage() {
             <div className="modal-body-v2">
               <div className="mgmt-toolbar glass-card">
                 <div className="mgmt-item">
-                  <label>Trạng thái</label>
+                  <label>{t("fund.modal.form.status")}</label>
 
                   <select
                     value={selectedCampaign.campaign.status}
@@ -938,32 +957,32 @@ export default function ClanFundPage() {
                       })
                     }
                   >
-                    <option value="open">Đang mở (Nhận đóng góp)</option>
-                    <option value="closed">Đã đóng (Khóa chiến dịch)</option>
+                    <option value="open">{t("fund.modal.form.statuses.open")}</option>
+                    <option value="closed">{t("fund.modal.form.statuses.closed")}</option>
                   </select>
                 </div>
 
                 <div className="mgmt-item">
-                  <label>Mức đóng hiện tại</label>
+                  <label>{t("fund.modal.form.currentContributionRate")}</label>
 
                   <div className="input-with-btn">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      defaultValue={formatMoneyInput(selectedCampaign.campaign.amount_per_member)}
-                      onBlur={(e) =>
-                        handleUpdateCampaign(selectedCampaign.campaign.id, {
-                          amount_per_member: moneyToNumber(e.target.value)
-                        })
-                      }
-                    />
-                    <span>VNĐ / Thành viên</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        defaultValue={formatMoneyInput(selectedCampaign.campaign.amount_per_member)}
+                        onBlur={(e) =>
+                          handleUpdateCampaign(selectedCampaign.campaign.id, {
+                            amount_per_member: moneyToNumber(e.target.value)
+                          })
+                        }
+                      />
+                      <span>{t("fund.modal.form.amountPerMemberLabel")}</span>
                   </div>
                 </div>
 
                 {selectedCampaign.campaign.qr_code_media_id && (
                   <div className="mgmt-item">
-                    <label>QR Nhận tiền</label>
+                    <label>{t("fund.modal.form.qrCodeLabel")}</label>
 
                     <div className="mini-qr">
                       <img
@@ -987,17 +1006,17 @@ export default function ClanFundPage() {
 
               <div className="ledger-stats-v3">
                 <div className="l-stat">
-                  <span>Đã nộp</span>
+                  <span>{t("fund.modal.form.collected")}</span>
                   <strong>{selectedCampaign.stats.paid_count}</strong>
                 </div>
 
                 <div className="l-stat">
-                  <span>Tổng thu</span>
+                  <span>{t("fund.modal.form.collectedTotal")}</span>
                   <strong>{formatCurrency(selectedCampaign.stats.collected_amount)}</strong>
                 </div>
 
                 <div className="l-stat">
-                  <span>Hoàn thành</span>
+                  <span>{t("fund.modal.form.completionRate")}</span>
                   <strong>{selectedCampaign.stats.completion_rate.toFixed(1)}%</strong>
                 </div>
               </div>
@@ -1006,10 +1025,10 @@ export default function ClanFundPage() {
                 <table className="fund-table-v3">
                   <thead>
                     <tr>
-                      <th>Người nộp</th>
-                      <th>Ngày</th>
-                      <th>Số tiền</th>
-                      <th>Thao tác</th>
+                      <th>{t("fund.modal.form.payer")}</th>
+                      <th>{t("fund.modal.form.date")}</th>
+                      <th>{t("fund.modal.form.amount")}</th>
+                      <th>{t("fund.modal.form.action")}</th>
                     </tr>
                   </thead>
 
@@ -1044,10 +1063,10 @@ export default function ClanFundPage() {
                               }}
                               className="btn-approve-v3-active"
                             >
-                              Duyệt ngay
+                              {t("fund.modal.form.approveNow")}
                             </button>
                           ) : (
-                            <span className="done-pill">Đã xong</span>
+                            <span className="done-pill">{t("fund.modal.form.completed")}</span>
                           )}
                         </td>
                       </tr>
@@ -1056,7 +1075,7 @@ export default function ClanFundPage() {
                     {!selectedCampaign.transactions.length && (
                       <tr>
                         <td colSpan="4" className="table-empty">
-                          Chưa có giao dịch trong đợt thu này.
+                          {t("fund.ledger.noTransactionInCampaign")}
                         </td>
                       </tr>
                     )}
@@ -1073,8 +1092,8 @@ export default function ClanFundPage() {
           <div className="modal-glass approval-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
-                <h3>Phê duyệt đóng góp</h3>
-                <p className="modal-subtitle">Xác nhận giao dịch thành viên đã gửi.</p>
+                <h3>{t("fund.modal.approval.title")}</h3>
+                <p className="modal-subtitle">{t("fund.modal.approval.subtitle")}</p>
               </div>
 
               <button onClick={() => setShowApprovalModal(false)} className="close-btn">
@@ -1085,12 +1104,12 @@ export default function ClanFundPage() {
             <div className="modal-body-v2">
               <div className="approval-info glass-card">
                 <div className="info-row">
-                  <span>Thành viên:</span>
+                  <span>{t("fund.modal.approval.member")}:</span>
                   <strong>{approvalData.person_name}</strong>
                 </div>
 
                 <div className="info-row">
-                  <span>Số tiền:</span>
+                  <span>{t("fund.modal.approval.amount")}:</span>
                   <strong style={{ color: "#2ecc71" }}>
                     {formatCurrency(approvalData.amount)}
                   </strong>
@@ -1099,7 +1118,7 @@ export default function ClanFundPage() {
 
               {approvalData.evidence_media_id && (
                 <div className="evidence-view">
-                  <label>Ảnh xác nhận (Bill)</label>
+                  <label>{t("fund.modal.approval.bill")}</label>
                   <img
                     src={resolveImageUrl({
                       mediaId: approvalData.evidence_media_id
@@ -1112,7 +1131,7 @@ export default function ClanFundPage() {
 
               <form onSubmit={handleApprove} className="premium-form">
                 <div className="form-group">
-                  <label>Ghi chú (không bắt buộc)</label>
+                  <label>{t("fund.modal.approval.note")}</label>
                   <textarea
                     value={approvalData.manager_note}
                     onChange={(e) =>
@@ -1122,7 +1141,7 @@ export default function ClanFundPage() {
                       })
                     }
                     rows="2"
-                    placeholder="Ví dụ: Đã nhận đủ tiền mặt..."
+                    placeholder={t("fund.modal.approval.notePlaceholder")}
                   ></textarea>
                 </div>
 
@@ -1132,11 +1151,11 @@ export default function ClanFundPage() {
                     onClick={() => setShowApprovalModal(false)}
                     className="btn-premium btn-outline"
                   >
-                    Để sau
+                    {t("fund.modal.approval.waitLater")}
                   </button>
 
                   <button type="submit" className="btn-premium btn-green" disabled={submitting}>
-                    Xác nhận & Duyệt
+                    {t("fund.modal.approval.confirm")}
                   </button>
                 </div>
               </form>
@@ -1150,9 +1169,9 @@ export default function ClanFundPage() {
           <div className="modal-glass cash-expense-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
-                <h3>Ghi nhận chi tiền mặt</h3>
+                <h3>{t("fund.modal.cashExpense.title")}</h3>
                 <p className="modal-subtitle">
-                  Chỉ lưu khoản chi ra khỏi quỹ, kèm người nhận và mục đích sử dụng.
+                  {t("fund.modal.cashExpense.subtitle")}
                 </p>
               </div>
 
@@ -1167,14 +1186,14 @@ export default function ClanFundPage() {
                   <span className="material-symbols-outlined">payments</span>
 
                   <div>
-                    <strong>Chi ra bằng tiền mặt</strong>
-                    <p>Khoản này sẽ được ghi nhận là chi phí của quỹ dòng họ.</p>
+                    <strong>{t("fund.modal.cashExpense.summaryTitle")}</strong>
+                    <p>{t("fund.modal.cashExpense.summaryDesc")}</p>
                   </div>
                 </div>
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Số tiền</label>
+                    <label>{t("fund.modal.cashExpense.amount")}</label>
 
                     <input
                       type="text"
@@ -1192,7 +1211,7 @@ export default function ClanFundPage() {
                   </div>
 
                   <div className="form-group">
-                    <label>Ngày chi</label>
+                    <label>{t("fund.modal.cashExpense.date")}</label>
 
                     <DateInput
                       required
@@ -1209,7 +1228,7 @@ export default function ClanFundPage() {
 
                 <div className="form-row-2">
                   <div className="form-group">
-                    <label>Hạng mục chi</label>
+                    <label>{t("fund.modal.cashExpense.category")}</label>
 
                     <select
                       value={generalTx.category}
@@ -1220,16 +1239,16 @@ export default function ClanFundPage() {
                         })
                       }
                     >
-                      <option value="Khác">Khác</option>
-                      <option value="Sự kiện">Sự kiện</option>
-                      <option value="Khuyến học">Khuyến học</option>
-                      <option value="Thăm hỏi">Thăm hỏi</option>
-                      <option value="Vận hành">Vận hành</option>
+                      <option value="Khác">{t("common.other")}</option>
+                      <option value="Sự kiện">{t("common.event")}</option>
+                      <option value="Khuyến học">{t("fund.modal.cashExpense.categories.study")}</option>
+                      <option value="Thăm hỏi">{t("fund.modal.cashExpense.categories.visit")}</option>
+                      <option value="Vận hành">{t("fund.modal.cashExpense.categories.ops")}</option>
                     </select>
                   </div>
 
                   <div className="form-group">
-                    <label>Đợt thu tùy chọn</label>
+                    <label>{t("fund.modal.cashExpense.campaign")}</label>
 
                     <select
                       value={generalTx.campaign_id}
@@ -1240,7 +1259,7 @@ export default function ClanFundPage() {
                         })
                       }
                     >
-                      <option value="">-- Không thuộc đợt nào --</option>
+                      <option value="">{t("fund.modal.cashExpense.noCampaign")}</option>
 
                       {campaigns.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1254,9 +1273,9 @@ export default function ClanFundPage() {
                 <div className="recipient-panel">
                   <div className="recipient-panel-head">
                     <div>
-                      <strong>Gán gửi cho người nhận</strong>
+                      <strong>{t("fund.modal.cashExpense.recipientTitle")}</strong>
                       <span>
-                        Chọn thành viên nhận tiền hoặc dùng nhanh tài khoản manager hiện tại.
+                        {t("fund.modal.cashExpense.recipientDesc")}
                       </span>
                     </div>
 
@@ -1268,7 +1287,7 @@ export default function ClanFundPage() {
 
                         if (!managerPersonId) {
                           alert(
-                            "Không tìm thấy person_id của tài khoản manager hiện tại. Vui lòng chọn người nhận thủ công."
+                            t("fund.messages.managerPersonIdNotFound")
                           );
                           return;
                         }
@@ -1281,12 +1300,12 @@ export default function ClanFundPage() {
                       }}
                     >
                       <span className="material-symbols-outlined">admin_panel_settings</span>
-                      Gửi cho tài khoản manager
+                      {t("fund.modal.cashExpense.quickManager")}
                     </button>
                   </div>
 
                   <div className="form-group">
-                    <label>Người nhận</label>
+                    <label>{t("fund.modal.cashExpense.recipient")}</label>
 
                     <select
                       value={generalTx.recipient_person_id}
@@ -1303,8 +1322,8 @@ export default function ClanFundPage() {
                     >
                       <option value="">
                         {members.length
-                          ? "-- Chọn người nhận nếu có --"
-                          : "-- Đang tải hoặc chưa có danh sách thành viên --"}
+                          ? t("fund.modal.cashExpense.selectRecipient")
+                          : t("fund.modal.cashExpense.loadingMembers")}
                       </option>
 
                       {members.map((m) => (
@@ -1316,14 +1335,13 @@ export default function ClanFundPage() {
 
                     {!members.length && (
                       <div className="member-help-text">
-                        Không tìm thấy dữ liệu thành viên từ API. Mở Console để xem dòng{" "}
-                        <b>Member API</b>.
+                        {t("fund.modal.cashExpense.noMemberData")}
                       </div>
                     )}
                   </div>
 
                   <div className="form-group">
-                    <label>Ghi chú gửi cho người nhận / dùng để làm gì</label>
+                    <label>{t("fund.modal.cashExpense.purpose")}</label>
 
                     <textarea
                       value={generalTx.purpose_note}
@@ -1334,13 +1352,13 @@ export default function ClanFundPage() {
                         })
                       }
                       rows="2"
-                      placeholder="Ví dụ: Gửi cho ban tổ chức để mua lễ vật giỗ họ..."
+                      placeholder={t("fund.modal.cashExpense.purposePlaceholder")}
                     />
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label>Nội dung hiển thị trong nhật ký</label>
+                  <label>{t("fund.modal.cashExpense.internalNote")}</label>
 
                   <textarea
                     required
@@ -1352,7 +1370,7 @@ export default function ClanFundPage() {
                       })
                     }
                     rows="2"
-                    placeholder="Ví dụ: Chi mua lễ vật, thuê rạp, hỗ trợ khuyến học..."
+                    placeholder={t("fund.modal.cashExpense.internalNotePlaceholder")}
                   />
                 </div>
 
@@ -1361,7 +1379,7 @@ export default function ClanFundPage() {
                   className="btn-premium btn-green submit-wide"
                   disabled={submitting}
                 >
-                  Lưu Khoản Chi
+                  {t("fund.modal.cashExpense.confirm")}
                 </button>
               </form>
             </div>
@@ -1374,58 +1392,58 @@ export default function ClanFundPage() {
         <div className="fund-modal-v2" onClick={() => setSelectedTransaction(null)}>
           <div className="modal-glass" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-v2">
-              <h3>Chi Tiết Giao Dịch</h3>
+              <h3>{t("fund.modal.transactionDetail.title")}</h3>
               <button onClick={() => setSelectedTransaction(null)} className="close-btn">&times;</button>
             </div>
             <div className="modal-body-v2">
               <div className="tx-detail-v3">
                 <div className="detail-row">
-                  <label>Loại:</label>
-                  <span className={`pill ${selectedTransaction.type}`}>{selectedTransaction.type === 'income' ? 'Thu' : 'Chi'}</span>
+                  <label>{t("fund.modal.transactionDetail.type")}:</label>
+                  <span className={`pill ${selectedTransaction.type}`}>{selectedTransaction.type === 'income' ? t("fund.modal.transactionDetail.income") : t("fund.modal.transactionDetail.expense")}</span>
                 </div>
                 <div className="detail-row">
-                  <label>Số tiền:</label>
+                  <label>{t("fund.modal.transactionDetail.amount")}:</label>
                   <strong style={{ color: selectedTransaction.type === 'income' ? '#2ecc71' : '#ff7675' }}>
                     {formatCurrency(selectedTransaction.amount)}
                   </strong>
                 </div>
                 <div className="detail-row">
-                  <label>Ngày:</label>
+                  <label>{t("fund.modal.transactionDetail.date")}:</label>
                   <span>{formatDateVN(selectedTransaction.date)}</span>
                 </div>
                 <div className="detail-row">
-                  <label>Hình thức:</label>
-                  <span>{selectedTransaction.method}</span>
+                  <label>{t("fund.modal.transactionDetail.method")}:</label>
+                  <span>{translateMethod(selectedTransaction.method)}</span>
                 </div>
                 <div className="detail-row">
-                  <label>Nội dung:</label>
+                  <label>{t("fund.modal.transactionDetail.content")}:</label>
                   <span>{selectedTransaction.note}</span>
                 </div>
                 <div className="detail-row">
-                  <label>Hạng mục:</label>
-                  <span>{selectedTransaction.category || 'Khác'}</span>
+                  <label>{t("fund.modal.transactionDetail.category")}:</label>
+                  <span>{translateCategory(selectedTransaction.category || "Khác")}</span>
                 </div>
                 {selectedTransaction.person_name && (
                   <div className="detail-row">
-                    <label>{selectedTransaction.type === 'income' ? 'Người nộp:' : 'Người nhận:'}</label>
+                    <label>{selectedTransaction.type === 'income' ? t("fund.modal.transactionDetail.payer") : t("fund.modal.transactionDetail.recipient")}:</label>
                     <span>{selectedTransaction.person_name}</span>
                   </div>
                 )}
                 {selectedTransaction.manager_note && (
                   <div className="detail-row" style={{ marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem' }}>
-                    <label>Phản hồi của quản lý:</label>
+                    <label>{t("fund.modal.transactionDetail.managerNote")}:</label>
                     <p style={{ fontStyle: 'italic', color: 'rgba(0,0,0,0.7)' }}>{selectedTransaction.manager_note}</p>
                   </div>
                 )}
                 {selectedTransaction.recipient_note && (
                   <div className="detail-row" style={{ marginTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '1rem' }}>
-                    <label>Ghi chú người nhận:</label>
+                    <label>{t("fund.modal.transactionDetail.recipientNote")}:</label>
                     <p style={{ fontStyle: 'italic', color: 'rgba(0,0,0,0.7)' }}>{selectedTransaction.recipient_note}</p>
                   </div>
                 )}
                 {selectedTransaction.evidence_media_id && (
                   <div className="detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start', marginTop: '1rem' }}>
-                    <label>Minh chứng (Bill):</label>
+                    <label>{t("fund.modal.transactionDetail.bill")}:</label>
                     <img
                       src={resolveImageUrl({ mediaId: selectedTransaction.evidence_media_id })}
                       alt="Bill"
@@ -1452,7 +1470,7 @@ export default function ClanFundPage() {
                         setShowApprovalModal(true);
                       }}
                     >
-                      Duyệt Giao Dịch
+                      {t("fund.modal.transactionDetail.approve")}
                     </button>
                     <button
                       className="btn-premium btn-outline"
@@ -1470,7 +1488,7 @@ export default function ClanFundPage() {
                         setShowApprovalModal(true);
                       }}
                     >
-                      Từ Chối
+                      {t("fund.modal.transactionDetail.reject")}
                     </button>
                   </div>
                 )}
@@ -1486,8 +1504,8 @@ export default function ClanFundPage() {
           <div className="modal-glass ledger-modal" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header-v2">
               <div>
-                <h3>Danh Sách Chờ Duyệt</h3>
-                <p className="modal-subtitle">Có {pendingTransactions.length} giao dịch đang chờ phê duyệt.</p>
+                <h3>{t("fund.modal.pending.title")}</h3>
+                <p className="modal-subtitle">{t("fund.modal.pending.subtitle", { count: pendingTransactions.length })}</p>
               </div>
               <button onClick={() => setShowPendingModal(false)} className="close-btn">&times;</button>
             </div>
@@ -1496,17 +1514,17 @@ export default function ClanFundPage() {
                 <table className="fund-table-v3">
                   <thead>
                     <tr>
-                      <th>Giao dịch</th>
-                      <th>Người nộp/nhận</th>
-                      <th>Số tiền</th>
-                      <th>Thao tác</th>
+                      <th>{t("fund.ledger.transaction")}</th>
+                      <th>{t("fund.modal.transactionDetail.payer")}/{t("fund.modal.transactionDetail.recipient")}</th>
+                      <th>{t("fund.ledger.amount")}</th>
+                      <th>{t("fund.modal.form.action")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pendingTransactions.map(tx => (
                       <tr key={`${tx.type}-${tx.id}`}>
                         <td>
-                          <div className="tx-name">{tx.note || (tx.type === 'income' ? 'Đóng góp' : 'Chi phí')}</div>
+                          <div className="tx-name">{tx.note || (tx.type === 'income' ? t("fund.modal.pending.income") : t("fund.modal.pending.expense"))}</div>
                           <div className="tx-date">{formatDateVN(tx.date)}</div>
                         </td>
                         <td>{tx.person_name || '---'}</td>
@@ -1528,13 +1546,13 @@ export default function ClanFundPage() {
                               setShowApprovalModal(true);
                             }}
                           >
-                            Duyệt
+                            {t("fund.modal.pending.approve")}
                           </button>
                         </td>
                       </tr>
                     ))}
                     {!pendingTransactions.length && (
-                      <tr><td colSpan="4" className="table-empty">Không có giao dịch nào chờ duyệt.</td></tr>
+                      <tr><td colSpan="4" className="table-empty">{t("fund.modal.pending.noPending")}</td></tr>
                     )}
                   </tbody>
                 </table>

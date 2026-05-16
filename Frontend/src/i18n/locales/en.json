@@ -15,10 +15,12 @@
     "gender": "Gender",
     "hometown": "Hometown",
     "help": "Help",
+    "currentPlan": "current plan",
     "loading": "Loading...",
     "login": "Log in",
     "logout": "Log out",
     "pending": "Pending",
+    "active": "Active",
     "phone": "Phone",
     "register": "Register",
     "rejected": "Rejected",
@@ -28,7 +30,29 @@
     "submitting": "Submitting...",
     "title": "Title",
     "uploading": "Uploading...",
-    "welcome": "Welcome"
+    "welcome": "Welcome",
+    "other": "Other",
+    "event": "Event",
+    "year": "Year",
+    "approve": "Approve",
+    "reject": "Reject",
+    "preview": "Preview",
+    "member": "Member",
+    "noChange": "No change",
+    "birthDate": "Birth date",
+    "saveChanges": "Save changes",
+    "operationFailed": "Operation failed",
+    "close": "Close",
+    "noInfo": "No information",
+    "edit": "Edit",
+    "search": "Search",
+    "actions": "Actions",
+    "status": {
+      "title": "Status",
+      "active": "Active",
+      "pending": "Pending",
+      "rejected": "Rejected"
+    }
   },
   "navigation": {
     "home": "Home",
@@ -51,12 +75,6 @@
     "hello": "Hello, {{name}}",
     "adminTitle": "Gia Pha Viet Administration",
     "managerTitle": "Gia Pha Administration",
-    "admin": {
-      "title": "Gia Pha Viet Administration"
-    },
-    "manager": {
-      "title": "Gia Pha Administration"
-    },
     "member": {
       "title": "Member Portal"
     },
@@ -71,8 +89,13 @@
     "openMenu": "Open menu",
     "editAccount": "Edit account",
     "memberNavigation": "Member navigation",
+    "managerNavigation": "Manager navigation",
+    "adminNavigation": "Admin navigation",
+    "manager": "Manager",
+    "admin": "Admin",
+    "guest": "Guest",
     "brand": "Gia Pha Viet",
-    "homeAria": "Back to Gia Pha Viet home",
+    "homeAria": "Go to Gia Pha Viet homepage",
     "userFallback": "User",
     "footer": {
       "tagline": "©2024 Gia Pha Viet - Preserving Vietnamese identity",
@@ -86,7 +109,7 @@
       "notLinked": "This account is not linked to a person profile yet.",
       "invalidGeneration": "Generation must be a valid number.",
       "updated": "Account information updated.",
-      "saveFailed": "Unable to save account information.",
+      "saveFailed": "Could not save account information.",
       "notLinkedContent": "This account is not linked to a person profile, so photo/bio updates cannot be submitted.",
       "contentSubmitted": "Photo and biography update request submitted.",
       "contentSubmitFailed": "Unable to submit profile update request.",
@@ -116,6 +139,252 @@
       "calendar": "Vietnam calendar",
       "billing": "Subscription",
       "profile": "Profile"
+    }
+  },
+  "manager": {
+    "title": "Gia Pha Administration System",
+    "pending": {
+      "hero": {
+        "kicker": "Moderation Center",
+        "title": "Pending Approvals",
+        "description": "Review new accounts, posts, profile updates, and clan memories before they go public."
+      },
+      "tabs": {
+        "users": "New Accounts",
+        "usersShort": "Accounts",
+        "posts": "Posts",
+        "profiles": "Profiles",
+        "memories": "Memories"
+      },
+      "summary": {
+        "total": "Total Pending",
+        "users": "New Accounts",
+        "posts": "Posts",
+        "memories": "Memories"
+      },
+      "searchPlaceholder": "Search in {{category}}...",
+      "contentCount": "Showing {{count}} items in {{category}}.",
+      "pendingCount": "{{count}} pending items",
+      "loadingData": "Loading pending review data...",
+      "empty": {
+        "users": "No accounts pending approval.",
+        "posts": "No posts pending approval.",
+        "profiles": "No profile updates pending approval.",
+        "memories": "No memories pending approval."
+      },
+      "items": {
+        "newBio": "New Bio:",
+        "newPhoto": "New Photo:",
+        "noBioChange": "Bio unchanged",
+        "noPhotoChange": "Photo unchanged",
+        "base64Notice": "Photo submitted as base64. Preview mode enabled.",
+        "fileType": "File Type:",
+        "author": "Author",
+        "noContent": "[No text content]",
+        "emailPlaceholder": "No email",
+        "openAttachment": "Open attachment"
+      },
+      "actions": {
+        "approvePost": "Approve Post",
+        "approveMemory": "Approve Memory"
+      },
+      "prompts": {
+        "rejectPost": "Reason for rejecting post:",
+        "unsuitableContent": "Unsuitable content",
+        "rejectProfile": "Reason for rejecting profile update:",
+        "insufficientInfo": "Insufficient information",
+        "rejectMemory": "Reason for rejecting memory:"
+      },
+      "messages": {
+        "postRejected": "Post rejected",
+        "profileRejected": "Profile update rejected",
+        "memoryRejected": "Clan memory rejected",
+        "userApproved": "Account approved",
+        "userRejected": "Account rejected",
+        "postApproved": "Post approved",
+        "profileApproved": "Profile update approved",
+        "memoryApproved": "Memory approved"
+      },
+      "preview": {
+        "title": "Profile Update Preview",
+        "currentInfo": "Current Information",
+        "newInfo": "New Information",
+        "currentBio": "Current Bio:",
+        "noCurrentBio": "No current bio",
+        "noCurrentPhoto": "No current photo"
+      }
+    },
+    "dashboard": {
+      "welcome": "Welcome back, {{name}}!",
+      "pendingSummary": "There are <strong>{{count}}</strong> pending requests to handle today.",
+      "stats": {
+        "members": "Clan Members",
+        "pending": "Pending Review",
+        "fund": "Total Fund Balance",
+        "tasks": "Active Tasks"
+      },
+      "messages": {
+        "loadError": "Could not load dashboard data"
+      }
+    },
+    "accounts": {
+      "hero": {
+        "kicker": "Clan HR Management",
+        "title": "Clan Members",
+        "description": "Create, search, edit profiles and link relationships (parents, spouse, children)."
+      },
+      "summary": {
+        "total": "Total Members",
+        "male": "Male",
+        "female": "Female",
+        "living": "Living",
+        "pending": "Pending"
+      },
+      "list": {
+        "title": "Member List",
+        "showing": "Showing <strong>{{count}}</strong> / {{total}} members."
+      },
+      "actions": {
+        "addMember": "Add Member",
+        "linkRelations": "Link Relations",
+        "refresh": "Reload",
+        "refreshing": "Loading...",
+        "save": "Save Relations",
+        "saving": "Saving..."
+      },
+      "form": {
+        "createTitle": "Create Member",
+        "createDescription": "Add new user account and profile.",
+        "editTitle": "Edit Member",
+        "linkTitle": "Link Relations",
+        "linkDescription": "Update parents, spouse and children.",
+        "selectMember": "Select member to link",
+        "selectMemberPrompt": "Choose a member",
+        "marriageTitle": "Family/Marriage",
+        "marriagePrompt": "Select family to add children",
+        "parentFather": "Father",
+        "parentFatherPrompt": "Not selected",
+        "parentMother": "Mother",
+        "parentMotherPrompt": "Not selected",
+        "spouse": "Spouse",
+        "spousePrompt": "Not selected",
+        "children": "Children",
+        "placeholderEmail": "Login Email",
+        "placeholderPassword": "Password",
+        "placeholderSurname": "Surname",
+        "placeholderMiddleName": "Middle Name",
+        "placeholderFirstName": "First Name",
+        "placeholderGender": "Gender",
+        "placeholderGeneration": "Generation",
+        "placeholderHometown": "Hometown",
+        "placeholderBirthDate": "Birth Date",
+        "placeholderDeathDate": "Death Date",
+        "genderMale": "Male",
+        "genderFemale": "Female",
+        "genderUnknown": "Not specified",
+        "livingStatus": "Living Status",
+        "statusLiving": "Living",
+        "statusDead": "Deceased",
+        "currentRelations": "Current Relations",
+        "noInfo": "None"
+      },
+      "messages": {
+        "loadError": "Could not load members from database",
+        "loadRelationError": "Could not load member relations",
+        "createSuccess": "New member created successfully.",
+        "createError": "Could not create member",
+        "saveRelationSuccess": "Relations updated successfully.",
+        "saveRelationError": "Could not save relations",
+        "editSuccess": "Member profile updated.",
+        "editError": "Could not save member changes",
+        "linkPrompt": "Please select a member to link.",
+        "noRelationData": "No relation data to save.",
+        "selectFamilyPrompt": "Please select a specific family to add children."
+      }
+    }
+  },
+  "calendar": {
+    "hero": {
+      "eyebrow": "Vietnam Calendar",
+      "title": "Solar & Lunar Calendar",
+      "description": "Track solar and lunar dates, holidays, personal events, and clan-wide schedules."
+    },
+    "lunar": "Lunar",
+    "leap": "leap",
+    "today": "Today",
+    "week": "Week",
+    "month": "Month",
+    "year": "Year",
+    "day": "Day",
+    "syncing": "Syncing calendar...",
+    "noEvents": "No events scheduled for this day.",
+    "selectedDate": "Selected Date",
+    "lunarPrefix": "lunar",
+    "addEvent": "Add Event",
+    "addPersonalEvent": "Add Personal Event",
+    "createTitle": "Create New Event",
+    "editTitle": "Edit Event",
+    "agendaTitle": "Agenda for today",
+    "viewToggleAria": "Choose view mode",
+    "originalLunarDeath": "Original lunar death date",
+    "anniversaryLunarYear": "Lunar anniversary this year",
+    "birthdayLunarYear": "Lunar birthday this year",
+    "creator": "Created by",
+    "form": {
+      "managerHint": "Managers can choose personal or clan-wide visibility",
+      "memberHint": "Members can only create personal events",
+      "titlePlaceholder": "Event title (e.g., Anniversary, Holiday)",
+      "visibility": "Visibility",
+      "visibilityPersonal": "Personal - only you can see",
+      "visibilityGlobal": "Clan-wide - entire clan can see",
+      "visibilityHintManager": "Clan-wide events will be visible to all clan members.",
+      "visibilityHintMember": "Member accounts can only create personal events.",
+      "reminder": "Reminder",
+      "reminderOption": {
+        "0": "On the day",
+        "1": "1 day before",
+        "2": "2 days before",
+        "3": "3 days before",
+        "7": "7 days before",
+        "14": "14 days before",
+        "30": "30 days before"
+      },
+      "reminderHint": "Notifications will be sent via web and email to eligible users.",
+      "notePlaceholder": "Notes",
+      "cancel": "Cancel",
+      "save": "Save Event",
+      "update": "Update Event"
+    },
+    "types": {
+      "holiday": "Important Holiday",
+      "family": "Clan Event",
+      "study": "Study Schedule",
+      "personal": "Personal Event",
+      "birthday": "Birthday",
+      "death_anniversary": "Death Anniversary",
+      "lunar": "Lunar Holiday"
+    },
+    "labels": {
+      "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "months": [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ]
+    },
+    "messages": {
+      "noPermissionEdit": "You do not have permission to edit this event.",
+      "noPermissionDelete": "You do not have permission to delete this event.",
+      "deleteConfirm": "Delete this {{label}}?",
+      "deleteSuccess": "Event deleted.",
+      "deleteError": "Could not delete event.",
+      "saveSuccessGlobal": "Clan-wide event saved. Visible to all clan members.",
+      "saveSuccessPersonal": "Personal event saved. Visible only to you.",
+      "saveError": "Could not save event.",
+      "loadError": "Could not load calendar data.",
+      "updating": "Updating calendar...",
+      "saving": "Saving event...",
+      "scopeGlobal": "Clan-wide",
+      "scopePersonal": "Personal"
     }
   },
   "auth": {
@@ -370,6 +639,1386 @@
       "description": "Shows approved memories and your own memories waiting for review.",
       "loading": "Loading memories...",
       "empty": "No memories yet."
+    }
+  },
+  "eventsTasks": {
+    "title": "Task Management",
+    "stats": {
+      "total": "total tasks",
+      "open": "open tasks",
+      "inProgressLabel": "in progress",
+      "completedLabel": "completed",
+      "totalTasks": "{{count}} total tasks",
+      "openTasks": "{{count}} open tasks",
+      "inProgress": "{{count}} in progress",
+      "completed": "{{count}} completed",
+      "activeEvents": "{{count}} ongoing events",
+      "endedEvents": "{{count}} ended events"
+    },
+    "member": {
+      "title": "Member Dashboard",
+      "description": "Manage and perform assigned clan tasks."
+    },
+    "status": {
+      "assigned": "Assigned",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "ongoing": "Ongoing",
+      "ended": "Ended",
+      "upcoming": "Upcoming"
+    },
+    "admin": {
+      "title": "System Administration",
+      "description": "Monitor and manage tasks and events for all clans.",
+      "clanTasks": "Clan Tasks: {{clanName}}",
+      "eventScopeNotice": "System-wide administrative access."
+    },
+    "manager": {
+      "title": "Clan Manager",
+      "eventScopeNotice": "Coordinate tasks and events within the clan."
+    },
+    "actions": {
+      "createEvent": "Create Event",
+      "addEvent": "Add New Event",
+      "createTask": "Assign Task",
+      "deleteEvent": "Delete Event",
+      "editEvent": "Edit Event",
+      "saveEvent": "Save Event",
+      "bulkAssign": "Bulk Assign",
+      "archive": "Archive",
+      "aiGenerate": "AI Suggestions",
+      "aiGenerating": "AI Generating...",
+      "aiFillForm": "AI Auto-Fill",
+      "viewEvent": "View Event",
+      "closeAdd": "Close Add",
+      "closeArchive": "Close Archive",
+      "deleteAiTask": "Delete Suggestion",
+      "sendThisTask": "Assign This Task",
+      "eventList": "Event List",
+      "manageEvent": "Manage Event"
+    },
+    "form": {
+      "eventName": "Event Name",
+      "taskName": "Task Name",
+      "description": "Description",
+      "startDate": "Start Date",
+      "endDate": "End Date",
+      "deadline": "Deadline",
+      "assignee": "Assignee"
+    },
+    "messages": {
+      "confirmDeleteEvent": "Delete event \"{{title}}\"? Assigned tasks will be kept but no longer linked to this event.",
+      "eventCreated": "New event created.",
+      "eventUpdated": "Event updated.",
+      "eventDeleted": "Event deleted.",
+      "taskAssigned": "Task assigned to {{count}} members.",
+      "statusUpdated": "Status updated.",
+      "completedSuccess": "Marked as completed.",
+      "aiFilling": "AI has filled the event form. After saving, the AI task list will appear in the event details.",
+      "selectEventFirst": "Please select an event before assigning tasks.",
+      "selectMemberFirst": "Please select at least one member.",
+      "enterTaskTitle": "Please enter task title.",
+      "enterEventTitle": "Please enter event name.",
+      "enterStartDate": "Please enter event start date.",
+      "invalidDateRange": "End date cannot be before start date.",
+      "aiSuggestionsReady": "AI has suggested tasks. You can edit and assign them to members.",
+      "taskAssignedOne": "Task \"{{title}}\" assigned successfully.",
+      "taskAssignedBulk": "Bulk assigned {{count}} tasks successfully.",
+      "taskInfoIncomplete": "Task information is incomplete."
+    },
+    "placeholders": {
+      "searchEvents": "Search events...",
+      "aiPrompt": "Suggest missing tasks for this event",
+      "aiPromptHint": "Enter AI prompt (e.g., 'Add logistics for anniversary')",
+      "selectAssignee": "Select assignee",
+      "peopleSelected": "{{count}} people selected",
+      "searchByNameId": "Search by name or ID",
+      "noMemberFound": "No members found.",
+      "comboboxHint": "Multiple members can be selected in the combobox.",
+      "noTaskForYou": "No tasks assigned to you",
+      "archiveTitle": "Event Archive",
+      "archiveHelp": "Ended events are stored here.",
+      "searchArchive": "Search archive...",
+      "noArchivedFound": "No archived events found.",
+      "addEventHelp": "Initialize a new event to manage tasks.",
+      "eventTitleExample": "e.g., Nguyen Family Anniversary",
+      "eventDescriptionHint": "Briefly describe the purpose or notes for this event...",
+      "aiTaskCount": "Task Count",
+      "aiMaxNotice": "Max 20 tasks",
+      "aiPending": "Pending Suggestions",
+      "aiSuggestions": "AI Suggestions",
+      "aiTasksGenerated": "AI Suggested Tasks",
+      "aiTasksHelp": "Review and edit AI suggested tasks before assigning.",
+      "aiStatsLabel": "AI Stats",
+      "aiStatus": "AI Status",
+      "requested": "Requested",
+      "generated": "Generated",
+      "selected": "Selected",
+      "infoComplete": "Complete",
+      "infoIncomplete": "Incomplete",
+      "noAiTasks": "No AI suggestions yet.",
+      "listening": "Listening...",
+      "noTasks": "No tasks yet.",
+      "noTime": "No time set",
+      "notSet": "Not set",
+      "eventTasks": "Event Tasks",
+      "eventTasksTitle": "Assigned Tasks List",
+      "assignmentHistory": "Assignment History",
+      "noEventLinked": "No event linked",
+      "managerScopeNotice": "Manager Scope",
+      "clanList": "Clan List",
+      "enterDescription": "Enter description...",
+      "enterEventDescription": "Enter event description...",
+      "enterTaskTitle": "Enter task title...",
+      "suggestion": "Role Suggestion",
+      "infoIncompleteHelp": "Please fill in Title, Description, Deadline, and Assignee."
+    }
+  },
+  "fund": {
+    "title": "Clan Financial Management",
+    "subtitle": "Fund Administration System",
+    "description": "Optimize cash flow, fund drives, and transparent expenditures.",
+    "stats": {
+      "balance": "Current Balance",
+      "totalIncome": "Total Income",
+      "totalExpense": "Total Expense",
+      "activeCampaigns": "Open Campaigns"
+    },
+    "actions": {
+      "importExcel": "Import Excel",
+      "approveTransactions": "Approve Transactions",
+      "yearlyReport": "Yearly Report",
+      "expenseCash": "Cash Expense",
+      "newCampaign": "New Campaign",
+      "processing": "Processing...",
+      "createRound": "Create Round",
+      "manage": "Manage",
+      "exportExcel": "Export Campaign Excel"
+    },
+    "methods": {
+      "cash": "Cash",
+      "transfer": "Transfer"
+    },
+    "campaigns": {
+      "title": "Campaign List",
+      "allYears": "All years",
+      "allMonths": "All months",
+      "monthLabel": "Month {{month}}",
+      "spent": "Spent",
+      "balance": "Balance",
+      "noCampaignFound": "No matching campaigns found."
+    },
+    "ledger": {
+      "title": "Cash Flow Ledger",
+      "transaction": "Transaction",
+      "amount": "Amount",
+      "method": "Method",
+      "generalExpense": "General Expense",
+      "generalFund": "General Fund",
+      "noTransaction": "No transactions recorded yet.",
+      "noTransactionInCampaign": "No transactions in this campaign."
+    },
+    "placeholders": {
+      "memberId": "Member #{{id}}",
+      "member": "Member",
+      "campaignName": "e.g., Study Encouragement Fund 2026",
+      "targetGoal": "e.g., 50,000,000",
+      "amountPerMember": "50,000"
+    },
+    "messages": {
+      "exportError": "Export report failed",
+      "importSuccess": "Data imported successfully!",
+      "importError": "Excel import failed",
+      "qrUploadError": "QR code upload failed",
+      "createCampaignError": "Failed to create campaign",
+      "updateCampaignError": "Failed to update campaign",
+      "approveError": "Failed to approve transaction",
+      "expenseError": "Failed to record expense",
+      "loadCampaignDetailError": "Could not load campaign details",
+      "managerPersonIdNotFound": "Manager Person ID not found"
+    },
+    "export": {
+      "campaignFilename": "Campaign_Report_{{campaignId}}.xlsx",
+      "yearlyFilename": "Yearly_Report_{{year}}.xlsx"
+    },
+    "modal": {
+      "createCampaign": {
+        "title": "Create Campaign",
+        "subtitle": "Set up a new fund collection campaign for the clan.",
+        "goalHelp": "Leave empty to auto-calculate based on member count."
+      },
+      "ledger": {
+        "subtitle": "Transaction list and contribution status"
+      },
+      "form": {
+        "campaignName": "Campaign Name",
+        "year": "Year",
+        "targetGoal": "Target Goal",
+        "amountPerMember": "Amount per member",
+        "deadline": "Deadline",
+        "paymentInfo": "Payment Information",
+        "bankName": "Bank Name",
+        "bankAccount": "Bank Account",
+        "bankOwner": "Account Owner",
+        "qrCode": "Payment QR Code",
+        "contributionUnit": "Contribution Definition",
+        "status": "Status",
+        "currentContributionRate": "Current contribution rate",
+        "amountPerMemberLabel": "VND/unit",
+        "qrCodeLabel": "QR Code",
+        "collected": "Contributors",
+        "collectedTotal": "Total Collected",
+        "completionRate": "Completion Rate",
+        "payer": "Payer",
+        "date": "Date",
+        "amount": "Amount",
+        "action": "Action",
+        "approveNow": "Approve Now",
+        "completed": "Completed",
+        "contributionUnits": {
+          "males_only": "Males only (Traditional)",
+          "adults_all": "All adults (18+)",
+          "per_family": "Per family unit"
+        },
+        "statuses": {
+          "open": "Open (Accepting contributions)",
+          "closed": "Closed (Locked)"
+        }
+      },
+      "approval": {
+        "title": "Approve Transaction",
+        "subtitle": "Verify transfer proof and confirm",
+        "member": "Member",
+        "amount": "Amount",
+        "bill": "Proof image",
+        "note": "Manager note",
+        "notePlaceholder": "Enter note (optional)...",
+        "waitLater": "Wait later",
+        "confirm": "Confirm Approval"
+      },
+      "cashExpense": {
+        "title": "Record Expense",
+        "subtitle": "Create cash expense voucher from general fund",
+        "summaryTitle": "Cash Expense",
+        "summaryDesc": "Amount will be deducted directly from clan fund balance.",
+        "amount": "Expense amount",
+        "date": "Expense date",
+        "category": "Category",
+        "campaign": "Belongs to campaign (optional)",
+        "noCampaign": "Outside campaigns",
+        "recipientTitle": "Recipient",
+        "recipientDesc": "Select member receiving cash or manager advance.",
+        "quickManager": "Manager receive",
+        "recipient": "Select recipient",
+        "selectRecipient": "Search member...",
+        "loadingMembers": "Loading members...",
+        "noMemberData": "No member data found.",
+        "purpose": "Purpose (for voucher)",
+        "purposePlaceholder": "e.g., Purchase offerings for clan ritual...",
+        "internalNote": "Internal note",
+        "internalNotePlaceholder": "Further details about this expense...",
+        "confirm": "Record Expense",
+        "categories": {
+          "study": "Study Encouragement",
+          "visit": "Sick Visit/Funeral",
+          "ops": "Operations"
+        }
+      },
+      "transactionDetail": {
+        "title": "Transaction Detail",
+        "type": "Transaction Type",
+        "income": "Income",
+        "expense": "Expense",
+        "amount": "Amount",
+        "date": "Transaction Date",
+        "method": "Method",
+        "content": "Content",
+        "category": "Category",
+        "payer": "Payer",
+        "recipient": "Recipient",
+        "managerNote": "Manager note",
+        "recipientNote": "Recipient note",
+        "bill": "Attached document",
+        "approve": "Approve",
+        "reject": "Reject"
+      },
+      "pending": {
+        "title": "Pending Transactions",
+        "subtitle": "There are {{count}} transactions waiting for your confirmation",
+        "approve": "Approve Now",
+        "noPending": "No transactions pending approval.",
+        "income": "Income",
+        "expense": "Expense"
+      }
+    }
+  },
+  "billingPayment": {
+    "title": "Billing & Subscription",
+    "hero": {
+      "kicker": "Clan Usage Plan",
+      "title": "Capacity Management & Upgrade",
+      "subtitle": "Track profile limits, login accounts, and upgrade plans via VietQR payment."
+    },
+    "alerts": {
+      "adminTitle": "System Administrator Mode",
+      "adminDesc": "You can select a clan tree to check or perform test upgrades.",
+      "adminSelectClan": "Select Clan Tree",
+      "payReadyTitle": "SePay / VietQR Payment Ready",
+      "payReadyDesc": "Manager accounts can upgrade clan plans via VietQR transfer.",
+      "loadingBilling": "Loading usage plan for the selected clan tree..."
+    },
+    "currentPlan": {
+      "title": "Current Plan",
+      "expiresAt": "Expiration Date",
+      "unlimited": "Unlimited",
+      "records": "Clan Profiles",
+      "accounts": "Login Accounts",
+      "limitReached": "The clan has reached some limits of the current plan. Please upgrade to continue expanding."
+    },
+    "history": {
+      "title": "Upgrade History",
+      "count": "{{count}} transactions",
+      "noTransactions": "No transactions yet.",
+      "unknown": "Unknown",
+      "unpaid": "Unpaid"
+    },
+    "transactionDetail": {
+      "title": "Transaction Details",
+      "orderCode": "Order Code",
+      "plan": "Plan",
+      "amount": "Amount",
+      "status": "Status",
+      "createdAt": "Created At",
+      "paidAt": "Paid At",
+      "email": "Billing Email",
+      "provider": "Provider",
+      "actions": {
+        "paid": "Paid",
+        "cancelled": "Transaction Cancelled",
+        "cannotDowngrade": "Cannot pay for a lower plan",
+        "payNow": "Pay this transaction",
+        "cancel": "Cancel Transaction"
+      }
+    },
+    "paymentDialog": {
+      "title": "SePay Payment",
+      "amount": "Amount",
+      "content": "Transfer Content",
+      "recipient": "Recipient Account",
+      "notConfigured": "Not configured",
+      "checking": "Checking...",
+      "verify": "I have paid - Verify",
+      "scanQR": "Scan code to pay",
+      "qrError": "Could not generate QR code."
+    },
+    "plans": {
+      "title": "Plan List",
+      "subtitle": "Choose a plan that fits your clan size",
+      "current": "Current",
+      "featured": "Featured",
+      "monthly": "/month",
+      "recordsUnit": "profiles in clan tree",
+      "accountsUnit": "login accounts",
+      "upgradeTest": "Test Upgrade",
+      "upgradeNow": "Upgrade Now",
+      "pending": "Pending Transaction",
+      "cannotDowngrade": "Cannot downgrade"
+    },
+    "status": {
+      "paid": "Transaction paid, cannot repay.",
+      "pendingExpired": "Transaction older than 24 hours, system will auto-cancel.",
+      "pendingDowngrade": "Cannot pay for a lower plan while the current plan is still active.",
+      "pendingActive": "You can continue paying this transaction.",
+      "cancelled": "Transaction cancelled or expired, cannot continue payment.",
+      "ended": "Transaction ended, cannot continue payment."
+    },
+    "messages": {
+      "loading": "Loading usage plan...",
+      "loadingDesc": "System is checking clan information and payment history.",
+      "loadError": "Could not load usage plan information.",
+      "noClans": "No clan trees found to check usage plans.",
+      "unknownClan": "Could not determine manager's clan.",
+      "loadDataError": "Could not load billing data.",
+      "pendingExists": "You have a pending transaction. Please pay or cancel it before creating a new one.",
+      "downgradeError": "Cannot purchase a lower plan while the current plan is still active.",
+      "createError": "Could not create payment.",
+      "paySuccess": "Payment successful. Usage plan has been updated.",
+      "payNotConfirmed": "Payment not yet confirmed. Please check back later.",
+      "checkStatusError": "Could not check payment status.",
+      "cancelConfirm": "Are you sure you want to cancel this transaction?",
+      "cancelSuccess": "Pending transaction cancelled.",
+      "cancelError": "Could not cancel transaction.",
+      "expiredAlert": "Transaction older than 24 hours. Please reload the page to update status.",
+      "upgradeTestConfirm": "Test upgrade clan tree #{{id}} to plan {{name}}?",
+      "upgradeTestSuccess": "Test upgraded clan tree #{{id}} to plan {{name}}.",
+      "upgradeTestError": "Could not perform test upgrade."
+    }
+  },
+  "member": {
+    "dashboard": {
+      "title": "Member Dashboard",
+      "kicker": "Member Portal",
+      "clanConnected": "You are viewing data for the {{name}} clan.",
+      "clanNotConnected": "Account not associated with any clan.",
+      "viewTree": "View Family Tree",
+      "updateProfile": "Update Profile",
+      "stats": {
+        "treeMembers": "Clan Members",
+        "generations": "Generations Recorded",
+        "openTasks": "Open Tasks",
+        "profileComplete": "Profile Completeness",
+        "unreadNotifications": "Unread Notifications"
+      },
+      "tasks": {
+        "title": "Assigned Tasks",
+        "subtitle": "Track and update progress for clan managers.",
+        "empty": "You have no assigned tasks.",
+        "manager": "Assigned by: {{name}}",
+        "deadline": "Deadline: {{date}}",
+        "status": {
+          "completed": "Completed",
+          "inProgress": "In Progress",
+          "assigned": "Assigned"
+        },
+        "actions": {
+          "start": "In Progress",
+          "complete": "Complete"
+        }
+      },
+      "reminders": {
+        "title": "Reminders & Events",
+        "subtitle": "Add general reminders for the clan.",
+        "placeholderTitle": "Reminder Title",
+        "placeholderNote": "Note",
+        "submit": "Add Reminder",
+        "empty": "No events or reminders yet."
+      },
+      "posts": {
+        "title": "Clan Newsfeed",
+        "subtitle": "Posts approved by management.",
+        "addPost": "Add Post",
+        "empty": "No approved posts yet."
+      },
+      "aiChat": {
+        "title": "AI Assistant",
+        "subtitle": "Quickly ask about genealogy and clan information.",
+        "welcome": "Hello, I can help you search for clan info, assigned tasks, and reminders.",
+        "placeholder": "Enter question...",
+        "send": "Send"
+      },
+      "notifications": {
+        "title": "Recent Notifications",
+        "subtitle": "Updates from managers and system.",
+        "defaultTitle": "Notification",
+        "empty": "No new notifications."
+      },
+      "messages": {
+        "loading": "Loading member data...",
+        "loadError": "Could not load member dashboard data.",
+        "taskUpdateSuccess": "Task marked as completed.",
+        "taskUpdateGeneralSuccess": "Task status updated.",
+        "taskUpdateError": "Could not update task.",
+        "reminderRequired": "Please enter a title and reminder date.",
+        "reminderSuccess": "Reminder added to clan calendar.",
+        "reminderError": "Could not create reminder.",
+        "chatError": "Could not send message."
+      }
+    },
+    "profile": {
+      "title": "My Profile",
+      "subtitle": "Update basic information, family relations, avatar and password.",
+      "status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "none": "Not Sent"
+      },
+      "basicInfo": {
+        "title": "Basic Information",
+        "subtitle": "This info is saved directly to your genealogy profile.",
+        "fields": {
+          "surname": "Surname",
+          "middleName": "Middle Name",
+          "firstName": "First Name",
+          "generation": "Generation",
+          "email": "Login Email",
+          "hometown": "Hometown"
+        },
+        "submit": "Save Basic Info"
+      },
+      "mediaBio": {
+        "title": "Photo & Bio",
+        "statusLabel": "Status:",
+        "uploadLabel": "Upload profile photo",
+        "urlLabel": "Current image URL",
+        "bioLabel": "Biography",
+        "moderationNote": "Reviewer note: {{reason}}",
+        "submit": "Submit photo and bio for review"
+      },
+      "relations": {
+        "title": "Family Relations",
+        "subtitle": "Select spouse and children from clan members.",
+        "lockedNote": "Members can no longer edit family relations from the profile page. When a manager provides a valid temporary edit key, please use the Family Tree page to make changes.",
+        "spouse": "Spouse",
+        "unselected": "Not selected",
+        "children": "Children",
+        "empty": "No suitable members to select.",
+        "submit": "Save Relations"
+      },
+      "password": {
+        "title": "Change Password",
+        "subtitle": "New password needs at least 6 characters.",
+        "fields": {
+          "current": "Current Password",
+          "next": "New Password",
+          "confirm": "Confirm New Password"
+        },
+        "submit": "Change Password"
+      },
+      "messages": {
+        "loading": "Loading profile...",
+        "loadError": "Could not load member profile.",
+        "generationInvalid": "Generation must be a valid number.",
+        "basicSuccess": "Basic info saved.",
+        "basicError": "Could not save basic info.",
+        "proposeSuccess": "Photo and bio submitted for manager approval.",
+        "proposeError": "Could not submit profile update request.",
+        "relationsSuccess": "Family relations saved.",
+        "relationsError": "Could not save family relations.",
+        "passwordCurrentRequired": "Please enter your current password.",
+        "passwordLength": "New password needs at least 6 characters.",
+        "passwordMismatch": "Password confirmation does not match.",
+        "passwordSuccess": "Password changed.",
+        "passwordError": "Could not change password."
+      }
+    },
+    "submissions": {
+      "title": "My Contributions",
+      "history": "Contribution History",
+      "heroSubtitle": "Track your submitted posts. To add new posts, like or comment, please go to the Newsfeed page.",
+      "stats": {
+        "postToFeed": "Post to Newsfeed",
+        "postToFeedSubtitle": "Use the add button on the newsfeed to create posts with descriptions, photos, and full content.",
+        "openComposer": "Open Post Form",
+        "approvedPosts": "Approved Posts",
+        "approvedPostsSubtitle": "Posts currently visible in the clan newsfeed.",
+        "openFeed": "Open Newsfeed"
+      },
+      "table": {
+        "title": "My Contribution History",
+        "subtitle": "Track the approval status of your posts and profile update requests.",
+        "cols": {
+          "type": "Type",
+          "content": "Content",
+          "status": "Status",
+          "time": "Time",
+          "note": "Note"
+        },
+        "types": {
+          "post": "Post",
+          "profile": "Profile Update"
+        },
+        "status": {
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "pending": "Pending",
+          "processing": "Processing"
+        },
+        "none": "None",
+        "empty": "You haven't submitted any contributions yet."
+      },
+      "messages": {
+        "loading": "Loading feed and contribution history...",
+        "loadError": "Could not load contribution data."
+      }
+    },
+    "tasks": {
+      "title": "My Tasks"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "overview": "System Overview",
+      "subtitle": "Statistics for Admin: clans, members, events, media, subscription plans, and upgrade alerts.",
+      "adminOnly": "Admin Only",
+      "stats": {
+        "totalClans": "Total Clans",
+        "totalClansNote": "All clans in the system",
+        "totalMembers": "Total Members",
+        "totalMembersNote": "Genealogy member profiles",
+        "totalEvents": "Total Events",
+        "totalEventsNote": "Clan events created",
+        "totalMedia": "Total Media Uploaded",
+        "totalMediaNote": "Photos, videos and media files"
+      },
+      "plans": {
+        "title": "Usage Plans",
+        "subtitle": "Subscription Plan Distribution",
+        "countLabel": "{{count}} clans",
+        "donutLabel": "Clans",
+        "unknownPlan": "Unknown Plan",
+        "clanCount": "{{count}} clans",
+        "systemPercent": "system",
+        "empty": "No usage plan data yet."
+      },
+      "topClans": {
+        "title": "Featured Clans",
+        "subtitle": "Top clans by member count",
+        "memberCount": "Members",
+        "badge": "Top {{count}}"
+      },
+      "growth": {
+        "accountsTitle": "Account Growth",
+        "accountsSubtitle": "Number of accounts created",
+        "clansTitle": "Clan Growth",
+        "clansSubtitle": "Number of clans created",
+        "last12Months": "Last 12 months",
+        "newAccounts": "New Accounts",
+        "newClans": "New Clans"
+      },
+      "upgrades": {
+        "title": "Upgrade Alerts",
+        "subtitle": "Clans approaching plan limits",
+        "alertCount": "{{count}} alerts",
+        "currentPlan": "Current plan: {{name}}",
+        "noPlan": "No plan",
+        "people": "Members",
+        "accounts": "Accounts",
+        "exceeded": "Limit exceeded",
+        "usage": "Used {{percent}}",
+        "emptyTitle": "No clans requiring alerts.",
+        "emptySubtitle": "All clans are currently within their plan limits."
+      },
+      "messages": {
+        "loading": "Loading system data...",
+        "loadError": "Could not load dashboard data"
+      }
+    },
+    "accounts": {
+      "title": "Account Management",
+      "subtitle": "Manage all system accounts. Admin accounts are separated into a special folder, independent of clans.",
+      "stats": {
+        "total": "Total accounts:"
+      },
+      "actions": {
+        "add": "Add Account",
+        "edit": "Edit",
+        "delete": "Delete",
+        "back": "Back to folders"
+      },
+      "folders": {
+        "title": "Select a folder to view accounts",
+        "subtitle": "Select \"Admin Accounts\" or a clan to open the account list inside.",
+        "searchPlaceholder": "Search clans or admin accounts...",
+        "adminFolder": "Admin Accounts",
+        "allFolder": "All Clans",
+        "noneFolder": "Unassigned Clans",
+        "countLabel": "{{count}} accounts",
+        "empty": "No matching clans found."
+      },
+      "detail": {
+        "folderTitle": "Account Folder: {{name}}",
+        "adminNote": "Viewing system Admin accounts only.",
+        "generalNote": "Viewing accounts in the selected folder. You can search, add, edit or delete accounts below.",
+        "searchPlaceholder": "Search by name, email or clan...",
+        "filterRoleAll": "All Roles"
+      },
+      "table": {
+        "cols": {
+          "account": "Account",
+          "clan": "Clan",
+          "role": "Role",
+          "status": "Status",
+          "createdAt": "Created At",
+          "actions": "Actions"
+        },
+        "unassigned": "Unassigned",
+        "empty": "No accounts found in this folder."
+      },
+      "modal": {
+        "addTitle": "Add Login Account",
+        "editTitle": "Edit Account",
+        "addSubtitle": "Create a new account and assign it to a clan.",
+        "editSubtitle": "Update info, role, and clan association.",
+        "fields": {
+          "email": "Login Email",
+          "password": "Password",
+          "passwordEdit": "New Password (leave blank to keep current)",
+          "displayName": "Display Name",
+          "surname": "Surname",
+          "middleName": "Middle Name",
+          "firstName": "First Name",
+          "role": "Role",
+          "status": "Status",
+          "clan": "Clan"
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save Account",
+          "saving": "Saving..."
+        }
+      },
+      "roles": {
+        "admin": "Admin",
+        "manager": "Manager",
+        "member": "Member"
+      },
+      "messages": {
+        "loading": "Loading data...",
+        "loadError": "Could not load account data",
+        "saveError": "Could not save account",
+        "deleteConfirm": "Are you sure you want to delete the login account {{email}}?",
+        "deleteError": "Could not delete account",
+        "defaultAccountName": "Account"
+      }
+    },
+    "posts": {
+      "title": "Post Management",
+      "subtitle": "Posts of clan {{name}}",
+      "selectClan": "Select a clan to manage",
+      "breadcrumbs": {
+        "overview": "Overview",
+        "posts": "Post Management"
+      },
+      "folders": {
+        "noOwner": "No owner assigned"
+      },
+      "list": {
+        "empty": "This clan has no posts yet.",
+        "back": "Back to list",
+        "clanId": "Clan #{{id}}",
+        "table": {
+          "cols": {
+            "author": "Author",
+            "content": "Content",
+            "date": "Posted At",
+            "status": "Status",
+            "actions": "Actions"
+          },
+          "anonymous": "Anonymous",
+          "previewImage": "Preview image",
+          "statuses": {
+            "approved": "Approved",
+            "pending": "Pending",
+            "rejected": "Hidden"
+          }
+        },
+        "pagination": "Showing {{start}} - {{end}} of {{total}} posts"
+      },
+      "actions": {
+        "approve": "Approve post",
+        "hide": "Hide post",
+        "delete": "Delete permanently"
+      },
+      "messages": {
+        "loading": "Loading data...",
+        "statusUpdateSuccess": "Successfully changed post status to \"{{status}}\"!",
+        "statusUpdateError": "Error updating post: {{error}}",
+        "deleteSuccess": "Post permanently deleted!",
+        "deleteError": "Error deleting post: {{error}}"
+      },
+      "confirmDelete": {
+        "title": "Confirm delete post?",
+        "subtitle": "This will permanently delete the post content and CANNOT be recovered.",
+        "cancel": "Cancel",
+        "confirm": "Confirm Delete"
+      }
+    },
+    "genealogy": {
+      "sidebar": {
+        "title": "Clan List",
+        "addBtn": "Add Clan",
+        "searchPlaceholder": "Search clans...",
+        "clearSearch": "Clear search",
+        "empty": "No matching clans found.",
+        "stats": "{{count}} members · {{managerCount}} managers",
+        "owner": "Mgr: {{name}}"
+      },
+      "main": {
+        "empty": "No clans yet. Click \"Add Clan\" to create a new genealogy tree."
+      },
+      "modal": {
+        "createTitle": "Add Clan",
+        "editTitle": "Edit Clan",
+        "fields": {
+          "clanName": "Clan Name",
+          "clanNamePlaceholder": "e.g., Smith Family",
+          "history": "Clan History",
+          "historyPlaceholder": "Enter clan description/history if any",
+          "hallAddress": "Clan Hall Address",
+          "hallAddressPlaceholder": "Enter address if any",
+          "managerSection": {
+            "title": "Assigned Manager Account",
+            "subtitle": "This manager will be assigned to the new clan and have rights to add members.",
+            "email": "Manager Email",
+            "password": "Manager Password",
+            "passwordHint": "Min 6 characters",
+            "surname": "Manager Surname",
+            "surnamePlaceholder": "e.g., Doe",
+            "middleName": "Middle Name",
+            "middleNamePlaceholder": "e.g., Quincy",
+            "firstName": "Manager First Name",
+            "firstNamePlaceholder": "e.g., John"
+          }
+        },
+        "actions": {
+          "cancel": "Cancel",
+          "save": "Save",
+          "saving": "Saving..."
+        }
+      },
+      "messages": {
+        "loadClansError": "Could not load clan list",
+        "clanNameRequired": "Please enter clan name.",
+        "managerAccountRequired": "Please enter manager email and password.",
+        "passwordMinLength": "Manager password must be at least 6 characters.",
+        "managerNameRequired": "Please enter at least manager surname or first name.",
+        "operationFailed": "Operation failed.",
+        "deleteConfirm": "Delete clan \"{{name}}\"? All genealogy data, members, posts, events and related data will be deleted.",
+        "deleteError": "Could not delete clan",
+        "loading": "Loading clan list..."
+      }
+    },
+    "settings": {
+      "title": "System Settings",
+      "subtitle": "Configure basic information and operating options for the website.",
+      "sections": {
+        "general": "General Information",
+        "contact": "Contact & Support",
+        "status": "System Status"
+      },
+      "fields": {
+        "siteName": "Site Name",
+        "siteDescription": "Short Description",
+        "supportEmail": "Support Email",
+        "phone": "Phone Number",
+        "address": "Office Address",
+        "maintenanceMode": "Maintenance Mode",
+        "maintenanceHint": "When enabled, only Admins can access the system."
+      },
+      "actions": {
+        "save": "Save Changes",
+        "saving": "Saving..."
+      },
+      "messages": {
+        "loading": "Loading...",
+        "saveSuccess": "Settings saved successfully!"
+      }
+    },
+    "actions": {
+      "lock": "Lock",
+      "unlock": "Unlock"
+    }
+  },
+  "posts": {
+    "title": "Clan Newsfeed",
+    "subtitle": "A place to keep stories, photos, and memories of members.",
+    "composer": {
+      "placeholder": "Share something with the clan...",
+      "media": "Photo / Video",
+      "story": "Story"
+    },
+    "card": {
+      "notUpdated": "Not updated",
+      "imagePost": "Image post",
+      "clanMember": "Clan member",
+      "postMediaAlt": "Post media",
+      "likes": "{{count}} likes",
+      "comments": "{{count}} comments",
+      "like": "Like",
+      "comment": "Comment",
+      "view": "View"
+    },
+    "modal": {
+      "create": {
+        "title": "Create Post",
+        "subtitle": "Member posts will appear after manager approval.",
+        "tabs": {
+          "media": "Photo / Video",
+          "story": "Story",
+          "ariaLabel": "Post type"
+        },
+        "fields": {
+          "title": "Title / Short description",
+          "titlePlaceholder": "Example: Clan meeting, commemorative photo...",
+          "content": "Post content",
+          "contentPlaceholder": "What do you want to share with the clan?",
+          "uploadLabel": "Upload post photo or video"
+        },
+        "submit": "Send post"
+      },
+      "detail": {
+        "comments": "Comments",
+        "loadingComments": "Loading comments...",
+        "noComments": "No comments yet.",
+        "member": "Member",
+        "commentPlaceholder": "Write a comment...",
+        "submitComment": "Comment"
+      }
+    },
+    "messages": {
+      "loadError": "Cannot load posts.",
+      "loadCommentsError": "Cannot load comments.",
+      "titleRequired": "Please enter a title or short description for the post.",
+      "mediaRequired": "Please select a photo or video for the post.",
+      "contentRequired": "Please enter the story content.",
+      "postSuccess": "Post sent.",
+      "postError": "Cannot send post.",
+      "likeError": "Cannot update likes.",
+      "commentRequired": "Please enter a comment.",
+      "commentError": "Cannot send comment.",
+      "noPosts": "No approved posts yet."
+    },
+    "sidebar": {
+      "title": "Newsfeed",
+      "description": "Approved posts will be shown to clan members.",
+      "addPost": "Add post"
+    }
+  },
+  "tree": {
+    "title": "Family Tree",
+    "sidebar": {
+      "title": "Find Person",
+      "placeholder": "Name, gen, birth date, year",
+      "findMe": "Find me",
+      "search": "Search",
+      "noResults": "No matching person found."
+    },
+    "toolbar": {
+      "addPerson": "Add Person",
+      "addPersonHint": "Add person to the family tree",
+      "addPersonAdminOnly": "Only clan managers can add members",
+      "autoLayout": "Auto Layout",
+      "autoLayoutHint": "Automatically rearrange and save to database",
+      "autoLayoutViewerHint": "Members can only view, cannot auto-arrange",
+      "exportPng": "Export PNG",
+      "validate": "Validate Tree",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit Fullscreen",
+      "limitedEdit": "Temporary edit: current gen ±1"
+    },
+    "viewMode": {
+      "full": "Full Tree",
+      "setRoot": "Set as Root",
+      "rootPlaceholder": "Enter name to select",
+      "rootLabel": "Root: {{name}}"
+    },
+    "card": {
+      "fallbackName": "Member",
+      "chief": "Clan Chief",
+      "generation": "Gen {{count}}",
+      "born": "Born: {{date}}",
+      "died": "Died: {{date}}",
+      "lifeInfo": "{{born}} - {{died}}",
+      "noBirthDate": "No birth date",
+      "edit": "Edit member",
+      "delete": "Delete member",
+      "addRelation": "Add relation",
+      "resize": "Drag to resize",
+      "badges": {
+        "self": "Me",
+        "online": "Online",
+        "search": "Search result",
+        "editing": "Editing",
+        "error": "Data error"
+      },
+      "collapse": {
+        "expand": "Expand branch",
+        "collapse": "Collapse branch"
+      }
+    },
+    "inspector": {
+      "title": "Member Information",
+      "spouseLabel": "Spouse: {{name}}",
+      "fallbackSubtitle": "Genealogy profile",
+      "closePanel": "Close panel",
+      "readOnlyNote": "View only mode. Members do not have permission to edit the tree.",
+      "limitedNote": "You have temporary edit rights within allowed scope. Cannot create, delete or change relations.",
+      "fields": {
+        "displayName": "Display Name",
+        "surname": "Surname",
+        "middleName": "Middle Name",
+        "firstName": "First Name",
+        "gender": "Gender",
+        "genderOptions": {
+          "male": "Male",
+          "female": "Female",
+          "unknown": "Unknown"
+        },
+        "role": "Role",
+        "roleOptions": {
+          "noAccount": "No account",
+          "chief": "Clan Chief",
+          "member": "Member"
+        },
+        "status": "Status",
+        "statusOptions": {
+          "living": "Living",
+          "deceased": "Deceased"
+        },
+        "birthDate": "Birth Date",
+        "deathDate": "Death Date",
+        "lunarBirth": "Lunar Birth Date",
+        "lunarDeath": "Lunar Death Date",
+        "generation": "Generation",
+        "branch": "Branch",
+        "hometown": "Hometown",
+        "address": "Address",
+        "phone": "Phone",
+        "email": "Email",
+        "avatarUrl": "Avatar URL",
+        "bio": "Biography",
+        "note": "Note"
+      },
+      "actions": {
+        "addSpouse": "Choose Spouse",
+        "addChild": "Choose Child",
+        "addFather": "Choose Father",
+        "addMother": "Choose Mother",
+        "save": "Save",
+        "saving": "Saving...",
+        "delete": "Delete"
+      }
+    },
+    "relationModal": {
+      "titles": {
+        "spouse": "Choose Spouse",
+        "child": "Choose Child",
+        "father": "Choose Father",
+        "mother": "Choose Mother",
+        "generic": "Choose Relation"
+      },
+      "pickOnTree": "Pick directly on tree",
+      "divider": "or",
+      "searchLabel": "Search existing members",
+      "searchPlaceholder": "Enter name, email or phone",
+      "isLinked": "Linked",
+      "noResults": "No matching members found.",
+      "actions": {
+        "unlink": "Unlink",
+        "link": "Link",
+        "linking": "Linking..."
+      }
+    },
+    "quickCreate": {
+      "title": "Select relation to create",
+      "spouse": {
+        "title": "Create Spouse",
+        "desc": "Create new member and link as spouse"
+      },
+      "child": {
+        "title": "Create Child",
+        "desc": "Create new member and link as child"
+      }
+    },
+    "createModal": {
+      "titles": {
+        "person": "Add Person",
+        "spouse": "Add Spouse",
+        "child": "Add Child",
+        "father": "Add Father",
+        "mother": "Add Mother",
+        "for": "{{title}} for {{name}}",
+        "new": "Create new {{relation}}"
+      },
+      "fields": {
+        "displayPlaceholder": "Example: John Doe",
+        "accountBoxTitle": "Create login account for this person",
+        "accountEmail": "Login Email",
+        "accountPassword": "Login Password",
+        "passwordHint": "Min 6 characters"
+      },
+      "actions": {
+        "create": "Create",
+        "creating": "Creating..."
+      }
+    },
+    "messages": {
+      "loading": "Loading family tree...",
+      "loadError": "Could not load family tree.",
+      "saveLayoutError": "Could not save tree layout to database.",
+      "autoLayoutConfirm": "Auto layout will override current manual positions. Continue?",
+      "autoLayoutSuccess": "Auto layout applied and saved to database.",
+      "autoLayoutError": "Could not save new layout.",
+      "exportSuccess": "PNG exported.",
+      "exportError": "Could not export PNG",
+      "saveSuccess": "Member info saved.",
+      "saveError": "Could not save info.",
+      "deleteConfirm": "Delete member {{name}} from tree?",
+      "deleteSuccess": "Member deleted from tree.",
+      "deleteError": "Could not delete member.",
+      "unlinkSuccess": "{{relation}} unlinked.",
+      "unlinkError": "Could not unlink relation.",
+      "linkSuccess": "{{relation}} linked.",
+      "linkError": "Could not link relation.",
+      "linkTargetError": "Cannot link this member.",
+      "linkSourceNotFound": "Source member not found for linking.",
+      "linkAlreadyExists": "This member is already linked with the selected relation.",
+      "linkNotAllowed": "This member is not suitable or already linked. Please choose another.",
+      "noAccountLinked": "Current account is not linked to any person in the tree.",
+      "validationTitle": "Tree Data Errors",
+      "validationSummary": "{{count}} nodes need fix",
+      "validationSuccess": "Tree check: no data errors found.",
+      "validationErrorCount": "Tree check: {{count}} nodes with data errors.",
+      "validationFixed": "Tree check: data errors have been resolved.",
+      "validationMore": "{{count}} other errors. Click red nodes to see tooltips.",
+      "constraintViolation": "Constraint Violation Warning",
+      "constraintHint": "Click outside to close.",
+      "billingLimit": "Usage Limit Reached",
+      "billingUpgrade": "View Upgrade Plans",
+      "personLimitReached": "Clan has reached limit of {{current}}/{{limit}} people for {{plan}}. Please upgrade to add more.",
+      "subscriptionExpired": "Subscription expired. Please renew to continue adding members.",
+      "treePickHint": "Picking {{relation}} for {{name}}. Click directly on a member card to link.",
+      "noPermissionAction": "You do not have permission to perform this action.",
+      "genericError": "Operation failed.",
+      "multipleFamiliesError": "Please select a specific family/marriage to add a child.",
+      "noFamilyError": "A family must be created before adding a child."
+    },
+    "relations": {
+      "spouse": "spouse",
+      "child": "child",
+      "father": "father",
+      "mother": "mother"
+    }
+  },
+  "calendar": {
+    "title": "Vietnam Calendar",
+    "today": "Today",
+    "events": "Events Today"
+  },
+  "clan": {
+    "register": {
+      "title": "Register Clan",
+      "form": {
+        "clanName": "Clan Name",
+        "description": "Clan Description"
+      }
+    }
+  },
+  "aiChat": {
+    "title": "AI Assistant",
+    "placeholder": "Ask AI about genealogy or events...",
+    "send": "Send"
+  },
+  "voice": {
+    "title": "Voice Control",
+    "record": "Start Recording",
+    "stop": "Stop Recording",
+    "transcript": "Transcript",
+    "recorder": {
+      "idle": "Mic",
+      "uploading": "Uploading recording...",
+      "transcribing": "Transcribing voice...",
+      "receiveSuccess": "Transcript received.",
+      "receiveEmpty": "Transcript is empty.",
+      "noData": "No recording data.",
+      "title": {
+        "stop": "Stop recording",
+        "start": "Record question"
+      },
+      "errors": {
+        "unsupported": "Browser does not support recording.",
+        "failed": "Voice processing failed.",
+        "startFailed": "Could not start recording.",
+        "noId": "Server did not return recording ID.",
+        "transcriptionFailed": "Voice transcription failed.",
+        "timeout": "Transcription timeout."
+      }
+    }
+  },
+  "public": {
+    "hero": {
+      "title": "Preserving Roots,<br />Connecting Generations",
+      "subtitle": "A platform helping you connect and preserve Vietnamese genealogy values, from roots to the future.",
+      "explore": "Explore Now",
+      "createClan": "Create Clan"
+    },
+    "about": {
+      "tag": "About Us",
+      "title": "Gia Pha Viet: Preserving Roots - Connecting the Future",
+      "p1": "Genealogy is not just a list of names, but a sacred flow of culture and morality. In the digital age, our mission is to transform yellowed pages into eternal heritage.",
+      "p2": "Gia Pha Viet is designed based on traditional values, combined with modern data management technology to help every family preserve, connect, and pass on the clan's story.",
+      "quote": "“Birds have nests, people have ancestors.”",
+      "imageAlt": "Traditional communal house"
+    },
+    "features": {
+      "demo": {
+        "tag": "Detailed Feature Frame",
+        "title": "Smart Genealogy Diagram",
+        "desc": "Visualize multi-branch family trees, track direct lineage relationships and information of each member on one screen.",
+        "viewImage": "View as Image",
+        "createGenerations": "Create Multiple Generations",
+        "point1": "Auto-arrange hierarchy by generation",
+        "point2": "Attach biographies, portraits and original documents",
+        "point3": "Search by name, branch, area and timeline"
+      },
+      "advanced": {
+        "tag": "Leading Technology",
+        "title": "Outstanding Features",
+        "items": {
+          "auto": {
+            "title": "Automatic Genealogy Creation",
+            "desc": "Quickly import data from Excel files or fragmented information, the system automatically links them."
+          },
+          "events": {
+            "title": "Event Management",
+            "desc": "Remind of death anniversaries, holidays, and clan anniversaries via phone and email."
+          },
+          "security": {
+            "title": "Security & Permissions",
+            "desc": "Data is encrypted according to international standards, with detailed access permissions for each member."
+          }
+        }
+      },
+      "events": {
+        "title": "Event & Holiday Management",
+        "desc": "Keep track of festivals, death anniversaries and traditional rituals through a modern electronic system.",
+        "calendarLabel": "LUNAR/SOLAR CALENDAR",
+        "lunarMonth": "August, Giap Thin",
+        "sampleEvent1": "Death Anniversary of Nguyen Clan Ancestor",
+        "sampleTime1": "8:00 AM",
+        "sampleEvent2": "Incense Offering Ceremony",
+        "sampleTime2": "6:30 PM",
+        "cards": {
+          "notifications": {
+            "title": "Automatic Notifications",
+            "desc": "System automatically sends reminders via SMS, email and app for important occasions of each branch."
+          },
+          "connection": {
+            "title": "Family Connection",
+            "desc": "Synchronize multiple generations, invite far-away members and update common schedules by branch."
+          },
+          "rituals": {
+            "title": "Ritual Storage",
+            "desc": "Create a repository of prayers, offerings and ritual guides for each holiday."
+          },
+          "budget": {
+            "title": "Expense Requests",
+            "desc": "Manage logistics, budget and resources for clan events."
+          }
+        }
+      },
+      "preservation": {
+        "title": "Heritage Digitization & Security",
+        "desc": "Store genealogy according to modern digitization standards, preserve ancient documents and enhance secure access for each member of the clan.",
+        "points": [
+          "Han-Nom Translation",
+          "Secure Cloud Storage",
+          "Access Permissions"
+        ]
+      },
+      "cta": {
+        "title": "Ready to create a digital heritage for your clan?",
+        "subtitle": "Join thousands of Vietnamese clans in the journey of sustainable root preservation.",
+        "start": "Start Now",
+        "learnMore": "Learn More"
+      }
+    },
+    "benefits": {
+      "title": "Benefits of Preserving Genealogy",
+      "subtitle": "“Trees have roots, water has a source. People have ancestors to become who they are.” A journey of spiritual connection between past, present, and future.",
+      "cards": {
+        "connection": {
+          "title": "Bloodline Connection",
+          "desc": "Track generation lines in an intuitive, transparent and easy-to-update space for the whole family."
+        },
+        "preservation": {
+          "title": "Preserving Heritage",
+          "desc": "Digitize ancient genealogy pages along with images, documents and traditional stories for sustainable preservation."
+        },
+        "education": {
+          "title": "Traditional Education",
+          "desc": "Storing family activities helps the younger generation understand their roots, continuing the family's mission and morality."
+        }
+      },
+      "why": {
+        "title": "Why Choose Gia Pha Viet?",
+        "items": {
+          "ai": {
+            "title": "AI Member Suggestions",
+            "desc": "Automatically suggest relationship connections based on name, generation and historical data of each branch."
+          },
+          "security": {
+            "title": "Multi-layer Security",
+            "desc": "Data is encrypted in multiple layers and strictly authenticated to each access right."
+          },
+          "reminder": {
+            "title": "Automatic Anniversary Reminders",
+            "desc": "Notifications are sent regularly according to the lunar calendar to the app, email and related members."
+          },
+          "storage": {
+            "title": "Permanent Storage",
+            "desc": "All images, texts and documentary films are periodically backed up on cloud infrastructure."
+          }
+        }
+      }
+    },
+    "guide": {
+      "title": "User Guide",
+      "subtitle": "Step by step exploring and managing Vietnamese genealogy",
+      "stepsTitle": "6 Easy Steps To Start",
+      "steps": {
+        "step1": { "title": "Create Clan", "desc": "The first step is to create an account and set the clan name. The system will create a private space for your clan." },
+        "step2": { "title": "Add Members", "desc": "Enter clan member information: name, birth date, relationship. You can add each person or import a list from an Excel file." },
+        "step3": { "title": "Link Relationships", "desc": "Define relationships between members: parents, spouses, siblings. The system automatically draws the genealogy diagram." },
+        "step4": { "title": "Store Documents", "desc": "Upload images, documents, videos of ancient genealogy. All files are encrypted and stored securely on the cloud." },
+        "step5": { "title": "Invite Members", "desc": "Send invitations to clan members so they can join and update their personal information." },
+        "step6": { "title": "Manage Events", "desc": "Set death anniversaries, festivals, clan events. Receive automatic notifications on important occasions." }
+      },
+      "videoTitle": "Watch Video Tutorials",
+      "videos": {
+        "v1": { "title": "How to create a clan in 2 minutes", "desc": "Quick guide for newcomers" },
+        "v2": { "title": "Import data from Excel file", "desc": "Add hundreds of members at once" },
+        "v3": { "title": "Manage access permissions", "desc": "Control who can view or edit" }
+      },
+      "faqTitle": "Frequently Asked Questions",
+      "faqs": [
+        { "q": "Where can I start if I don't know all the family members?", "a": "You can absolutely start with the closest members like parents, siblings. Then, gradually add others as you have information." },
+        { "q": "Is my data protected?", "a": "All genealogy data is encrypted according to international standards (AES-256). Only authorized people can access it." },
+        { "q": "Can I import data from existing old genealogy?", "a": "Yes, you can upload Excel files or images of old genealogy. The system can help you convert to a digital format." },
+        { "q": "What do other members need to do to join?", "a": "They just need to receive the invitation email, register an account and log in. No special technical skills are required." },
+        { "q": "Can I delete or edit information?", "a": "Yes, but every edit will be recorded to preserve historical integrity. Clan administrators can manage permissions." },
+        { "q": "How much is the fee?", "a": "Currently, Gia Pha Viet is in a free beta phase. You can use all features at no cost." }
+      ],
+      "support": {
+        "title": "Need Help?",
+        "desc": "Our support team is always ready to answer any questions.",
+        "email": "Send Email",
+        "chat": "Live Chat"
+      }
+    },
+    "news": {
+      "title": "Heritage Bulletin",
+      "subtitle": "Preserving roots - Promoting traditions",
+      "featured": "Featured News",
+      "categories": "Categories",
+      "subscribe": {
+        "title": "Subscribe to News",
+        "desc": "To update the latest news, please enter your email.",
+        "placeholder": "Your email address",
+        "submit": "SUBSCRIBE NOW"
+      },
+      "readMore": "Read more »",
+      "categoryList": {
+        "history": "Clan History",
+        "rituals": "Rituals & Customs",
+        "tech": "Technology & Digitization",
+        "people": "Outstanding Figures"
+      }
+    },
+    "notFound": {
+      "title": "404 - Page Not Found",
+      "desc": "The page you are looking for does not exist or has been moved.",
+      "backHome": "Back to Home"
+    },
+    "stats": {
+      "clans": "Clans joined",
+      "members": "Members connected",
+      "documents": "Documents digitized",
+      "provinces": "Provinces covered"
     }
   }
 }

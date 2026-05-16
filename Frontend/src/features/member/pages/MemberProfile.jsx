@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   changeMemberPassword,
   getMemberDashboard,
@@ -10,19 +11,19 @@ import { getStoredUser } from "../../../shared/utils/auth";
 import { resolveImageUrl } from "../../../shared/utils/media";
 import "./MemberDashboard.css";
 
-function personName(person) {
+function personName(person, t) {
   return (
     person?.display_name ||
     [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
-    "Thành viên"
+    t("posts.modal.detail.member")
   );
 }
 
-function profileStatusText(status) {
-  if (status === "pending") return "Chờ duyệt";
-  if (status === "approved") return "Đã duyệt";
-  if (status === "rejected") return "Từ chối";
-  return "Chưa gửi";
+function profileStatusText(status, t) {
+  if (status === "pending") return t("member.profile.status.pending");
+  if (status === "approved") return t("member.profile.status.approved");
+  if (status === "rejected") return t("member.profile.status.rejected");
+  return t("member.profile.status.none");
 }
 
 function updateStoredUser(profile) {
@@ -44,6 +45,7 @@ function updateStoredUser(profile) {
 }
 
 export default function MemberProfile() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [savingBasic, setSavingBasic] = useState(false);
   const [savingRelations, setSavingRelations] = useState(false);
@@ -97,7 +99,7 @@ export default function MemberProfile() {
         children_ids: Array.isArray(nextProfile.children_ids) ? nextProfile.children_ids.map(Number) : [],
       });
     } catch (err) {
-      setError(err?.message || "Không thể tải hồ sơ thành viên.");
+      setError(err?.message || t("member.profile.messages.loadError"));
     } finally {
       setLoading(false);
     }
@@ -135,7 +137,7 @@ export default function MemberProfile() {
       const generationText = String(basicForm.generation ?? "").trim();
       const generation = generationText === "" ? null : Number(generationText);
       if (generationText !== "" && !Number.isFinite(generation)) {
-        throw new Error("Đời phải là số hợp lệ.");
+        throw new Error(t("member.profile.messages.generationInvalid"));
       }
 
       const response = await updateMemberProfile({
@@ -143,10 +145,10 @@ export default function MemberProfile() {
         generation,
       });
       updateStoredUser(response.profile || {});
-      setNotice("Đã lưu thông tin cơ bản.");
+      setNotice(t("member.profile.messages.basicSuccess"));
       await loadProfile();
     } catch (err) {
-      setError(err?.message || "Không thể lưu thông tin cơ bản.");
+      setError(err?.message || t("member.profile.messages.basicError"));
     } finally {
       setSavingBasic(false);
     }
@@ -163,10 +165,10 @@ export default function MemberProfile() {
         avatar_url: contentForm.avatar_url,
         avatar_media_id: contentForm.avatar_media_id || null,
       });
-      setNotice("Đã gửi ảnh và tiểu sử để quản lý duyệt.");
+      setNotice(t("member.profile.messages.proposeSuccess"));
       await loadProfile();
     } catch (err) {
-      setError(err?.message || "Không thể gửi yêu cầu duyệt hồ sơ.");
+      setError(err?.message || t("member.profile.messages.proposeError"));
     } finally {
       setSavingContent(false);
     }
@@ -184,10 +186,10 @@ export default function MemberProfile() {
         children_ids: relationForm.children_ids,
       });
       updateStoredUser(response.profile || {});
-      setNotice("Đã lưu quan hệ gia đình.");
+      setNotice(t("member.profile.messages.relationsSuccess"));
       await loadProfile();
     } catch (err) {
-      setError(err?.message || "Không thể lưu quan hệ gia đình.");
+      setError(err?.message || t("member.profile.messages.relationsError"));
     } finally {
       setSavingRelations(false);
     }
@@ -199,18 +201,18 @@ export default function MemberProfile() {
     setError("");
     setNotice("");
     try {
-      if (!passwordForm.current) throw new Error("Vui lòng nhập mật khẩu hiện tại.");
-      if (passwordForm.next.length < 6) throw new Error("Mật khẩu mới cần ít nhất 6 ký tự.");
-      if (passwordForm.next !== passwordForm.confirm) throw new Error("Mật khẩu xác nhận không khớp.");
+      if (!passwordForm.current) throw new Error(t("member.profile.messages.passwordCurrentRequired"));
+      if (passwordForm.next.length < 6) throw new Error(t("member.profile.messages.passwordLength"));
+      if (passwordForm.next !== passwordForm.confirm) throw new Error(t("member.profile.messages.passwordMismatch"));
 
       await changeMemberPassword({
         current_password: passwordForm.current,
         new_password: passwordForm.next,
       });
       setPasswordForm({ current: "", next: "", confirm: "" });
-      setNotice("Đã đổi mật khẩu.");
+      setNotice(t("member.profile.messages.passwordSuccess"));
     } catch (err) {
-      setError(err?.message || "Không thể đổi mật khẩu.");
+      setError(err?.message || t("member.profile.messages.passwordError"));
     } finally {
       setSavingPassword(false);
     }
@@ -220,7 +222,7 @@ export default function MemberProfile() {
     return (
       <div className="member-portal-page">
         <section className="member-panel">
-          <div className="member-empty">Đang tải hồ sơ...</div>
+          <div className="member-empty">{t("member.profile.messages.loading")}</div>
         </section>
       </div>
     );
@@ -232,9 +234,9 @@ export default function MemberProfile() {
 
       <section className="member-hero-panel">
         <div>
-          <span className="member-kicker">Hồ sơ cá nhân</span>
-          <h1>{personName(profile)}</h1>
-          <p>Cập nhật thông tin cơ bản, quan hệ gia đình, ảnh đại diện và mật khẩu đăng nhập.</p>
+          <span className="member-kicker">{t("member.profile.title")}</span>
+          <h1>{personName(profile, t)}</h1>
+          <p>{t("member.profile.subtitle")}</p>
         </div>
         {(() => {
   const avatarSrc = resolveImageUrl({
@@ -252,26 +254,26 @@ export default function MemberProfile() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Thông tin cơ bản</h2>
-              <p>Thông tin này được lưu trực tiếp vào hồ sơ người trong gia phả.</p>
+              <h2>{t("member.profile.basicInfo.title")}</h2>
+              <p>{t("member.profile.basicInfo.subtitle")}</p>
             </div>
           </div>
           <form className="member-form" onSubmit={saveBasicProfile}>
             <div className="member-form-grid">
               <label className="member-label">
-                Họ
+                {t("member.profile.basicInfo.fields.surname")}
                 <input value={basicForm.surname} onChange={(event) => setBasicForm((current) => ({ ...current, surname: event.target.value }))} />
               </label>
               <label className="member-label">
-                Tên đệm
+                {t("member.profile.basicInfo.fields.middleName")}
                 <input value={basicForm.middle_name} onChange={(event) => setBasicForm((current) => ({ ...current, middle_name: event.target.value }))} />
               </label>
               <label className="member-label">
-                Tên
+                {t("member.profile.basicInfo.fields.firstName")}
                 <input value={basicForm.first_name} onChange={(event) => setBasicForm((current) => ({ ...current, first_name: event.target.value }))} />
               </label>
               <label className="member-label">
-                Đời
+                {t("member.profile.basicInfo.fields.generation")}
                 <input
                   type="number"
                   min={1}
@@ -280,16 +282,16 @@ export default function MemberProfile() {
                 />
               </label>
               <label className="member-label member-form-full">
-                Email đăng nhập
+                {t("member.profile.basicInfo.fields.email")}
                 <input type="email" value={basicForm.email} onChange={(event) => setBasicForm((current) => ({ ...current, email: event.target.value }))} />
               </label>
               <label className="member-label member-form-full">
-                Quê quán
+                {t("member.profile.basicInfo.fields.hometown")}
                 <input value={basicForm.hometown} onChange={(event) => setBasicForm((current) => ({ ...current, hometown: event.target.value }))} />
               </label>
             </div>
             <button className="member-btn member-btn-primary" type="submit" disabled={savingBasic || !profile.person_id}>
-              Lưu thông tin cơ bản
+              {t("member.profile.basicInfo.submit")}
             </button>
           </form>
         </section>
@@ -297,15 +299,15 @@ export default function MemberProfile() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Ảnh và tiểu sử</h2>
+              <h2>{t("member.profile.mediaBio.title")}</h2>
               <p>
-                Trạng thái: <span className={`member-status status-${profile.moderation_status || "none"}`}>{profileStatusText(profile.moderation_status)}</span>
+                {t("member.profile.mediaBio.statusLabel")} <span className={`member-status status-${profile.moderation_status || "none"}`}>{profileStatusText(profile.moderation_status, t)}</span>
               </p>
             </div>
           </div>
           <form className="member-form" onSubmit={saveContentForReview}>
             <ImageUpload
-              label="Tải ảnh hồ sơ"
+              label={t("member.profile.mediaBio.uploadLabel")}
               value={contentForm.avatar_url}
               usageType="pending_avatar"
               onUploadSuccess={(url, file) =>
@@ -317,16 +319,16 @@ export default function MemberProfile() {
               }
             />
             <label className="member-label">
-              URL ảnh hiện tại
+              {t("member.profile.mediaBio.urlLabel")}
               <input value={contentForm.avatar_url} onChange={(event) => setContentForm((current) => ({ ...current, avatar_url: event.target.value, avatar_media_id: null }))} />
             </label>
             <label className="member-label">
-              Tiểu sử
+              {t("member.profile.mediaBio.bioLabel")}
               <textarea rows={5} value={contentForm.bio} onChange={(event) => setContentForm((current) => ({ ...current, bio: event.target.value }))} />
             </label>
-            {profile.moderation_reason && <div className="member-empty">Ghi chú duyệt: {profile.moderation_reason}</div>}
+            {profile.moderation_reason && <div className="member-empty">{t("member.profile.mediaBio.moderationNote", { reason: profile.moderation_reason })}</div>}
             <button className="member-btn member-btn-primary" type="submit" disabled={savingContent || profile.moderation_status === "pending" || !profile.person_id}>
-              Gửi duyệt ảnh và tiểu sử
+              {t("member.profile.mediaBio.submit")}
             </button>
           </form>
         </section>
@@ -336,42 +338,42 @@ export default function MemberProfile() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Quan hệ gia đình</h2>
-              <p>Chọn vợ/chồng và con trong danh sách thành viên cùng dòng họ.</p>
+              <h2>{t("member.profile.relations.title")}</h2>
+              <p>{t("member.profile.relations.subtitle")}</p>
             </div>
           </div>
           <div className="member-empty">
-            Member không còn chỉnh sửa quan hệ gia đình từ trang hồ sơ. Khi manager cấp temporary edit key hợp lệ, hãy vào trang cây gia phả để sửa trong phạm vi được phép.
+            {t("member.profile.relations.lockedNote")}
           </div>
           <form className="member-form" onSubmit={saveRelations} style={{ display: "none" }}>
             <label className="member-label">
-              Vợ / chồng
+              {t("member.profile.relations.spouse")}
               <select value={relationForm.spouse_id} onChange={(event) => setRelationForm((current) => ({ ...current, spouse_id: event.target.value }))}>
-                <option value="">Chưa chọn</option>
+                <option value="">{t("member.profile.relations.unselected")}</option>
                 {relationCandidates.map((member) => (
                   <option key={member.id} value={member.id}>
-                    {personName(member)} (ID {member.id})
+                    {personName(member, t)} (ID {member.id})
                   </option>
                 ))}
               </select>
             </label>
             <div className="member-label">
-              Con cái
+              {t("member.profile.relations.children")}
               <div className="member-checkbox-list">
                 {childCandidates.length === 0 ? (
-                  <div className="member-empty">Không có thành viên phù hợp để chọn.</div>
+                  <div className="member-empty">{t("member.profile.relations.empty")}</div>
                 ) : (
                   childCandidates.map((member) => (
                     <label className="member-checkbox-row" key={member.id}>
                       <input type="checkbox" checked={selectedChildren.has(Number(member.id))} onChange={() => toggleChild(member.id)} />
-                      <span>{personName(member)} (ID {member.id})</span>
+                      <span>{personName(member, t)} (ID {member.id})</span>
                     </label>
                   ))
                 )}
               </div>
             </div>
             <button className="member-btn member-btn-primary" type="submit" disabled={savingRelations || !profile.person_id}>
-              Lưu quan hệ
+              {t("member.profile.relations.submit")}
             </button>
           </form>
         </section>
@@ -379,13 +381,13 @@ export default function MemberProfile() {
         <section className="member-panel">
           <div className="member-panel-header">
             <div>
-              <h2>Đổi mật khẩu</h2>
-              <p>Mật khẩu mới cần tối thiểu 6 ký tự.</p>
+              <h2>{t("member.profile.password.title")}</h2>
+              <p>{t("member.profile.password.subtitle")}</p>
             </div>
           </div>
           <form className="member-form" onSubmit={savePassword}>
             <label className="member-label">
-              Mật khẩu hiện tại
+              {t("member.profile.password.fields.current")}
               <input
                 type="password"
                 value={passwordForm.current}
@@ -394,7 +396,7 @@ export default function MemberProfile() {
               />
             </label>
             <label className="member-label">
-              Mật khẩu mới
+              {t("member.profile.password.fields.next")}
               <input
                 type="password"
                 value={passwordForm.next}
@@ -403,7 +405,7 @@ export default function MemberProfile() {
               />
             </label>
             <label className="member-label">
-              Xác nhận mật khẩu mới
+              {t("member.profile.password.fields.confirm")}
               <input
                 type="password"
                 value={passwordForm.confirm}
@@ -412,7 +414,7 @@ export default function MemberProfile() {
               />
             </label>
             <button className="member-btn member-btn-primary" type="submit" disabled={savingPassword}>
-              Đổi mật khẩu
+              {t("member.profile.password.submit")}
             </button>
           </form>
         </section>

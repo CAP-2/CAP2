@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
 import {
   approvePostAPI,
   approveMemoryAPI,
@@ -18,7 +19,7 @@ const isVideoUrl = (value = "") =>
   /[?&]media=video(?:&|$)/i.test(String(value)) ||
   /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(String(value));
 
-const safeText = (value, fallback = "Chưa có thông tin") => {
+const safeText = (value, fallback = "") => {
   if (value === null || value === undefined || value === "") return fallback;
   return value;
 };
@@ -52,7 +53,7 @@ const truncateText = (value, max = 160) => {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 };
 
-function MediaPreview({ url, type = "" }) {
+function MediaPreview({ url, type = "", t }) {
   if (!url) return null;
 
   const isImage = type === "image" || /\.(png|jpg|jpeg|gif|webp|avif)(\?|#|$)/i.test(url);
@@ -64,7 +65,7 @@ function MediaPreview({ url, type = "" }) {
       href={url}
       target="_blank"
       rel="noreferrer"
-      title="Mở tệp đính kèm"
+      title={t("manager.pending.items.openAttachment")}
     >
       {isVideo ? (
         <video className="pending-pro-thumb" src={url} muted playsInline preload="metadata" />
@@ -80,6 +81,7 @@ function MediaPreview({ url, type = "" }) {
 }
 
 export default function PendingApprovals() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("users");
   const [pendingUsers, setPendingUsers] = useState([]);
   const [pendingPosts, setPendingPosts] = useState([]);
@@ -105,11 +107,11 @@ export default function PendingApprovals() {
       setPendingProfiles(data.pendingProfiles || []);
       setPendingMemories(data.pendingMemories || []);
     } catch (err) {
-      setError(err?.message || "Không thể tải danh sách chờ duyệt");
+      setError(err?.message || t("manager.pending.loadingDataError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
 useEffect(() => {
   loadPending();
@@ -136,29 +138,29 @@ useEffect(() => {
   const tabs = [
     {
       key: "users",
-      label: "Tài khoản mới",
-      shortLabel: "Tài khoản",
+      label: t("manager.pending.tabs.users"),
+      shortLabel: t("manager.pending.tabs.usersShort"),
       icon: "person_add",
       count: pendingUsers.length,
     },
     {
       key: "posts",
-      label: "Bài viết",
-      shortLabel: "Bài viết",
+      label: t("manager.pending.tabs.posts"),
+      shortLabel: t("manager.pending.tabs.posts"),
       icon: "article",
       count: pendingPosts.length,
     },
     {
       key: "profiles",
-      label: "Hồ sơ",
-      shortLabel: "Hồ sơ",
+      label: t("manager.pending.tabs.profiles"),
+      shortLabel: t("manager.pending.tabs.profiles"),
       icon: "badge",
       count: pendingProfiles.length,
     },
     {
       key: "memories",
-      label: "Kỉ niệm",
-      shortLabel: "Kỉ niệm",
+      label: t("manager.pending.tabs.memories"),
+      shortLabel: t("manager.pending.tabs.memories"),
       icon: "collections_bookmark",
       count: pendingMemories.length,
     },
@@ -183,28 +185,28 @@ useEffect(() => {
       setMessage(successMessage);
       await loadPending();
     } catch (err) {
-      setError(err?.message || "Thao tác thất bại");
+      setError(err?.message || t("common.operationFailed"));
     } finally {
       setActingId("");
     }
   };
 
   const rejectPost = (id) => {
-    const reason = window.prompt("Lý do từ chối bài viết:", "Nội dung chưa phù hợp");
+    const reason = window.prompt(t("manager.pending.prompts.rejectPost"), t("manager.pending.prompts.unsuitableContent"));
     if (reason === null) return;
-    runAction(() => rejectPostAPI(id, reason), "Đã từ chối bài viết", `post-${id}`);
+    runAction(() => rejectPostAPI(id, reason), t("manager.pending.messages.postRejected"), `post-${id}`);
   };
 
   const rejectProfile = (id) => {
-    const reason = window.prompt("Lý do từ chối cập nhật hồ sơ:", "Thông tin chưa đủ rõ");
+    const reason = window.prompt(t("manager.pending.prompts.rejectProfile"), t("manager.pending.prompts.insufficientInfo"));
     if (reason === null) return;
-    runAction(() => rejectProfileUpdateAPI(id, reason), "Đã từ chối cập nhật hồ sơ", `profile-${id}`);
+    runAction(() => rejectProfileUpdateAPI(id, reason), t("manager.pending.messages.profileRejected"), `profile-${id}`);
   };
 
   const rejectMemory = (id) => {
-    const reason = window.prompt("Lý do từ chối kỉ niệm:", "Nội dung chưa phù hợp");
+    const reason = window.prompt(t("manager.pending.prompts.rejectMemory"), t("manager.pending.prompts.unsuitableContent"));
     if (reason === null) return;
-    runAction(() => rejectMemoryAPI(id, reason), "Đã từ chối kỉ niệm dòng họ", `memory-${id}`);
+    runAction(() => rejectMemoryAPI(id, reason), t("manager.pending.messages.memoryRejected"), `memory-${id}`);
   };
 
   const filteredUsers = useMemo(() => {
@@ -284,25 +286,25 @@ useEffect(() => {
   const summaryCards = [
     {
       icon: "pending_actions",
-      label: "Tổng chờ duyệt",
+      label: t("manager.pending.summary.total"),
       value: totalPending,
       tone: "gold",
     },
     {
       icon: "person_add",
-      label: "Tài khoản mới",
+      label: t("manager.pending.summary.users"),
       value: pendingUsers.length,
       tone: "red",
     },
     {
       icon: "article",
-      label: "Bài viết",
+      label: t("manager.pending.summary.posts"),
       value: pendingPosts.length,
       tone: "green",
     },
     {
       icon: "collections_bookmark",
-      label: "Kỉ niệm",
+      label: t("manager.pending.summary.memories"),
       value: pendingMemories.length,
       tone: "slate",
     },
@@ -317,12 +319,9 @@ useEffect(() => {
           </div>
 
           <div>
-            <span className="pending-pro-kicker">Trung tâm kiểm duyệt</span>
-            <h2>Duyệt chờ</h2>
-            <p>
-              Kiểm tra tài khoản mới, bài viết, hồ sơ cập nhật và kỉ niệm dòng họ
-              trước khi hiển thị công khai.
-            </p>
+            <span className="pending-pro-kicker">{t("manager.pending.hero.kicker")}</span>
+            <h2>{t("manager.pending.hero.title")}</h2>
+            <p>{t("manager.pending.hero.description")}</p>
           </div>
         </div>
 
@@ -334,7 +333,7 @@ useEffect(() => {
             disabled={loading}
           >
             <span className="material-symbols-outlined">refresh</span>
-            {loading ? "Đang tải..." : "Tải lại"}
+            {loading ? t("common.loading") : t("common.reload")}
           </button>
         </div>
       </section>
@@ -376,7 +375,7 @@ useEffect(() => {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={`Tìm trong ${currentTab.label.toLowerCase()}...`}
+            placeholder={t("manager.pending.searchPlaceholder", { category: currentTab.label.toLowerCase() })}
           />
         </div>
       </section>
@@ -386,13 +385,12 @@ useEffect(() => {
           <div>
             <h3>{currentTab.label}</h3>
             <p>
-              Đang hiển thị <strong>{activeCount}</strong> mục trong nhóm{" "}
-              <strong>{currentTab.label.toLowerCase()}</strong>.
+              {t("manager.pending.contentCount", { count: activeCount, category: currentTab.label.toLowerCase() })}
             </p>
           </div>
 
           <span className="pending-pro-badge">
-            {currentTab.count} mục chờ
+            {t("manager.pending.pendingCount", { count: currentTab.count })}
           </span>
         </div>
 
@@ -400,7 +398,7 @@ useEffect(() => {
           {loading && (
             <div className="pending-pro-empty">
               <span className="material-symbols-outlined">progress_activity</span>
-              Đang tải dữ liệu chờ duyệt...
+              {t("manager.pending.loadingData")}
             </div>
           )}
 
@@ -412,13 +410,13 @@ useEffect(() => {
                     <div className="pending-pro-avatar">{avatarInitial(user)}</div>
 
                     <div className="pending-pro-info">
-                      <span className="pending-pro-type">Tài khoản mới</span>
+                      <span className="pending-pro-type">{t("manager.pending.tabs.users")}</span>
                       <h4>{fullName(user)}</h4>
-                      <p>{safeText(user.email, "Chưa có email")}</p>
+                      <p>{safeText(user.email, t("manager.pending.items.emailPlaceholder"))}</p>
 
                       <div className="pending-pro-meta">
-                        <span>Ngày sinh: {formatDate(user.birth_date)}</span>
-                        {user.hometown && <span>Quê quán: {user.hometown}</span>}
+                        <span>{t("common.birthDate")}: {formatDate(user.birth_date)}</span>
+                        {user.hometown && <span>{t("common.hometown")}: {user.hometown}</span>}
                       </div>
                     </div>
                   </div>
@@ -431,13 +429,13 @@ useEffect(() => {
                       onClick={() =>
                         runAction(
                           () => approveUserAPI(user.account_id),
-                          "Đã phê duyệt tài khoản",
+                          t("manager.pending.messages.userApproved"),
                           `user-${user.account_id}`
                         )
                       }
                     >
                       <span className="material-symbols-outlined">check_circle</span>
-                      Phê duyệt
+                      {t("common.approve")}
                     </button>
 
                     <button
@@ -447,13 +445,13 @@ useEffect(() => {
                       onClick={() =>
                         runAction(
                           () => rejectUserAPI(user.account_id),
-                          "Đã từ chối tài khoản",
+                          t("manager.pending.messages.userRejected"),
                           `user-${user.account_id}`
                         )
                       }
                     >
                       <span className="material-symbols-outlined">cancel</span>
-                      Từ chối
+                      {t("common.reject")}
                     </button>
                   </div>
                 </article>
@@ -462,7 +460,7 @@ useEffect(() => {
               {!filteredUsers.length && (
                 <div className="pending-pro-empty">
                   <span className="material-symbols-outlined">verified</span>
-                  Không có tài khoản chờ duyệt.
+                  {t("manager.pending.empty.users")}
                 </div>
               )}
             </>
@@ -473,7 +471,7 @@ useEffect(() => {
               {filteredPosts.map((post) => (
                 <article key={post.post_id} className="pending-pro-item">
                   <div className="pending-pro-main">
-                    <MediaPreview url={post.image_url} />
+                    <MediaPreview url={post.image_url} t={t} />
 
                     {!post.image_url && (
                       <div className="pending-pro-avatar pending-pro-avatar-soft">
@@ -482,11 +480,11 @@ useEffect(() => {
                     )}
 
                     <div className="pending-pro-info">
-                      <span className="pending-pro-type">Bài viết</span>
-                      <h4>{post.author_name || post.author_email || "Người gửi"}</h4>
+                      <span className="pending-pro-type">{t("manager.pending.tabs.posts")}</span>
+                      <h4>{post.author_name || post.author_email || t("manager.pending.items.author")}</h4>
 
                       <p className="pending-pro-preview">
-                        {post.description || post.content || "[Không có nội dung chữ]"}
+                        {post.description || post.content || t("manager.pending.items.noContent")}
                       </p>
 
                       {post.image_url && (
@@ -514,13 +512,13 @@ useEffect(() => {
                       onClick={() =>
                         runAction(
                           () => approvePostAPI(post.post_id),
-                          "Đã phê duyệt bài viết",
+                          t("manager.pending.messages.postApproved"),
                           `post-${post.post_id}`
                         )
                       }
                     >
                       <span className="material-symbols-outlined">check_circle</span>
-                      Duyệt bài
+                      {t("manager.pending.actions.approvePost")}
                     </button>
 
                     <button
@@ -530,7 +528,7 @@ useEffect(() => {
                       onClick={() => rejectPost(post.post_id)}
                     >
                       <span className="material-symbols-outlined">cancel</span>
-                      Từ chối
+                      {t("common.reject")}
                     </button>
                   </div>
                 </article>
@@ -539,7 +537,7 @@ useEffect(() => {
               {!filteredPosts.length && (
                 <div className="pending-pro-empty">
                   <span className="material-symbols-outlined">verified</span>
-                  Không có bài viết chờ duyệt.
+                  {t("manager.pending.empty.posts")}
                 </div>
               )}
             </>
@@ -553,17 +551,17 @@ useEffect(() => {
                     <div className="pending-pro-avatar">{avatarInitial(profile)}</div>
 
                     <div className="pending-pro-info">
-                      <span className="pending-pro-type">Cập nhật hồ sơ</span>
+                      <span className="pending-pro-type">{t("manager.pending.tabs.profiles")}</span>
                       <h4>{fullName(profile)}</h4>
 
                       <div className="pending-pro-change-box">
                         <p>
-                          <b>Bio mới:</b> {truncateText(profile.pending_bio || "Không thay đổi", 160)}
+                          <b>{t("manager.pending.items.newBio")}</b> {truncateText(profile.pending_bio || t("common.noChange"), 160)}
                         </p>
 
                         {getProfileAvatarPreviewUrl(profile) ? (
                           <div className="pending-pro-profile-media">
-                            <b>Ảnh mới:</b>
+                            <b>{t("manager.pending.items.newPhoto")}</b>
                             <a
                               href={getProfileAvatarPreviewUrl(profile)}
                               target="_blank"
@@ -572,20 +570,20 @@ useEffect(() => {
                             >
                               <img
                                 src={getProfileAvatarPreviewUrl(profile)}
-                                alt="Ảnh hồ sơ chờ duyệt"
+                                alt={t("manager.pending.items.newPhoto")}
                                 className="pending-pro-profile-image"
                               />
                             </a>
                           </div>
                         ) : (
                           <p>
-                            <b>Ảnh mới:</b> Không thay đổi
+                            <b>{t("manager.pending.items.newPhoto")}</b> {t("common.noChange")}
                           </p>
                         )}
 
                         {isImageDataUrl(profile.pending_avatar_url) && (
                           <p className="pending-pro-muted">
-                            Ảnh được gửi dưới dạng base64. Đã chuyển sang chế độ xem trước.
+                            {t("manager.pending.items.base64Notice")}
                           </p>
                         )}
                       </div>
@@ -599,7 +597,7 @@ useEffect(() => {
                       onClick={() => setPreviewProfile(profile)}
                     >
                       <span className="material-symbols-outlined">visibility</span>
-                      Xem trước
+                      {t("common.preview")}
                     </button>
 
                     <button
@@ -609,13 +607,13 @@ useEffect(() => {
                       onClick={() =>
                         runAction(
                           () => approveProfileUpdateAPI(profile.person_id),
-                          "Đã phê duyệt hồ sơ",
+                          t("manager.pending.messages.profileApproved"),
                           `profile-${profile.person_id}`
                         )
                       }
                     >
                       <span className="material-symbols-outlined">check_circle</span>
-                      Phê duyệt
+                      {t("common.approve")}
                     </button>
 
                     <button
@@ -625,7 +623,7 @@ useEffect(() => {
                       onClick={() => rejectProfile(profile.person_id)}
                     >
                       <span className="material-symbols-outlined">cancel</span>
-                      Từ chối
+                      {t("common.reject")}
                     </button>
                   </div>
                 </article>
@@ -634,7 +632,7 @@ useEffect(() => {
               {!filteredProfiles.length && (
                 <div className="pending-pro-empty">
                   <span className="material-symbols-outlined">verified</span>
-                  Không có hồ sơ chờ duyệt.
+                  {t("manager.pending.empty.profiles")}
                 </div>
               )}
             </>
@@ -645,7 +643,7 @@ useEffect(() => {
               {filteredMemories.map((memory) => (
                 <article key={memory.id} className="pending-pro-item">
                   <div className="pending-pro-main">
-                    <MediaPreview url={memory.media_url} type={memory.media_type} />
+                    <MediaPreview url={memory.media_url} type={memory.media_type} t={t} />
 
                     {!memory.media_url && (
                       <div className="pending-pro-avatar pending-pro-avatar-soft">
@@ -654,17 +652,17 @@ useEffect(() => {
                     )}
 
                     <div className="pending-pro-info">
-                      <span className="pending-pro-type">Kỉ niệm dòng họ</span>
-                      <h4>{memory.title || "Kỉ niệm dòng họ"}</h4>
-                      <p>{memory.author_name || "Thành viên dòng họ"}</p>
+                      <span className="pending-pro-type">{t("manager.pending.tabs.memories")}</span>
+                      <h4>{memory.title || t("manager.pending.tabs.memories")}</h4>
+                      <p>{memory.author_name || t("manager.pending.items.author")}</p>
 
                       <p className="pending-pro-preview">
-                        {memory.content || memory.original_filename || "[Không có nội dung chữ]"}
+                        {memory.content || memory.original_filename || t("manager.pending.items.noContent")}
                       </p>
 
                       <div className="pending-pro-meta">
                         <span>{formatDate(memory.created_at)}</span>
-                        {memory.media_type && <span>Loại tệp: {memory.media_type}</span>}
+                        {memory.media_type && <span>{t("manager.pending.items.fileType")} {memory.media_type}</span>}
                       </div>
                     </div>
                   </div>
@@ -677,13 +675,13 @@ useEffect(() => {
                       onClick={() =>
                         runAction(
                           () => approveMemoryAPI(memory.id),
-                          "Đã phê duyệt kỉ niệm",
+                          t("manager.pending.messages.memoryApproved"),
                           `memory-${memory.id}`
                         )
                       }
                     >
                       <span className="material-symbols-outlined">check_circle</span>
-                      Duyệt kỉ niệm
+                      {t("manager.pending.actions.approveMemory")}
                     </button>
 
                     <button
@@ -693,7 +691,7 @@ useEffect(() => {
                       onClick={() => rejectMemory(memory.id)}
                     >
                       <span className="material-symbols-outlined">cancel</span>
-                      Từ chối
+                      {t("common.reject")}
                     </button>
                   </div>
                 </article>
@@ -702,7 +700,7 @@ useEffect(() => {
               {!filteredMemories.length && (
                 <div className="pending-pro-empty">
                   <span className="material-symbols-outlined">verified</span>
-                  Không có kỉ niệm chờ duyệt.
+                  {t("manager.pending.empty.memories")}
                 </div>
               )}
             </>
@@ -720,24 +718,24 @@ useEffect(() => {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="pending-pro-preview-head">
-              <h3>Xem trước cập nhật hồ sơ</h3>
-              <button type="button" onClick={() => setPreviewProfile(null)}>
+              <h3>{t("manager.pending.preview.title")}</h3>
+              <button type="button" onClick={() => setPreviewProfile(null)} aria-label={t("common.close")}>
                 ×
               </button>
             </div>
 
             <div className="pending-pro-preview-body">
               <p>
-                <b>Thành viên:</b> {fullName(previewProfile)}
+                <b>{t("common.member")}:</b> {fullName(previewProfile)}
               </p>
 
               <div className="pending-pro-preview-grid">
                 <div>
-                  <h4>Thông tin hiện tại</h4>
+                  <h4>{t("manager.pending.preview.currentInfo")}</h4>
 
                   <p>
-                    <b>Bio hiện tại:</b>{" "}
-                    {previewProfile.current_bio || "Chưa có bio hiện tại"}
+                    <b>{t("manager.pending.preview.currentBio")}</b>{" "}
+                    {previewProfile.current_bio || t("manager.pending.preview.noCurrentBio")}
                   </p>
 
                   {previewProfile.current_avatar_media_id ||
@@ -748,30 +746,30 @@ useEffect(() => {
                           ? `/api/media/${previewProfile.current_avatar_media_id}`
                           : previewProfile.current_avatar_url
                       }
-                      alt="Ảnh hiện tại"
+                      alt={t("manager.pending.preview.currentInfo")}
                       className="pending-pro-preview-image"
                     />
                   ) : (
-                    <p className="pending-pro-muted">Chưa có ảnh hiện tại</p>
+                    <p className="pending-pro-muted">{t("manager.pending.preview.noCurrentPhoto")}</p>
                   )}
                 </div>
 
                 <div>
-                  <h4>Thông tin mới</h4>
+                  <h4>{t("manager.pending.preview.newInfo")}</h4>
 
                   <p>
-                    <b>Bio mới:</b>{" "}
-                    {previewProfile.pending_bio || "Không thay đổi bio"}
+                    <b>{t("manager.pending.items.newBio")}</b>{" "}
+                    {previewProfile.pending_bio || t("manager.pending.items.noBioChange")}
                   </p>
 
                   {getProfileAvatarPreviewUrl(previewProfile) ? (
                     <img
                       src={getProfileAvatarPreviewUrl(previewProfile)}
-                      alt="Ảnh mới"
+                      alt={t("manager.pending.preview.newInfo")}
                       className="pending-pro-preview-image"
                     />
                   ) : (
-                    <p className="pending-pro-muted">Không thay đổi ảnh</p>
+                    <p className="pending-pro-muted">{t("manager.pending.items.noPhotoChange")}</p>
                   )}
                 </div>
               </div>

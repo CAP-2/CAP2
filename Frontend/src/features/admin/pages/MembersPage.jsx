@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   getAdminAccounts,
   getAdminClans,
@@ -6,7 +7,7 @@ import {
   updateAdminAccountAccess,
   deleteAdminAccount,
 } from "../../../api/adminService";
-import { formatDateVN } from "../../../shared/utils/dateFormat";
+import { formatDate } from "../../../shared/utils/dateFormat";
 
 const emptyForm = {
   account_id: null,
@@ -21,17 +22,25 @@ const emptyForm = {
   clan_id: "",
 };
 
-const roleLabel = (roleId) => {
+const roleLabel = (roleId, t) => {
   const id = Number(roleId);
-  if (id === 1) return "Admin";
-  if (id === 2) return "Manager";
-  return "Member";
+  if (id === 1) return t("admin.accounts.roles.admin");
+  if (id === 2) return t("admin.accounts.roles.manager");
+  return t("admin.accounts.roles.member");
 };
 
-const accountName = (a) =>
-  a.display_name || [a.surname, a.middle_name, a.first_name].filter(Boolean).join(" ").trim() || a.email || "Tài khoản";
+const accountName = (a, t) =>
+  a.display_name || [a.surname, a.middle_name, a.first_name].filter(Boolean).join(" ").trim() || a.email || t("admin.accounts.messages.defaultAccountName");
+
+const statusLabel = (status, t) => {
+  if (status === "active") return t("common.active");
+  if (status === "pending") return t("common.pending");
+  if (status === "rejected") return t("common.rejected");
+  return status || "N/A";
+};
 
 export default function MembersPage() {
+  const { t, i18n } = useTranslation();
   const [accounts, setAccounts] = useState([]);
   const [clans, setClans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +65,7 @@ export default function MembersPage() {
       setAccounts(aRes.accounts || []);
       setClans(cRes.clans || []);
     } catch (err) {
-      setError(err.message || "Không tải được dữ liệu tài khoản");
+      setError(err.message || t("admin.accounts.messages.loadError"));
     } finally {
       setLoading(false);
     }
@@ -81,12 +90,12 @@ export default function MembersPage() {
     });
 
     return [
-      { id: "admin", clan_name: "Tài khoản Admin", member_count: adminAccountCount, is_admin_folder: true },
-      { id: "all", clan_name: "Tất cả dòng họ", member_count: normalAccountCount },
+      { id: "admin", clan_name: t("admin.accounts.folders.adminFolder"), member_count: adminAccountCount, is_admin_folder: true },
+      { id: "all", clan_name: t("admin.accounts.folders.allFolder"), member_count: normalAccountCount },
       ...clans.map((c) => ({ ...c, member_count: countMap.get(String(c.id)) || 0 })),
-      { id: "none", clan_name: "Chưa gán dòng họ", member_count: countMap.get("none") || 0 },
+      { id: "none", clan_name: t("admin.accounts.folders.noneFolder"), member_count: countMap.get("none") || 0 },
     ];
-  }, [accounts, clans]);
+  }, [accounts, clans, t]);
 
   const filteredClanCards = useMemo(() => {
     const q = clanSearchTerm.trim().toLowerCase();
@@ -114,7 +123,7 @@ export default function MembersPage() {
             );
       return matchesSearch && matchesRole && matchesClan;
     });
-  }, [accounts, searchTerm, filterRole, selectedClan]);
+  }, [accounts, searchTerm, filterRole, selectedClan, t]);
 
   const openClanFolder = (clanId) => {
     setSelectedClan(String(clanId));
@@ -142,7 +151,7 @@ export default function MembersPage() {
       account_id: account.account_id,
       email: account.email || "",
       password: "",
-      display_name: account.display_name || accountName(account),
+      display_name: account.display_name || accountName(account, t),
       surname: account.surname || "",
       middle_name: account.middle_name || "",
       first_name: account.first_name || "",
@@ -172,39 +181,39 @@ export default function MembersPage() {
       setForm(emptyForm);
       await fetchData();
     } catch (err) {
-      alert(err.message || "Lưu tài khoản thất bại");
+      alert(err.message || t("admin.accounts.messages.saveError"));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (account) => {
-    if (!window.confirm(`Bạn có chắc muốn xóa tài khoản đăng nhập ${account.email}?`)) return;
+    if (!window.confirm(t("admin.accounts.messages.deleteConfirm", { email: account.email }))) return;
     try {
       await deleteAdminAccount(account.account_id);
       await fetchData();
     } catch (err) {
-      alert(err.message || "Xóa tài khoản thất bại");
+      alert(err.message || t("admin.accounts.messages.deleteError"));
     }
   };
 
-  if (loading) return <div className="loading-state">Đang tải dữ liệu...</div>;
+  if (loading) return <div className="loading-state">{t("admin.accounts.messages.loading")}</div>;
 
-  const selectedClanName = clanCards.find((c) => String(c.id) === String(selectedClan))?.clan_name || "Tất cả dòng họ";
+  const selectedClanName = clanCards.find((c) => String(c.id) === String(selectedClan))?.clan_name || t("admin.accounts.folders.allFolder");
 
   return (
     <section className="members-management account-management-page">
       <div className="members-header account-header">
         <div className="header-info">
-          <h2>Quản lý tài khoản đăng nhập</h2>
-          <p>Quản lý toàn bộ tài khoản của hệ thống. Tài khoản Admin được tách thành một tệp riêng, không nằm trong các dòng họ.</p>
+          <h2>{t("admin.accounts.title")}</h2>
+          <p>{t("admin.accounts.subtitle")}</p>
         </div>
         <div className="header-stats">
-          <div className="stat-item"><span>Tổng tài khoản:</span><strong>{accounts.length}</strong></div>
+          <div className="stat-item"><span>{t("admin.accounts.stats.total")}</span><strong>{accounts.length}</strong></div>
           {selectedClan !== null && (
             <button className="admin-primary-btn" onClick={openAdd}>
               <span className="material-symbols-outlined">person_add</span>
-              Thêm tài khoản
+              {t("admin.accounts.actions.add")}
             </button>
           )}
         </div>
@@ -214,8 +223,8 @@ export default function MembersPage() {
         <>
           <div className="account-folder-title account-folder-title-main">
             <div>
-              <h3>Chọn tệp để xem tài khoản</h3>
-              <p>Chọn “Tài khoản Admin” hoặc một dòng họ để mở danh sách tài khoản bên trong.</p>
+              <h3>{t("admin.accounts.folders.title")}</h3>
+              <p>{t("admin.accounts.folders.subtitle")}</p>
             </div>
           </div>
 
@@ -224,7 +233,7 @@ export default function MembersPage() {
               <span className="material-symbols-outlined">search</span>
               <input
                 type="text"
-                placeholder="Tìm kiếm dòng họ hoặc tài khoản admin..."
+                placeholder={t("admin.accounts.folders.searchPlaceholder")}
                 value={clanSearchTerm}
                 onChange={(e) => setClanSearchTerm(e.target.value)}
               />
@@ -241,7 +250,7 @@ export default function MembersPage() {
               >
                 <span className="material-symbols-outlined">{clan.is_admin_folder ? "admin_panel_settings" : "folder_managed"}</span>
                 <strong>{clan.clan_name}</strong>
-                <small>{clan.member_count || 0} tài khoản</small>
+                <small>{t("admin.accounts.folders.countLabel", { count: clan.member_count || 0 })}</small>
               </button>
             ))}
           </div>
@@ -249,7 +258,7 @@ export default function MembersPage() {
           {filteredClanCards.length === 0 && (
             <div className="empty-state">
               <span className="material-symbols-outlined">folder_off</span>
-              <p>Không tìm thấy dòng họ phù hợp.</p>
+              <p>{t("admin.accounts.folders.empty")}</p>
             </div>
           )}
         </>
@@ -259,10 +268,10 @@ export default function MembersPage() {
             <div>
               <button type="button" className="admin-secondary-btn account-back-btn" onClick={backToClanFolders}>
                 <span className="material-symbols-outlined">arrow_back</span>
-                Quay lại danh sách tệp
+                {t("admin.accounts.actions.back")}
               </button>
-              <h3>Tệp tài khoản: {selectedClanName}</h3>
-              <p>{selectedClan === "admin" ? "Đang xem riêng các tài khoản Admin của hệ thống." : "Đang xem tài khoản thuộc tệp đã chọn. Có thể tìm kiếm, thêm, sửa hoặc xóa tài khoản bên dưới."}</p>
+              <h3>{t("admin.accounts.detail.folderTitle", { name: selectedClanName })}</h3>
+              <p>{selectedClan === "admin" ? t("admin.accounts.detail.adminNote") : t("admin.accounts.detail.generalNote")}</p>
             </div>
           </div>
 
@@ -271,17 +280,17 @@ export default function MembersPage() {
               <span className="material-symbols-outlined">search</span>
               <input
                 type="text"
-                placeholder="Tìm theo tên, email hoặc dòng họ..."
+                placeholder={t("admin.accounts.detail.searchPlaceholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <div className="filters">
               <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
-                <option value="all">Tất cả vai trò</option>
-                {selectedClan === "admin" && <option value="1">Admin</option>}
-                <option value="2">Manager</option>
-                <option value="3">Member</option>
+                <option value="all">{t("admin.accounts.detail.filterRoleAll")}</option>
+                {selectedClan === "admin" && <option value="1">{t("admin.accounts.roles.admin")}</option>}
+                <option value="2">{t("admin.accounts.roles.manager")}</option>
+                <option value="3">{t("admin.accounts.roles.member")}</option>
               </select>
             </div>
           </div>
@@ -295,12 +304,12 @@ export default function MembersPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Tài khoản</th>
-              <th>Dòng họ</th>
-              <th>Vai trò</th>
-              <th>Trạng thái</th>
-              <th>Ngày tạo</th>
-              <th className="text-right">Thao tác</th>
+              <th>{t("admin.accounts.table.cols.account")}</th>
+              <th>{t("admin.accounts.table.cols.clan")}</th>
+              <th>{t("admin.accounts.table.cols.role")}</th>
+              <th>{t("admin.accounts.table.cols.status")}</th>
+              <th>{t("admin.accounts.table.cols.createdAt")}</th>
+              <th className="text-right">{t("admin.accounts.table.cols.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -308,24 +317,24 @@ export default function MembersPage() {
               <tr key={a.account_id}>
                 <td>
                   <div className="member-cell">
-                    <div className="account-avatar-letter">{accountName(a).charAt(0).toUpperCase()}</div>
+                    <div className="account-avatar-letter">{accountName(a, t).charAt(0).toUpperCase()}</div>
                     <div className="member-info">
-                      <div className="name">{accountName(a)}</div>
+                      <div className="name">{accountName(a, t)}</div>
                       <div className="email">{a.email}</div>
                     </div>
                   </div>
                 </td>
-                <td><span className="clan-tag">{a.clan_name || "Chưa gán"}</span></td>
-                <td><span className={`role-badge role-${a.role_id}`}>{roleLabel(a.role_id)}</span></td>
-                <td><span className={`status-pill status-${a.status || "none"}`}>{a.status || "N/A"}</span></td>
-                <td>{a.created_at ? formatDateVN(a.created_at) : "-"}</td>
+                <td><span className="clan-tag">{a.clan_name || t("admin.accounts.table.unassigned")}</span></td>
+                <td><span className={`role-badge role-${a.role_id}`}>{roleLabel(a.role_id, t)}</span></td>
+                <td><span className={`status-pill status-${a.status || "none"}`}>{statusLabel(a.status, t)}</span></td>
+                <td>{a.created_at ? formatDate(a.created_at, i18n) : "-"}</td>
                 <td className="text-right">
                   <div className="action-buttons">
-                    <button className="btn-icon btn-edit" title="Sửa" onClick={() => openEdit(a)}>
+                    <button className="btn-icon btn-edit" title={t("admin.accounts.actions.edit")} onClick={() => openEdit(a)}>
                       <span className="material-symbols-outlined">edit</span>
                     </button>
                     {Number(a.role_id) !== 1 && (
-                      <button className="btn-icon btn-delete" title="Xóa" onClick={() => handleDelete(a)}>
+                      <button className="btn-icon btn-delete" title={t("admin.accounts.actions.delete")} onClick={() => handleDelete(a)}>
                         <span className="material-symbols-outlined">delete</span>
                       </button>
                     )}
@@ -338,7 +347,7 @@ export default function MembersPage() {
         {filteredAccounts.length === 0 && (
           <div className="empty-state">
             <span className="material-symbols-outlined">manage_accounts</span>
-            <p>Không tìm thấy tài khoản nào trong tệp này.</p>
+            <p>{t("admin.accounts.table.empty")}</p>
           </div>
         )}
       </div>
@@ -349,27 +358,29 @@ export default function MembersPage() {
           <form className="admin-account-modal" onSubmit={handleSave} onMouseDown={(e) => e.stopPropagation()}>
             <div className="admin-modal-head">
               <div>
-                <h3>{form.account_id ? "Sửa tài khoản" : "Thêm tài khoản đăng nhập"}</h3>
-                <p>{form.account_id ? "Cập nhật thông tin, vai trò và dòng họ." : "Tạo tài khoản mới và gán vào dòng họ."}</p>
+                <h3>{form.account_id ? t("admin.accounts.modal.editTitle") : t("admin.accounts.modal.addTitle")}</h3>
+                <p>{form.account_id ? t("admin.accounts.modal.editSubtitle") : t("admin.accounts.modal.addSubtitle")}</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setShowModal(false)}>×</button>
             </div>
 
             <div className="admin-form-grid">
-              <label>Email đăng nhập<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-              <label>{form.account_id ? "Mật khẩu mới (bỏ trống nếu không đổi)" : "Mật khẩu"}<input required={!form.account_id} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
-              <label>Tên hiển thị<input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></label>
-              <label>Họ<input value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} /></label>
-              <label>Tên đệm<input value={form.middle_name} onChange={(e) => setForm({ ...form, middle_name: e.target.value })} /></label>
-              <label>Tên<input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></label>
-              <label>Vai trò<select value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value, clan_id: e.target.value === "1" ? "" : form.clan_id })}>{selectedClan === "admin" || form.role_id === "1" ? <option value="1">Admin</option> : null}<option value="2">Manager</option><option value="3">Member</option></select></label>
-              <label>Trạng thái<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">active</option><option value="pending">pending</option><option value="rejected">rejected</option></select></label>
-              {form.role_id !== "1" && <label className="admin-form-full">Dòng họ<select value={form.clan_id} onChange={(e) => setForm({ ...form, clan_id: e.target.value })}><option value="">Chưa gán dòng họ</option>{clans.map((c) => <option key={c.id} value={c.id}>{c.clan_name}</option>)}</select></label>}
+              <label>{t("admin.accounts.modal.fields.email")}<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+              <label>{form.account_id ? t("admin.accounts.modal.fields.passwordEdit") : t("admin.accounts.modal.fields.password")}<input required={!form.account_id} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
+              <label>{t("admin.accounts.modal.fields.displayName")}<input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></label>
+              <label>{t("admin.accounts.modal.fields.surname")}<input value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} /></label>
+              <label>{t("admin.accounts.modal.fields.middleName")}<input value={form.middle_name} onChange={(e) => setForm({ ...form, middle_name: e.target.value })} /></label>
+              <label>{t("admin.accounts.modal.fields.firstName")}<input value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></label>
+              <label>{t("admin.accounts.modal.fields.role")}<select value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value, clan_id: e.target.value === "1" ? "" : form.clan_id })}>{selectedClan === "admin" || form.role_id === "1" ? <option value="1">{t("admin.accounts.roles.admin")}</option> : null}<option value="2">{t("admin.accounts.roles.manager")}</option><option value="3">{t("admin.accounts.roles.member")}</option></select></label>
+              <label>{t("admin.accounts.modal.fields.status")}<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">{t("common.active")}</option><option value="pending">{t("common.pending")}</option><option value="rejected">{t("common.rejected")}</option></select></label>
+              {form.role_id !== "1" && <label className="admin-form-full">{t("admin.accounts.modal.fields.clan")}<select value={form.clan_id} onChange={(e) => setForm({ ...form, clan_id: e.target.value })}><option value="">{t("admin.accounts.table.unassigned")}</option>{clans.map((c) => <option key={c.id} value={c.id}>{c.clan_name}</option>)}</select></label>}
             </div>
 
             <div className="admin-modal-actions">
-              <button type="button" className="admin-secondary-btn" onClick={() => setShowModal(false)}>Hủy</button>
-              <button type="submit" className="admin-primary-btn" disabled={saving}>{saving ? "Đang lưu..." : "Lưu tài khoản"}</button>
+              <button type="button" className="admin-secondary-btn" onClick={() => setShowModal(false)}>{t("admin.accounts.modal.actions.cancel")}</button>
+              <button type="submit" className="admin-primary-btn" disabled={saving}>
+                {saving ? t("admin.accounts.modal.actions.saving") : t("admin.accounts.modal.actions.save")}
+              </button>
             </div>
           </form>
         </div>

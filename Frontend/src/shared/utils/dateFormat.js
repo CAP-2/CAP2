@@ -75,6 +75,25 @@ export function formatDateTimeVN(value) {
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
+export function formatDate(value, i18n) {
+  const parts = parseDateParts(value);
+  if (!parts) return value ? String(value) : "";
+  if (i18n?.language === "vi") {
+    return `${pad2(parts.day)}/${pad2(parts.month)}/${parts.year}`;
+  }
+  return `${pad2(parts.month)}/${pad2(parts.day)}/${parts.year}`;
+}
+
+export function formatDateTime(value, i18n) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatDate(value, i18n);
+  if (i18n?.language === "vi") {
+    return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  }
+  return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
 export function normalizeDateInput(value) {
   const raw = String(value || "").replace(/\D/g, "").slice(0, 8);
   if (raw.length <= 2) return raw;

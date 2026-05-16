@@ -1,82 +1,81 @@
+import { useTranslation } from "react-i18next";
 import LandingFamilyTree from "./LandingFamilyTree";
 
-const advancedCards = [
-  {
-    icon: "bolt",
-    title: "Lập phả hệ tự động",
-    desc: "Nhập dữ liệu nhanh chóng từ file Excel hoặc thông tin rời rạc, hệ thống tự động liên kết.",
-  },
-  {
-    icon: "notifications_active",
-    title: "Quản lý ngày lễ",
-    desc: "Nhắc lịch đám giỗ, tết, các ngày kỷ niệm dòng tộc qua điện thoại và email.",
-  },
-  {
-    icon: "security",
-    title: "Bảo mật & phân quyền",
-    desc: "Dữ liệu được mã hóa chuẩn quốc tế, phân quyền truy cập chi tiết cho từng thành viên.",
-  },
-];
-
-const eventCards = [
-  {
-    icon: "event_upcoming",
-    title: "Thông báo tự động",
-    desc: "Hệ thống tự động gửi nhắc qua SMS, email và app cho các dịp quan trọng của từng nhánh họ.",
-  },
-  {
-    icon: "work_history",
-    title: "Kết nối đại gia đình",
-    desc: "Đồng bộ nhiều thế hệ, mời thành viên ở xa và cập nhật lịch chung theo từng chi tộc.",
-  },
-  {
-    icon: "history",
-    title: "Lưu trữ nghi thức",
-    desc: "Tạo kho tư liệu về văn khấn, bài cúng và hướng dẫn nghi lễ chuẩn cho từng ngày lễ.",
-  },
-  {
-    icon: "confirmation_number",
-    title: "Tạo đề nghị tự chi",
-    desc: "Quản lý công tác hậu cần, ngân sách và nguồn lực phục vụ các sự kiện của gia tộc.",
-  },
-];
-
-const preservationPoints = [
-  "Chuyển ngữ Hán-Nôm",
-  "Lưu trữ đám mây bảo mật",
-  "Phân quyền truy cập",
-];
-
 export default function FeatureDetailPage() {
+  const { t } = useTranslation();
+
+  const advancedCards = [
+    {
+      icon: "bolt",
+      title: t("public.features.advanced.items.auto.title"),
+      desc: t("public.features.advanced.items.auto.desc"),
+    },
+    {
+      icon: "notifications_active",
+      title: t("public.features.advanced.items.events.title"),
+      desc: t("public.features.advanced.items.events.desc"),
+    },
+    {
+      icon: "security",
+      title: t("public.features.advanced.items.security.title"),
+      desc: t("public.features.advanced.items.security.desc"),
+    },
+  ];
+
+  const eventCards = [
+    {
+      icon: "event_upcoming",
+      title: t("public.features.events.cards.notifications.title"),
+      desc: t("public.features.events.cards.notifications.desc"),
+    },
+    {
+      icon: "work_history",
+      title: t("public.features.events.cards.connection.title"),
+      desc: t("public.features.events.cards.connection.desc"),
+    },
+    {
+      icon: "history",
+      title: t("public.features.events.cards.rituals.title"),
+      desc: t("public.features.events.cards.rituals.desc"),
+    },
+    {
+      icon: "confirmation_number",
+      title: t("public.features.events.cards.budget.title"),
+      desc: t("public.features.events.cards.budget.desc"),
+    },
+  ];
+
+  const preservationPoints = t("public.features.preservation.points", { returnObjects: true }) || [];
+
   return (
     <section className="feature-page">
       <div className="container">
         <header className="feature-page-header stitch-like">
-          <span className="section-tag">Frame tính năng chi tiết</span>
-          <h1>Tính năng chi tiết</h1>
-          <p>Hệ tính năng được thiết kế theo hướng trực quan, bảo mật và kết nối liên thế hệ cho toàn bộ dòng tộc.</p>
+          <span className="section-tag">{t("public.features.demo.tag")}</span>
+          <h1>{t("public.features.demo.tag")}</h1>
+          <p>{t("public.features.demo.desc")}</p>
         </header>
 
         <section className="feature-detail-block stitch-split">
           <div className="feature-detail-copy">
-            <h2>Sơ đồ phả hệ thông minh</h2>
-            <p>Trực quan hóa cây phả hệ đa nhánh, theo dõi quan hệ trực hệ và thông tin từng thành viên ngay trên một màn hình.</p>
+            <h2>{t("public.features.demo.title")}</h2>
+            <p>{t("public.features.demo.desc")}</p>
 
             <div className="feature-detail-actions">
               <button type="button">
                 <span className="material-symbols-outlined">image</span>
-                Xem dưới dạng hình ảnh
+                {t("public.features.demo.viewImage")}
               </button>
               <button type="button">
                 <span className="material-symbols-outlined">account_tree</span>
-                Tạo nhiều thế hệ
+                {t("public.features.demo.createGenerations")}
               </button>
             </div>
 
             <ul className="feature-detail-points">
-              <li>Tự động sắp xếp thứ tự vai vế theo đời</li>
-              <li>Đính kèm tiểu sử, ảnh chân dung và tư liệu gốc</li>
-              <li>Tìm kiếm theo tên, chi họ, khu vực và mốc thời gian</li>
+              <li>{t("public.features.demo.point1")}</li>
+              <li>{t("public.features.demo.point2")}</li>
+              <li>{t("public.features.demo.point3")}</li>
             </ul>
           </div>
 
@@ -89,70 +88,70 @@ export default function FeatureDetailPage() {
           <div className="feature-advanced-image">
             <img
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAd6zBRvZR3R4FNjtUr2lLEx9nhgeCvjODU75n1JNSZXsYbZbBF_gkjblSR6pitSFdONbGyENkDH6yqIi4uS-Ykb6p6ILCjP0nXnqvGTlFy9hTWmvVSDjpMIx7HWlHJsTVzyp8Eupx2Tm3Xyjng359b4cGX8X6_EDIt4xaLllWGrajQxWqaRni5VzHCLHVKEAERaVpCv2KL8n9_4GnV-fPjGCzGNfAwYlnkE_xJidn-Rg1rLL1S3goPoSirM6dhlbwjipscoiT16iOH"
-              alt="Công nghệ dẫn đầu"
+              alt={t("public.features.advanced.tag")}
             />
           </div>
 
           <div>
-          <div className="feature-advanced-heading">
-            <span className="section-tag">Công nghệ dẫn đầu</span>
-            <h2>Tính năng vượt trội</h2>
-          </div>
+            <div className="feature-advanced-heading">
+              <span className="section-tag">{t("public.features.advanced.tag")}</span>
+              <h2>{t("public.features.advanced.title")}</h2>
+            </div>
 
-          <div className="feature-advanced-grid">
-            {advancedCards.map((card) => (
-              <article key={card.title} className="feature-card-detail">
-                <span className="material-symbols-outlined card-icon">{card.icon}</span>
-                <div>
-                  <h3>{card.title}</h3>
-                  <p>{card.desc}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+            <div className="feature-advanced-grid">
+              {advancedCards.map((card) => (
+                <article key={card.title} className="feature-card-detail">
+                  <span className="material-symbols-outlined card-icon">{card.icon}</span>
+                  <div>
+                    <h3>{card.title}</h3>
+                    <p>{card.desc}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
         </section>
 
         <section className="feature-kpi-grid">
           <div>
             <strong>1,200+</strong>
-            <p>Dòng họ tham gia</p>
+            <p>{t("public.stats.clans")}</p>
           </div>
           <div>
             <strong>500k+</strong>
-            <p>Thành viên kết nối</p>
+            <p>{t("public.stats.members")}</p>
           </div>
           <div>
             <strong>250k+</strong>
-            <p>Tư liệu số hóa</p>
+            <p>{t("public.stats.documents")}</p>
           </div>
           <div>
             <strong>63</strong>
-            <p>Tỉnh thành phủ sóng</p>
+            <p>{t("public.stats.provinces")}</p>
           </div>
         </section>
 
         <section className="feature-event-section">
           <header className="feature-sub-header">
-            <h2>Quản lý Sự kiện &amp; Ngày lễ</h2>
-            <p>Lưu nhắc lễ hội con cháu, đám giỗ và nghi thức truyền thống qua hệ thống điện tử hiện đại.</p>
+            <h2>{t("public.features.events.title")}</h2>
+            <p>{t("public.features.events.desc")}</p>
           </header>
 
           <div className="event-layout">
             <article className="event-timeline-card">
-              <span className="event-timeline-label">LỊCH ÂM DƯƠNG</span>
+              <span className="event-timeline-label">{t("public.features.events.calendarLabel")}</span>
               <div className="event-date-box">
                 <strong>15</strong>
-                <p>Tháng Tám, Giáp Thìn</p>
+                <p>{t("public.features.events.lunarMonth")}</p>
               </div>
               <ul>
                 <li>
-                  <span>Ngày giỗ Tổ họ Nguyễn</span>
-                  <em>8:00 sáng</em>
+                  <span>{t("public.features.events.sampleEvent1")}</span>
+                  <em>{t("public.features.events.sampleTime1")}</em>
                 </li>
                 <li>
-                  <span>Lễ dâng hương từ đường</span>
-                  <em>6:30 chiều</em>
+                  <span>{t("public.features.events.sampleEvent2")}</span>
+                  <em>{t("public.features.events.sampleTime2")}</em>
                 </li>
               </ul>
             </article>
@@ -182,11 +181,8 @@ export default function FeatureDetailPage() {
           </div>
 
           <div className="preservation-content">
-            <h2>Số hóa &amp; Bảo mật di sản</h2>
-            <p>
-              Lưu trữ gia phả theo chuẩn số hóa hiện đại, bảo toàn tư liệu cổ và tăng cường khả năng truy cập an toàn
-              cho từng thành viên trong họ tộc.
-            </p>
+            <h2>{t("public.features.preservation.title")}</h2>
+            <p>{t("public.features.preservation.desc")}</p>
 
             <div className="preservation-list">
               {preservationPoints.map((item, index) => (
@@ -200,12 +196,12 @@ export default function FeatureDetailPage() {
         </section>
 
         <section className="feature-bottom-cta">
-          <h2>Sẵn sàng khởi tạo di sản số cho dòng họ?</h2>
-          <p>Tham gia cùng hàng nghìn dòng tộc Việt Nam trong hành trình bảo tồn nguồn cội bền vững.</p>
+          <h2>{t("public.features.cta.title")}</h2>
+          <p>{t("public.features.cta.subtitle")}</p>
           <div className="feature-bottom-actions">
-            <a href="#">Bắt đầu ngay</a>
+            <a href="#">{t("public.features.cta.start")}</a>
             <a href="#" className="outline">
-              Tìm hiểu thêm
+              {t("public.features.cta.learnMore")}
             </a>
           </div>
         </section>

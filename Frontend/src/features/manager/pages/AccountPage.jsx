@@ -12,6 +12,7 @@ import { formatLunarFullFromSolar } from "../../../shared/utils/lunarCalendar";
 import DateInput from "../../../shared/components/DateInput";
 import { isoToVietnamDate, vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import { compactPayload, fullName } from "../utils/managerData";
+import { useLanguage } from "../../../i18n/LanguageContext";
 import "./manager.css";
 
 const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
@@ -97,6 +98,7 @@ function LunarDateHint({ value, label = "Âm lịch" }) {
 }
 
 export default function AccountPage() {
+  const { t } = useLanguage();
   const currentUser = getStoredUser();
 
   const [members, setMembers] = useState([]);
@@ -138,21 +140,21 @@ export default function AccountPage() {
       .trim();
 
   const getGenderLabel = (gender) => {
-    if (String(gender) === "1" || String(gender).toLowerCase() === "male") return "Nam";
-    if (String(gender) === "2" || String(gender).toLowerCase() === "female") return "Nữ";
-    return "Chưa rõ";
+    if (String(gender) === "1" || String(gender).toLowerCase() === "male") return t("manager.accounts.form.genderMale");
+    if (String(gender) === "2" || String(gender).toLowerCase() === "female") return t("manager.accounts.form.genderFemale");
+    return t("manager.accounts.form.genderUnknown");
   };
 
   const getLivingLabel = (member) => {
-    if (member.is_living === 0 || member.is_living === false) return "Đã mất";
-    return "Còn sống";
+    if (member.is_living === 0 || member.is_living === false) return t("manager.accounts.form.statusDead");
+    return t("manager.accounts.form.statusLiving");
   };
 
   const getStatusLabel = (status) => {
-    if (status === "active") return "Đang hoạt động";
-    if (status === "pending") return "Chờ duyệt";
-    if (status === "rejected") return "Từ chối";
-    return status || "Chưa rõ";
+    if (status === "active") return t("common.status.active") || "Active";
+    if (status === "pending") return t("common.status.pending") || "Pending";
+    if (status === "rejected") return t("common.status.rejected") || "Rejected";
+    return status || t("manager.accounts.form.genderUnknown");
   };
 
   const loadMembers = useCallback(async () => {
@@ -163,7 +165,7 @@ export default function AccountPage() {
       const memberRows = await getMembers();
       setMembers(Array.isArray(memberRows) ? memberRows : []);
     } catch (err) {
-      setError(err?.message || "Không thể tải thành viên từ database");
+      setError(err?.message || t("manager.accounts.messages.loadError"));
     } finally {
       setLoading(false);
     }
@@ -238,7 +240,7 @@ export default function AccountPage() {
         .map((member) => ({
           accountId: String(member.account_id),
           personId: String(member.person_id),
-          label: `${fullName(member)}${member.generation ? ` (Đời ${member.generation})` : ""}`,
+          label: `${fullName(member)}${member.generation ? ` (${t("manager.accounts.form.placeholderGeneration")} ${member.generation})` : ""}`,
         })),
     [members]
   );
@@ -294,7 +296,7 @@ export default function AccountPage() {
   };
 
   const loadRelationDetails = useCallback(
-    async (accountId, nextMessage = "Đã tải quan hệ hiện có của thành viên.") => {
+    async (accountId, nextMessage = t("manager.accounts.messages.loadRelationSuccess") || "Loaded relations.") => {
       if (!accountId) {
         setRelationForm(emptyRelationForm);
         setRelationDetails(null);
@@ -328,7 +330,7 @@ export default function AccountPage() {
       } catch (err) {
         setRelationForm(emptyRelationForm);
         setRelationDetails(null);
-        setError(err?.message || "Không thể tải quan hệ thành viên");
+        setError(err?.message || t("manager.accounts.messages.loadRelationError"));
       } finally {
         setRelationLoading(false);
       }
@@ -359,11 +361,11 @@ export default function AccountPage() {
 
       await createMember(payload);
       setCreateForm(emptyCreateForm);
-      setMessage("Đã tạo thành viên mới từ database.");
+      setMessage(t("manager.accounts.messages.createSuccess"));
       setCreateOpen(false);
       await loadMembers();
     } catch (err) {
-      setError(err?.message || "Không thể tạo thành viên");
+      setError(err?.message || t("manager.accounts.messages.createError"));
     } finally {
       setSaving(false);
     }
@@ -373,7 +375,7 @@ export default function AccountPage() {
     event.preventDefault();
 
     if (!relationAccountId) {
-      setRelationMessage("Vui lòng chọn thành viên cần liên kết.");
+      setRelationMessage(t("manager.accounts.messages.linkPrompt"));
       return;
     }
 
@@ -389,12 +391,12 @@ export default function AccountPage() {
         relationDetails.marriage.children_ids.length > 0);
 
     if (!hasBloodline && !shouldSaveMarriage) {
-      setRelationMessage("Chưa có thông tin quan hệ để lưu.");
+      setRelationMessage(t("manager.accounts.messages.noRelationData"));
       return;
     }
 
     if (relationForm.children_ids.trim() && !relationForm.family_id) {
-      setRelationMessage("Vui long chon family/cuoc hon nhan cu the de them con.");
+      setRelationMessage(t("manager.accounts.messages.selectFamilyPrompt"));
       return;
     }
 
@@ -420,9 +422,9 @@ export default function AccountPage() {
         });
       }
 
-      await loadRelationDetails(relationAccountId, "Đã lưu liên kết quan hệ.");
+      await loadRelationDetails(relationAccountId, t("manager.accounts.messages.saveRelationSuccess"));
     } catch (err) {
-      if (!shouldSuppressInlineRelationError(err)) setError(err?.message || "Không thể lưu liên kết quan hệ");
+      if (!shouldSuppressInlineRelationError(err)) setError(err?.message || t("manager.accounts.messages.saveRelationError"));
     } finally {
       setRelationSaving(false);
     }
@@ -437,7 +439,7 @@ export default function AccountPage() {
       const data = await getMemberDetail(accountId);
       setEditForm(toEditForm(data.member || {}));
     } catch (err) {
-      setError(err?.message || "Không thể tải chi tiết thành viên");
+      setError(err?.message || t("manager.accounts.messages.loadError"));
       setEditAccountId(null);
     }
   };
@@ -462,11 +464,11 @@ export default function AccountPage() {
         })
       );
 
-      setMessage("Đã lưu thay đổi thành viên vào database.");
+      setMessage(t("manager.accounts.messages.editSuccess"));
       setEditAccountId(null);
       await loadMembers();
     } catch (err) {
-      setError(err?.message || "Không thể lưu thành viên");
+      setError(err?.message || t("manager.accounts.messages.editError"));
     } finally {
       setSaving(false);
     }
@@ -476,12 +478,9 @@ export default function AccountPage() {
     <section className="manager-data-page member-manager-pro">
       <div className="member-pro-header">
         <div>
-          <span>Quản lý nhân sự dòng họ</span>
-          <h2>Thành viên dòng họ</h2>
-          <p>
-            Tạo mới, tìm kiếm, chỉnh sửa hồ sơ và liên kết quan hệ cha mẹ,
-            vợ/chồng, con cái.
-          </p>
+          <span>{t("manager.accounts.hero.kicker")}</span>
+          <h2>{t("manager.accounts.hero.title")}</h2>
+          <p>{t("manager.accounts.hero.description")}</p>
         </div>
 
         <div className="member-pro-header-actions">
@@ -492,7 +491,7 @@ export default function AccountPage() {
             disabled={loading}
           >
             <span className="material-symbols-outlined">refresh</span>
-            {loading ? "Đang tải..." : "Tải lại"}
+            {loading ? t("manager.accounts.actions.refreshing") : t("manager.accounts.actions.refresh")}
           </button>
 
           <button
@@ -501,7 +500,7 @@ export default function AccountPage() {
             onClick={() => setCreateOpen((value) => !value)}
           >
             <span className="material-symbols-outlined">person_add</span>
-            Thêm thành viên
+            {t("manager.accounts.actions.addMember")}
           </button>
         </div>
       </div>
@@ -514,7 +513,7 @@ export default function AccountPage() {
           <span className="material-symbols-outlined">groups</span>
           <div>
             <strong>{summary.total}</strong>
-            <p>Tổng thành viên</p>
+            <p>{t("manager.accounts.summary.total")}</p>
           </div>
         </div>
 
@@ -522,7 +521,7 @@ export default function AccountPage() {
           <span className="material-symbols-outlined">male</span>
           <div>
             <strong>{summary.male}</strong>
-            <p>Nam</p>
+            <p>{t("manager.accounts.summary.male")}</p>
           </div>
         </div>
 
@@ -530,7 +529,7 @@ export default function AccountPage() {
           <span className="material-symbols-outlined">female</span>
           <div>
             <strong>{summary.female}</strong>
-            <p>Nữ</p>
+            <p>{t("manager.accounts.summary.female")}</p>
           </div>
         </div>
 
@@ -538,7 +537,7 @@ export default function AccountPage() {
           <span className="material-symbols-outlined">favorite</span>
           <div>
             <strong>{summary.living}</strong>
-            <p>Còn sống</p>
+            <p>{t("manager.accounts.summary.living")}</p>
           </div>
         </div>
 
@@ -546,7 +545,7 @@ export default function AccountPage() {
           <span className="material-symbols-outlined">pending_actions</span>
           <div>
             <strong>{summary.pending}</strong>
-            <p>Chờ duyệt</p>
+            <p>{t("manager.accounts.summary.pending")}</p>
           </div>
         </div>
       </div>
@@ -557,8 +556,8 @@ export default function AccountPage() {
             <div className="member-pro-panel">
               <div className="member-pro-panel-head">
                 <div>
-                  <h3>Tạo thành viên</h3>
-                  <p>Thêm tài khoản và hồ sơ thành viên mới.</p>
+                  <h3>{t("manager.accounts.form.createTitle")}</h3>
+                  <p>{t("manager.accounts.form.createDescription")}</p>
                 </div>
 
                 <button
@@ -578,7 +577,7 @@ export default function AccountPage() {
                     type="email"
                     value={createForm.email}
                     onChange={updateCreateField}
-                    placeholder="Email đăng nhập"
+                    placeholder={t("manager.accounts.form.placeholderEmail")}
                     required
                   />
 
@@ -588,7 +587,7 @@ export default function AccountPage() {
                     type="password"
                     value={createForm.password}
                     onChange={updateCreateField}
-                    placeholder="Mật khẩu"
+                    placeholder={t("manager.accounts.form.placeholderPassword")}
                     required
                   />
 
@@ -597,7 +596,7 @@ export default function AccountPage() {
                     name="surname"
                     value={createForm.surname}
                     onChange={updateCreateField}
-                    placeholder="Họ"
+                    placeholder={t("manager.accounts.form.placeholderSurname")}
                   />
 
                   <input
@@ -605,7 +604,7 @@ export default function AccountPage() {
                     name="middle_name"
                     value={createForm.middle_name}
                     onChange={updateCreateField}
-                    placeholder="Tên đệm"
+                    placeholder={t("manager.accounts.form.placeholderMiddleName")}
                   />
 
                   <input
@@ -613,7 +612,7 @@ export default function AccountPage() {
                     name="first_name"
                     value={createForm.first_name}
                     onChange={updateCreateField}
-                    placeholder="Tên"
+                    placeholder={t("manager.accounts.form.placeholderFirstName")}
                     required
                   />
 
@@ -623,9 +622,9 @@ export default function AccountPage() {
                     value={createForm.gender}
                     onChange={updateCreateField}
                   >
-                    <option value="1">Nam</option>
-                    <option value="2">Nữ</option>
-                    <option value="">Không khai báo</option>
+                    <option value="1">{t("manager.accounts.form.genderMale")}</option>
+                    <option value="2">{t("manager.accounts.form.genderFemale")}</option>
+                    <option value="">{t("manager.accounts.form.genderUnknown")}</option>
                   </select>
 
                   <input
@@ -635,7 +634,7 @@ export default function AccountPage() {
                     min="1"
                     value={createForm.generation}
                     onChange={updateCreateField}
-                    placeholder="Đời"
+                    placeholder={t("manager.accounts.form.placeholderGeneration")}
                   />
 
                   <div className="mgr-dateField">
@@ -645,7 +644,7 @@ export default function AccountPage() {
                       value={createForm.birth_date}
                       onChange={updateCreateField}
                     />
-                    <LunarDateHint value={createForm.birth_date} label="Ngày sinh âm lịch" />
+                    <LunarDateHint value={createForm.birth_date} label={t("manager.accounts.form.placeholderBirthDate") + " (L)"} />
                   </div>
 
                   <input
@@ -653,7 +652,7 @@ export default function AccountPage() {
                     name="hometown"
                     value={createForm.hometown}
                     onChange={updateCreateField}
-                    placeholder="Quê quán"
+                    placeholder={t("manager.accounts.form.placeholderHometown")}
                   />
 
                   {isAdmin && (
@@ -669,7 +668,7 @@ export default function AccountPage() {
                 </div>
 
                 <button className="mgr-btnPrimary" type="submit" disabled={saving}>
-                  {saving ? "Đang lưu..." : "Tạo thành viên"}
+                  {saving ? t("manager.accounts.actions.saving") : t("manager.accounts.actions.addMember")}
                 </button>
               </form>
             </div>
@@ -679,8 +678,8 @@ export default function AccountPage() {
             <div className="member-pro-panel">
               <div className="member-pro-panel-head">
                 <div>
-                  <h3>Liên kết quan hệ</h3>
-                  <p>Cập nhật cha, mẹ, vợ/chồng và con cái.</p>
+                  <h3>{t("manager.accounts.form.linkTitle")}</h3>
+                  <p>{t("manager.accounts.form.linkDescription")}</p>
                 </div>
 
                 <button
@@ -694,13 +693,13 @@ export default function AccountPage() {
 
               <form className="member-pro-form" onSubmit={saveRelations}>
                 <label className="relation-field">
-                  <span>Thành viên cần liên kết</span>
+                  <span>{t("manager.accounts.form.selectMember")}</span>
                   <select
                     className="mgr-field"
                     value={relationAccountId}
                     onChange={selectRelationMember}
                   >
-                    <option value="">Chọn thành viên</option>
+                    <option value="">{t("manager.accounts.form.selectMemberPrompt")}</option>
                     {memberOptions.map((member) => (
                       <option key={member.accountId} value={member.accountId}>
                         {member.label}
@@ -713,7 +712,7 @@ export default function AccountPage() {
                   <>
                     <div className="member-pro-form-grid">
                       <label className="relation-field">
-                        <span>Gia đình/cuộc hôn nhân</span>
+                        <span>{t("manager.accounts.form.marriageTitle")}</span>
                         <select
                           className="mgr-field"
                           name="family_id"
@@ -721,7 +720,7 @@ export default function AccountPage() {
                           onChange={updateRelationField}
                           disabled={relationLoading}
                         >
-                          <option value="">Tao/chon family khi them con</option>
+                          <option value="">{t("manager.accounts.form.marriagePrompt")}</option>
                           {(relationDetails?.marriage?.families || []).map((family) => (
                             <option key={family.family_id || family.id} value={family.family_id || family.id}>
                               {`#${family.family_id || family.id} - ${family.spouse_name || "Chua co vo/chong"} (${family.relationship_status || "active"})`}
@@ -731,7 +730,7 @@ export default function AccountPage() {
                       </label>
 
                       <label className="relation-field">
-                        <span>Cha</span>
+                        <span>{t("manager.accounts.form.parentFather")}</span>
                         <select
                           className="mgr-field"
                           name="parent_father_id"
@@ -739,7 +738,7 @@ export default function AccountPage() {
                           onChange={updateRelationField}
                           disabled={relationLoading}
                         >
-                          <option value="">Chưa chọn cha</option>
+                          <option value="">{t("manager.accounts.form.parentFatherPrompt")}</option>
                           {relationPersonOptions.map((member) => (
                             <option key={member.personId} value={member.personId}>
                               {member.label}
@@ -749,7 +748,7 @@ export default function AccountPage() {
                       </label>
 
                       <label className="relation-field">
-                        <span>Mẹ</span>
+                        <span>{t("manager.accounts.form.parentMother")}</span>
                         <select
                           className="mgr-field"
                           name="parent_mother_id"
@@ -757,7 +756,7 @@ export default function AccountPage() {
                           onChange={updateRelationField}
                           disabled={relationLoading}
                         >
-                          <option value="">Chưa chọn mẹ</option>
+                          <option value="">{t("manager.accounts.form.parentMotherPrompt")}</option>
                           {relationPersonOptions.map((member) => (
                             <option key={member.personId} value={member.personId}>
                               {member.label}
@@ -767,7 +766,7 @@ export default function AccountPage() {
                       </label>
 
                       <label className="relation-field">
-                        <span>Vợ/chồng</span>
+                        <span>{t("manager.accounts.form.spouse")}</span>
                         <select
                           className="mgr-field"
                           name="spouse_id"
@@ -775,7 +774,7 @@ export default function AccountPage() {
                           onChange={updateRelationField}
                           disabled={relationLoading}
                         >
-                          <option value="">Chưa chọn vợ/chồng</option>
+                          <option value="">{t("manager.accounts.form.spousePrompt")}</option>
                           {relationPersonOptions.map((member) => (
                             <option key={member.personId} value={member.personId}>
                               {member.label}
@@ -785,7 +784,7 @@ export default function AccountPage() {
                       </label>
 
                       <label className="relation-field">
-                        <span>Con cái</span>
+                        <span>{t("manager.accounts.form.children")}</span>
                         <select
                           className="mgr-field relation-children-select"
                           multiple
@@ -810,15 +809,15 @@ export default function AccountPage() {
                     </div>
 
                     <div className="relation-summary">
-                      <strong>Quan hệ hiện tại</strong>
-                      <span>Cha: {relationDetails?.bloodline?.parent_father_name || "Chưa có"}</span>
-                      <span>Mẹ: {relationDetails?.bloodline?.parent_mother_name || "Chưa có"}</span>
-                      <span>Vợ/chồng: {relationDetails?.marriage?.spouse_name || "Chưa có"}</span>
+                      <strong>{t("manager.accounts.form.currentRelations")}</strong>
+                      <span>{t("manager.accounts.form.parentFather")}: {relationDetails?.bloodline?.parent_father_name || t("manager.accounts.form.noInfo")}</span>
+                      <span>{t("manager.accounts.form.parentMother")}: {relationDetails?.bloodline?.parent_mother_name || t("manager.accounts.form.noInfo")}</span>
+                      <span>{t("manager.accounts.form.spouse")}: {relationDetails?.marriage?.spouse_name || t("manager.accounts.form.noInfo")}</span>
                       <span>
-                        Con cái:{" "}
+                        {t("manager.accounts.form.children")}:{" "}
                         {relationDetails?.marriage?.children?.length
                           ? relationDetails.marriage.children.map((child) => child.name).join(", ")
-                          : "Chưa có"}
+                          : t("manager.accounts.form.noInfo")}
                       </span>
                     </div>
 
@@ -841,7 +840,7 @@ export default function AccountPage() {
                       type="submit"
                       disabled={relationLoading || relationSaving}
                     >
-                      {relationSaving ? "Đang lưu..." : "Lưu quan hệ"}
+                      {relationSaving ? t("manager.accounts.actions.saving") : t("manager.accounts.actions.save")}
                     </button>
                   </>
                 )}
@@ -854,10 +853,10 @@ export default function AccountPage() {
       <div className="member-pro-main-panel">
         <div className="member-pro-toolbar">
           <div>
-            <h3>Danh sách thành viên</h3>
-            <p>
-              Đang hiển thị <strong>{filteredMembers.length}</strong> / {members.length} thành viên.
-            </p>
+            <h3>{t("manager.accounts.list.title")}</h3>
+            <p dangerouslySetInnerHTML={{ 
+              __html: t("manager.accounts.list.showing", { count: filteredMembers.length, total: members.length }) 
+            }} />
           </div>
 
           <div className="member-pro-toolbar-actions">
@@ -867,7 +866,7 @@ export default function AccountPage() {
               onClick={() => setRelationOpen((value) => !value)}
             >
               <span className="material-symbols-outlined">account_tree</span>
-              Liên kết quan hệ
+              {t("manager.accounts.actions.linkRelations")}
             </button>
           </div>
         </div>
@@ -877,7 +876,7 @@ export default function AccountPage() {
             className="mgr-field"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm tên, email, quê quán, số điện thoại..."
+            placeholder={t("common.search") + "..."}
           />
 
           <select
@@ -885,9 +884,9 @@ export default function AccountPage() {
             value={genderFilter}
             onChange={(e) => setGenderFilter(e.target.value)}
           >
-            <option value="">Tất cả giới tính</option>
-            <option value="1">Nam</option>
-            <option value="2">Nữ</option>
+            <option value="">{t("common.all") + " " + t("manager.accounts.form.placeholderGender").toLowerCase()}</option>
+            <option value="1">{t("manager.accounts.form.genderMale")}</option>
+            <option value="2">{t("manager.accounts.form.genderFemale")}</option>
           </select>
 
           <select
@@ -895,9 +894,9 @@ export default function AccountPage() {
             value={livingFilter}
             onChange={(e) => setLivingFilter(e.target.value)}
           >
-            <option value="">Tất cả trạng thái sống</option>
-            <option value="living">Còn sống</option>
-            <option value="dead">Đã mất</option>
+            <option value="">{t("common.all") + " " + t("manager.accounts.form.livingStatus").toLowerCase()}</option>
+            <option value="living">{t("manager.accounts.form.statusLiving")}</option>
+            <option value="dead">{t("manager.accounts.form.statusDead")}</option>
           </select>
 
           <select
@@ -905,10 +904,10 @@ export default function AccountPage() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="">Tất cả tài khoản</option>
-            <option value="active">Đang hoạt động</option>
-            <option value="pending">Chờ duyệt</option>
-            <option value="rejected">Từ chối</option>
+            <option value="">{t("common.all") + " " + t("common.status.title").toLowerCase()}</option>
+            <option value="active">{t("common.status.active")}</option>
+            <option value="pending">{t("common.status.pending")}</option>
+            <option value="rejected">{t("common.status.rejected")}</option>
           </select>
 
           <select
@@ -916,10 +915,10 @@ export default function AccountPage() {
             value={generationFilter}
             onChange={(e) => setGenerationFilter(e.target.value)}
           >
-            <option value="">Tất cả đời</option>
+            <option value="">{t("common.all") + " " + t("manager.accounts.form.placeholderGeneration").toLowerCase()}</option>
             {generationOptions.map((generation) => (
               <option key={generation} value={generation}>
-                Đời {generation}
+                {t("manager.accounts.form.placeholderGeneration")} {generation}
               </option>
             ))}
           </select>
@@ -927,16 +926,16 @@ export default function AccountPage() {
 
         <div className="member-pro-table">
           <div className="member-pro-table-head">
-            <span>Thành viên</span>
-            <span>Đời / chi</span>
-            <span>Trạng thái</span>
-            <span>Quê quán</span>
-            <span>Thao tác</span>
+            <span>{t("common.member")}</span>
+            <span>{t("manager.accounts.form.placeholderGeneration")} / {t("manager.accounts.form.branch")}</span>
+            <span>{t("common.status.title")}</span>
+            <span>{t("common.hometown")}</span>
+            <span>{t("common.actions")}</span>
           </div>
 
           <div className="member-pro-table-body">
             {loading ? (
-              <div className="mgr-empty">Đang tải danh sách thành viên...</div>
+              <div className="mgr-empty">{t("common.loading")}</div>
             ) : filteredMembers.length ? (
               filteredMembers.map((member) => (
                 <div className="member-pro-row" key={member.account_id}>
@@ -947,14 +946,14 @@ export default function AccountPage() {
 
                     <div>
                       <strong>{fullName(member)}</strong>
-                      <span>{member.email || "Chưa có email"}</span>
+                      <span>{member.email || t("manager.accounts.form.noInfo")}</span>
                       <small>ID: {member.person_id || member.account_id}</small>
                     </div>
                   </div>
 
                   <div className="member-pro-meta">
-                    <strong>Đời {member.generation || "?"}</strong>
-                    <span>Chi {member.branch || "?"}</span>
+                    <strong>{t("manager.accounts.form.placeholderGeneration")} {member.generation || "?"}</strong>
+                    <span>{t("manager.accounts.form.branch")} {member.branch || "?"}</span>
                   </div>
 
                   <div className="member-pro-status-stack">
@@ -967,7 +966,7 @@ export default function AccountPage() {
                   </div>
 
                   <div className="member-pro-hometown">
-                    {member.hometown || "Chưa có quê quán"}
+                    {member.hometown || t("manager.accounts.form.noInfo")}
                   </div>
 
                   <div className="member-pro-actions">
@@ -976,13 +975,13 @@ export default function AccountPage() {
                       type="button"
                       onClick={() => openEdit(member.account_id)}
                     >
-                      Sửa
+                      {t("common.edit")}
                     </button>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="mgr-empty">Không có thành viên phù hợp.</div>
+              <div className="mgr-empty">{t("manager.accounts.messages.empty") || "No members found."}</div>
             )}
           </div>
         </div>
@@ -1009,16 +1008,16 @@ export default function AccountPage() {
               ×
             </button>
 
-            <h2 className="mgr-modalTitle">Chỉnh sửa thành viên #{editAccountId}</h2>
-            <p className="mgr-modalMeta">Cập nhật tài khoản, hồ sơ cá nhân và thông tin phả hệ.</p>
+            <h2 className="mgr-modalTitle">{t("manager.accounts.form.editTitle")} #{editAccountId}</h2>
+            <p className="mgr-modalMeta">{t("manager.accounts.form.editDescription") || "Update account and profile info."}</p>
 
             <div className="mgr-overviewFormGrid mgr-modalGrid">
-              <input className="mgr-field" name="email" type="email" value={editForm.email} onChange={updateEditField} placeholder="Email đăng nhập" />
+              <input className="mgr-field" name="email" type="email" value={editForm.email} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderEmail")} />
 
               <select className="mgr-field" name="status" value={editForm.status} onChange={updateEditField}>
-                <option value="active">active</option>
-                <option value="pending">pending</option>
-                <option value="rejected">rejected</option>
+                <option value="active">{t("common.status.active")}</option>
+                <option value="pending">{t("common.status.pending")}</option>
+                <option value="rejected">{t("common.status.rejected")}</option>
               </select>
 
               {canAssignManager && (
@@ -1028,50 +1027,50 @@ export default function AccountPage() {
                 </select>
               )}
 
-              <input className="mgr-field" name="new_password" type="password" value={editForm.new_password} onChange={updateEditField} placeholder="Mật khẩu mới nếu cần đổi" />
-              <input className="mgr-field" name="surname" value={editForm.surname} onChange={updateEditField} placeholder="Họ" />
-              <input className="mgr-field" name="middle_name" value={editForm.middle_name} onChange={updateEditField} placeholder="Tên đệm" />
-              <input className="mgr-field" name="first_name" value={editForm.first_name} onChange={updateEditField} placeholder="Tên" />
+              <input className="mgr-field" name="new_password" type="password" value={editForm.new_password} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderPassword") + " (optional)"} />
+              <input className="mgr-field" name="surname" value={editForm.surname} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderSurname")} />
+              <input className="mgr-field" name="middle_name" value={editForm.middle_name} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderMiddleName")} />
+              <input className="mgr-field" name="first_name" value={editForm.first_name} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderFirstName")} />
 
               <select className="mgr-field" name="gender" value={editForm.gender} onChange={updateEditField}>
-                <option value="1">Nam</option>
-                <option value="2">Nữ</option>
-                <option value="">Không khai báo</option>
+                <option value="1">{t("manager.accounts.form.genderMale")}</option>
+                <option value="2">{t("manager.accounts.form.genderFemale")}</option>
+                <option value="">{t("manager.accounts.form.genderUnknown")}</option>
               </select>
 
               <div className="mgr-dateField">
                 <DateInput className="mgr-field" name="birth_date" value={editForm.birth_date} onChange={updateEditField} />
-                <LunarDateHint value={editForm.birth_date} label="Ngày sinh âm lịch" />
+                <LunarDateHint value={editForm.birth_date} label={t("manager.accounts.form.placeholderBirthDate") + " (L)"} />
               </div>
 
               <div className="mgr-dateField">
                 <DateInput className="mgr-field" name="death_date" value={editForm.death_date} onChange={updateEditField} disabled={editForm.is_living === "1"} />
-                <LunarDateHint value={editForm.death_date} label="Ngày mất âm lịch" />
+                <LunarDateHint value={editForm.death_date} label={t("manager.accounts.form.placeholderDeathDate") + " (L)"} />
               </div>
 
               <select className="mgr-field" name="is_living" value={editForm.is_living} onChange={updateEditField}>
-                <option value="1">Còn sống</option>
-                <option value="0">Đã mất</option>
+                <option value="1">{t("manager.accounts.form.statusLiving")}</option>
+                <option value="0">{t("manager.accounts.form.statusDead")}</option>
               </select>
 
-              <input className="mgr-field" name="generation" type="number" min="1" value={editForm.generation} onChange={updateEditField} placeholder="Đời" />
-              <input className="mgr-field" name="branch" type="number" value={editForm.branch} onChange={updateEditField} placeholder="Chi" />
-              <input className="mgr-field" name="hometown" value={editForm.hometown} onChange={updateEditField} placeholder="Quê quán" />
-              <input className="mgr-field" name="phone" value={editForm.phone} onChange={updateEditField} placeholder="Điện thoại" />
-              <input className="mgr-field" name="people_email" type="email" value={editForm.people_email} onChange={updateEditField} placeholder="Email phụ" />
-              <input className="mgr-field" name="address" value={editForm.address} onChange={updateEditField} placeholder="Địa chỉ" />
-              <input className="mgr-field" name="avatar_url" value={editForm.avatar_url} onChange={updateEditField} placeholder="URL ảnh đại diện" />
-              <textarea className="mgr-field mgr-fieldTextarea" name="bio" value={editForm.bio} onChange={updateEditField} placeholder="Tiểu sử" />
-              <textarea className="mgr-field mgr-fieldTextarea" name="note" value={editForm.note} onChange={updateEditField} placeholder="Ghi chú" />
+              <input className="mgr-field" name="generation" type="number" min="1" value={editForm.generation} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderGeneration")} />
+              <input className="mgr-field" name="branch" type="number" value={editForm.branch} onChange={updateEditField} placeholder={t("manager.accounts.form.branch")} />
+              <input className="mgr-field" name="hometown" value={editForm.hometown} onChange={updateEditField} placeholder={t("manager.accounts.form.placeholderHometown")} />
+              <input className="mgr-field" name="phone" value={editForm.phone} onChange={updateEditField} placeholder={t("common.phone")} />
+              <input className="mgr-field" name="people_email" type="email" value={editForm.people_email} onChange={updateEditField} placeholder={t("common.email") + " (alt)"} />
+              <input className="mgr-field" name="address" value={editForm.address} onChange={updateEditField} placeholder={t("common.address") || "Address"} />
+              <input className="mgr-field" name="avatar_url" value={editForm.avatar_url} onChange={updateEditField} placeholder="Avatar URL" />
+              <textarea className="mgr-field mgr-fieldTextarea" name="bio" value={editForm.bio} onChange={updateEditField} placeholder="Bio" />
+              <textarea className="mgr-field mgr-fieldTextarea" name="note" value={editForm.note} onChange={updateEditField} placeholder={t("manager.accounts.form.note")} />
             </div>
 
             <div className="mgr-modalActions">
               <button className="mgr-btnPrimary" type="button" onClick={saveEdit} disabled={saving}>
-                {saving ? "Đang lưu..." : "Lưu thay đổi"}
+                {saving ? t("manager.accounts.actions.saving") : t("common.saveChanges")}
               </button>
 
               <button className="mgr-btnGhost" type="button" onClick={() => setEditAccountId(null)} disabled={saving}>
-                Đóng
+                {t("common.close")}
               </button>
             </div>
           </div>
