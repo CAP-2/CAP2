@@ -41,6 +41,7 @@ const {
     resolveManagedClanId,
 } = require('../manager/managerClan.service');
 
+const { ensureTreeLayoutSettingsTable } = require('../../shared/utils/treeLayoutSettings');
 const { emitTreeUpdated } = require('../../socket/treeRealtime');
 
 const relationHttpStatus = (result) => result?.requiresConfirmation ? 409 : 400;
@@ -840,12 +841,183 @@ const saveTreeLayout = async (req, res) => {
     action: 'tree_layout_updated',
     updated,
     layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)),
+    client_layout_id: req.body?.client_layout_id || req.body?.clientLayoutId || null,
+    layout: {
+        nodes: people.map((item) => ({
+            person_id: Number(item.id ?? item.person_id),
+            tree_x: parseTreeInt(item.tree_x, 0),
+            tree_y: parseTreeInt(item.tree_y, 0),
+        })).filter((item) => Number.isFinite(item.person_id)),
+        line_routes_full: hasLineRoutes,
+        card_sizes_full: hasCardSizes,
+        ...(hasLineRoutes ? { line_routes: lineRoutes || {} } : {}),
+        ...(hasCardSizes ? { card_sizes: cardSizes || {} } : {}),
+    },
 });
 
 res.json({ success: true, updated, layout_saved: Boolean(clanId != null && (hasLineRoutes || hasCardSizes)) });
     } catch (error) {
         console.error('saveTreeLayout error:', error);
         res.status(500).json({ success: false, message: 'Loi luu bo cuc cay' });
+    }
+};
+
+const safeLayoutJsonParse = (value, fallback = {}) => {
+    if (value == null) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
+    } catch (_) {
+        return fallback;
+    }
+};
+
+const normalizeLayoutPatchObject = (value) =>
+    value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+const mergeNestedLayoutPatch = (current, patch) => {
+    const next = { ...(current || {}) };
+    Object.entries(normalizeLayoutPatchObject(patch)).forEach(([outerKey, innerValue]) => {
+        if (!innerValue || typeof innerValue !== 'object' || Array.isArray(innerValue)) return;
+        next[outerKey] = { ...(next[outerKey] || {}), ...innerValue };
+    });
+    return next;
+};
+
+const normalizeBatchNodeChanges = (body) => {
+    const source = Array.isArray(body?.nodes)
+        ? body.nodes
+        : Array.isArray(body?.positions)
+          ? body.positions
+          : [];
+    const byId = new Map();
+    source.forEach((item) => {
+        const personId = Number(item?.person_id ?? item?.id);
+        if (!Number.isFinite(personId) || personId <= 0) return;
+        byId.set(personId, {
+            person_id: personId,
+            tree_x: parseTreeInt(item.tree_x, 0),
+            tree_y: parseTreeInt(item.tree_y, 0),
+        });
+    });
+    return [...byId.values()];
+};
+
+const saveTreeLayoutBatch = async (req, res) => {
+    let connection = null;
+    try {
+        await ensurePeopleTreeLayoutColumns();
+        await ensureTreeLayoutSettingsTable();
+
+        const body = req.body || {};
+        const nodeChanges = normalizeBatchNodeChanges(body);
+        const lineRoutesPatch = normalizeLayoutPatchObject(body.line_routes ?? body.lineRoutes);
+        const cardSizesPatch = normalizeLayoutPatchObject(body.card_sizes ?? body.cardSizes);
+        const affectedPersonIds = [
+            ...nodeChanges.map((item) => item.person_id),
+            ...Object.keys(cardSizesPatch).map(Number).filter((id) => Number.isFinite(id) && id > 0),
+        ];
+
+        if (!nodeChanges.length && !Object.keys(lineRoutesPatch).length && !Object.keys(cardSizesPatch).length) {
+            return res.json({ success: true, updated: 0, layout: { nodes: [], line_routes: {}, card_sizes: {} } });
+        }
+
+        const permission = await assertTreeMutationPermission(req, {
+            action: 'bulk_layout',
+            affectedPersonIds,
+        });
+        if (!permission.ok) {
+            return res.status(permission.status).json({ success: false, message: permission.message });
+        }
+
+        const clanId = await resolveManagedClanId(req, body);
+        if (!clanId) {
+            return res.status(400).json({ success: false, message: 'Khong xac dinh duoc dong ho de luu bo cuc.' });
+        }
+
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        let updated = 0;
+        for (const item of nodeChanges) {
+            const gate = await assertCanManagePersonId(req, item.person_id);
+            if (!gate.ok) {
+                await connection.rollback();
+                connection.release();
+                connection = null;
+                return res.status(gate.status).json({ success: false, message: gate.message });
+            }
+            await connection.query(
+                'UPDATE people SET tree_x = ?, tree_y = ? WHERE id = ?',
+                [item.tree_x, item.tree_y, item.person_id]
+            );
+            updated += 1;
+        }
+
+        if (Object.keys(lineRoutesPatch).length || Object.keys(cardSizesPatch).length) {
+            await connection.query(
+                `INSERT IGNORE INTO tree_layout_settings (clan_id, line_routes, card_sizes, updated_by_account_id)
+                 VALUES (?, ?, ?, ?)`,
+                [clanId, '{}', '{}', req.user?.id || req.user?.account_id || null]
+            );
+            const [settingsRows] = await connection.query(
+                'SELECT line_routes, card_sizes FROM tree_layout_settings WHERE clan_id = ? LIMIT 1 FOR UPDATE',
+                [clanId]
+            );
+            const current = settingsRows[0] || {};
+            const nextLineRoutes = mergeNestedLayoutPatch(
+                safeLayoutJsonParse(current.line_routes, {}),
+                lineRoutesPatch
+            );
+            const nextCardSizes = {
+                ...safeLayoutJsonParse(current.card_sizes, {}),
+                ...cardSizesPatch,
+            };
+
+            await connection.query(
+                `
+                INSERT INTO tree_layout_settings (clan_id, line_routes, card_sizes, updated_by_account_id)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                  line_routes = VALUES(line_routes),
+                  card_sizes = VALUES(card_sizes),
+                  updated_by_account_id = VALUES(updated_by_account_id),
+                  updated_at = CURRENT_TIMESTAMP
+                `,
+                [
+                    clanId,
+                    JSON.stringify(nextLineRoutes || {}),
+                    JSON.stringify(nextCardSizes || {}),
+                    req.user?.id || req.user?.account_id || null,
+                ]
+            );
+        }
+
+        await connection.commit();
+        connection.release();
+        connection = null;
+
+        const layout = {
+            nodes: nodeChanges,
+            line_routes: lineRoutesPatch,
+            card_sizes: cardSizesPatch,
+        };
+        emitTreeUpdated(req, clanId, {
+            action: 'tree_layout_updated',
+            updated,
+            client_layout_id: body.client_layout_id || body.clientLayoutId || null,
+            layout,
+        });
+
+        return res.json({ success: true, updated, layout });
+    } catch (error) {
+        if (connection) {
+            try { await connection.rollback(); } catch (_) {}
+            connection.release();
+        }
+        console.error('saveTreeLayoutBatch error:', error);
+        return res.status(500).json({ success: false, message: 'Loi luu batch bo cuc cay' });
     }
 };
 
@@ -1161,6 +1333,7 @@ module.exports = {
     updateTreePerson,
     updatePersonPosition,
     saveTreeLayout,
+    saveTreeLayoutBatch,
     createFamily,
     updateFamily,
     addFamilyChild,

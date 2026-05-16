@@ -415,6 +415,13 @@ app.patch(
     managerController.saveTreeLayout
 );
 
+app.post(
+    '/api/manager/tree/layout/batch',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    managerController.saveTreeLayoutBatch
+);
+
 app.patch(
     '/api/people/link',
     verifyToken,

@@ -62,6 +62,7 @@
     // 2. Quản lý Gia phả (Lineage)
     router.get('/clans/:clanId/family-tree', verifyToken, checkRole(['admin', 'manager']), managerController.getFamilyTree);
     router.patch('/clans/:clanId/family-tree/layout', verifyToken, checkRole(['admin', 'manager']), managerController.saveTreeLayout);
+    router.post('/tree/layout/batch', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.saveTreeLayoutBatch);
     router.post('/people', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createPerson);
     router.post('/people/create', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.createPerson);
     router.patch('/people/link', verifyToken, checkRole(['admin', 'manager', 'member']), managerController.linkRelations);

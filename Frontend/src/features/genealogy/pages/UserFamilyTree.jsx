@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getMemberDashboard, verifyTreeEditSession } from "../../../api/memberService";
-import FamilyTreeEditor from "../components/FamilyTreeEditor";
+import FamilyTreeEditor from "../components/FamilyTreeEditor.jsx";
 import { onSocketEvent, connectSocketFromStorage } from "../../../services/socket";
 import { clearTreeEditSession, readTreeEditSession, saveTreeEditSession } from "../../../services/treeEditSession";
 import "../../member/pages/MemberDashboard.css";
@@ -67,6 +67,10 @@ export default function FamilyTreePage() {
         currentClanId &&
         Number(payload.clan_id) !== Number(currentClanId)
       ) {
+        return;
+      }
+
+      if (payload?.action === "tree_layout_updated") {
         return;
       }
 

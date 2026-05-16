@@ -569,11 +569,23 @@ export const saveTreeLayoutAPI = (people = [], clanId, options = {}) =>
         people,
         positions: people,
         clan_id: clanId,
+        client_layout_id: options.clientLayoutId || options.client_layout_id,
         line_routes: options.lineRoutes || options.line_routes,
         card_sizes: options.cardSizes || options.card_sizes,
       }),
     },
     "Không thể lưu bố cục cây"
+  );
+
+export const saveTreeLayoutBatchAPI = (data = {}) =>
+  request(
+    "/tree/layout/batch",
+    {
+      method: "POST",
+      headers: getTreeEditKeyHeader(),
+      body: JSON.stringify(data),
+    },
+    "Khong the luu bo cuc cay"
   );
 
 export const deletePersonAPI = (personId) =>

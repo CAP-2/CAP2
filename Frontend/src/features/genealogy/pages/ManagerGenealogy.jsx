@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../../api/managerService";
-import FamilyTreeEditor from "../components/FamilyTreeEditor";
+import FamilyTreeEditor from "../components/FamilyTreeEditor.jsx";
 import { formatDateTimeVN } from "../../../shared/utils/dateFormat";
 import { onSocketEvent } from "../../../services/socket";
 import "../../manager/pages/manager.css";
@@ -78,6 +78,10 @@ export default function GenealogySection() {
         currentClanId &&
         Number(payload.clan_id) !== Number(currentClanId)
       ) {
+        return;
+      }
+
+      if (payload?.action === "tree_layout_updated") {
         return;
       }
 

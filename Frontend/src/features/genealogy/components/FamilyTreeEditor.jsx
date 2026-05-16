@@ -1,19 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { createPortal } from "react-dom";
-import { toBlob } from "html-to-image";
-import {
-  createPersonAPI,
-  deletePersonAPI,
-  linkRelationsAPI,
-  saveTreeLayoutAPI,
-  updatePersonAPI,
-  updatePersonPositionAPI,
-} from "../../../api/managerService";
-import { formatLunarFullFromSolar } from "../../../shared/utils/lunarCalendar";
-import DateInput from "../../../shared/components/DateInput";
+import { createPersonAPI, deletePersonAPI, linkRelationsAPI, saveTreeLayoutBatchAPI, saveTreeLayoutAPI, updatePersonAPI } from "../../../api/managerService";
 import { onSocketEvent } from "../../../services/socket";
-import { formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../../shared/utils/dateFormat";
+import { vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import TreeSearchPanel from "./TreeSearchPanel";
 import TreeViewModeSelector from "./TreeViewModeSelector";
 import TreeNodeCard from "./TreeNodeCard";
@@ -22,2169 +12,22 @@ import { useTreeSearch } from "../hooks/useTreeSearch";
 import { useTreeViewMode } from "../hooks/useTreeViewMode";
 import { useTreeRealtime } from "../hooks/useTreeRealtime";
 import { validateTreeData } from "../utils/treeValidation";
+import { CANVAS_PADDING, CARD_WIDTH } from "../utils/tree-editor/treeConstants";
+import { asArray, extractCreatedPersonId, formatDisplayDate, fullName, normalizePerson, readCurrentAccount, snap, snapLine, clamp, toInt } from "../utils/tree-editor/treePersonUtils";
+import { getCardSize, loadCardSizes, loadLineRoutes, normalizeCardSize, normalizeLayoutObject, normalizeLayoutSettings, saveCardSizes, saveLineRoutes } from "../utils/tree-editor/treeStorage";
+import { dedupePeopleByAccount, remapChildrenByPeople, remapFamiliesByPeople } from "../utils/tree-editor/treeNormalize";
+import { autoLayoutPeople, findFounderIds, mergeManualAndAutoLayout } from "../utils/tree-editor/treeLayout";
+import { buildTreeLines } from "../utils/tree-editor/treeLines";
+import { blankCreateForm, buildChildRelationPayload, findParentFamilyForChild, findSpouse, findSpouseFamily, getChildrenForFamily, getFamiliesForPerson, relationCandidates, relationLinkedIds } from "../utils/tree-editor/treeRelations";
+import { downloadBlob, exportFileName, renderFamilyTreePngBlob } from "../utils/tree-editor/treeExport";
+import { CenterNoticeDialog, CreatePersonDialog, PersonInspector, QuickCreateRelationDialog, RelationSelectDialog } from "./FamilyTreeEditorParts/index.js";
 import "./FamilyTreeEditor.css";
 
 const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
 
-const CARD_WIDTH = 170;
-const CARD_HEIGHT = 185;
-const MIN_CARD_WIDTH = 130;
-const MIN_CARD_HEIGHT = 145;
-const MAX_CARD_WIDTH = 360;
-const MAX_CARD_HEIGHT = 360;
-const LEVEL_HEIGHT = Math.round(CARD_HEIGHT * 1.5);
-const X_GAP = Math.round(CARD_WIDTH * 0.9);
-const SPOUSE_GAP = 20; 
-const SIBLING_GAP = X_GAP;
-const FAMILY_GAP = Math.round(CARD_WIDTH * 1.2);
-const Y_GAP = LEVEL_HEIGHT;
-const CANVAS_PADDING = 180;
-const SNAP_SIZE = 20;
-const LINE_SNAP_SIZE = 5;
-const EXPORT_BACKGROUND = "#f8edb2";
-const EXPORT_MAX_CANVAS_EDGE = 14000;
-const SOURCE_BRANCH_STEP = 10;
-const BLOOD_LINE_COLORS = [
-  "#1E3A8A",
-  "#047857",
-  "#7C3AED",
-  "#991B1B",
-  "#BE185D",
-  "#374151",
-  "#78350F",
-];
-const TRANSPARENT_IMAGE_DATA_URL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-const LINE_ROUTE_STORAGE_PREFIX = "family-tree-line-routes:";
-const CARD_SIZE_STORAGE_PREFIX = "family-tree-card-sizes:";
+const LAYOUT_BATCH_SIZE = 5;
+const LAYOUT_FLUSH_DELAY_MS = 10000;
 
-const toInt = (value, fallback = 0) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.round(n) : fallback;
-};
-
-const snap = (value) => Math.round(toInt(value, 0) / SNAP_SIZE) * SNAP_SIZE;
-const snapLine = (value) => Math.round(toInt(value, 0) / LINE_SNAP_SIZE) * LINE_SNAP_SIZE;
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-
-function getLineRouteStorageKey(clanId) {
-  return `${LINE_ROUTE_STORAGE_PREFIX}${clanId || "default"}`;
-}
-
-function getCardSizeStorageKey(clanId) {
-  return `${CARD_SIZE_STORAGE_PREFIX}${clanId || "default"}`;
-}
-
-function normalizeLayoutObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function normalizeLayoutSettings(settings) {
-  return {
-    line_routes: normalizeLayoutObject(settings?.line_routes || settings?.lineRoutes),
-    card_sizes: normalizeLayoutObject(settings?.card_sizes || settings?.cardSizes),
-  };
-}
-
-function mergeManualAndAutoLayout(sourcePeople, families = [], childRows = []) {
-  const normalized = asArray(sourcePeople).map(normalizePerson);
-  if (!normalized.length) return [];
-
-  const hasAnyManualPosition = hasManualLayout(normalized);
-  if (!hasAnyManualPosition) {
-    return autoLayoutPeople(normalized, families, childRows);
-  }
-
-  const autoPeopleById = new Map(autoLayoutPeople(normalized, families, childRows).map((person) => [Number(person.id), person]));
-  const merged = normalized.map((person) => {
-    const hasManualPosition = toInt(person.tree_x, 0) !== 0 || toInt(person.tree_y, 0) !== 0;
-    if (hasManualPosition) return person;
-    const autoPerson = autoPeopleById.get(Number(person.id));
-    return autoPerson ? { ...person, tree_x: autoPerson.tree_x, tree_y: autoPerson.tree_y, display_order: autoPerson.display_order } : person;
-  });
-
-  return assignDisplayOrder(merged);
-}
-
-function normalizeCardSize(size) {
-  const width = clamp(toInt(size?.width, CARD_WIDTH), MIN_CARD_WIDTH, MAX_CARD_WIDTH);
-  const height = clamp(toInt(size?.height, CARD_HEIGHT), MIN_CARD_HEIGHT, MAX_CARD_HEIGHT);
-  return { width, height };
-}
-
-function getCardSize(cardSizes, personId) {
-  return normalizeCardSize(cardSizes?.[Number(personId)]);
-}
-
-function loadCardSizes(clanId) {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(getCardSizeStorageKey(clanId));
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (!parsed || typeof parsed !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(parsed)
-        .map(([key, value]) => [key, normalizeCardSize(value)])
-        .filter(([key]) => Number.isFinite(Number(key))),
-    );
-  } catch {
-    return {};
-  }
-}
-
-function saveCardSizes(clanId, sizes) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(getCardSizeStorageKey(clanId), JSON.stringify(sizes || {}));
-  } catch {
-  }
-}
-
-function findFounderIds(people, families, childRows) {
-  const peopleIds = new Set(asArray(people).map((person) => Number(person.id)));
-  const childIds = new Set(asArray(childRows).map((row) => Number(row.person_id)).filter((id) => peopleIds.has(id)));
-  const roots = asArray(people).filter((person) => !childIds.has(Number(person.id)));
-  const candidates = roots.length ? roots : asArray(people);
-  if (!candidates.length) return new Set();
-  const minGeneration = Math.min(...candidates.map((person) => toInt(person.generation, 1)));
-  return new Set(candidates.filter((person) => toInt(person.generation, 1) === minGeneration).map((person) => Number(person.id)));
-}
-
-function loadLineRoutes(clanId) {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(getLineRouteStorageKey(clanId));
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLineRoutes(clanId, routes) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(getLineRouteStorageKey(clanId), JSON.stringify(routes || {}));
-  } catch {
-  }
-}
-
-const asArray = (value) => (Array.isArray(value) ? value : []);
-
-function readCurrentAccount() {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem("auth_user") || window.localStorage.getItem("user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-const dateInput = (value) => isoToVietnamDate(value);
-
-const formatDisplayDate = (value) => formatDateVN(value);
-
-const birthTime = (person) => {
-  const text = vietnamDateToIso(person?.birth_date);
-  if (!text) return null;
-  const time = Date.parse(text);
-  return Number.isFinite(time) ? time : null;
-};
-
-const fullName = (person, fallback) =>
-  person?.display_name ||
-  [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
-  fallback;
-
-const normalizePerson = (person) => ({
-  ...person,
-  id: Number(person.id),
-  account_id: person.account_id == null ? null : Number(person.account_id),
-  role_id: person.role_id == null ? null : Number(person.role_id),
-  tree_x: toInt(person.tree_x, 0),
-  tree_y: toInt(person.tree_y, 0),
-  display_order: toInt(person.display_order, 0),
-  generation: toInt(person.generation, 1) || 1,
-});
-
-function personIdentityKey(person) {
-  const accountId = Number(person?.account_id);
-  return Number.isFinite(accountId) && accountId > 0 ? `account:${accountId}` : `person:${Number(person?.id)}`;
-}
-
-function dedupePeopleByAccount(sourcePeople) {
-  const normalized = asArray(sourcePeople).map(normalizePerson).filter((person) => Number.isFinite(person.id));
-  const canonicalByKey = new Map();
-
-  normalized
-    .slice()
-    .sort((a, b) => {
-      const manualA = toInt(a.tree_x, 0) !== 0 || toInt(a.tree_y, 0) !== 0 ? 0 : 1;
-      const manualB = toInt(b.tree_x, 0) !== 0 || toInt(b.tree_y, 0) !== 0 ? 0 : 1;
-      if (manualA !== manualB) return manualA - manualB;
-      return personSort(a, b);
-    })
-    .forEach((person) => {
-      const key = personIdentityKey(person);
-      if (!canonicalByKey.has(key)) canonicalByKey.set(key, person);
-    });
-
-  const idMap = new Map();
-  normalized.forEach((person) => {
-    const canonical = canonicalByKey.get(personIdentityKey(person));
-    idMap.set(Number(person.id), Number(canonical?.id || person.id));
-  });
-
-  const uniqueByPersonId = new Map();
-  [...canonicalByKey.values()].sort(personSort).forEach((person) => {
-    if (!uniqueByPersonId.has(Number(person.id))) uniqueByPersonId.set(Number(person.id), person);
-  });
-
-  return {
-    people: [...uniqueByPersonId.values()],
-    idMap,
-  };
-}
-
-function remapFamiliesByPeople(families, idMap, people) {
-  const peopleIds = new Set(asArray(people).map((person) => Number(person.id)));
-  const seen = new Map();
-  const familyIdMap = new Map();
-  const remapped = [];
-
-  asArray(families)
-    .map((family) => ({
-      ...family,
-      father_id: family.father_id == null ? null : idMap.get(Number(family.father_id)) ?? Number(family.father_id),
-      mother_id: family.mother_id == null ? null : idMap.get(Number(family.mother_id)) ?? Number(family.mother_id),
-    }))
-    .filter((family) => family.father_id || family.mother_id)
-    .filter((family) => {
-      if (family.father_id && !peopleIds.has(Number(family.father_id))) return false;
-      if (family.mother_id && !peopleIds.has(Number(family.mother_id))) return false;
-      const key = `${Number(family.father_id) || "null"}:${Number(family.mother_id) || "null"}`;
-      const existingFamilyId = seen.get(key);
-      if (existingFamilyId) {
-        familyIdMap.set(Number(family.id), existingFamilyId);
-        return false;
-      }
-      seen.set(key, Number(family.id));
-      familyIdMap.set(Number(family.id), Number(family.id));
-      remapped.push(family);
-      return true;
-    });
-
-  return { families: remapped, familyIdMap };
-}
-
-function remapChildrenByPeople(childRows, idMap, familyIdMap, families, people) {
-  const peopleIds = new Set(asArray(people).map((person) => Number(person.id)));
-  const familyIds = new Set(asArray(families).map((family) => Number(family.id)));
-  const seen = new Set();
-  return asArray(childRows)
-    .map((row) => ({
-      ...row,
-      family_id: familyIdMap.get(Number(row.family_id)) ?? Number(row.family_id),
-      person_id: idMap.get(Number(row.person_id)) ?? Number(row.person_id),
-    }))
-    .filter((row) => familyIds.has(Number(row.family_id)) && peopleIds.has(Number(row.person_id)))
-    .filter((row) => {
-      const key = `${Number(row.family_id)}:${Number(row.person_id)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function personSort(a, b) {
-  const aBirth = birthTime(a);
-  const bBirth = birthTime(b);
-  if (aBirth != null && bBirth != null && aBirth !== bBirth) return aBirth - bBirth;
-  const orderDiff = toInt(a?.display_order, 0) - toInt(b?.display_order, 0);
-  if (orderDiff) return orderDiff;
-  return toInt(a?.tree_x, 0) - toInt(b?.tree_x, 0) || Number(a?.id || 0) - Number(b?.id || 0);
-}
-
-function siblingSort(a, b) {
-  const aBirth = birthTime(a?.person);
-  const bBirth = birthTime(b?.person);
-  if (aBirth != null && bBirth != null && aBirth !== bBirth) return aBirth - bBirth;
-
-  const orderDiff = toInt(a?.sort_order, 0) - toInt(b?.sort_order, 0);
-  if (orderDiff) return orderDiff;
-
-  return personSort(a?.person || {}, b?.person || {});
-}
-
-function generationY(generation) {
-  return snap(CANVAS_PADDING + Math.max(0, toInt(generation, 1) - 1) * LEVEL_HEIGHT);
-}
-
-function simpleGenerationLayout(sourcePeople) {
-  const people = asArray(sourcePeople).map(normalizePerson);
-  const grouped = new Map();
-
-  people
-    .slice()
-    .sort((a, b) => {
-      const genDiff = toInt(a.generation, 1) - toInt(b.generation, 1);
-      if (genDiff) return genDiff;
-      const orderDiff = toInt(a.display_order, 0) - toInt(b.display_order, 0);
-      if (orderDiff) return orderDiff;
-      return a.id - b.id;
-    })
-    .forEach((person) => {
-      const generation = toInt(person.generation, 1) || 1;
-      if (!grouped.has(generation)) grouped.set(generation, []);
-      grouped.get(generation).push(person);
-    });
-
-  const generations = [...grouped.keys()].sort((a, b) => a - b);
-  const maxRowWidth = Math.max(
-    1,
-    ...generations.map((gen) => grouped.get(gen).length * CARD_WIDTH + Math.max(0, grouped.get(gen).length - 1) * X_GAP),
-  );
-
-  return people.map((person) => {
-    const generation = toInt(person.generation, 1) || 1;
-    const row = grouped.get(generation) || [];
-    const index = row.findIndex((item) => item.id === person.id);
-    const rowWidth = row.length * CARD_WIDTH + Math.max(0, row.length - 1) * X_GAP;
-    const x = CANVAS_PADDING + Math.max(0, (maxRowWidth - rowWidth) / 2) + Math.max(0, index) * (CARD_WIDTH + X_GAP);
-    const y = CANVAS_PADDING + Math.max(0, generation - 1) * Y_GAP;
-
-    return {
-      ...person,
-      tree_x: snap(x),
-      tree_y: snap(y),
-      display_order: Math.max(0, index),
-    };
-  });
-}
-
-function autoLayoutPeople(sourcePeople, families = [], childRows = []) {
-  const people = asArray(sourcePeople).map(normalizePerson);
-  if (!people.length) return [];
-
-  const peopleMap = new Map(people.map((person) => [Number(person.id), person]));
-  const familyRows = asArray(families).filter((family) => Number(family.id));
-  if (!familyRows.length) return simpleGenerationLayout(people);
-
-  const childrenByFamily = new Map();
-  const childIds = new Set();
-  asArray(childRows).forEach((row) => {
-    const familyId = Number(row.family_id);
-    const childId = Number(row.person_id);
-    if (!peopleMap.has(childId) || !Number.isFinite(familyId)) return;
-    if (!childrenByFamily.has(familyId)) childrenByFamily.set(familyId, []);
-    childrenByFamily.get(familyId).push({
-      person_id: childId,
-      sort_order: toInt(row.sort_order, 0),
-    });
-    childIds.add(childId);
-  });
-
-  const familyByParentId = new Map();
-  familyRows.forEach((family) => {
-    [family.father_id, family.mother_id].forEach((id) => {
-      const parentId = Number(id);
-      if (peopleMap.has(parentId) && !familyByParentId.has(parentId)) {
-        familyByParentId.set(parentId, family);
-      }
-    });
-  });
-
-  const mergePositionMaps = (target, source, offsetX = 0) => {
-    source.forEach((position, id) => {
-      target.set(id, { ...position, x: position.x + offsetX });
-    });
-  };
-
-  const layoutSingle = (person) => ({
-    width: CARD_WIDTH,
-    positions: new Map([[Number(person.id), { x: 0, y: generationY(person.generation) }]]),
-  });
-
-  const layoutFamily = (family, visitedFamilies = new Set()) => {
-    const familyId = Number(family.id);
-    if (visitedFamilies.has(familyId)) {
-      const parent = peopleMap.get(Number(family.father_id)) || peopleMap.get(Number(family.mother_id));
-      return parent ? layoutSingle(parent) : { width: CARD_WIDTH, positions: new Map() };
-    }
-
-    const nextVisited = new Set(visitedFamilies);
-    nextVisited.add(familyId);
-
-    const parents = [peopleMap.get(Number(family.father_id)), peopleMap.get(Number(family.mother_id))]
-      .filter(Boolean);
-    const children = asArray(childrenByFamily.get(familyId))
-      .map((row) => ({
-        ...row,
-        person: peopleMap.get(Number(row.person_id)),
-      }))
-      .filter((row) => row.person)
-      .sort(siblingSort)
-      .map((row) => row.person);
-
-    const childUnits = children.map((child) => {
-      const childFamily = familyByParentId.get(Number(child.id));
-      return childFamily ? layoutFamily(childFamily, nextVisited) : layoutSingle(child);
-    });
-    const childrenWidth = childUnits.length
-      ? childUnits.reduce((sum, unit) => sum + unit.width, 0) + Math.max(0, childUnits.length - 1) * SIBLING_GAP
-      : 0;
-    const parentWidth = parents.length
-      ? parents.length * CARD_WIDTH + Math.max(0, parents.length - 1) * SPOUSE_GAP
-      : CARD_WIDTH;
-    const width = Math.max(parentWidth, childrenWidth, CARD_WIDTH);
-    const positions = new Map();
-
-    const parentStartX = (width - parentWidth) / 2;
-    parents.forEach((parent, index) => {
-      positions.set(Number(parent.id), {
-        x: parentStartX + index * (CARD_WIDTH + SPOUSE_GAP),
-        y: generationY(parent.generation),
-      });
-    });
-
-    let childX = (width - childrenWidth) / 2;
-    childUnits.forEach((unit) => {
-      mergePositionMaps(positions, unit.positions, childX);
-      childX += unit.width + SIBLING_GAP;
-    });
-
-    return { width, positions };
-  };
-
-  const rootFamilies = familyRows
-    .filter((family) => {
-      const parentIds = [Number(family.father_id), Number(family.mother_id)].filter((id) => peopleMap.has(id));
-      return parentIds.length && parentIds.every((id) => !childIds.has(id));
-    })
-    .sort((a, b) => {
-      const aParent = peopleMap.get(Number(a.father_id)) || peopleMap.get(Number(a.mother_id));
-      const bParent = peopleMap.get(Number(b.father_id)) || peopleMap.get(Number(b.mother_id));
-      return toInt(aParent?.generation, 1) - toInt(bParent?.generation, 1) || personSort(aParent || {}, bParent || {});
-    });
-
-  const positioned = new Map();
-  let cursorX = CANVAS_PADDING;
-  rootFamilies.forEach((family) => {
-    const unit = layoutFamily(family);
-    mergePositionMaps(positioned, unit.positions, cursorX);
-    cursorX += unit.width + FAMILY_GAP;
-  });
-
-  const placedIds = new Set(positioned.keys());
-  const leftovers = people.filter((person) => !placedIds.has(Number(person.id)));
-  if (leftovers.length) {
-    simpleGenerationLayout(leftovers).forEach((person) => {
-      positioned.set(Number(person.id), {
-        x: person.tree_x + Math.max(0, cursorX - CANVAS_PADDING),
-        y: person.tree_y,
-      });
-    });
-  }
-
-  const laidOut = people.map((person) => {
-    const position = positioned.get(Number(person.id));
-    return {
-      ...person,
-      tree_x: snap(position?.x ?? person.tree_x),
-      tree_y: snap(position?.y ?? generationY(person.generation)),
-    };
-  });
-
-  return normalizeGenerationSpacing(assignDisplayOrder(laidOut), familyRows);
-}
-
-function hasManualLayout(people) {
-  return asArray(people).some((person) => toInt(person.tree_x, 0) !== 0 || toInt(person.tree_y, 0) !== 0);
-}
-
-function assignDisplayOrder(people) {
-  const grouped = new Map();
-  people.forEach((person) => {
-    const generation = toInt(person.generation, 1) || 1;
-    if (!grouped.has(generation)) grouped.set(generation, []);
-    grouped.get(generation).push(person);
-  });
-
-  const orderById = new Map();
-  grouped.forEach((members) => {
-    members
-      .slice()
-      .sort((a, b) => a.tree_x - b.tree_x || a.tree_y - b.tree_y || a.id - b.id)
-      .forEach((person, index) => orderById.set(person.id, index));
-  });
-
-  return people.map((person) => ({ ...person, display_order: orderById.get(person.id) ?? person.display_order ?? 0 }));
-}
-
-function getSpouseAwareGenerationUnits(row, families = []) {
-  const members = asArray(row).slice();
-  const personById = new Map(members.map((person) => [Number(person.id), person]));
-  const used = new Set();
-  const units = [];
-
-  asArray(families).forEach((family) => {
-    const father = personById.get(Number(family.father_id));
-    const mother = personById.get(Number(family.mother_id));
-    if (!father || !mother) return;
-    if (used.has(Number(father.id)) || used.has(Number(mother.id))) return;
-
-    const fatherGeneration = toInt(father.generation, 1) || 1;
-    const motherGeneration = toInt(mother.generation, 1) || 1;
-    if (fatherGeneration !== motherGeneration) return;
-
-    used.add(Number(father.id));
-    used.add(Number(mother.id));
-    units.push({
-      members: [mother, father],
-      x: Math.min(toInt(father.tree_x, 0), toInt(mother.tree_x, 0)),
-      sortPerson: mother,
-      isSpouseUnit: true,
-    });
-  });
-
-  members.forEach((person) => {
-    if (used.has(Number(person.id))) return;
-    units.push({
-      members: [person],
-      x: toInt(person.tree_x, 0),
-      sortPerson: person,
-      isSpouseUnit: false,
-    });
-  });
-
-  return units.sort((a, b) => a.x - b.x || personSort(a.sortPerson || {}, b.sortPerson || {}));
-}
-
-function getSpouseAwareGenerationRow(row, families = []) {
-  return getSpouseAwareGenerationUnits(row, families).flatMap((unit) => unit.members);
-}
-
-function getGenerationUnitWidth(unit) {
-  const members = asArray(unit?.members);
-  if (!members.length) return 0;
-  const innerGap = unit?.isSpouseUnit ? SPOUSE_GAP : X_GAP;
-  return members.length * CARD_WIDTH + Math.max(0, members.length - 1) * innerGap;
-}
-
-function getGenerationUnitsWidth(units) {
-  const safeUnits = asArray(units);
-  if (!safeUnits.length) return CARD_WIDTH;
-  return safeUnits.reduce((sum, unit) => sum + getGenerationUnitWidth(unit), 0) + Math.max(0, safeUnits.length - 1) * X_GAP;
-}
-
-function normalizeGenerationSpacing(people, families = []) {
-  const grouped = new Map();
-  asArray(people).forEach((person) => {
-    const generation = toInt(person.generation, 1) || 1;
-    if (!grouped.has(generation)) grouped.set(generation, []);
-    grouped.get(generation).push(person);
-  });
-
-  const generations = [...grouped.keys()].sort((a, b) => a - b);
-  const orderedUnits = new Map();
-
-  generations.forEach((generation) => {
-    const row = (grouped.get(generation) || [])
-      .slice()
-      .sort((a, b) => toInt(a.tree_x, 0) - toInt(b.tree_x, 0) || personSort(a, b));
-    orderedUnits.set(generation, getSpouseAwareGenerationUnits(row, families));
-  });
-
-  const maxRowWidth = Math.max(
-    CARD_WIDTH,
-    ...generations.map((generation) => getGenerationUnitsWidth(orderedUnits.get(generation) || [])),
-  );
-
-  const positioned = [];
-  generations.forEach((generation) => {
-    const units = orderedUnits.get(generation) || [];
-    const rowWidth = getGenerationUnitsWidth(units);
-    let cursorX = CANVAS_PADDING + Math.max(0, (maxRowWidth - rowWidth) / 2);
-    let displayOrder = 0;
-
-    units.forEach((unit) => {
-      const innerGap = unit.isSpouseUnit ? SPOUSE_GAP : X_GAP;
-      unit.members.forEach((person, memberIndex) => {
-        positioned.push({
-          ...person,
-          tree_x: snap(cursorX + memberIndex * (CARD_WIDTH + innerGap)),
-          tree_y: generationY(generation),
-          display_order: displayOrder,
-        });
-        displayOrder += 1;
-      });
-      cursorX += getGenerationUnitWidth(unit) + X_GAP;
-    });
-  });
-
-  return positioned.sort((a, b) => toInt(a.generation, 1) - toInt(b.generation, 1) || personSort(a, b));
-}
-
-function centerOf(person, cardSizes = {}) {
-  const size = getCardSize(cardSizes, person?.id);
-  return {
-    x: toInt(person.tree_x, 0) + size.width / 2,
-    y: toInt(person.tree_y, 0) + size.height / 2,
-  };
-}
-
-function bottomOf(person, cardSizes = {}) {
-  const size = getCardSize(cardSizes, person?.id);
-  return toInt(person.tree_y, 0) + size.height;
-}
-
-function rightOf(person, cardSizes = {}) {
-  const size = getCardSize(cardSizes, person?.id);
-  return toInt(person.tree_x, 0) + size.width;
-}
-
-function numbersFromPath(pathText) {
-  return String(pathText || "")
-    .match(/-?\d+(?:\.\d+)?/g)
-    ?.map(Number)
-    .filter(Number.isFinite) || [];
-}
-
-function getTreeExportBounds(people, lines = [], cardSizes = {}) {
-  if (!people.length) {
-    return { x: 0, y: 0, width: 1200, height: 800 };
-  }
-
-  const padding = 110;
-  const xs = [40];
-  const ys = [30];
-
-  people.forEach((person) => {
-    const size = getCardSize(cardSizes, person.id);
-    xs.push(toInt(person.tree_x, 0), toInt(person.tree_x, 0) + size.width);
-    ys.push(toInt(person.tree_y, 0), toInt(person.tree_y, 0) + size.height);
-  });
-
-  lines.forEach((line) => {
-    if (line.type === "route-control") return;
-    const nums = numbersFromPath(line.d);
-    for (let index = 0; index < nums.length; index += 2) {
-      if (Number.isFinite(nums[index])) xs.push(nums[index]);
-      if (Number.isFinite(nums[index + 1])) ys.push(nums[index + 1]);
-    }
-  });
-
-  const rawMinX = Math.min(...xs) - padding;
-  const rawMinY = Math.min(...ys) - padding;
-  const minX = Math.max(0, Math.floor(rawMinX));
-  const minY = Math.max(0, Math.floor(rawMinY));
-  const maxX = Math.ceil(Math.max(...xs) + padding);
-  const maxY = Math.ceil(Math.max(...ys) + padding);
-
-  return {
-    x: minX,
-    y: minY,
-    width: Math.max(900, maxX - minX),
-    height: Math.max(620, maxY - minY),
-  };
-}
-
-function getExportPixelRatio(bounds) {
-  const largestEdge = Math.max(bounds.width, bounds.height);
-  if (!largestEdge) return 2;
-  return Math.max(0.75, Math.min(2, EXPORT_MAX_CANVAS_EDGE / largestEdge));
-}
-
-function exportFileName(name) {
-  return `${String(name || "gia-pha")
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "gia-pha"}.png`;
-}
-
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.download = fileName;
-  link.href = url;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-
-function canvasToBlob(canvas, t) {
-  return new Promise((resolve, reject) => {
-    try {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error(t ? t("tree.messages.exportError") : "Export failed"));
-      }, "image/png", 0.95);
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function drawRoundRect(ctx, x, y, width, height, radius = 12) {
-  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-function drawTextFit(ctx, text, x, y, maxWidth, options = {}) {
-  const value = String(text || "").trim();
-  if (!value) return;
-  const fontSize = options.fontSize || 16;
-  const minFontSize = options.minFontSize || 10;
-  const weight = options.weight || "700";
-  const family = options.family || "Georgia, 'Times New Roman', serif";
-  let size = fontSize;
-  ctx.font = `${weight} ${size}px ${family}`;
-  while (size > minFontSize && ctx.measureText(value).width > maxWidth) {
-    size -= 1;
-    ctx.font = `${weight} ${size}px ${family}`;
-  }
-  ctx.fillText(value, x, y);
-}
-
-function drawSvgPathFallback(ctx, pathText) {
-  const nums = numbersFromPath(pathText);
-  if (nums.length < 4) return;
-  ctx.beginPath();
-  ctx.moveTo(nums[0], nums[1]);
-  for (let index = 2; index < nums.length; index += 2) {
-    if (Number.isFinite(nums[index]) && Number.isFinite(nums[index + 1])) {
-      ctx.lineTo(nums[index], nums[index + 1]);
-    }
-  }
-  ctx.stroke();
-}
-
-function drawTreeLine(ctx, line) {
-  if (!line?.d || line.type === "route-control") return;
-  ctx.save();
-  ctx.fillStyle = "transparent";
-  ctx.strokeStyle = line.type === "spouse" ? "#7f1d12" : line.color || "#1E3A8A";
-  ctx.lineWidth = line.type === "spouse" ? 4 : 4.5;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  try {
-    ctx.stroke(new Path2D(line.d));
-  } catch {
-    drawSvgPathFallback(ctx, line.d);
-  }
-  ctx.restore();
-}
-
-function drawPersonCardOnCanvas(ctx, person, cardSizes = {}, t) {
-  const size = getCardSize(cardSizes, person.id);
-  const x = toInt(person.tree_x, 0);
-  const y = toInt(person.tree_y, 0);
-  const width = size.width;
-  const height = size.height;
-  const isFounder = Number(person.generation) === 1 || Number(person.role_id) === 1;
-  const isChief = Number(person.role_id) === 2;
-  const name = String(fullName(person, t ? t("tree.card.fallbackName") : "Thành viên")).toUpperCase();
-  const birthText = formatDisplayDate(person.birth_date);
-  const deathText = formatDisplayDate(person.death_date);
-  const deceased = Number(person.is_living) === 0;
-  const lifeParts = [];
-  if (birthText && t) lifeParts.push(t("tree.card.born", { date: birthText }));
-  else if (birthText) lifeParts.push(`Sinh: ${birthText}`);
-
-  if (deceased && deathText && t) lifeParts.push(t("tree.card.died", { date: deathText }));
-  else if (deceased && deathText) lifeParts.push(`Mất: ${deathText}`);
-  const lifeText = lifeParts.join(" - ");
-
-  ctx.save();
-  ctx.shadowColor = "rgba(69, 38, 8, 0.24)";
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 8;
-  drawRoundRect(ctx, x, y, width, height, 12);
-  const grad = ctx.createLinearGradient(x, y, x, y + height);
-  if (isFounder) {
-    grad.addColorStop(0, "#e3352c");
-    grad.addColorStop(1, "#c42a22");
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.strokeStyle = "#9f2a1c";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  } else {
-    grad.addColorStop(0, "#fffbe0");
-    grad.addColorStop(1, "#ffd568");
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.strokeStyle = "#bd7d1f";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  if (isChief) {
-    ctx.fillStyle = "#9b1c12";
-    drawRoundRect(ctx, x + 12, y + 10, Math.min(width - 24, 92), 22, 10);
-    ctx.fill();
-    ctx.fillStyle = "#fff7ce";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "700 11px Georgia, 'Times New Roman', serif";
-    ctx.fillText(t ? t("tree.card.chief").toUpperCase() : "TỘC TRƯỞNG", x + 12 + Math.min(width - 24, 92) / 2, y + 21);
-  }
-
-  const iconY = y + Math.max(24, Math.min(45, height * 0.17));
-  const iconRadius = Math.max(12, Math.min(22, width * 0.12));
-  const iconX = x + width / 2;
-  ctx.beginPath();
-  ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2);
-  ctx.fillStyle = isFounder ? "#ffe5a3" : "#fff7d2";
-  ctx.fill();
-  ctx.strokeStyle = isFounder ? "#fff2c3" : "#9f2a1c";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = isFounder ? "#d1352b" : "#9f2a1c";
-  ctx.beginPath();
-  ctx.arc(iconX, iconY - 4, iconRadius * 0.22, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(iconX, iconY + 7, iconRadius * 0.36, Math.PI, 0);
-  ctx.stroke();
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = isFounder ? "#fffbe8" : "#8a2418";
-  drawTextFit(ctx, name, iconX, y + height * 0.48, width - 24, { fontSize: Math.max(12, Math.min(20, width * 0.105)), minFontSize: 9, weight: "800" });
-  const genText = t ? t("tree.card.generation", { count: person.generation || "?" }).toUpperCase() : `ĐỜI ${person.generation || "?"}`;
-  drawTextFit(ctx, genText, iconX, y + height * 0.61, width - 28, { fontSize: Math.max(11, Math.min(17, width * 0.09)), minFontSize: 9, weight: "800" });
-  if (lifeText) {
-    ctx.fillStyle = isFounder ? "#fff4c7" : "#9a4f20";
-    drawTextFit(ctx, lifeText, iconX, y + height - 22, width - 18, { fontSize: Math.max(9, Math.min(12, width * 0.06)), minFontSize: 8, weight: "700" });
-  }
-  ctx.restore();
-}
-
-async function renderFamilyTreePngBlob({ people, lines, cardSizes, clan, t }) {
-  const bounds = getTreeExportBounds(people, lines, cardSizes);
-  const pixelRatio = getExportPixelRatio(bounds);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.ceil(bounds.width * pixelRatio));
-  canvas.height = Math.max(1, Math.ceil(bounds.height * pixelRatio));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error(t ? t("tree.messages.exportError") : "Export failed");
-
-  ctx.save();
-  ctx.scale(pixelRatio, pixelRatio);
-  const bg = ctx.createLinearGradient(0, 0, bounds.width, bounds.height);
-  bg.addColorStop(0, "#fff7c8");
-  bg.addColorStop(0.48, "#f6da82");
-  bg.addColorStop(1, "#dda046");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, bounds.width, bounds.height);
-
-  ctx.translate(-bounds.x, -bounds.y);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.38)";
-  drawRoundRect(ctx, 42, 26, 240, 70, 12);
-  ctx.fill();
-  ctx.fillStyle = "#7d1f13";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.font = "800 15px Georgia, 'Times New Roman', serif";
-  ctx.fillText(t ? t("tree.title").toUpperCase() : "GIA PHẢ", 58, 52);
-  ctx.font = "900 32px Georgia, 'Times New Roman', serif";
-  ctx.fillText(String(clan?.clan_name || (t ? t("tree.card.fallbackName") : "Dòng họ")).toUpperCase(), 58, 88);
-
-  asArray(lines).forEach((line) => drawTreeLine(ctx, line));
-  asArray(people).forEach((person) => drawPersonCardOnCanvas(ctx, person, cardSizes, t));
-  ctx.restore();
-
-  return canvasToBlob(canvas, t);
-}
-
-function buildTreeLines(people, families, childRows, lineRoutes = {}, cardSizes = {}) {
-  const peopleMap = new Map(people.map((person) => [Number(person.id), person]));
-  const childrenByFamily = new Map();
-
-  asArray(childRows).forEach((row) => {
-    const familyId = Number(row.family_id);
-    const childId = Number(row.person_id);
-    if (!childrenByFamily.has(familyId)) childrenByFamily.set(familyId, []);
-    childrenByFamily.get(familyId).push({
-      person_id: childId,
-      sort_order: toInt(row.sort_order, 0),
-    });
-  });
-
-  const lines = [];
-  const branchFamilyKeys = new Map();
-  const familyRows = asArray(families);
-
-  familyRows.forEach((family) => {
-    const familyId = Number(family.id);
-    const parents = [peopleMap.get(Number(family.father_id)), peopleMap.get(Number(family.mother_id))].filter(Boolean);
-    const children = asArray(childrenByFamily.get(familyId)).filter((row) => peopleMap.has(Number(row.person_id)));
-    if (!parents.length || !children.length) return;
-
-    const lineParent = peopleMap.get(Number(family.father_id)) || parents[0];
-    const parentGeneration = toInt(lineParent?.generation, 1);
-    const groupKey = `${parentGeneration}:${familyId}`;
-    const parentX = Math.min(...parents.map((parent) => toInt(parent.tree_x, 0)));
-
-    if (!branchFamilyKeys.has(groupKey)) {
-      branchFamilyKeys.set(groupKey, {
-        generation: parentGeneration,
-        minX: parentX,
-      });
-      return;
-    }
-
-    const current = branchFamilyKeys.get(groupKey);
-    current.minX = Math.min(current.minX, parentX);
-  });
-
-  const branchTierByFamily = new Map();
-  const colorIndexByFamily = new Map();
-  const familyGroupsByGeneration = new Map();
-  branchFamilyKeys.forEach((value, key) => {
-    if (!familyGroupsByGeneration.has(value.generation)) familyGroupsByGeneration.set(value.generation, []);
-    familyGroupsByGeneration.get(value.generation).push({ key, ...value });
-  });
-  familyGroupsByGeneration.forEach((groups) => {
-    groups
-      .slice()
-      .sort((a, b) => a.minX - b.minX || String(a.key).localeCompare(String(b.key)))
-      .forEach((group, index) => {
-        branchTierByFamily.set(group.key, index);
-        colorIndexByFamily.set(group.key, index);
-      });
-  });
-
-  familyRows.forEach((family) => {
-    const familyId = Number(family.id);
-    if (!Number.isFinite(familyId)) return;
-
-    const father = peopleMap.get(Number(family.father_id));
-    const mother = peopleMap.get(Number(family.mother_id));
-    const parents = [father, mother].filter(Boolean);
-    const children = asArray(childrenByFamily.get(Number(family.id)))
-      .map((row) => ({
-        ...row,
-        person: peopleMap.get(Number(row.person_id)),
-      }))
-      .filter((row) => row.person)
-      .sort(siblingSort)
-      .map((row) => row.person)
-      .sort((a, b) => a.tree_x - b.tree_x || personSort(a, b));
-
-    let coupleJoinPoint = null;
-
-    if (father && mother) {
-      const left = toInt(father.tree_x, 0) <= toInt(mother.tree_x, 0) ? father : mother;
-      const right = left === father ? mother : father;
-      const leftEdge = rightOf(left, cardSizes);
-      const rightEdge = toInt(right.tree_x, 0);
-      const y = Math.round((centerOf(father, cardSizes).y + centerOf(mother, cardSizes).y) / 2);
-      const startX = rightEdge > leftEdge ? leftEdge : Math.round(centerOf(left, cardSizes).x);
-      const endX = rightEdge > leftEdge ? rightEdge : Math.round(centerOf(right, cardSizes).x);
-      coupleJoinPoint = {
-        x: Math.round((startX + endX) / 2),
-        y,
-      };
-      const savedSpouseY = Number(lineRoutes?.[familyId]?.spouseY);
-      const spouseMinY = Math.min(toInt(father.tree_y, 0), toInt(mother.tree_y, 0)) + 24;
-      const spouseMaxY = Math.max(bottomOf(father, cardSizes), bottomOf(mother, cardSizes)) - 24;
-      const spouseY = snap(clamp(Number.isFinite(savedSpouseY) ? savedSpouseY : y, spouseMinY, spouseMaxY));
-      coupleJoinPoint.y = spouseY;
-
-      lines.push({
-        id: `family-${familyId}-spouse`,
-        familyId,
-        routeKey: "spouseY",
-        type: "spouse",
-        dragAxis: "y",
-        minY: spouseMinY,
-        maxY: spouseMaxY,
-        d: `M ${startX} ${spouseY} H ${endX}`,
-      });
-    }
-
-    if (!parents.length || !children.length) return;
-
-    const lineParent = father || parents[0];
-    const parentX = coupleJoinPoint ? coupleJoinPoint.x : Math.round(centerOf(lineParent, cardSizes).x);
-    const parentBottomY = coupleJoinPoint ? coupleJoinPoint.y : bottomOf(lineParent, cardSizes);
-    const childCenters = children.map((child) => ({
-      x: centerOf(child, cardSizes).x,
-      y: toInt(child.tree_y, 0),
-    }));
-    const busMinX = Math.min(parentX, ...childCenters.map((item) => item.x));
-    const busMaxX = Math.max(parentX, ...childCenters.map((item) => item.x));
-    const firstChildY = Math.min(...childCenters.map((item) => item.y));
-    const familyKey = `${toInt(lineParent.generation, 1)}:${Number(family.id)}`;
-    const sourceTier = branchTierByFamily.get(familyKey) || 0;
-    const minBranchY = parentBottomY + 38;
-    const maxBranchY = Math.max(minBranchY, firstChildY - 32);
-    const naturalBaseY = Math.round(Math.min(Math.max(minBranchY, firstChildY - 72) + sourceTier * SOURCE_BRANCH_STEP, maxBranchY));
-    const savedBaseY = Number(lineRoutes?.[familyId]?.baseY);
-    const baseY = snap(clamp(Number.isFinite(savedBaseY) ? savedBaseY : naturalBaseY, minBranchY, maxBranchY));
-    const colorIndex = colorIndexByFamily.get(familyKey) || 0;
-    const color = BLOOD_LINE_COLORS[colorIndex % BLOOD_LINE_COLORS.length];
-    const lineId = `family-${familyId}`;
-
-    const bloodDragMeta = { familyId, routeKey: "baseY", dragAxis: "y", minY: minBranchY, maxY: maxBranchY };
-    lines.push({ id: `${lineId}-parent`, ...bloodDragMeta, type: "blood", color, d: `M ${parentX} ${parentBottomY} V ${baseY}` });
-    lines.push({ id: `${lineId}-bus`, ...bloodDragMeta, type: "blood", color, d: `M ${busMinX} ${baseY} H ${busMaxX}` });
-    childCenters.forEach((child) => {
-      lines.push({ id: `${lineId}-child-${child.x}`, ...bloodDragMeta, type: "blood", color, d: `M ${child.x} ${baseY} V ${child.y}` });
-    });
-
-    lines.push({
-      id: `${lineId}-control`,
-      familyId,
-      routeKey: "baseY",
-      dragAxis: "y",
-      type: "route-control",
-      color,
-      x: (busMinX + busMaxX) / 2,
-      y: baseY,
-      minY: minBranchY,
-      maxY: maxBranchY,
-    });
-  });
-
-  return lines;
-}
-
-function findParentFamilyForChild(personId, families, childRows) {
-  const child = asArray(childRows).find((row) => Number(row.person_id) === Number(personId));
-  if (!child) return null;
-  return asArray(families).find((family) => Number(family.id) === Number(child.family_id)) || null;
-}
-
-function findFamilyForParent(personId, families) {
-  return getFamiliesForPerson(personId, families)[0] || null;
-}
-
-function getFamiliesForPerson(personId, families) {
-  const id = Number(personId);
-  if (!Number.isFinite(id) || id <= 0) return [];
-  return asArray(families).filter(
-    (family) => Number(family.father_id) === Number(personId) || Number(family.mother_id) === Number(personId),
-  );
-}
-
-function findSpouseFamily(personId, spouseId, families) {
-  const person = Number(personId);
-  const spouse = Number(spouseId);
-  if (!Number.isFinite(person) || !Number.isFinite(spouse) || person <= 0 || spouse <= 0) return null;
-  return asArray(families).find((family) => {
-    const fatherId = Number(family.father_id);
-    const motherId = Number(family.mother_id);
-    return (
-      (fatherId === person && motherId === spouse) ||
-      (fatherId === spouse && motherId === person)
-    );
-  }) || null;
-}
-
-function isPersonLiving(personId, people = []) {
-  const person = asArray(people).find((item) => Number(item.id) === Number(personId));
-  if (!person) return true;
-  return Number(person.is_living) !== 0 && !person.death_date;
-}
-
-function isActiveFamilyForPerson(family, personId, people = []) {
-  const id = Number(personId);
-  const spouseId = Number(family?.father_id) === id ? Number(family?.mother_id) : Number(family?.father_id);
-  return (
-    Number.isFinite(spouseId) &&
-    spouseId > 0 &&
-    String(family?.relationship_status || "active") === "active" &&
-    isPersonLiving(spouseId, people)
-  );
-}
-
-function getActiveFamiliesForPerson(personId, families, people = []) {
-  return getFamiliesForPerson(personId, families).filter((family) => isActiveFamilyForPerson(family, personId, people));
-}
-
-function getSpousesForPerson(personId, families, people = []) {
-  return getFamiliesForPerson(personId, families)
-    .map((family) => {
-      const id = Number(personId);
-      const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
-      return asArray(people).find((person) => Number(person.id) === spouseId) || null;
-    })
-    .filter(Boolean);
-}
-
-function getChildrenForFamily(familyId, childRows) {
-  return asArray(childRows)
-    .filter((row) => Number(row.family_id) === Number(familyId))
-    .map((row) => Number(row.person_id))
-    .filter((id) => Number.isFinite(id) && id > 0);
-}
-
-function getPreferredChildFamilyForParent(parentId, families, people = []) {
-  const parentFamilies = getFamiliesForPerson(parentId, families);
-  if (!parentFamilies.length) return { family: null };
-  if (parentFamilies.length === 1) return { family: parentFamilies[0] };
-
-  const activeFamilies = parentFamilies.filter((family) => isActiveFamilyForPerson(family, parentId, people));
-  if (activeFamilies.length === 1) return { family: activeFamilies[0] };
-
-  const spouseFamilies = parentFamilies.filter((family) => {
-    const id = Number(parentId);
-    const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
-    return Number.isFinite(spouseId) && spouseId > 0 && String(family.relationship_status || "active") === "active";
-  });
-  if (spouseFamilies.length === 1) return { family: spouseFamilies[0] };
-
-  return { family: null, error: "multipleFamilies" };
-}
-
-function buildChildRelationPayload(parentId, childId, families, childRows, people = []) {
-  const sourceId = Number(parentId);
-  const targetId = Number(childId);
-  const { family, error } = getPreferredChildFamilyForParent(sourceId, families, people);
-  if (error) return { error };
-
-  const existingChildren = family ? getChildrenForFamily(family.id, childRows) : [];
-  const childrenIds = Array.from(new Set([...existingChildren, targetId])).filter(
-    (id) => Number(id) !== sourceId,
-  );
-
-  return {
-    data: {
-      person_id: sourceId,
-      ...(family ? { family_id: family.id } : {}),
-      children_person_ids: childrenIds,
-    },
-  };
-}
-
-function findSpouse(person, families, people) {
-  if (!person) return null;
-  const family = getActiveFamiliesForPerson(person.id, families, people)[0] || findFamilyForParent(person.id, families);
-  if (!family) return null;
-  const spouseId = Number(family.father_id) === Number(person.id) ? Number(family.mother_id) : Number(family.father_id);
-  return people.find((item) => Number(item.id) === spouseId) || null;
-}
-
-function spouseIdsForPerson(personId, families) {
-  const id = Number(personId);
-  if (!Number.isFinite(id) || id <= 0) return [];
-  return asArray(families)
-    .filter((family) => Number(family.father_id) === id || Number(family.mother_id) === id)
-    .map((family) => (Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id)))
-    .filter((spouseId) => Number.isFinite(spouseId) && spouseId > 0);
-}
-
-function hasDifferentSpouse(personId, allowedSpouseId, families, people = []) {
-  const allowed = Number(allowedSpouseId);
-  return getActiveFamiliesForPerson(personId, families, people).some((family) => {
-    const id = Number(personId);
-    const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
-    return Number(spouseId) !== allowed;
-  });
-}
-
-const relationLabels = {
-  spouse: "tree.relations.spouse",
-  child: "tree.relations.child",
-  father: "tree.relations.father",
-  mother: "tree.relations.mother",
-};
-
-function relationCandidates(relation, selectedPerson, people, linkedIds = new Set(), families = []) {
-  const selectedGeneration = toInt(selectedPerson?.generation, 1) || 1;
-  const selectedId = Number(selectedPerson?.id);
-  return asArray(people)
-    .filter((person) => Number(person.id) !== selectedId)
-    .filter((person) => {
-      const personId = Number(person.id);
-      if (linkedIds.has(personId)) return true;
-      if (relation === "father") return Number(person.gender) !== 2;
-      if (relation === "mother") return Number(person.gender) !== 1;
-      if (relation === "spouse") {
-        const sameGeneration = !selectedPerson?.generation || !person.generation || Number(person.generation) === Number(selectedPerson.generation);
-        const oppositeGender = !selectedPerson?.gender || !person.gender || Number(person.gender) !== Number(selectedPerson.gender);
-        const selectedAvailable = !hasDifferentSpouse(selectedId, personId, families, people);
-        const candidateAvailable = !hasDifferentSpouse(personId, selectedId, families, people);
-        return sameGeneration && oppositeGender && selectedAvailable && candidateAvailable;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const linkedDiff = Number(linkedIds.has(Number(b.id))) - Number(linkedIds.has(Number(a.id)));
-      if (linkedDiff) return linkedDiff;
-      if (relation === "father" || relation === "mother") {
-        const genDiff = Math.abs(toInt(a.generation, 1) - Math.max(1, selectedGeneration - 1)) -
-          Math.abs(toInt(b.generation, 1) - Math.max(1, selectedGeneration - 1));
-        if (genDiff) return genDiff;
-      }
-      if (relation === "child") {
-        const genDiff = Math.abs(toInt(a.generation, 1) - (selectedGeneration + 1)) -
-          Math.abs(toInt(b.generation, 1) - (selectedGeneration + 1));
-        if (genDiff) return genDiff;
-      }
-      return personSort(a, b);
-    });
-}
-
-function relationLinkedIds(relation, selectedPerson, families, childRows) {
-  if (!selectedPerson) return new Set();
-  const selectedId = Number(selectedPerson.id);
-
-  if (relation === "father" || relation === "mother") {
-    const family = findParentFamilyForChild(selectedId, families, childRows);
-    const id = relation === "father" ? Number(family?.father_id) : Number(family?.mother_id);
-    return Number.isFinite(id) && id > 0 ? new Set([id]) : new Set();
-  }
-
-  if (relation === "spouse") {
-    return new Set(spouseIdsForPerson(selectedId, families));
-  }
-
-  if (relation === "child") {
-    const familyIds = new Set(getFamiliesForPerson(selectedId, families).map((family) => Number(family.id)));
-    if (!familyIds.size) return new Set();
-    return new Set(
-      asArray(childRows)
-        .filter((row) => familyIds.has(Number(row.family_id)))
-        .map((row) => Number(row.person_id))
-        .filter((id) => Number.isFinite(id) && id > 0),
-    );
-  }
-
-  return new Set();
-}
-
-function blankCreateForm(relation, selectedPerson, spouse) {
-  const selectedGeneration = toInt(selectedPerson?.generation, 1) || 1;
-  const selectedX = toInt(selectedPerson?.tree_x, CANVAS_PADDING);
-  const selectedY = toInt(selectedPerson?.tree_y, CANVAS_PADDING);
-  const relationGender =
-    relation === "spouse"
-      ? Number(selectedPerson?.gender) === 1
-        ? "2"
-        : "1"
-      : relation === "mother"
-        ? "2"
-        : "1";
-  const generation =
-    relation === "child"
-      ? selectedGeneration + 1
-      : relation === "father" || relation === "mother"
-        ? Math.max(1, selectedGeneration - 1)
-        : selectedGeneration;
-  const x =
-    relation === "spouse"
-      ? selectedX + CARD_WIDTH + X_GAP
-      : relation === "child"
-        ? selectedX
-        : relation === "father" || relation === "mother"
-          ? selectedX + (relation === "mother" ? CARD_WIDTH + X_GAP : 0)
-          : CANVAS_PADDING;
-  const y =
-    relation === "child"
-      ? selectedY + Y_GAP
-      : relation === "father" || relation === "mother"
-        ? Math.max(80, selectedY - Y_GAP)
-        : relation === "spouse"
-          ? selectedY
-          : CANVAS_PADDING;
-
-  return {
-  display_name: "",
-  surname: selectedPerson?.surname || spouse?.surname || "",
-  middle_name: "",
-  first_name: "",
-  gender: relationGender,
-  birth_date: "",
-  death_date: "",
-  is_living: "1",
-  generation: String(generation),
-  branch: selectedPerson?.branch != null ? String(selectedPerson.branch) : "",
-  hometown: selectedPerson?.hometown || "",
-  avatar_url: "",
-  bio: "",
-  note: "",
-  tree_x: String(Math.round(x)),
-  tree_y: String(Math.round(y)),
-
-  account_email: "",
-  account_password: "",
-};
-}
-
-function LunarDateHint({ value, label }) {
-  const { t } = useLanguage();
-  const text = formatLunarFullFromSolar(value);
-  if (!text) return null;
-  const displayLabel = label || t("tree.inspector.fields.lunarBirth");
-  return <small className="fte-lunarHint">{displayLabel}: {text}</small>;
-}
-
-function personToForm(person) {
-  return {
-    display_name: person?.display_name || "",
-    surname: person?.surname || "",
-    middle_name: person?.middle_name || "",
-    first_name: person?.first_name || "",
-    gender: person?.gender == null ? "" : String(person.gender),
-    birth_date: dateInput(person?.birth_date),
-    death_date: dateInput(person?.death_date),
-    is_living: Number(person?.is_living) === 0 ? "0" : "1",
-    role_id: person?.role_id == null ? "" : String(person.role_id),
-    generation: person?.generation != null ? String(person.generation) : "1",
-    branch: person?.branch != null ? String(person.branch) : "",
-    hometown: person?.hometown || "",
-    address: person?.address || "",
-    phone: person?.phone || "",
-    email: person?.email || "",
-    avatar_url: person?.avatar_url || "",
-    bio: person?.bio || "",
-    note: person?.note || "",
-  };
-}
-
-function extractCreatedPersonId(response) {
-  const candidates = [
-    response?.id,
-    response?.person_id,
-    response?.person?.id,
-    response?.data?.id,
-    response?.data?.person_id,
-    response?.data?.person?.id,
-    response?.result?.id,
-    response?.result?.person_id,
-    response?.result?.person?.id,
-  ];
-
-  for (const value of candidates) {
-    const id = Number(value);
-    if (Number.isFinite(id) && id > 0) return id;
-  }
-
-  return null;
-}
-
-function PersonCard({
-  person,
-  selected,
-  dragging,
-  canDrag = true,
-  canEdit = false,
-  canEditRole = false,
-  canDelete = false,
-  founder = false,
-  size = { width: CARD_WIDTH, height: CARD_HEIGHT },
-  onPointerDown,
-  onResizePointerDown,
-  onEdit,
-  onDelete,
-  onQuickCreate,
-}) {
-  const { t } = useLanguage();
-  const name = fullName(person, t("tree.card.fallbackName"));
-  const genderClass =
-    Number(person.gender) === 1
-      ? "is-male"
-      : Number(person.gender) === 2
-      ? "is-female"
-      : "is-unknown";
-
-  const birthText = formatDisplayDate(person.birth_date);
-  const deathText = formatDisplayDate(person.death_date);
-  const deceased = Number(person.is_living) === 0;
-  const isClanChief = Number(person.role_id) === 2;
-
-  const lifeParts = [];
-  if (birthText) lifeParts.push(t("tree.card.born", { date: birthText }));
-  if (deceased && deathText) lifeParts.push(t("tree.card.died", { date: deathText }));
-  const lifeText = lifeParts.join(" - ");
-
-  const stopActionPointer = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  return (
-    <div
-      className={`fte-personCard ${genderClass} ${founder ? "is-founder" : ""} ${
-        deceased ? "is-deceased" : ""
-      } ${selected ? "is-selected" : ""} ${dragging ? "is-dragging" : ""}`}
-      style={{ left: person.tree_x, top: person.tree_y, width: size.width, height: size.height }}
-      role="group"
-      tabIndex={0}
-      title={name}
-      onPointerDown={(event) => onPointerDown(event, person)}
-      data-static={!canDrag}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onEdit(person);
-        }
-      }}
-    >
-      {canEdit || canDelete ? (
-        <div className="fte-cardHoverActions" aria-label={t("posts.modal.create.tabs.ariaLabel")}>
-          {canEdit ? (
-            <button
-              type="button"
-              className="is-create"
-              title={t("tree.card.addRelation")}
-              onPointerDown={stopActionPointer}
-              onClick={(event) => {
-                event.stopPropagation();
-                onQuickCreate?.(person);
-              }}
-            >
-              <span className="material-symbols-outlined">add</span>
-            </button>
-          ) : null}
-
-          {canEdit ? (
-            <button
-              type="button"
-              title={t("tree.card.edit")}
-              onPointerDown={stopActionPointer}
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit(person);
-              }}
-            >
-              <span className="material-symbols-outlined">edit</span>
-            </button>
-          ) : null}
-
-          {canDelete ? (
-            <button
-              type="button"
-              className="is-danger"
-              title={t("tree.card.delete")}
-              onPointerDown={stopActionPointer}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete(person);
-              }}
-            >
-              <span className="material-symbols-outlined">delete</span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {isClanChief ? <div className="fte-chiefBadge">{t("tree.card.chief")}</div> : null}
-
-      <div className={`fte-ancestorIcon ${person.avatar_url ? "has-photo" : ""}`} aria-hidden="true">
-        {person.avatar_url ? (
-          <img className="fte-mainPhoto" src={person.avatar_url} alt={name} draggable="false" />
-        ) : (
-          <span className="material-symbols-outlined">person</span>
-        )}
-      </div>
-
-      <div className="fte-cardName">{String(name).toUpperCase()}</div>
-      <div className="fte-cardGeneration">{t("tree.card.generation", { count: person.generation || "?" })}</div>
-      {lifeText ? <div className="fte-cardMeta">{lifeText}</div> : null}
-
-      {canDrag ? (
-        <span
-          className="fte-resizeHandle"
-          title={t("tree.card.resize")}
-          onPointerDown={(event) => onResizePointerDown?.(event, person)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function PersonInspector({
-  person,
-  spouse,
-  onClose,
-  onSave,
-  onDelete,
-  onCreateRelation,
-  saving,
-  canEdit = false,
-  canEditRole = false,
-  canEditRelations = false,
-  canDelete = false,
-  notice = "",
-}) {
-  const { t } = useLanguage();
-  const [form, setForm] = useState(() => personToForm(person));
-
-  useEffect(() => {
-    setForm(personToForm(person));
-  }, [person?.id]);
-
-  if (!person) {
-    return null;
-  }
-
-  const setField = (field, value) =>
-    setForm((current) => {
-      if (field === "is_living" && value === "1") {
-        return { ...current, is_living: value, death_date: "" };
-      }
-      return { ...current, [field]: value };
-    });
-
-  const handleFullNameChange = (e) => {
-    const fullNameValue = e.target.value;
-    const parts = fullNameValue.trim().split(/\s+/);
-
-    let surname = "";
-    let middle_name = "";
-    let first_name = "";
-
-    if (parts.length === 1 && parts[0] !== "") {
-      first_name = parts[0];
-    } else if (parts.length === 2) {
-      surname = parts[0];
-      first_name = parts[1];
-    } else if (parts.length >= 3) {
-      surname = parts[0];
-      first_name = parts[parts.length - 1];
-      middle_name = parts.slice(1, parts.length - 1).join(" ");
-    }
-
-    setForm((current) => ({
-      ...current,
-      display_name: fullNameValue,
-      surname,
-      middle_name,
-      first_name,
-    }));
-  };
-
-  return (
-    <div className="fte-modalOverlay fte-inspectorOverlay" role="presentation" onMouseDown={onClose}>
-      <aside className="fte-inspector" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="fte-inspectorHeader">
-          <div>
-            <span>{t("tree.inspector.title")}</span>
-            <h3>{fullName(person, t("tree.card.fallbackName"))}</h3>
-            <p>{spouse ? t("tree.inspector.spouseLabel", { name: fullName(spouse) }) : t("tree.inspector.fallbackSubtitle")}</p>
-          </div>
-          <button type="button" className="fte-iconButton" onClick={onClose} title={t("tree.inspector.closePanel")}>
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        {canEditRelations ? (
-          <div className="fte-inspectorActions">
-            <button type="button" onClick={() => onCreateRelation("spouse")}>
-              <span className="material-symbols-outlined">favorite</span>
-              {t("tree.inspector.actions.addSpouse")}
-            </button>
-            <button type="button" onClick={() => onCreateRelation("child")}>
-              <span className="material-symbols-outlined">person_add</span>
-              {t("tree.inspector.actions.addChild")}
-            </button>
-            <button type="button" onClick={() => onCreateRelation("father")}>
-              <span className="material-symbols-outlined">man</span>
-              {t("tree.inspector.actions.addFather")}
-            </button>
-            <button type="button" onClick={() => onCreateRelation("mother")}>
-              <span className="material-symbols-outlined">woman</span>
-              {t("tree.inspector.actions.addMother")}
-            </button>
-          </div>
-        ) : null}
-
-        {notice ? <div className="fte-readOnlyNote">{notice}</div> : null}
-
-        <div className="fte-formGrid">
-          <label>
-            {t("tree.inspector.fields.displayName")}
-            <input value={form.display_name} onChange={handleFullNameChange} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.surname")}
-            <input value={form.surname} onChange={(event) => setField("surname", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.middleName")}
-            <input value={form.middle_name} onChange={(event) => setField("middle_name", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.firstName")}
-            <input value={form.first_name} onChange={(event) => setField("first_name", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.gender")}
-            <select value={form.gender} onChange={(event) => setField("gender", event.target.value)} disabled={!canEdit}>
-              <option value="">{t("tree.inspector.fields.genderOptions.unknown")}</option>
-              <option value="1">{t("tree.inspector.fields.genderOptions.male")}</option>
-              <option value="2">{t("tree.inspector.fields.genderOptions.female")}</option>
-            </select>
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.role")}
-            <select
-              value={form.role_id}
-              onChange={(event) => setField("role_id", event.target.value)}
-              disabled={!canEditRole || !person.account_id}
-            >
-              <option value="">{t("tree.inspector.fields.roleOptions.noAccount")}</option>
-              <option value="2">{t("tree.inspector.fields.roleOptions.chief")}</option>
-              <option value="3">{t("tree.inspector.fields.roleOptions.member")}</option>
-            </select>
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.status")}
-            <select value={form.is_living} onChange={(event) => setField("is_living", event.target.value)} disabled={!canEdit}>
-              <option value="1">{t("tree.inspector.fields.statusOptions.living")}</option>
-              <option value="0">{t("tree.inspector.fields.statusOptions.deceased")}</option>
-            </select>
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.birthDate")}
-            <DateInput
-              value={form.birth_date}
-              onChange={(event) => setField("birth_date", event.target.value)}
-              disabled={!canEdit}
-            />
-            <LunarDateHint value={form.birth_date} label={t("tree.inspector.fields.lunarBirth")} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.deathDate")}
-            <DateInput
-              value={form.death_date}
-              onChange={(event) => setField("death_date", event.target.value)}
-              disabled={!canEdit || form.is_living === "1"}
-            />
-            <LunarDateHint value={form.death_date} label={t("tree.inspector.fields.lunarDeath")} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.generation")}
-            <input
-              type="number"
-              min="1"
-              value={form.generation}
-              onChange={(event) => setField("generation", event.target.value)}
-              disabled={!canEdit}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.branch")}
-            <input value={form.branch} onChange={(event) => setField("branch", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.hometown")}
-            <input value={form.hometown} onChange={(event) => setField("hometown", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.address")}
-            <input value={form.address} onChange={(event) => setField("address", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.phone")}
-            <input value={form.phone} onChange={(event) => setField("phone", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.email")}
-            <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.avatarUrl")}
-            <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.bio")}
-            <textarea rows={3} value={form.bio} onChange={(event) => setField("bio", event.target.value)} disabled={!canEdit} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.note")}
-            <textarea rows={2} value={form.note} onChange={(event) => setField("note", event.target.value)} disabled={!canEdit} />
-          </label>
-        </div>
-
-        {canEdit ? (
-          <div className="fte-inspectorFooter">
-            <button type="button" className="fte-primaryButton" disabled={saving} onClick={() => onSave(form)}>
-              <span className="material-symbols-outlined">save</span>
-              {saving ? t("tree.inspector.actions.saving") : t("tree.inspector.actions.save")}
-            </button>
-
-            {canDelete ? (
-              <button type="button" className="fte-dangerButton" disabled={saving} onClick={onDelete}>
-                <span className="material-symbols-outlined">delete</span>
-                {t("tree.inspector.actions.delete")}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-      </aside>
-    </div>
-  );
-}
-
-function RelationSelectDialog({
-  relation,
-  selectedPerson,
-  people,
-  families,
-  childRows,
-  value,
-  onChange,
-  onCancel,
-  onSubmit,
-  onUnlink,
-  onPickOnTree,
-  saving,
-}) {
-  const { t } = useLanguage();
-  const [query, setQuery] = useState("");
-  if (!relation || !selectedPerson) return null;
-
-  const linkedIds = relationLinkedIds(relation, selectedPerson, families, childRows);
-  const candidates = relationCandidates(relation, selectedPerson, people, linkedIds, families);
-  const normalizedQuery = query.trim().toLowerCase();
-  const filtered = candidates.filter((person) => {
-    if (!normalizedQuery) return true;
-    return `${fullName(person)} ${person.email || ""} ${person.phone || ""}`.toLowerCase().includes(normalizedQuery);
-  });
-  const title = t(`tree.relationModal.titles.${relation}`) || t("tree.relationModal.titles.generic");
-  const selectedLinked = linkedIds.has(Number(value));
-  const canUnlink = linkedIds.size > 0 && (relation !== "child" || selectedLinked);
-
-  return (
-    <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
-      <div className="fte-modal fte-relationModal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="fte-modalHeader">
-          <div>
-            <span>{fullName(selectedPerson, t("tree.card.fallbackName"))}</span>
-            <h3>{title}</h3>
-          </div>
-          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div className="fte-relationPicker">
-          <button type="button" className="fte-pickOnTreeButton" disabled={saving} onClick={onPickOnTree}>
-            <span className="material-symbols-outlined">account_tree</span>
-            {t("tree.relationModal.pickOnTree")}
-          </button>
-          <div className="fte-relationDivider"><span>{t("tree.relationModal.divider")}</span></div>
-          <label>
-            {t("tree.relationModal.searchLabel")}
-            <input
-              autoFocus
-              value={query}
-              placeholder={t("tree.relationModal.searchPlaceholder")}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <div className="fte-relationList">
-            {filtered.length ? (
-              filtered.map((person) => (
-                <button
-                  key={person.id}
-                  type="button"
-                  className={`fte-relationOption ${Number(value) === Number(person.id) ? "is-selected" : ""} ${
-                    linkedIds.has(Number(person.id)) ? "is-linked" : ""
-                  }`}
-                  onClick={() => onChange(person.id)}
-                >
-                  <span className="fte-relationAvatar">
-                    {person.avatar_url ? <img src={person.avatar_url} alt={fullName(person)} /> : fullName(person).charAt(0).toUpperCase()}
-                  </span>
-                  <span>
-                    <strong>{fullName(person, t("tree.card.fallbackName"))}</strong>
-                    <small>
-                      {t("tree.card.generation", { count: person.generation || "?" })}
-                      {person.gender ? ` · ${Number(person.gender) === 1 ? t("tree.inspector.fields.genderOptions.male") : t("tree.inspector.fields.genderOptions.female")}` : ""}
-                    </small>
-                  </span>
-                  {linkedIds.has(Number(person.id)) ? <em>{t("tree.relationModal.isLinked")}</em> : null}
-                </button>
-              ))
-            ) : (
-              <div className="fte-relationEmpty">{t("tree.relationModal.noResults")}</div>
-            )}
-          </div>
-        </div>
-
-        <div className="fte-modalFooter">
-          <button type="button" className="fte-dangerButton" disabled={saving || !canUnlink} onClick={onUnlink}>
-            <span className="material-symbols-outlined">link_off</span>
-            {t("tree.relationModal.actions.unlink")}
-          </button>
-          <button type="button" className="fte-primaryButton" disabled={saving || !value} onClick={onSubmit}>
-            <span className="material-symbols-outlined">link</span>
-            {saving ? t("tree.relationModal.actions.linking") : t("tree.relationModal.actions.link")}
-          </button>
-          <button type="button" className="fte-ghostButton" disabled={saving} onClick={onCancel}>
-            {t("common.cancel")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CenterNoticeDialog({ message, onClose }) {
-  const { t } = useLanguage();
-  if (!message) return null;
-
-  return createPortal(
-    <div className="fte-centerNoticeOverlay" role="presentation" onMouseDown={onClose}>
-      <div
-        className="fte-centerNoticeDialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-live="assertive"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="fte-centerNoticeIcon">
-          <span className="material-symbols-outlined">warning</span>
-        </div>
-        <div className="fte-centerNoticeContent">
-          <h3>{t("tree.messages.constraintViolation")}</h3>
-          <p>{message}</p>
-          <small>{t("tree.messages.constraintHint")}</small>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function QuickCreateRelationDialog({
-  sourcePerson,
-  onChoose,
-  onCancel,
-}) {
-  const { t } = useLanguage();
-  if (!sourcePerson) return null;
-
-  return (
-    <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
-      <div
-        className="fte-modal fte-quickCreateModal"
-        role="dialog"
-        aria-modal="true"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="fte-modalHeader">
-          <div>
-            <span>{fullName(sourcePerson, t("tree.card.fallbackName"))}</span>
-            <h3>{t("tree.quickCreate.title")}</h3>
-          </div>
-          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div className="fte-quickCreateChoices">
-          <button
-            type="button"
-            className="fte-quickCreateChoice"
-            onClick={() => onChoose("spouse")}
-          >
-            <span className="material-symbols-outlined">favorite</span>
-            <strong>{t("tree.quickCreate.spouse.title")}</strong>
-            <small>{t("tree.quickCreate.spouse.desc")}</small>
-          </button>
-
-          <button
-            type="button"
-            className="fte-quickCreateChoice"
-            onClick={() => onChoose("child")}
-          >
-            <span className="material-symbols-outlined">person_add</span>
-            <strong>{t("tree.quickCreate.child.title")}</strong>
-            <small>{t("tree.quickCreate.child.desc")}</small>
-          </button>
-        </div>
-
-        <div className="fte-modalFooter">
-          <button type="button" className="fte-ghostButton" onClick={onCancel}>
-            {t("common.cancel")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel, onSubmit, saving }) {
-  const { t } = useLanguage();
-  if (!relation || !form) return null;
-
-  const titleMap = {
-    person: t("tree.createModal.titles.person"),
-    spouse: t("tree.createModal.titles.spouse"),
-    child: t("tree.createModal.titles.child"),
-    father: t("tree.createModal.titles.father"),
-    mother: t("tree.createModal.titles.mother"),
-  };
-
-  const relationTextMap = {
-    spouse: t("tree.relations.spouse"),
-    child: t("tree.relations.child"),
-    father: t("tree.relations.father"),
-    mother: t("tree.relations.mother"),
-  };
-
-  const dialogTitle =
-    relation !== "person" && selectedPerson
-      ? t("tree.createModal.titles.for", { title: t(`tree.createModal.titles.${relation}`), name: fullName(selectedPerson, t("tree.card.fallbackName")) })
-      : t(`tree.createModal.titles.${relation}`) || t("tree.createModal.titles.person");
-
-  const setField = (field, value) => {
-    if (field === "is_living" && value === "1") {
-      onChange({
-        ...form,
-        is_living: value,
-        death_date: "",
-      });
-      return;
-    }
-
-    if (field === "is_living" && value === "0") {
-      onChange({
-        ...form,
-        is_living: value,
-        account_email: "",
-        account_password: "",
-      });
-      return;
-    }
-
-    onChange({
-      ...form,
-      [field]: value,
-    });
-  };
-
-  const handleFullNameChange = (event) => {
-    const fullNameValue = event.target.value;
-    const parts = fullNameValue.trim().split(/\s+/);
-
-    let surname = "";
-    let middle_name = "";
-    let first_name = "";
-
-    if (parts.length === 1 && parts[0] !== "") {
-      first_name = parts[0];
-    } else if (parts.length === 2) {
-      surname = parts[0];
-      first_name = parts[1];
-    } else if (parts.length >= 3) {
-      surname = parts[0];
-      first_name = parts[parts.length - 1];
-      middle_name = parts.slice(1, parts.length - 1).join(" ");
-    }
-
-    onChange({
-      ...form,
-      display_name: fullNameValue,
-      surname,
-      middle_name,
-      first_name,
-    });
-  };
-
-  return (
-    <div className="fte-modalOverlay" role="presentation" onMouseDown={onCancel}>
-      <div className="fte-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="fte-modalHeader">
-          <div>
-            <span>
-              {relation !== "person" && selectedPerson
-                ? t("tree.createModal.titles.new", { relation: t(`tree.relations.${relation}`) })
-                : t("tree.title")}
-            </span>
-            <h3>{dialogTitle}</h3>
-          </div>
-
-          <button type="button" className="fte-iconButton" onClick={onCancel} title={t("common.close")}>
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div className="fte-formGrid fte-formGrid--modal">
-          <label className="is-wide">
-            {t("tree.inspector.fields.displayName")}
-            <input
-              autoFocus
-              value={form.display_name || ""}
-              onChange={handleFullNameChange}
-              placeholder={t("tree.createModal.fields.displayPlaceholder")}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.surname")}
-            <input
-              value={form.surname || ""}
-              onChange={(event) => setField("surname", event.target.value)}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.middleName")}
-            <input
-              value={form.middle_name || ""}
-              onChange={(event) => setField("middle_name", event.target.value)}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.firstName")}
-            <input
-              value={form.first_name || ""}
-              onChange={(event) => setField("first_name", event.target.value)}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.gender")}
-            <select value={form.gender || ""} onChange={(event) => setField("gender", event.target.value)}>
-              <option value="1">{t("tree.inspector.fields.genderOptions.male")}</option>
-              <option value="2">{t("tree.inspector.fields.genderOptions.female")}</option>
-              <option value="">{t("tree.inspector.fields.genderOptions.unknown")}</option>
-            </select>
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.generation")}
-            <input
-              type="number"
-              min="1"
-              value={form.generation || "1"}
-              onChange={(event) => setField("generation", event.target.value)}
-            />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.status")}
-            <select value={form.is_living || "1"} onChange={(event) => setField("is_living", event.target.value)}>
-              <option value="1">{t("tree.inspector.fields.statusOptions.living")}</option>
-              <option value="0">{t("tree.inspector.fields.statusOptions.deceased")}</option>
-            </select>
-          </label>
-
-          {form.is_living === "1" ? (
-            <div className="fte-accountCreateBox is-wide">
-              <div className="fte-accountCreateTitle">
-                <span className="material-symbols-outlined">manage_accounts</span>
-                {t("tree.createModal.fields.accountBoxTitle")}
-              </div>
-
-              <label>
-                {t("tree.createModal.fields.accountEmail")}
-                <input
-                  type="email"
-                  value={form.account_email || ""}
-                  onChange={(event) => setField("account_email", event.target.value)}
-                  placeholder="example@gmail.com"
-                  autoComplete="new-email"
-                />
-              </label>
-
-              <label>
-                {t("tree.createModal.fields.accountPassword")}
-                <input
-                  type="password"
-                  value={form.account_password || ""}
-                  onChange={(event) => setField("account_password", event.target.value)}
-                  placeholder={t("tree.createModal.fields.passwordHint")}
-                  autoComplete="new-password"
-                />
-              </label>
-            </div>
-          ) : null}
-
-          <label>
-            {t("tree.inspector.fields.birthDate")}
-            <DateInput
-              value={form.birth_date || ""}
-              onChange={(event) => setField("birth_date", event.target.value)}
-            />
-            <LunarDateHint value={form.birth_date} label={t("tree.inspector.fields.lunarBirth")} />
-          </label>
-
-          <label>
-            {t("tree.inspector.fields.deathDate")}
-            <DateInput
-              value={form.death_date || ""}
-              onChange={(event) => setField("death_date", event.target.value)}
-              disabled={form.is_living === "1"}
-            />
-            <LunarDateHint value={form.death_date} label={t("tree.inspector.fields.lunarDeath")} />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.hometown")}
-            <input
-              value={form.hometown || ""}
-              onChange={(event) => setField("hometown", event.target.value)}
-            />
-          </label>
-
-          <label className="is-wide">
-            {t("tree.inspector.fields.avatarUrl")}
-            <input
-              value={form.avatar_url || ""}
-              onChange={(event) => setField("avatar_url", event.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="fte-modalFooter">
-          <button type="button" className="fte-primaryButton" disabled={saving} onClick={onSubmit}>
-            <span className="material-symbols-outlined">person_add</span>
-            {saving ? t("tree.createModal.actions.creating") : t("tree.createModal.actions.create")}
-          </button>
-
-          <button type="button" className="fte-ghostButton" disabled={saving} onClick={onCancel}>
-            {t("common.cancel")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 export default function FamilyTreeEditor({
   clan,
   people: initialPeople = [],
@@ -2224,6 +67,173 @@ export default function FamilyTreeEditor({
   const [validationErrors, setValidationErrors] = useState(() => new Map());
   const [selfPersonId, setSelfPersonId] = useState(null);
   const currentAccount = useMemo(readCurrentAccount, []);
+  const layoutClientIdRef = useRef(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `layout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const pendingLayoutRef = useRef({
+    nodes: new Map(),
+    lineRoutes: new Map(),
+    cardSizes: new Map(),
+  });
+  const layoutFlushTimerRef = useRef(null);
+  const layoutFlushInFlightRef = useRef(false);
+
+  const getPendingLayoutChangeCount = useCallback(() => {
+    const pending = pendingLayoutRef.current;
+    return pending.nodes.size + pending.lineRoutes.size + pending.cardSizes.size;
+  }, []);
+
+  const flushLayoutChanges = useCallback(async () => {
+    if (layoutFlushInFlightRef.current) return false;
+    const pending = pendingLayoutRef.current;
+    if (!pending.nodes.size && !pending.lineRoutes.size && !pending.cardSizes.size) return true;
+
+    if (layoutFlushTimerRef.current) {
+      window.clearTimeout(layoutFlushTimerRef.current);
+      layoutFlushTimerRef.current = null;
+    }
+
+    const nodes = Array.from(pending.nodes.values());
+    const lineRoutes = {};
+    pending.lineRoutes.forEach((item) => {
+      const familyId = Number(item.family_id);
+      if (!Number.isFinite(familyId)) return;
+      const routeKey = item.route_key || "baseY";
+      lineRoutes[familyId] = { ...(lineRoutes[familyId] || {}), [routeKey]: item.value };
+    });
+    const cardSizesPayload = Object.fromEntries(pending.cardSizes.entries());
+    pendingLayoutRef.current = {
+      nodes: new Map(),
+      lineRoutes: new Map(),
+      cardSizes: new Map(),
+    };
+
+    layoutFlushInFlightRef.current = true;
+    try {
+      await saveTreeLayoutBatchAPI({
+        clan_id: clan?.id,
+        client_layout_id: layoutClientIdRef.current,
+        nodes,
+        line_routes: lineRoutes,
+        card_sizes: cardSizesPayload,
+      });
+      return true;
+    } catch (error) {
+      const current = pendingLayoutRef.current;
+      nodes.forEach((node) => {
+        const key = Number(node.person_id);
+        if (!current.nodes.has(key)) current.nodes.set(key, node);
+      });
+      Object.entries(lineRoutes).forEach(([familyId, routes]) => {
+        Object.entries(routes || {}).forEach(([routeKey, value]) => {
+          const key = `${familyId}:${routeKey}`;
+          if (!current.lineRoutes.has(key)) {
+            current.lineRoutes.set(key, { family_id: Number(familyId), route_key: routeKey, value });
+          }
+        });
+      });
+      Object.entries(cardSizesPayload).forEach(([personId, size]) => {
+        if (!current.cardSizes.has(String(personId))) current.cardSizes.set(String(personId), size);
+      });
+      setStatus(error?.message || t("tree.messages.saveLayoutError"));
+      return false;
+    } finally {
+      layoutFlushInFlightRef.current = false;
+      if (getPendingLayoutChangeCount() > 0 && !layoutFlushTimerRef.current) {
+        layoutFlushTimerRef.current = window.setTimeout(() => {
+          layoutFlushTimerRef.current = null;
+          flushLayoutChanges();
+        }, LAYOUT_FLUSH_DELAY_MS);
+      }
+    }
+  }, [clan?.id, getPendingLayoutChangeCount, t]);
+
+  const enqueueLayoutChanges = useCallback((changes = {}) => {
+    const pending = pendingLayoutRef.current;
+
+    asArray(changes.nodes).forEach((node) => {
+      const personId = Number(node?.person_id ?? node?.id);
+      if (!Number.isFinite(personId) || personId <= 0) return;
+      pending.nodes.set(personId, {
+        person_id: personId,
+        tree_x: snap(node.tree_x),
+        tree_y: snap(node.tree_y),
+      });
+    });
+
+    asArray(changes.lineRoutes).forEach((route) => {
+      const familyId = Number(route?.family_id ?? route?.familyId);
+      const routeKey = route?.route_key || route?.routeKey || "baseY";
+      const value = snapLine(route?.value);
+      if (!Number.isFinite(familyId)) return;
+      pending.lineRoutes.set(`${familyId}:${routeKey}`, {
+        family_id: familyId,
+        route_key: routeKey,
+        value,
+      });
+    });
+
+    asArray(changes.cardSizes).forEach((item) => {
+      const personId = Number(item?.person_id ?? item?.personId ?? item?.id);
+      if (!Number.isFinite(personId) || personId <= 0) return;
+      pending.cardSizes.set(String(personId), normalizeCardSize(item));
+    });
+
+    if (getPendingLayoutChangeCount() >= LAYOUT_BATCH_SIZE) {
+      flushLayoutChanges();
+      return;
+    }
+
+    if (layoutFlushTimerRef.current) window.clearTimeout(layoutFlushTimerRef.current);
+    layoutFlushTimerRef.current = window.setTimeout(() => {
+      layoutFlushTimerRef.current = null;
+      flushLayoutChanges();
+    }, LAYOUT_FLUSH_DELAY_MS);
+  }, [flushLayoutChanges, getPendingLayoutChangeCount]);
+
+  const applyRemoteLayoutUpdate = useCallback((payload) => {
+    const layout = payload?.layout;
+    if (!layout || typeof layout !== "object") return;
+
+    const nodeChanges = asArray(layout.nodes);
+    if (nodeChanges.length) {
+      setPeople((current) =>
+        current.map((person) => {
+          const change = nodeChanges.find((item) => Number(item.person_id ?? item.id) === Number(person.id));
+          return change ? { ...person, tree_x: snap(change.tree_x), tree_y: snap(change.tree_y) } : person;
+        }),
+      );
+    }
+
+    const nextLineRoutesPatch = normalizeLayoutObject(layout.line_routes || layout.lineRoutes);
+    if (layout.line_routes_full || Object.keys(nextLineRoutesPatch).length) {
+      setLineRoutes((current) => {
+        const next = layout.line_routes_full ? { ...nextLineRoutesPatch } : { ...current };
+        if (!layout.line_routes_full) {
+          Object.entries(nextLineRoutesPatch).forEach(([familyId, routes]) => {
+            if (!routes || typeof routes !== "object" || Array.isArray(routes)) return;
+            next[familyId] = { ...(next[familyId] || {}), ...routes };
+          });
+        }
+        saveLineRoutes(clan?.id, next);
+        return next;
+      });
+    }
+
+    const nextCardSizesPatch = normalizeLayoutObject(layout.card_sizes || layout.cardSizes);
+    if (layout.card_sizes_full || Object.keys(nextCardSizesPatch).length) {
+      setCardSizes((current) => {
+        const next = layout.card_sizes_full ? {} : { ...current };
+        Object.entries(nextCardSizesPatch).forEach(([personId, size]) => {
+          next[personId] = normalizeCardSize(size);
+        });
+        saveCardSizes(clan?.id, next);
+        return next;
+      });
+    }
+  }, [clan?.id]);
 
   useEffect(() => {
     const normalizedSettings = normalizeLayoutSettings(layoutSettings);
@@ -2241,13 +251,41 @@ export default function FamilyTreeEditor({
         return;
       }
 
+      if (data?.action === "tree_layout_updated") {
+        if (data?.client_layout_id && data.client_layout_id === layoutClientIdRef.current) {
+          return;
+        }
+        applyRemoteLayoutUpdate(data);
+        return;
+      }
+
+      await flushLayoutChanges();
       await onReload?.();
     });
 
     return () => {
       offTreeUpdated();
     };
-  }, [enableRealtime, clan?.id, onReload]);
+  }, [applyRemoteLayoutUpdate, enableRealtime, clan?.id, flushLayoutChanges, onReload]);
+
+  useEffect(() => {
+    const flushPendingLayout = () => {
+      flushLayoutChanges();
+    };
+
+    window.addEventListener("pagehide", flushPendingLayout);
+    window.addEventListener("beforeunload", flushPendingLayout);
+
+    return () => {
+      window.removeEventListener("pagehide", flushPendingLayout);
+      window.removeEventListener("beforeunload", flushPendingLayout);
+      if (layoutFlushTimerRef.current) {
+        window.clearTimeout(layoutFlushTimerRef.current);
+        layoutFlushTimerRef.current = null;
+      }
+      flushLayoutChanges();
+    };
+  }, [flushLayoutChanges]);
 
   const resolvedPermission = useMemo(() => {
     const activePermission = permission || editPermission;
@@ -2374,6 +412,7 @@ const quickCreateSourcePerson = useMemo(
       await saveTreeLayoutAPI(nextPeople, clan?.id, {
         lineRoutes: nextLineRoutes,
         cardSizes: nextCardSizes,
+        clientLayoutId: layoutClientIdRef.current,
       });
       saveLineRoutes(clan?.id, nextLineRoutes);
       saveCardSizes(clan?.id, nextCardSizes);
@@ -2517,24 +556,15 @@ const quickCreateSourcePerson = useMemo(
       const finalPosition = lastDragRef.current;
       if (!finalPosition) return;
       if (finalPosition.tree_x !== originX || finalPosition.tree_y !== originY) {
-        try {
-          const nextPeople = people.map((item) => (Number(item.id) === Number(person.id) ? { ...item, ...finalPosition } : item));
-          if (canEditAll) {
-            await persistFullLayout(nextPeople, lineRoutes, cardSizes);
-            setStatus(t("tree.messages.autoLayoutSuccess"));
-          } else {
-            await updatePersonPositionAPI(person.id, finalPosition);
-            setStatus(t("tree.messages.saveSuccess"));
-          }
-        } catch (error) {
-          setStatus(error?.message || t("tree.messages.saveError"));
-        }
+        enqueueLayoutChanges({
+          nodes: [{ person_id: person.id, ...finalPosition }],
+        });
       }
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, [canEditAll, cardSizes, lineRoutes, people, persistFullLayout]);
+  }, [enqueueLayoutChanges]);
 
   const openPersonEditor = useCallback((person) => {
     if (!person) return;
@@ -2701,20 +731,20 @@ const quickCreateSourcePerson = useMemo(
           [familyId]: { ...(current?.[familyId] || {}), [routeKey]: finalRoute?.value ?? originY },
         };
         saveLineRoutes(clan?.id, next);
-        if (canEditAll) {
-          persistFullLayout(people, next, cardSizes).then((saved) => {
-            setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.saveLayoutError"));
-          });
-        } else {
-          setStatus(t("tree.messages.saveSuccess"));
-        }
+        enqueueLayoutChanges({
+          lineRoutes: [{
+            family_id: familyId,
+            route_key: routeKey,
+            value: finalRoute?.value ?? originY,
+          }],
+        });
         return next;
       });
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, [canEditAll, clan?.id, lineRoutes, people, cardSizes, persistFullLayout]);
+  }, [canEditAll, clan?.id, enqueueLayoutChanges, lineRoutes]);
 
   const resetLineRoutes = useCallback(() => {
     setLineRoutes({});
@@ -3153,20 +1183,16 @@ const submitCreateDialog = async () => {
       setCardSizes((current) => {
         const next = { ...current, [personId]: latest };
         saveCardSizes(clan?.id, next);
-        if (canEditAll) {
-          persistFullLayout(people, lineRoutes, next).then((saved) => {
-            setStatus(saved ? t("tree.messages.autoLayoutSuccess") : t("tree.messages.saveLayoutError"));
-          });
-        } else {
-          setStatus(t("tree.messages.saveSuccess"));
-        }
+        enqueueLayoutChanges({
+          cardSizes: [{ person_id: personId, ...latest }],
+        });
         return next;
       });
     };
 
     window.addEventListener("pointermove", handleMove, { passive: false });
     window.addEventListener("pointerup", handleUp);
-  }, [canEditPerson, cardSizes, clan?.id, canEditAll, people, lineRoutes, persistFullLayout]);
+  }, [canEditPerson, cardSizes, clan?.id, enqueueLayoutChanges]);
 
   const selectedCanEdit = selectedPerson ? canEditPerson(selectedPerson.id) : false;
   const selectedNotice = selectedPerson

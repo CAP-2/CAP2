@@ -7,7 +7,7 @@ import {
     getAdminClanTree,
     updateAdminClan,
 } from "../../../api/adminService";
-import FamilyTreeEditor from "../../genealogy/components/FamilyTreeEditor";
+import FamilyTreeEditor from "../../genealogy/components/FamilyTreeEditor.jsx";
 import "./GenealogyManagement.css";
 
 const emptyClanForm = {
