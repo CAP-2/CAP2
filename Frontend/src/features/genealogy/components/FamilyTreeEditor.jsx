@@ -1265,10 +1265,10 @@ const submitCreateDialog = async () => {
                   type="button"
                   onClick={() => openCreateDialog("person")}
                   disabled={!canEditAll || loading || saving}
-                  title={canEditAll ? t("tree.toolbar.addPersonHint") : t("tree.toolbar.addPersonAdminOnly")}
+                  title={canEditAll ? t("tree.toolbar.addPerson") : t("tree.toolbar.addPersonAdminOnly")}
+                  className="fte-iconButton"
                 >
                   <span className="material-symbols-outlined">person_add</span>
-                  {t("tree.toolbar.addPerson")}
                 </button>
               </div>
               {canEditLimited ? (
@@ -1286,23 +1286,48 @@ const submitCreateDialog = async () => {
                   focusPerson(personId);
                 }}
               />
+              <TreeSearchPanel
+                query={treeSearch.query}
+                onQueryChange={treeSearch.setQuery}
+                onSubmit={treeSearch.submitSearch}
+                onClear={treeSearch.clearSearch}
+                submittedQuery={treeSearch.submittedQuery}
+                results={treeSearch.results}
+                onFindMe={handleFindMe}
+                onResultClick={(person) => {
+                  if (!visiblePeople.some((item) => Number(item.id) === Number(person.id))) {
+                    treeViewMode.setFullMode();
+                  }
+                  focusPerson(person.id, { search: true });
+                }}
+              />
               <div className="fte-toolbarGroup fte-toolbarGroup--actions">
                 <button
                   type="button"
                   onClick={applyAutoLayoutAndSave}
                   disabled={!canEditAll || loading || saving}
-                  title={canEditAll ? t("tree.toolbar.autoLayoutHint") : t("tree.toolbar.autoLayoutViewerHint")}
+                  title={canEditAll ? t("tree.toolbar.autoLayout") : t("tree.toolbar.autoLayoutViewerHint")}
+                  className="fte-iconButton"
                 >
                   <span className="material-symbols-outlined">auto_fix_high</span>
-                  {t("tree.toolbar.autoLayout")}
                 </button>
-                <button type="button" onClick={handleExport} disabled={loading || saving}>
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={loading || saving}
+                  title={t("tree.toolbar.exportPng")}
+                  className="fte-iconButton"
+                >
                   <span className="material-symbols-outlined">download</span>
-                  {t("tree.toolbar.exportPng")}
                 </button>
-                <button type="button" onClick={handleValidateTree} disabled={loading || saving}>
+                <button
+                  type="button"
+                  onClick={handleValidateTree}
+                  disabled={loading || saving}
+                  title={t("tree.toolbar.validate")}
+                  className="fte-iconButton"
+                >
                   <span className="material-symbols-outlined">rule</span>
-                  {t("tree.toolbar.validate")}
                 </button>
               </div>
               <div className="fte-toolbarGroup fte-toolbarGroup--icons">
@@ -1335,22 +1360,6 @@ const submitCreateDialog = async () => {
                 </button>
               </div>
             </div>
-
-            <TreeSearchPanel
-              query={treeSearch.query}
-              onQueryChange={treeSearch.setQuery}
-              onSubmit={treeSearch.submitSearch}
-              onClear={treeSearch.clearSearch}
-              submittedQuery={treeSearch.submittedQuery}
-              results={treeSearch.results}
-              onFindMe={handleFindMe}
-              onResultClick={(person) => {
-                if (!visiblePeople.some((item) => Number(item.id) === Number(person.id))) {
-                  treeViewMode.setFullMode();
-                }
-                focusPerson(person.id, { search: true });
-              }}
-            />
 
             {billingWarning ? (
               <div className="fte-billingWarning">

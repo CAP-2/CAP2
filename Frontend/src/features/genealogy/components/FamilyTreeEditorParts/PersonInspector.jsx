@@ -3,6 +3,7 @@ import DateInput from "../../../../shared/components/DateInput";
 import { useLanguage } from "../../../../i18n/LanguageContext";
 import { fullName, personToForm } from "../../utils/tree-editor/treePersonUtils";
 import LunarDateHint from "./LunarDateHint";
+import ImageUpload from "../../../../shared/components/ImageUpload";
 
 export default function PersonInspector({
   person,
@@ -209,10 +210,15 @@ export default function PersonInspector({
             <input type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} disabled={!canEdit} />
           </label>
 
-          <label className="is-wide">
-            {t("tree.inspector.fields.avatarUrl")}
-            <input value={form.avatar_url} onChange={(event) => setField("avatar_url", event.target.value)} disabled={!canEdit} />
-          </label>
+          <div className="fte-fieldGroup is-wide">
+            <span className="fte-fieldLabel">{t("tree.inspector.fields.avatarUrl")}</span>
+            <ImageUpload
+              value={form.avatar_url}
+              onUploadSuccess={(url) => setField("avatar_url", url)}
+              disabled={!canEdit}
+              usageType="avatar"
+            />
+          </div>
 
           <label className="is-wide">
             {t("tree.inspector.fields.bio")}

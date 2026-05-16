@@ -38,15 +38,19 @@ export default function TreeSearchPanel({
             onChange={(event) => onQueryChange?.(event.target.value)}
           />
         </label>
-        <button type="submit">
+        <button type="submit" className="fte-iconButton" title={t("tree.sidebar.search")}>
           <span className="material-symbols-outlined">search</span>
-          {t("tree.sidebar.search")}
         </button>
-        <button type="button" onClick={onFindMe} disabled={findMeDisabled}>
+        <button
+          type="button"
+          className="fte-iconButton"
+          onClick={onFindMe}
+          disabled={findMeDisabled}
+          title={t("tree.sidebar.findMe")}
+        >
           <span className="material-symbols-outlined">my_location</span>
-          {t("tree.sidebar.findMe")}
         </button>
-        <button type="button" onClick={onClear} title={t("common.close")}>
+        <button type="button" className="fte-iconButton" onClick={onClear} title={t("common.close")}>
           <span className="material-symbols-outlined">close</span>
         </button>
       </form>

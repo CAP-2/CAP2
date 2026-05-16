@@ -2,6 +2,7 @@ import DateInput from "../../../../shared/components/DateInput";
 import { useLanguage } from "../../../../i18n/LanguageContext";
 import { fullName } from "../../utils/tree-editor/treePersonUtils";
 import LunarDateHint from "./LunarDateHint";
+import ImageUpload from "../../../../shared/components/ImageUpload";
 
 export default function CreatePersonDialog({ relation, form, selectedPerson, onChange, onCancel, onSubmit, saving }) {
   const { t } = useLanguage();
@@ -219,13 +220,15 @@ export default function CreatePersonDialog({ relation, form, selectedPerson, onC
             />
           </label>
 
-          <label className="is-wide">
-            {t("tree.inspector.fields.avatarUrl")}
-            <input
+          <div className="fte-fieldGroup is-wide">
+            <span className="fte-fieldLabel">{t("tree.inspector.fields.avatarUrl")}</span>
+            <ImageUpload
               value={form.avatar_url || ""}
-              onChange={(event) => setField("avatar_url", event.target.value)}
+              onUploadSuccess={(url) => setField("avatar_url", url)}
+              disabled={saving}
+              usageType="avatar"
             />
-          </label>
+          </div>
         </div>
 
         <div className="fte-modalFooter">
