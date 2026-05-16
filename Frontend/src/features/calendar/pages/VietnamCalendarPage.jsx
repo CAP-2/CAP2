@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../../services/api";
 import { getStoredUser } from "../../../shared/utils/auth";
 import { getSocket } from "../../../services/socket";
@@ -48,6 +49,18 @@ function getWeekDates(date) {
 
 const STORAGE_KEY = "gia_pha_viet_calendar_events_v1";
 // Month names and weekday labels are now retrieved via t() for localization
+function formatVietnamDate(date) {
+  if (!date) return "";
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function getWeekRangeText(date) {
+  const week = getWeekDates(date);
+  const start = week[0];
+  const end = week[6];
+  return `${pad2(start.getDate())}/${pad2(start.getMonth() + 1)} - ${pad2(end.getDate())}/${pad2(end.getMonth() + 1)}/${end.getFullYear()}`;
+}
+
 
 function buildHolidayEvents(date, t) {
   const solarKey = `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -90,12 +103,12 @@ function buildHolidayEvents(date, t) {
 }
 
 function getTypeLabel(type, t) {
-  if (type === "study") return t("calendar.types.study");
-  if (type === "holiday" || type === "lunar") return t("calendar.types.holiday");
-  if (type === "birthday") return t("calendar.types.birthday");
-  if (type === "death_anniversary") return t("calendar.types.death_anniversary");
-  if (type === "family") return t("calendar.types.family");
-  return t("calendar.types.personal");
+  if (type === "study") return t("vnCalendar.types.study");
+  if (type === "holiday" || type === "lunar") return t("vnCalendar.types.holiday");
+  if (type === "birthday") return t("vnCalendar.types.birthday");
+  if (type === "death_anniversary") return t("vnCalendar.types.death_anniversary");
+  if (type === "family") return t("vnCalendar.types.family");
+  return t("vnCalendar.types.personal");
 }
 
 function getDayEvents(date, savedEvents, t) {
@@ -107,7 +120,34 @@ function getDayEvents(date, savedEvents, t) {
 }
 
 export default function VietnamCalendarPage() {
-  const { t } = useLanguage();
+  const { t, i18n } = useTranslation();
+  console.log("i18n current language:", i18n.language);
+  console.log("Test translation vnCalendar.hero.title:", t("vnCalendar.hero.title"));
+
+  const MONTH_NAMES = useMemo(() => {
+    const months = t("vnCalendar.labels.months", { returnObjects: true });
+    if (Array.isArray(months)) return months;
+    return [
+      "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+      "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"
+    ];
+  }, [t]);
+
+  const WEEKDAY_LABELS = useMemo(() => {
+    const days = t("vnCalendar.labels.weekdays", { returnObjects: true });
+    if (Array.isArray(days)) return days;
+    return ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+  }, [t]);
+
+  const DEFAULT_EVENT_TEMPLATES = useMemo(
+    () => [
+      { type: "holiday", title: t("vnCalendar.types.holiday"), note: "" },
+      { type: "family", title: t("vnCalendar.types.family"), note: "" },
+      { type: "study", title: t("vnCalendar.types.study"), note: "" },
+    ],
+    [t]
+  );
+
   const today = useMemo(() => new Date(), []);
   const currentUser = useMemo(() => getStoredUser() || {}, []);
   const currentRole = String(currentUser.role_name || currentUser.role || "").toLowerCase();
@@ -214,7 +254,7 @@ export default function VietnamCalendarPage() {
 }, [loadCalendarEvents]);
 
   const selectedLunar = getLunarInfo(selectedDate);
-  const selectedEvents = getDayEvents(selectedDate, savedEvents);
+  const selectedEvents = getDayEvents(selectedDate, savedEvents, t);
 
   const setDateByInput = (field, value) => {
     const current = selectedDate;
@@ -247,7 +287,7 @@ export default function VietnamCalendarPage() {
 
   const openEditForm = (event) => {
     if (!event?.can_edit) {
-      setCalendarStatus(t("calendar.messages.noPermissionEdit"));
+      setCalendarStatus(t("vnCalendar.messages.noPermissionEdit"));
       return;
     }
 
@@ -280,7 +320,7 @@ export default function VietnamCalendarPage() {
     };
 
     try {
-      setCalendarStatus(editingEvent ? t("calendar.messages.updating") : t("calendar.messages.saving"));
+      setCalendarStatus(editingEvent ? t("vnCalendar.messages.updating") : t("vnCalendar.messages.saving"));
       if (editingEvent?.id) {
         await apiRequest(`/api/calendar/events/${editingEvent.id}`, {
           method: "PUT",
@@ -298,31 +338,31 @@ export default function VietnamCalendarPage() {
       setShowEventForm(false);
       setCalendarStatus(
         payload.visibility === "global"
-          ? t("calendar.messages.saveSuccessGlobal")
-          : t("calendar.messages.saveSuccessPersonal")
+          ? t("vnCalendar.messages.saveSuccessGlobal")
+          : t("vnCalendar.messages.saveSuccessPersonal")
       );
       await loadCalendarEvents();
     } catch (error) {
-      setCalendarStatus(error?.message || t("calendar.messages.saveError"));
+      setCalendarStatus(error?.message || t("vnCalendar.messages.saveError"));
     }
   };
 
   const deleteEvent = async (event) => {
     if (!event?.can_delete) {
-      setCalendarStatus(t("calendar.messages.noPermissionDelete"));
+      setCalendarStatus(t("vnCalendar.messages.noPermissionDelete"));
       return;
     }
 
-    const label = event.visibility === "global" ? t("calendar.messages.scopeGlobal") : t("calendar.messages.scopePersonal");
-    if (!window.confirm(t("calendar.messages.deleteConfirm", { label }))) return;
+    const label = event.visibility === "global" ? t("vnCalendar.messages.scopeGlobal") : t("vnCalendar.messages.scopePersonal");
+    if (!window.confirm(t("vnCalendar.messages.deleteConfirm", { label }))) return;
 
     try {
       await apiRequest(`/api/calendar/events/${event.id}`, { method: "DELETE" });
-      setCalendarStatus(t("calendar.messages.deleteSuccess"));
+      setCalendarStatus(t("vnCalendar.messages.deleteSuccess"));
       if (editingEvent?.id === event.id) resetEventForm();
       await loadCalendarEvents();
     } catch (error) {
-      setCalendarStatus(error?.message || t("calendar.messages.deleteError"));
+      setCalendarStatus(error?.message || t("vnCalendar.messages.deleteError"));
     }
   };
 
@@ -332,14 +372,14 @@ export default function VietnamCalendarPage() {
     <div className="vn-calendar-page">
       <section className="vn-calendar-hero">
         <div>
-          <span className="vn-eyebrow">{t("calendar.hero.eyebrow")}</span>
-          <h1>{t("calendar.hero.title")}</h1>
-          <p>{t("calendar.hero.description")}</p>
+          <span className="vn-eyebrow">{t("vnCalendar.hero.eyebrow")}</span>
+          <h1>{t("vnCalendar.hero.title")}</h1>
+          <p>{t("vnCalendar.hero.description")}</p>
         </div>
         <div className="vn-hero-date">
           <strong>{pad2(selectedDate.getDate())}</strong>
           <span>{MONTH_NAMES[selectedDate.getMonth()]} {selectedDate.getFullYear()}</span>
-          <small>{t("calendar.lunar")}: {selectedLunar.day}/{selectedLunar.month}{selectedLunar.leap ? ` ${t("calendar.leap")}` : ""}</small>
+          <small>{t("vnCalendar.lunar")}: {selectedLunar.day}/{selectedLunar.month}{selectedLunar.leap ? ` ${t("vnCalendar.leap")}` : ""}</small>
         </div>
       </section>
 
@@ -351,7 +391,7 @@ export default function VietnamCalendarPage() {
             </button>
             <div>
               <h2>{viewMode === "week" ? getWeekRangeText(selectedDate) : `${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`}</h2>
-              <p>{t("calendar.today")}: {formatVietnamDate(today)}</p>
+              <p>{t("vnCalendar.today")}: {formatVietnamDate(today)}</p>
             </div>
             <button type="button" onClick={() => shiftPeriod(1)} aria-label={t("common.next") || "Next"}>
               <span className="material-symbols-outlined">chevron_right</span>
@@ -359,17 +399,17 @@ export default function VietnamCalendarPage() {
           </div>
 
           <div className="vn-toolbar-actions">
-            <button type="button" className="vn-today-btn" onClick={() => setSelectedDate(today)}>{t("calendar.today")}</button>
-            <div className="vn-view-toggle" role="group" aria-label={t("calendar.viewToggleAria")}>
-              <button type="button" className={viewMode === "week" ? "active" : ""} onClick={() => setViewMode("week")}>{t("calendar.week")}</button>
-              <button type="button" className={viewMode === "month" ? "active" : ""} onClick={() => setViewMode("month")}>{t("calendar.month")}</button>
+            <button type="button" className="vn-today-btn" onClick={() => setSelectedDate(today)}>{t("vnCalendar.today")}</button>
+            <div className="vn-view-toggle" role="group" aria-label={t("vnCalendar.viewToggleAria")}>
+              <button type="button" className={viewMode === "week" ? "active" : ""} onClick={() => setViewMode("week")}>{t("vnCalendar.week")}</button>
+              <button type="button" className={viewMode === "month" ? "active" : ""} onClick={() => setViewMode("month")}>{t("vnCalendar.month")}</button>
             </div>
           </div>
         </div>
 
         <div className="vn-date-controls">
           <label>
-            {t("calendar.day")}
+            {t("vnCalendar.day")}
             <select value={selectedDate.getDate()} onChange={(event) => setDateByInput("day", event.target.value)}>
               {Array.from({ length: new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate() }, (_, index) => (
                 <option key={index + 1} value={index + 1}>{index + 1}</option>
@@ -377,13 +417,13 @@ export default function VietnamCalendarPage() {
             </select>
           </label>
           <label>
-            {t("calendar.month")}
+            {t("vnCalendar.month")}
             <select value={selectedDate.getMonth()} onChange={(event) => setDateByInput("month", event.target.value)}>
               {MONTH_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
             </select>
           </label>
           <label>
-            {t("calendar.year")}
+            {t("vnCalendar.year")}
             <select value={selectedDate.getFullYear()} onChange={(event) => setDateByInput("year", event.target.value)}>
               {years.map((year) => <option key={year} value={year}>{year}</option>)}
             </select>
@@ -391,7 +431,7 @@ export default function VietnamCalendarPage() {
         </div>
 
         {calendarStatus ? <div className="vn-calendar-status">{calendarStatus}</div> : null}
-        {loadingEvents ? <div className="vn-calendar-status is-loading">{t("calendar.syncing")}</div> : null}
+        {loadingEvents ? <div className="vn-calendar-status is-loading">{t("vnCalendar.syncing")}</div> : null}
 
         <div className={`vn-calendar-grid ${viewMode === "week" ? "is-week" : ""}`}>
           {WEEKDAY_LABELS.map((label) => <div key={label} className="vn-weekday">{label}</div>)}
@@ -400,13 +440,13 @@ export default function VietnamCalendarPage() {
             const isOutsideMonth = date.getMonth() !== selectedDate.getMonth();
             const isToday = toDateKey(date) === toDateKey(today);
             const isSelected = toDateKey(date) === toDateKey(selectedDate);
-            const dayEvents = getDayEvents(date, savedEvents);
+            const dayEvents = getDayEvents(date, savedEvents, t);
             return (
               <button
                 key={toDateKey(date)}
                 type="button"
                 className={`vn-day-cell ${isOutsideMonth ? "is-muted" : ""} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
-                data-today-label={t("calendar.today")}
+                data-today-label={t("vnCalendar.today")}
                 onClick={() => setSelectedDate(date)}
               >
                 <span className="solar-day">{date.getDate()}</span>
@@ -423,9 +463,9 @@ export default function VietnamCalendarPage() {
 
       <aside className="vn-agenda-panel">
         <div className="vn-selected-card">
-          <span className="vn-eyebrow">{t("calendar.selectedDate")}</span>
+          <span className="vn-eyebrow">{t("vnCalendar.selectedDate")}</span>
           <h2>{formatVietnamDate(selectedDate)}</h2>
-          <p>{WEEKDAY_LABELS[selectedDate.getDay()]}, {t("calendar.lunarPrefix")} {selectedLunar.day}/{selectedLunar.month}/{selectedLunar.year}{selectedLunar.leap ? ` ${t("calendar.leap")}` : ""}</p>
+          <p>{WEEKDAY_LABELS[selectedDate.getDay()]}, {t("vnCalendar.lunarPrefix")} {selectedLunar.day}/{selectedLunar.month}/{selectedLunar.year}{selectedLunar.leap ? ` ${t("vnCalendar.leap")}` : ""}</p>
         </div>
 
         <div className="vn-template-row">
@@ -442,99 +482,99 @@ export default function VietnamCalendarPage() {
         </div>
 
         <div className="vn-agenda-header">
-          <h3>{t("calendar.agendaTitle")}</h3>
+          <h3>{t("vnCalendar.agendaTitle")}</h3>
           <button type="button" onClick={() => (showEventForm ? (setShowEventForm(false), resetEventForm()) : openCreateForm())}>
             <span className="material-symbols-outlined">add</span>
-            {canCreateGlobal ? t("calendar.addEvent") : t("calendar.addPersonalEvent")}
+            {canCreateGlobal ? t("vnCalendar.addEvent") : t("vnCalendar.addPersonalEvent")}
           </button>
         </div>
 
         {showEventForm ? (
           <form className="vn-event-form" onSubmit={saveEvent}>
             <div className="vn-form-heading">
-              <strong>{editingEvent ? t("calendar.editTitle") : t("calendar.createTitle")}</strong>
-              <span>{canCreateGlobal ? t("calendar.form.managerHint") : t("calendar.form.memberHint")}</span>
+              <strong>{editingEvent ? t("vnCalendar.editTitle") : t("vnCalendar.createTitle")}</strong>
+              <span>{canCreateGlobal ? t("vnCalendar.form.managerHint") : t("vnCalendar.form.memberHint")}</span>
             </div>
-            <input value={eventForm.title} onChange={(event) => setEventForm((current) => ({ ...current, title: event.target.value }))} placeholder={t("calendar.form.titlePlaceholder")} />
+            <input value={eventForm.title} onChange={(event) => setEventForm((current) => ({ ...current, title: event.target.value }))} placeholder={t("vnCalendar.form.titlePlaceholder")} />
             <div className="vn-event-form-row">
               <select value={eventForm.type} onChange={(event) => setEventForm((current) => ({ ...current, type: event.target.value }))}>
-                <option value="holiday">{t("calendar.types.holiday")}</option>
-                <option value="family">{t("calendar.types.family")}</option>
-                <option value="study">{t("calendar.types.study")}</option>
-                <option value="personal">{t("calendar.types.personal")}</option>
+                <option value="holiday">{t("vnCalendar.types.holiday")}</option>
+                <option value="family">{t("vnCalendar.types.family")}</option>
+                <option value="study">{t("vnCalendar.types.study")}</option>
+                <option value="personal">{t("vnCalendar.types.personal")}</option>
               </select>
               <input type="time" value={eventForm.time} onChange={(event) => setEventForm((current) => ({ ...current, time: event.target.value }))} />
             </div>
 
             <label className="vn-reminder-field">
-              {t("calendar.form.visibility")}
+              {t("vnCalendar.form.visibility")}
               <select
                 value={eventForm.visibility}
                 disabled={!canCreateGlobal}
                 onChange={(event) => setEventForm((current) => ({ ...current, visibility: event.target.value }))}
               >
-                <option value="personal">{t("calendar.form.visibilityPersonal")}</option>
-                <option value="global">{t("calendar.form.visibilityGlobal")}</option>
+                <option value="personal">{t("vnCalendar.form.visibilityPersonal")}</option>
+                <option value="global">{t("vnCalendar.form.visibilityGlobal")}</option>
               </select>
-              <small>{canCreateGlobal ? t("calendar.form.visibilityHintManager") : t("calendar.form.visibilityHintMember")}</small>
+              <small>{canCreateGlobal ? t("vnCalendar.form.visibilityHintManager") : t("vnCalendar.form.visibilityHintMember")}</small>
             </label>
 
             <label className="vn-reminder-field">
-              {t("calendar.form.reminder")}
+              {t("vnCalendar.form.reminder")}
               <select value={eventForm.reminder_days} onChange={(event) => setEventForm((current) => ({ ...current, reminder_days: event.target.value }))}>
-                <option value="0">{t("calendar.form.reminderOption.0")}</option>
-                <option value="1">{t("calendar.form.reminderOption.1")}</option>
-                <option value="2">{t("calendar.form.reminderOption.2")}</option>
-                <option value="3">{t("calendar.form.reminderOption.3")}</option>
-                <option value="7">{t("calendar.form.reminderOption.7")}</option>
-                <option value="14">{t("calendar.form.reminderOption.14")}</option>
-                <option value="30">{t("calendar.form.reminderOption.30")}</option>
+                <option value="0">{t("vnCalendar.form.reminderOption.0")}</option>
+                <option value="1">{t("vnCalendar.form.reminderOption.1")}</option>
+                <option value="2">{t("vnCalendar.form.reminderOption.2")}</option>
+                <option value="3">{t("vnCalendar.form.reminderOption.3")}</option>
+                <option value="7">{t("vnCalendar.form.reminderOption.7")}</option>
+                <option value="14">{t("vnCalendar.form.reminderOption.14")}</option>
+                <option value="30">{t("vnCalendar.form.reminderOption.30")}</option>
               </select>
-              <small>{t("calendar.form.reminderHint")}</small>
+              <small>{t("vnCalendar.form.reminderHint")}</small>
             </label>
-            <textarea value={eventForm.note} onChange={(event) => setEventForm((current) => ({ ...current, note: event.target.value }))} placeholder={t("calendar.form.notePlaceholder")} rows={3} />
+            <textarea value={eventForm.note} onChange={(event) => setEventForm((current) => ({ ...current, note: event.target.value }))} placeholder={t("vnCalendar.form.notePlaceholder")} rows={3} />
             <div className="vn-event-actions">
-              <button type="button" onClick={() => { setShowEventForm(false); resetEventForm(); }}>{t("calendar.form.cancel")}</button>
-              <button type="submit">{editingEvent ? t("calendar.form.update") : t("calendar.form.save")}</button>
+              <button type="button" onClick={() => { setShowEventForm(false); resetEventForm(); }}>{t("vnCalendar.form.cancel")}</button>
+              <button type="submit">{editingEvent ? t("vnCalendar.form.update") : t("vnCalendar.form.save")}</button>
             </div>
           </form>
         ) : null}
 
         <div className="vn-event-list">
           {selectedEvents.length === 0 ? (
-            <p className="vn-empty">{t("calendar.noEvents")}</p>
+            <p className="vn-empty">{t("vnCalendar.noEvents")}</p>
           ) : (
             selectedEvents.map((event) => (
               <div key={event.id} className={`vn-event-item type-${event.type}`}>
                 <div>
-                  <span>{getTypeLabel(event.type)}{event.time ? ` • ${event.time}` : ""}</span>
+                  <span>{getTypeLabel(event.type, t)}{event.time ? ` • ${event.time}` : ""}</span>
                   <strong>{event.title}</strong>
                   {event.source !== "system" ? (
                     <span className={`vn-scope-badge ${event.visibility === "global" ? "is-global" : "is-personal"}`}>
-                      {event.visibility === "global" ? t("calendar.messages.scopeGlobal") : t("calendar.messages.scopePersonal")}
+                      {event.visibility === "global" ? t("vnCalendar.messages.scopeGlobal") : t("vnCalendar.messages.scopePersonal")}
                     </span>
                   ) : null}
                   {event.type === "death_anniversary" && event.original_lunar_date ? (
-                    <small>{t("calendar.originalLunarDeath")}: {event.original_lunar_date}</small>
+                    <small>{t("vnCalendar.originalLunarDeath")}: {event.original_lunar_date}</small>
                   ) : null}
                   {event.type === "death_anniversary" && event.anniversary_lunar_date ? (
-                    <small>{t("calendar.anniversaryLunarYear")}: {event.anniversary_lunar_date}</small>
+                    <small>{t("vnCalendar.anniversaryLunarYear")}: {event.anniversary_lunar_date}</small>
                   ) : null}
                   {event.type === "birthday" && event.lunar_date ? (
-                    <small>{t("calendar.birthdayLunarYear")}: {event.lunar_date}</small>
+                    <small>{t("vnCalendar.birthdayLunarYear")}: {event.lunar_date}</small>
                   ) : null}
                   {event.reminder_days != null && event.source !== "system" ? (
                     <em>
-                      {t("calendar.form.reminder")} {Number(event.reminder_days) === 0 ? t("calendar.form.reminderOption.0").toLowerCase() : `${event.reminder_days} ${t("calendar.day").toLowerCase()}`}
+                      {t("vnCalendar.form.reminder")} {Number(event.reminder_days) === 0 ? t("vnCalendar.form.reminderOption.0").toLowerCase() : `${event.reminder_days} ${t("vnCalendar.day").toLowerCase()}`}
                     </em>
                   ) : null}
-                  {event.creator_name ? <small>{t("calendar.creator")}: {event.creator_name}</small> : null}
+                  {event.creator_name ? <small>{t("vnCalendar.creator")}: {event.creator_name}</small> : null}
                   {event.note ? <p>{event.note}</p> : null}
                 </div>
                 {event.source !== "system" && (event.can_edit || event.can_delete) ? (
                   <div className="vn-event-item-actions">
                     {event.can_edit ? (
-                      <button type="button" onClick={() => openEditForm(event)} title={t("calendar.editTitle")}>
+                      <button type="button" onClick={() => openEditForm(event)} title={t("vnCalendar.editTitle")}>
                         <span className="material-symbols-outlined">edit</span>
                       </button>
                     ) : null}

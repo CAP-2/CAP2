@@ -303,7 +303,7 @@
       }
     }
   },
-  "calendar": {
+  "vnCalendar": {
     "hero": {
       "eyebrow": "Vietnam Calendar",
       "title": "Solar & Lunar Calendar",
