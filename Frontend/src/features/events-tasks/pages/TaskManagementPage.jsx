@@ -261,6 +261,33 @@ export default function TaskManagementPage({ role = "member" }) {
   const [aiTaskCount, setAiTaskCount] = useState(5);
   const [voiceListening, setVoiceListening] = useState(false);
 
+  // Premium Toast & Confirm Modal State
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [confirmDelete, setConfirmDelete] = useState({ show: false, eventId: null });
+
+  // Tự động tắt toast sau 3.5 giây
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
+  useEffect(() => {
+    if (error) {
+      setToast({ show: true, message: error, type: "error" });
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (message) {
+      setToast({ show: true, message: message, type: "success" });
+    }
+  }, [message]);
+
+
   const handleAiTaskCountChange = (event) => {
     const value = event.target.value;
     if (value === "") {
@@ -669,23 +696,7 @@ export default function TaskManagementPage({ role = "member" }) {
 
   const deleteEvent = async () => {
     if (!selectedEvent) return;
-    const ok = window.confirm(
-      t("eventsTasks.messages.confirmDeleteEvent", { title: selectedEvent.title })
-    );
-    if (!ok) return;
-    setError("");
-    setMessage("");
-    setSaving(true);
-    try {
-      await deleteManagerEventAPI(selectedEvent.id, isAdmin && clanId ? { clan_id: Number(clanId) } : {});
-      setMessage(t("eventsTasks.messages.eventDeleted"));
-      setSelectedEventId("");
-      await loadData();
-    } catch (err) {
-      setError(err?.message || t("eventsTasks.errors.deleteEventFailed"));
-    } finally {
-      setSaving(false);
-    }
+    setConfirmDelete({ show: true, eventId: selectedEvent.id });
   };
 
   const updateTaskStatus = async (taskId, status) => {
@@ -1017,55 +1028,79 @@ const openEvent = (eventId) => {
 
   if (isAdmin && !clanId) {
     return (
-      <section className="task-page">
-        <header className="task-hero task-hero-wide">
-          <div>
-            <span className="task-kicker">{t("admin.dashboard.title")}</span>
-            <h1>{t("eventsTasks.admin.title")}</h1>
-            <p>{t("eventsTasks.admin.description")}</p>
+      <div className="task-page-admin">
+        <header className="page-header">
+          <div className="breadcrumb-nav">
+            <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
+            <span className="separator">/</span>
+            <span className="active">{t("eventsTasks.admin.title")}</span>
           </div>
+          <h1>{t("eventsTasks.admin.title")}</h1>
         </header>
-        {error && <div className="task-alert is-error">{error}</div>}
-        <div className="task-clan-grid">
+
+        <div className="clan-folder-grid">
           {clans.map((item) => (
-            <button key={item.id} type="button" className="task-clan-card" onClick={() => navigate(`/dashboard/tasks/clan/${item.id}`)}>
-              <span className="material-symbols-outlined">account_tree</span>
-              <strong>{item.clan_name}</strong>
-              <small>{item.owner_name || t("eventsTasks.placeholders.noManager")}</small>
-              <div className="task-clan-metrics">
-                <span>{t("eventsTasks.stats.openTasks", { count: Number(item.open_task_count || 0) })}</span>
-                <span>{t("eventsTasks.stats.completed", { count: Number(item.completed_task_count || 0) })}</span>
-                <span>{t("eventsTasks.stats.totalTasks", { count: Number(item.task_count || 0) })}</span>
+            <div key={item.id} className="clan-folder-card" onClick={() => navigate(`/dashboard/tasks/clan/${item.id}`)}>
+              <div className="folder-icon">
+                <span className="material-symbols-outlined">folder_managed</span>
+                <span className="count-badge">{item.task_count || 0}</span>
               </div>
-            </button>
+              <div className="folder-info">
+                <h3>{item.clan_name}</h3>
+                <p>{item.owner_name || t("eventsTasks.placeholders.noManager")}</p>
+              </div>
+            </div>
           ))}
         </div>
-        {!clans.length && <div className="task-card task-empty">{t("eventsTasks.placeholders.noClanFound")}</div>}
-      </section>
+        {!clans.length && (
+            <div className="premium-dark-glass">
+                <div className="empty-state">
+                    <span className="material-symbols-outlined">event_busy</span>
+                    <p>{t("eventsTasks.placeholders.noClanFound")}</p>
+                </div>
+            </div>
+        )}
+
+        {/* 🌟 Premium Glass Toast */}
+        <div className={`premium-glass-toast ${toast.type} ${toast.show ? "show" : ""}`}>
+            <div className="toast-content">
+                <span className="material-symbols-outlined toast-icon">
+                    {toast.type === "success" ? "check_circle" : "warning"}
+                </span>
+                <span className="toast-msg">{toast.message}</span>
+            </div>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))} className="toast-close">
+                <span className="material-symbols-outlined">close</span>
+            </button>
+        </div>
+      </div>
     );
   }
 
   if (isMember) {
     return (
-      <section className="task-page">
-        <header className="task-hero task-hero-wide">
-          <div>
-            <span className="task-kicker">{t("member.dashboard.title")}</span>
-            <h1>{t("eventsTasks.member.title")}</h1>
-            <p>{t("eventsTasks.member.description")}</p>
+      <div className="task-page-admin">
+        <header className="page-header">
+          <div className="breadcrumb-nav">
+            <Link to="/dashboard">{t("member.dashboard.title")}</Link>
+            <span className="separator">/</span>
+            <span className="active">{t("eventsTasks.member.title")}</span>
           </div>
+          <h1>{t("eventsTasks.member.title")}</h1>
         </header>
         {message && <div className="task-alert is-success">{message}</div>}
         {error && <div className="task-alert is-error">{error}</div>}
-        <div className="task-stats">
-          <div className="task-stat"><span className="material-symbols-outlined">assignment</span><strong>{stats.total}</strong><small>{t("eventsTasks.stats.total")}</small></div>
-          <div className="task-stat"><span className="material-symbols-outlined">pending_actions</span><strong>{stats.open}</strong><small>{t("eventsTasks.stats.open")}</small></div>
-          <div className="task-stat"><span className="material-symbols-outlined">sync</span><strong>{stats.inProgress}</strong><small>{t("eventsTasks.stats.inProgressLabel")}</small></div>
-          <div className="task-stat"><span className="material-symbols-outlined">task_alt</span><strong>{stats.completed}</strong><small>{t("eventsTasks.stats.completedLabel")}</small></div>
+        <div className="premium-dark-glass" style={{ marginBottom: '1.5rem' }}>
+            <div className="task-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+                <div className="task-stat"><span className="material-symbols-outlined">assignment</span><strong>{stats.total}</strong><small>{t("eventsTasks.stats.total")}</small></div>
+                <div className="task-stat"><span className="material-symbols-outlined">pending_actions</span><strong>{stats.open}</strong><small>{t("eventsTasks.stats.open")}</small></div>
+                <div className="task-stat"><span className="material-symbols-outlined">sync</span><strong>{stats.inProgress}</strong><small>{t("eventsTasks.stats.inProgressLabel")}</small></div>
+                <div className="task-stat"><span className="material-symbols-outlined">task_alt</span><strong>{stats.completed}</strong><small>{t("eventsTasks.stats.completedLabel")}</small></div>
+            </div>
         </div>
 
         {events.length > 0 && (
-          <div className="manager-event-grid">
+          <div className="manager-event-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
             {events.map((event) => {
               const myTaskCount = Number(event.my_task_count || 0);
               const myCompletedTaskCount = Number(event.my_completed_task_count || 0);
@@ -1076,24 +1111,20 @@ const openEvent = (eventId) => {
                 <button 
                   key={event.id} 
                   type="button" 
-                  className={`manager-event-card ${openTasks > 0 ? 'is-assigned-glow' : ''}`}
+                  className={`manager-event-card clan-folder-card ${openTasks > 0 ? 'is-assigned-glow' : ''}`}
                   onClick={() => setSelectedEventId(event.id)}
+                  style={{ width: '100%', minHeight: 'auto', padding: '1.5rem', textAlign: 'left', alignItems: 'flex-start' }}
                 >
-                  <span className="manager-event-icon material-symbols-outlined">event_note</span>
-                  <strong>{event.title}</strong>
-                  <small>{formatEventRange(event, t)}</small>
-                  <span className={`event-status-pill ${eventStatusClass(event.status)}`}>{eventStatusLabel(event.status, t)}</span>
-                  {event.description && <p>{event.description}</p>}
-                  <div className="manager-event-metrics">
-                    {hasAssignedTasks ? (
-                      <>
-                        <span>{t("eventsTasks.stats.openTasks", { count: openTasks })}</span>
-                        <span>{t("eventsTasks.stats.completed", { count: myCompletedTaskCount })}</span>
-                        <span>{t("eventsTasks.stats.totalTasks", { count: myTaskCount })}</span>
-                      </>
-                    ) : (
-                      <span>{t("eventsTasks.placeholders.noTaskForYou")}</span>
-                    )}
+                  <div className="folder-icon" style={{ width: '60px', height: '60px', marginBottom: '1rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '2rem' }}>event_note</span>
+                    {openTasks > 0 && <span className="count-badge" style={{ background: '#d4af37', border: 'none' }}>{openTasks}</span>}
+                  </div>
+                  <div className="folder-info" style={{ textAlign: 'left' }}>
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>{event.title}</h3>
+                    <p style={{ fontSize: '0.8rem' }}>{formatEventRange(event, t)}</p>
+                    <span className={`status-badge ${event.status === 'ongoing' ? 'approved' : 'pending'}`} style={{ marginTop: '0.5rem', scale: '0.8', originX: 0 }}>
+                        {eventStatusLabel(event.status, t)}
+                    </span>
                   </div>
                 </button>
               );
@@ -1123,40 +1154,34 @@ const openEvent = (eventId) => {
         {!events.length && (
           <TaskList tasks={tasks} isMember savingTaskId={savingTaskId} onUpdateStatus={updateTaskStatus} />
         )}
-      </section>
+      </div>
     );
   }
 
   if (selectedEvent) {
     return (
-      <section className="task-page task-page-manager">
-        <header className="task-hero task-hero-wide manager-hero">
-          <div>
-            <span className="task-kicker">{isAdmin ? t("layout.systemAdmin") : t("layout.clanManager")}</span>
+      <div className="task-page-admin">
+        <header className="page-header">
+            <div className="breadcrumb-nav">
+                <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
+                <span className="separator">/</span>
+                <Link to="/dashboard/tasks">{t("eventsTasks.admin.title")}</Link>
+                {clanId && (
+                    <>
+                        <span className="separator">/</span>
+                        <Link to={`/dashboard/tasks/clan/${clanId}`}>{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</Link>
+                    </>
+                )}
+                <span className="separator">/</span>
+                <span className="active">{selectedEvent.title}</span>
+            </div>
             <h1>{selectedEvent.title}</h1>
-            <p>{formatEventRange(selectedEvent, t)} • {eventStatusLabel(selectedEvent.status, t)} • {t("eventsTasks.stats.tasksInEvent", { count: selectedTasks.length })} • {t("eventsTasks.placeholders.managerScopeNotice")}</p>
-          </div>
-          <div className="task-hero-actions">
-            <button className="task-btn task-btn-ghost" type="button" onClick={() => setSelectedEventId("")}> 
-              <span className="material-symbols-outlined">arrow_back</span>
-              {t("eventsTasks.actions.eventList")}
-            </button>
-            {isAdmin && (
-              <Link className="task-btn task-btn-ghost" to="/dashboard/tasks">
-                <span className="material-symbols-outlined">account_tree</span>
-                {t("eventsTasks.placeholders.clanList")}
-              </Link>
-            )}
-          </div>
         </header>
 
-        {message && <div className="task-alert is-success">{message}</div>}
-        {error && <div className="task-alert is-error">{error}</div>}
-
-        <div className="event-action-strip task-card">
+        <div className="event-action-strip premium-dark-glass" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem' }}>
           <div>
-            <strong>{t("eventsTasks.actions.manageEvent")}</strong>
-            <small>{t("eventsTasks.placeholders.manageEventHelp")}</small>
+            <strong style={{ color: '#d4af37', fontSize: '1.1rem', display: 'block' }}>{t("eventsTasks.actions.manageEvent")}</strong>
+            <small style={{ color: 'rgba(255,255,255,0.6)' }}>{t("eventsTasks.placeholders.manageEventHelp")}</small>
           </div>
           <div className="event-action-buttons">
             <button className="task-btn task-btn-primary" type="button" onClick={requestAiTaskCreate} disabled={aiLoading}>
@@ -1174,63 +1199,64 @@ const openEvent = (eventId) => {
           </div>
         </div>
 
-        <div className="event-detail-summary event-detail-summary-compact">
-          <span><span className="material-symbols-outlined">calendar_month</span> {t("eventsTasks.form.time")}: <strong>{formatEventRange(selectedEvent, t)}</strong></span>
-          <span><span className="material-symbols-outlined">assignment</span> {t("eventsTasks.status.assigned")}: <strong>{t("eventsTasks.stats.totalTasks", { count: selectedTasks.length })}</strong></span>
-          <span><span className="material-symbols-outlined">auto_awesome</span> {t("eventsTasks.placeholders.aiPending")}: <strong>{t("eventsTasks.stats.aiSuggestions", { count: aiTaskTotal })}</strong></span>
+        <div className="event-detail-summary premium-dark-glass" style={{ marginBottom: '1.5rem', display: 'flex', gap: '2rem', padding: '1rem 1.5rem' }}>
+          <span><span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: '8px', color: '#d4af37' }}>calendar_month</span> {t("eventsTasks.form.time")}: <strong>{formatEventRange(selectedEvent, t)}</strong></span>
+          <span><span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: '8px', color: '#d4af37' }}>assignment</span> {t("eventsTasks.status.assigned")}: <strong>{t("eventsTasks.stats.totalTasks", { count: selectedTasks.length })}</strong></span>
+          <span><span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: '8px', color: '#d4af37' }}>auto_awesome</span> {t("eventsTasks.placeholders.aiPending")}: <strong>{t("eventsTasks.stats.aiSuggestions", { count: aiTaskTotal })}</strong></span>
         </div>
 
         <div className="event-workspace-grid">
-          <section className="task-card ai-task-panel event-ai-panel">
+          <section className="premium-dark-glass ai-task-panel event-ai-panel" style={{ padding: '1.5rem' }}>
             <div className="ai-task-panel-head">
               <div>
-                <span className="task-section-kicker">{t("eventsTasks.placeholders.aiSuggestions")}</span>
-                <h3>{t("eventsTasks.placeholders.aiTasksGenerated")}</h3>
-                <p>{t("eventsTasks.placeholders.aiTasksHelp")}</p>
-                <div className="ai-count-notice" aria-label={t("eventsTasks.placeholders.aiStatsLabel")}>
-                  <div className="ai-count-notice-icon">
+                <span className="task-section-kicker" style={{ color: '#d4af37', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>{t("eventsTasks.placeholders.aiSuggestions")}</span>
+                <h3 style={{ color: '#fff6dc', margin: '0.5rem 0' }}>{t("eventsTasks.placeholders.aiTasksGenerated")}</h3>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>{t("eventsTasks.placeholders.aiTasksHelp")}</p>
+                <div className="ai-count-notice" style={{ background: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '12px', padding: '12px', marginTop: '1rem' }}>
+                  <div className="ai-count-notice-icon" style={{ color: '#d4af37' }}>
                     <span className="material-symbols-outlined">info</span>
                   </div>
                   <div className="ai-count-notice-body">
-                    <strong>{t("eventsTasks.placeholders.aiStatus")}</strong>
+                    <strong style={{ color: '#fff6dc' }}>{t("eventsTasks.placeholders.aiStatus")}</strong>
                     <div className="ai-count-notice-grid">
-                      <span><b>{currentAiTaskTarget}</b> {t("eventsTasks.placeholders.requested")}</span>
-                      <span><b>{aiTaskTotal}</b> {t("eventsTasks.placeholders.generated")}</span>
-                      <span><b>{selectedAiTaskCount}</b>/{aiTaskTotal || currentAiTaskTarget} {t("eventsTasks.placeholders.selected")}</span>
+                      <span><b style={{ color: '#d4af37' }}>{currentAiTaskTarget}</b> {t("eventsTasks.placeholders.requested")}</span>
+                      <span><b style={{ color: '#d4af37' }}>{aiTaskTotal}</b> {t("eventsTasks.placeholders.generated")}</span>
+                      <span><b style={{ color: '#d4af37' }}>{selectedAiTaskCount}</b>/{aiTaskTotal || currentAiTaskTarget} {t("eventsTasks.placeholders.selected")}</span>
                     </div>
                   </div>
                 </div>
               </div>
               <div className="ai-task-head-actions">
                 <label className="ai-count-control">
-                  <span>{t("eventsTasks.placeholders.aiTaskCount")}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.8)' }}>{t("eventsTasks.placeholders.aiTaskCount")}</span>
                   <input
                     type="number"
                     min="1"
                     max="20"
                     value={aiTaskCount}
                     onChange={handleAiTaskCountChange}
+                    style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
                   />
-                  <small>{t("eventsTasks.placeholders.aiMaxNotice")}</small>
+                  <small style={{ color: 'rgba(255,255,255,0.4)' }}>{t("eventsTasks.placeholders.aiMaxNotice")}</small>
                 </label>
               </div>
             </div>
 
-            <div className="ai-inline-prompt">
-              <div className="ai-prompt-input-wrap">
+            <div className="ai-inline-prompt" style={{ marginTop: '1.5rem', display: 'flex', gap: '10px' }}>
+              <div className="ai-prompt-input-wrap" style={{ flex: 1, position: 'relative' }}>
                 <input
                   value={aiPrompt}
                   onChange={(event) => setAiPrompt(event.target.value)}
                   placeholder={t("eventsTasks.placeholders.aiPromptHint")}
                   disabled={aiLoading}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px 45px 12px 12px', color: '#fff' }}
                 />
                 <button
                   className={`ai-voice-btn ${voiceListening ? "is-listening" : ""}`}
                   type="button"
                   onClick={toggleAiPromptVoiceInput}
                   disabled={aiLoading}
-                  aria-label={voiceListening ? t("common.stopVoice") : t("common.startVoice")}
-                  title={speechSupported ? t("common.startVoice") : t("common.speechUnsupported")}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: voiceListening ? '#ef4444' : '#d4af37' }}
                 >
                   <span className="material-symbols-outlined">{voiceListening ? "mic_off" : "mic"}</span>
                 </button>
@@ -1243,7 +1269,7 @@ const openEvent = (eventId) => {
             </div>
 
             {aiTaskSuggestions.length ? (
-              <div className="ai-task-grid ai-task-grid-compact">
+              <div className="ai-task-grid ai-task-grid-compact" style={{ marginTop: '1.5rem' }}>
                 {aiTaskSuggestions.map((task) => {
                   const titleOk = Boolean(String(task.title || "").trim());
                   const descriptionOk = Boolean(String(task.description || "").trim());
@@ -1252,39 +1278,40 @@ const openEvent = (eventId) => {
                   const canSend = task.selected && titleOk && descriptionOk && dueDateOk && assigneeOk && !bulkAssigning;
 
                   return (
-                    <article className="ai-task-card ai-task-card-compact" key={task.id}>
-                      <div className="ai-task-card-top">
-                        <label className="ai-task-check">
+                    <article className="ai-task-card ai-task-card-compact" key={task.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '1rem', marginBottom: '1rem' }}>
+                      <div className="ai-task-card-top" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <label className="ai-task-check" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                           <input
                             type="checkbox"
                             checked={Boolean(task.selected)}
                             onChange={(event) => updateAiTaskSuggestion(task.id, { selected: event.target.checked })}
                           />
-                          <span>{t("common.select")}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem' }}>{t("common.select")}</span>
                         </label>
 
-                        <div className="ai-task-top-actions">
-                          <span className={canSend ? "ai-task-valid is-ok" : "ai-task-valid is-warning"}>
+                        <div className="ai-task-top-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                          <span className={canSend ? "ai-task-valid is-ok" : "ai-task-valid is-warning"} style={{ fontSize: '0.8rem', color: canSend ? '#4ade80' : '#fbbf24' }}>
                             {canSend ? t("eventsTasks.placeholders.infoComplete") : t("eventsTasks.placeholders.infoIncomplete")}
                           </span>
-                          <button className="task-icon-btn is-danger" type="button" onClick={() => removeAiTaskSuggestion(task.id)} aria-label={t("eventsTasks.actions.deleteAiTask")}>
-                            <span className="material-symbols-outlined">delete</span>
+                          <button className="task-icon-btn is-danger" type="button" onClick={() => removeAiTaskSuggestion(task.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', width: '32px', height: '32px', borderRadius: '8px' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>delete</span>
                           </button>
                         </div>
                       </div>
 
-                      <div className="ai-task-fields ai-task-fields-compact">
+                      <div className="ai-task-fields ai-task-fields-compact" style={{ display: 'grid', gap: '12px' }}>
                         <label className={!titleOk ? "field-invalid" : ""}>
-                          <span>{t("eventsTasks.form.title")}</span>
+                          <span style={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: '4px' }}>{t("eventsTasks.form.title")}</span>
                           <input
                             value={task.title}
                             onChange={(event) => updateAiTaskSuggestion(task.id, { title: event.target.value })}
                             placeholder={t("eventsTasks.placeholders.enterTaskTitle")}
+                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px', color: '#fff' }}
                           />
                         </label>
 
                         <label className={!dueDateOk ? "field-invalid" : ""}>
-                          <span>{t("eventsTasks.form.deadline")}</span>
+                          <span style={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: '4px' }}>{t("eventsTasks.form.deadline")}</span>
                           <DateInput
                             value={task.due_date || ""}
                             onChange={(event) => updateAiTaskSuggestion(task.id, { due_date: event.target.value })}
@@ -1292,17 +1319,18 @@ const openEvent = (eventId) => {
                         </label>
 
                         <label className={!descriptionOk ? "field-invalid" : "ai-task-desc"}>
-                          <span>{t("eventsTasks.form.description")}</span>
+                          <span style={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: '4px' }}>{t("eventsTasks.form.description")}</span>
                           <textarea
                             rows={2}
                             value={task.description}
                             onChange={(event) => updateAiTaskSuggestion(task.id, { description: event.target.value })}
                             placeholder={t("eventsTasks.placeholders.enterDescription")}
+                            style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px', color: '#fff', resize: 'vertical' }}
                           />
                         </label>
 
                         <div className={!assigneeOk ? "task-field field-invalid" : "task-field"}>
-                          <span>{t("eventsTasks.form.assignee")}</span>
+                          <span style={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginBottom: '4px' }}>{t("eventsTasks.form.assignee")}</span>
                           <MemberCombobox
                             members={members}
                             value={task.member_account_ids || []}
@@ -1312,14 +1340,14 @@ const openEvent = (eventId) => {
                         </div>
 
                         {task.suggested_role && (
-                          <div className="ai-task-role">
+                          <div className="ai-task-role" style={{ fontSize: '0.8rem', color: '#d4af37', background: 'rgba(212, 175, 55, 0.1)', padding: '6px 10px', borderRadius: '8px' }}>
                             {t("eventsTasks.placeholders.suggestion")}: <strong>{task.suggested_role}</strong>
                           </div>
                         )}
                       </div>
 
-                      <div className="ai-task-card-actions">
-                        <button className="task-btn task-btn-primary" type="button" onClick={() => submitSingleAiTaskSuggestion(task)} disabled={!canSend}>
+                      <div className="ai-task-card-actions" style={{ marginTop: '1rem' }}>
+                        <button className="task-btn task-btn-primary" type="button" onClick={() => submitSingleAiTaskSuggestion(task)} disabled={!canSend} style={{ width: '100%' }}>
                           <span className="material-symbols-outlined">send</span>
                           {t("eventsTasks.actions.sendThisTask")}
                         </button>
@@ -1329,7 +1357,7 @@ const openEvent = (eventId) => {
                 })}
               </div>
             ) : (
-              <div className="task-empty ai-empty">{t("eventsTasks.placeholders.noAiTasks")}</div>
+              <div className="task-empty ai-empty" style={{ padding: '3rem', textAlign: 'center', color: 'rgba(255,255,255,0.3)' }}>{t("eventsTasks.placeholders.noAiTasks")}</div>
             )}
           </section>
 
@@ -1429,30 +1457,28 @@ const openEvent = (eventId) => {
             </form>
           </div>
         )}
-      </section>
+      </div>
     );
   }
 
   return (
-    <section className="task-page task-page-manager">
-      <header className="task-hero task-hero-wide manager-hero">
-        <div>
-          <span className="task-kicker">{isAdmin ? t("layout.systemAdmin") : t("layout.clanManager")}</span>
-          <h1>{isAdmin ? t("eventsTasks.admin.clanTasks", { clanName: clan?.clan_name || "" }) : t("eventsTasks.manager.title")}</h1>
-          <p>{isAdmin ? t("eventsTasks.admin.eventScopeNotice") : t("eventsTasks.manager.eventScopeNotice")}</p>
+    <div className="task-page-admin">
+      <header className="page-header">
+        <div className="breadcrumb-nav">
+          <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
+          <span className="separator">/</span>
+          <Link to="/dashboard/tasks" className={!clanId ? "active" : ""}>{t("eventsTasks.admin.title")}</Link>
+          {clanId && (
+            <>
+              <span className="separator">/</span>
+              <span className="active">{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</span>
+            </>
+          )}
         </div>
-        {isAdmin && (
-          <Link className="task-btn task-btn-ghost" to="/dashboard/tasks">
-            <span className="material-symbols-outlined">arrow_back</span>
-            {t("eventsTasks.actions.allClans")}
-          </Link>
-        )}
+        <h1>{isAdmin ? t("eventsTasks.admin.clanTasks", { clanName: clan?.clan_name || "" }) : t("eventsTasks.manager.title")}</h1>
       </header>
 
-      {message && <div className="task-alert is-success">{message}</div>}
-      {error && <div className="task-alert is-error">{error}</div>}
-
-      <div className="event-toolbar event-toolbar-compact">
+      <div className="event-toolbar event-toolbar-compact premium-dark-glass" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
         <div className="event-search event-search-compact">
           <span className="material-symbols-outlined">search</span>
           <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder={t("eventsTasks.placeholders.searchEvents")} />
@@ -1473,6 +1499,115 @@ const openEvent = (eventId) => {
         </div>
       </div>
 
+      <div className="premium-dark-glass">
+        {activeFilteredEvents.length === 0 ? (
+          <div className="empty-state">
+            <span className="material-symbols-outlined">event_busy</span>
+            <p>{events.length ? t("eventsTasks.placeholders.noActiveEventFound") : t("eventsTasks.placeholders.noEventFound")}</p>
+          </div>
+        ) : (
+          <table className="premium-table">
+            <thead>
+              <tr>
+                <th>{t("eventsTasks.form.eventName") || "Tên sự kiện"}</th>
+                <th>{t("eventsTasks.form.time") || "Thời gian"}</th>
+                <th>{t("eventsTasks.form.description") || "Mô tả"}</th>
+                <th>{t("common.status.title") || t("common.status") || "Trạng thái"}</th>
+                <th>{t("eventsTasks.stats.totalTasksLabel") || "Công việc"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeFilteredEvents.map((event) => {
+                const assignmentCount = Number(event.assignment_count || 0);
+                const completedCount = Number(event.completed_assignment_count || 0);
+                const openCount = Math.max(assignmentCount - completedCount, 0);
+                
+                return (
+                  <tr key={event.id} onClick={() => openEvent(event.id)} style={{ cursor: 'pointer' }}>
+                    <td>
+                      <div className="author-cell">
+                        <div className="author-avatar"><span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>event</span></div>
+                        <span>{event.title}</span>
+                      </div>
+                    </td>
+                    <td style={{ fontSize: '0.85rem' }}>{formatEventRange(event, t)}</td>
+                    <td>
+                      <div className="post-preview">
+                        <p>{event.description || t("eventsTasks.placeholders.noDescription")}</p>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`status-badge ${event.status === 'ended' ? 'rejected' : event.status === 'ongoing' ? 'approved' : 'pending'}`}>
+                        {eventStatusLabel(event.status, t)}
+                      </span>
+                    </td>
+                    <td>
+                        <div className="metric-badges">
+                            <span className="metric-badge open" title={t("eventsTasks.stats.openTasks", { count: openCount })}>
+                                <strong>{openCount}</strong> <small>Open</small>
+                            </span>
+                            <span className="metric-badge done" title={t("eventsTasks.stats.completed", { count: completedCount })}>
+                                <strong>{completedCount}</strong> <small>Done</small>
+                            </span>
+                        </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Modals & Feedback (Keep existing modal logic but wrapped in premium styles if needed) */}
+      {/* ...existing modal JSX remains same for now as they are already complex... */}
+
+      {/* 🌟 Premium Glass Toast */}
+      <div className={`premium-glass-toast ${toast.type} ${toast.show ? "show" : ""}`}>
+          <div className="toast-content">
+              <span className="material-symbols-outlined toast-icon">
+                  {toast.type === "success" ? "check_circle" : "warning"}
+              </span>
+              <span className="toast-msg">{toast.message}</span>
+          </div>
+          <button onClick={() => setToast(prev => ({ ...prev, show: false }))} className="toast-close">
+              <span className="material-symbols-outlined">close</span>
+          </button>
+      </div>
+
+      {/* 🌟 Premium Glass Confirm Dialog */}
+      {confirmDelete.show && (
+          <div className="premium-confirm-overlay">
+              <div className="premium-confirm-modal">
+                  <div className="modal-warning-icon">
+                      <span className="material-symbols-outlined">warning</span>
+                  </div>
+                  <h2>{t("eventsTasks.messages.confirmDeleteEventTitle") || "Xóa sự kiện?"}</h2>
+                  <p>{t("eventsTasks.messages.confirmDeleteEventSubtitle") || "Hành động này không thể hoàn tác. Tất cả công việc liên quan sẽ bị ảnh hưởng."}</p>
+                  <div className="modal-buttons">
+                      <button className="modal-btn-cancel" onClick={() => setConfirmDelete({ show: false, eventId: null })}>
+                          {t("common.cancel")}
+                      </button>
+                      <button className="modal-btn-danger" onClick={async () => {
+                          const id = confirmDelete.eventId;
+                          setConfirmDelete({ show: false, eventId: null });
+                          try {
+                              await deleteManagerEventAPI(id, isAdmin && clanId ? { clan_id: Number(clanId) } : {});
+                              setToast({ show: true, message: t("eventsTasks.messages.eventDeleted"), type: "success" });
+                              setSelectedEventId("");
+                              loadData();
+                          } catch (err) {
+                              setToast({ show: true, message: err.message, type: "error" });
+                          }
+                      }}>
+                          {t("common.delete")}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Existing Modals */}
       {showAiEventModal && (
         <div className="task-modal-backdrop" role="presentation" onMouseDown={() => setShowAiEventModal(false)}>
           <div className="task-modal-card ai-event-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -1640,35 +1775,7 @@ const openEvent = (eventId) => {
           </form>
         </div>
       )}
-
-      <div className="manager-event-grid">
-        {activeFilteredEvents.map((event) => {
-          const assignmentCount = Number(event.assignment_count || 0);
-          const completedCount = Number(event.completed_assignment_count || 0);
-          const openCount = Math.max(assignmentCount - completedCount, 0);
-          return (
-            <button key={event.id} type="button" className="manager-event-card" onClick={() => openEvent(event.id)}>
-              <span className="manager-event-icon material-symbols-outlined">event_note</span>
-              <strong>{event.title}</strong>
-              <small>{formatEventRange(event, t)}</small>
-              <span className={`event-status-pill ${eventStatusClass(event.status)}`}>{eventStatusLabel(event.status, t)}</span>
-              {event.description && <p>{event.description}</p>}
-              <div className="manager-event-metrics">
-                <span>{t("eventsTasks.stats.openTasks", { count: openCount })}</span>
-                <span>{t("eventsTasks.stats.completed", { count: completedCount })}</span>
-                <span>{t("eventsTasks.stats.totalTasks", { count: Number(event.task_count || 0) })}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {!activeFilteredEvents.length && (
-        <div className="task-card task-empty">
-          {events.length ? t("eventsTasks.placeholders.noActiveEventFound") : t("eventsTasks.placeholders.noEventFound")}
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 

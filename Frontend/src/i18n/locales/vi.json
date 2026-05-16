@@ -657,6 +657,7 @@
       "openTasks": "{{count}} việc đang mở",
       "inProgress": "{{count}} đang thực hiện",
       "completed": "{{count}} đã hoàn thành",
+      "totalTasksLabel": "Công việc",
       "activeEvents": "{{count}} sự kiện đang diễn ra",
       "endedEvents": "{{count}} sự kiện đã kết thúc"
     },
@@ -708,6 +709,8 @@
       "description": "Mô tả",
       "startDate": "Ngày bắt đầu",
       "endDate": "Ngày kết thúc",
+      "descriptionShort": "Mô tả",
+      "time": "Thời gian",
       "deadline": "Hạn hoàn thành",
       "assignee": "Người thực hiện"
     },
@@ -772,6 +775,7 @@
       "noEventLinked": "Không gắn sự kiện",
       "managerScopeNotice": "Phạm vi quản lý",
       "clanList": "Danh sách dòng họ",
+      "clanDetail": "Chi tiết dòng họ",
       "enterDescription": "Nhập mô tả...",
       "enterEventDescription": "Nhập mô tả sự kiện...",
       "enterTaskTitle": "Nhập tiêu đề việc...",

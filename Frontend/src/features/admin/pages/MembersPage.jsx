@@ -8,6 +8,8 @@ import {
   deleteAdminAccount,
 } from "../../../api/adminService";
 import { formatDate } from "../../../shared/utils/dateFormat";
+import { Link } from "react-router-dom";
+import "./MembersPage.css";
 
 const emptyForm = {
   account_id: null,
@@ -130,6 +132,18 @@ export default function MembersPage() {
 
   const [currentFolderPage, setCurrentFolderPage] = useState(1);
   const [currentAccountPage, setCurrentAccountPage] = useState(1);
+
+  // Premium State
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [confirmDelete, setConfirmDelete] = useState({ show: false, account: null });
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
 
   useEffect(() => {
     fetchData();
@@ -267,23 +281,31 @@ export default function MembersPage() {
       } else {
         await createAdminAccount(payload);
       }
+      setToast({ show: true, message: form.account_id ? t("admin.accounts.messages.updated") : t("admin.accounts.messages.created"), type: "success" });
       setShowModal(false);
       setForm(emptyForm);
       await fetchData();
     } catch (err) {
-      alert(err.message || t("admin.accounts.messages.saveError"));
+      setToast({ show: true, message: err.message || t("admin.accounts.messages.saveError"), type: "error" });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (account) => {
-    if (!window.confirm(t("admin.accounts.messages.deleteConfirm", { email: account.email }))) return;
+  const handleDelete = (account) => {
+    setConfirmDelete({ show: true, account });
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!confirmDelete.account) return;
+    const account = confirmDelete.account;
+    setConfirmDelete({ show: false, account: null });
     try {
       await deleteAdminAccount(account.account_id);
+      setToast({ show: true, message: t("admin.accounts.messages.deleted"), type: "success" });
       await fetchData();
     } catch (err) {
-      alert(err.message || t("admin.accounts.messages.deleteError"));
+      setToast({ show: true, message: err.message || t("admin.accounts.messages.deleteError"), type: "error" });
     }
   };
 
@@ -292,34 +314,20 @@ export default function MembersPage() {
   const selectedClanName = clanCards.find((c) => String(c.id) === String(selectedClan))?.clan_name || t("admin.accounts.folders.allFolder");
 
   return (
-    <section className="members-management account-management-page">
-      <div className="members-header account-header">
-        <div className="header-info">
-          <h2>{t("admin.accounts.title")}</h2>
-          <p>{t("admin.accounts.subtitle")}</p>
+    <section className="account-management-page">
+      <header className="page-header">
+        <div className="breadcrumb-nav">
+          <Link to="/dashboard">{t("layout.adminMenu.overview")}</Link>
+          <span className="separator">/</span>
+          <span className="active">{t("layout.adminMenu.accounts")}</span>
         </div>
-        <div className="header-stats">
-          <div className="stat-item"><span>{t("admin.accounts.stats.total")}</span><strong>{accounts.length}</strong></div>
-          {selectedClan !== null && (
-            <button className="admin-primary-btn" onClick={openAdd}>
-              <span className="material-symbols-outlined">person_add</span>
-              {t("admin.accounts.actions.add")}
-            </button>
-          )}
-        </div>
-      </div>
+        <h1>{t("layout.adminMenu.accounts")}</h1>
+      </header>
 
       {selectedClan === null ? (
         <>
-          <div className="account-folder-title account-folder-title-main">
-            <div>
-              <h3>{t("admin.accounts.folders.title")}</h3>
-              <p>{t("admin.accounts.folders.subtitle")}</p>
-            </div>
-          </div>
-
-          <div className="filter-bar clan-search-bar">
-            <div className="search-box">
+          <div className="premium-toolbar">
+            <div className="search-box-premium">
               <span className="material-symbols-outlined">search</span>
               <input
                 type="text"
@@ -330,18 +338,22 @@ export default function MembersPage() {
             </div>
           </div>
 
-          <div className="account-clan-grid">
+          <div className="clan-folder-grid">
             {pagedClanCards.map((clan) => (
-              <button
-                type="button"
+              <div
                 key={clan.id}
-                className={`account-clan-card ${clan.is_admin_folder ? "admin-folder-card" : ""}`}
+                className="clan-folder-card"
                 onClick={() => openClanFolder(clan.id)}
               >
-                <span className="material-symbols-outlined">{clan.is_admin_folder ? "admin_panel_settings" : "folder_managed"}</span>
-                <strong>{clan.clan_name}</strong>
-                <small>{t("admin.accounts.folders.countLabel", { count: clan.member_count || 0 })}</small>
-              </button>
+                <div className="folder-icon">
+                    <span className="material-symbols-outlined">{clan.is_admin_folder ? "admin_panel_settings" : "folder_shared"}</span>
+                    <span className="count-badge">{clan.member_count || 0}</span>
+                </div>
+                <div className="folder-info">
+                    <h3>{clan.clan_name}</h3>
+                    <p>{clan.is_admin_folder ? t("admin.accounts.folders.adminSubtitle") : t("admin.accounts.folders.countLabel", { count: clan.member_count })}</p>
+                </div>
+              </div>
             ))}
           </div>
 
@@ -354,7 +366,7 @@ export default function MembersPage() {
           />
 
           {filteredClanCards.length === 0 && (
-            <div className="empty-state">
+            <div className="empty-container">
               <span className="material-symbols-outlined">folder_off</span>
               <p>{t("admin.accounts.folders.empty")}</p>
             </div>
@@ -362,48 +374,41 @@ export default function MembersPage() {
         </>
       ) : (
         <>
-          <div className="account-folder-title account-folder-title-detail">
-            <div>
-              <button type="button" className="admin-secondary-btn account-back-btn" onClick={backToClanFolders}>
-                <span className="material-symbols-outlined">arrow_back</span>
-                {t("admin.accounts.actions.back")}
-              </button>
-              <h3>{t("admin.accounts.detail.folderTitle", { name: selectedClanName })}</h3>
-              <p>{selectedClan === "admin" ? t("admin.accounts.detail.adminNote") : t("admin.accounts.detail.generalNote")}</p>
+          <div className="premium-toolbar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <button type="button" className="action-btn-circle" onClick={backToClanFolders} title={t("admin.accounts.actions.back")}>
+                    <span className="material-symbols-outlined">arrow_back</span>
+                </button>
+                <h2 style={{ margin: 0, color: '#fff6dc', fontSize: '1.4rem' }}>{selectedClanName}</h2>
             </div>
-          </div>
-
-          <div className="filter-bar">
-            <div className="search-box">
-              <span className="material-symbols-outlined">search</span>
-              <input
-                type="text"
-                placeholder={t("admin.accounts.detail.searchPlaceholder")}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="filters">
-              <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
-                <option value="all">{t("admin.accounts.detail.filterRoleAll")}</option>
-                {selectedClan === "admin" && <option value="1">{t("admin.accounts.roles.admin")}</option>}
-                <option value="2">{t("admin.accounts.roles.manager")}</option>
-                <option value="3">{t("admin.accounts.roles.member")}</option>
-              </select>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="search-box-premium">
+                    <span className="material-symbols-outlined">search</span>
+                    <input
+                        type="text"
+                        placeholder={t("admin.accounts.detail.searchPlaceholder")}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <button className="admin-primary-btn" onClick={openAdd} style={{ padding: '0 20px', borderRadius: '12px' }}>
+                    <span className="material-symbols-outlined">person_add</span>
+                    {t("admin.accounts.actions.add")}
+                </button>
             </div>
           </div>
         </>
       )}
 
-      {error && <div className="error-message">{error}</div>}
+      {error && <div className="task-alert is-error">{error}</div>}
 
       {selectedClan !== null && (
-      <div className="data-table-container">
-        <table className="data-table">
+      <div className="premium-dark-glass">
+        <table className="premium-table">
           <thead>
             <tr>
               <th>{t("admin.accounts.table.cols.account")}</th>
-              <th>{t("admin.accounts.table.cols.clan")}</th>
               <th>{t("admin.accounts.table.cols.role")}</th>
               <th>{t("admin.accounts.table.cols.status")}</th>
               <th>{t("admin.accounts.table.cols.createdAt")}</th>
@@ -414,25 +419,24 @@ export default function MembersPage() {
             {pagedAccounts.map((a) => (
               <tr key={a.account_id}>
                 <td>
-                  <div className="member-cell">
-                    <div className="account-avatar-letter">{accountName(a, t).charAt(0).toUpperCase()}</div>
-                    <div className="member-info">
-                      <div className="name">{accountName(a, t)}</div>
-                      <div className="email">{a.email}</div>
+                  <div className="user-cell">
+                    <div className="user-avatar-circle">{accountName(a, t).charAt(0).toUpperCase()}</div>
+                    <div className="user-info-text">
+                      <span className="user-name">{accountName(a, t)}</span>
+                      <span className="user-email">{a.email}</span>
                     </div>
                   </div>
                 </td>
-                <td><span className="clan-tag">{a.clan_name || t("admin.accounts.table.unassigned")}</span></td>
-                <td><span className={`role-badge role-${a.role_id}`}>{roleLabel(a.role_id, t)}</span></td>
-                <td><span className={`status-pill status-${a.status || "none"}`}>{statusLabel(a.status, t)}</span></td>
+                <td><span className="role-tag">{roleLabel(a.role_id, t)}</span></td>
+                <td><span className={`status-pill ${a.status || "active"}`}>{statusLabel(a.status, t)}</span></td>
                 <td>{a.created_at ? formatDate(a.created_at, i18n) : "-"}</td>
                 <td className="text-right">
-                  <div className="action-buttons">
-                    <button className="btn-icon btn-edit" title={t("admin.accounts.actions.edit")} onClick={() => openEdit(a)}>
+                  <div className="action-buttons-grid">
+                    <button className="action-btn-circle" title={t("admin.accounts.actions.edit")} onClick={() => openEdit(a)}>
                       <span className="material-symbols-outlined">edit</span>
                     </button>
                     {Number(a.role_id) !== 1 && (
-                      <button className="btn-icon btn-delete" title={t("admin.accounts.actions.delete")} onClick={() => handleDelete(a)}>
+                      <button className="action-btn-circle delete" title={t("admin.accounts.actions.delete")} onClick={() => handleDelete(a)}>
                         <span className="material-symbols-outlined">delete</span>
                       </button>
                     )}
@@ -451,7 +455,7 @@ export default function MembersPage() {
           t={t}
         />
         {filteredAccounts.length === 0 && (
-          <div className="empty-state">
+          <div className="empty-container">
             <span className="material-symbols-outlined">manage_accounts</span>
             <p>{t("admin.accounts.table.empty")}</p>
           </div>
@@ -491,6 +495,41 @@ export default function MembersPage() {
           </form>
         </div>
       )}
+    {/* 🌟 Premium Toast System */}
+    <div className="premium-toast-system">
+        <div className={`premium-toast ${toast.type} ${toast.show ? "show" : ""}`}>
+            <span className="material-symbols-outlined toast-icon">
+                {toast.type === "success" ? "check_circle" : "warning"}
+            </span>
+            <span className="toast-message">{toast.message}</span>
+            <button className="toast-close-btn" onClick={() => setToast(prev => ({ ...prev, show: false }))}>
+                <span className="material-symbols-outlined">close</span>
+            </button>
+        </div>
+    </div>
+
+    {/* 🌟 Premium Confirm Modal */}
+    {confirmDelete.show && (
+        <div className="premium-modal-overlay" onMouseDown={() => setConfirmDelete({ show: false, account: null })}>
+            <div className="premium-confirm-card" onMouseDown={(e) => e.stopPropagation()}>
+                <div className="warning-icon-wrapper">
+                    <span className="material-symbols-outlined">warning</span>
+                </div>
+                <h3 style={{ color: '#fff', fontSize: '1.4rem', margin: '0 0 10px' }}>{t("admin.accounts.modal.deleteTitle") || "Xác nhận xóa"}</h3>
+                <p style={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                    {t("admin.accounts.messages.deleteConfirm", { email: confirmDelete.account?.email })}
+                </p>
+                <div className="confirm-actions">
+                    <button className="btn-premium-cancel" onClick={() => setConfirmDelete({ show: false, account: null })}>
+                        {t("common.cancel")}
+                    </button>
+                    <button className="btn-premium-confirm" onClick={confirmDeleteAccount}>
+                        {t("common.delete")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )}
     </section>
   );
 }

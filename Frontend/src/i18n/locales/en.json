@@ -656,6 +656,7 @@
       "openTasks": "{{count}} open tasks",
       "inProgress": "{{count}} in progress",
       "completed": "{{count}} completed",
+      "totalTasksLabel": "Tasks",
       "activeEvents": "{{count}} ongoing events",
       "endedEvents": "{{count}} ended events"
     },
@@ -707,6 +708,8 @@
       "description": "Description",
       "startDate": "Start Date",
       "endDate": "End Date",
+      "descriptionShort": "Description",
+      "time": "Time",
       "deadline": "Deadline",
       "assignee": "Assignee"
     },
@@ -771,6 +774,7 @@
       "noEventLinked": "No event linked",
       "managerScopeNotice": "Manager Scope",
       "clanList": "Clan List",
+      "clanDetail": "Clan Details",
       "enterDescription": "Enter description...",
       "enterEventDescription": "Enter event description...",
       "enterTaskTitle": "Enter task title...",
