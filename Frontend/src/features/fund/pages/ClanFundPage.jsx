@@ -41,6 +41,8 @@ export default function ClanFundPage() {
   const [importing, setImporting] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [showPendingModal, setShowPendingModal] = useState(false);
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const [filterMonth, setFilterMonth] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -469,6 +471,19 @@ export default function ClanFundPage() {
 
   const activeCampaignCount = campaigns.filter((c) => c.status === "open").length;
 
+  const filteredCampaigns = campaigns.filter((c) => {
+    const matchYear = !filterYear || String(c.year) === String(filterYear);
+    let matchMonth = true;
+    if (filterMonth) {
+      // Extract month from deadline if available
+      const month = c.deadline ? new Date(c.deadline).getMonth() + 1 : null;
+      matchMonth = String(month) === String(filterMonth);
+    }
+    return matchYear && matchMonth;
+  });
+
+  const years = [...new Set(campaigns.map(c => c.year)), new Date().getFullYear()].sort((a, b) => b - a);
+
   return (
     <div className="fund-container glass-bg">
       <header className="glass-card premium-header">
@@ -564,13 +579,40 @@ export default function ClanFundPage() {
 
       <div className="fund-main-grid">
         <section>
-          <h3 className="section-title">Danh Sách Đợt Thu</h3>
+          <div className="section-header-v3">
+            <h3 className="section-title">
+              {filterMonth ? `Danh Sách Đợt T${filterMonth}` : "Danh Sách Đợt Thu"}
+              {filterYear && filterMonth ? `/${filterYear}` : filterYear ? ` Năm ${filterYear}` : ""}
+            </h3>
 
-          <div className="campaign-grid-v3">
+            <div className="fund-filters">
+              <div className="filter-item">
+                <span className="material-symbols-outlined">calendar_today</span>
+                <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+                  <option value="">Tất cả năm</option>
+                  {years.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="filter-item">
+                <span className="material-symbols-outlined">filter_list</span>
+                <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
+                  <option value="">Tất cả tháng</option>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m}>Tháng {m}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="campaign-grid-v3 vertical-scroll">
             {loading ? (
               <div className="empty-state-card">Đang tải dữ liệu...</div>
-            ) : campaigns.length ? (
-              campaigns.map((c) => (
+            ) : filteredCampaigns.length ? (
+              filteredCampaigns.map((c) => (
                 <div
                   key={c.id}
                   className="glass-card campaign-card-v3"
@@ -620,7 +662,7 @@ export default function ClanFundPage() {
                 </div>
               ))
             ) : (
-              <div className="empty-state-card">Chưa có đợt thu nào.</div>
+              <div className="empty-state-card">Không tìm thấy đợt thu nào phù hợp.</div>
             )}
           </div>
         </section>
@@ -1742,6 +1784,73 @@ export default function ClanFundPage() {
               gap: 0.85rem;
               align-items: stretch;
               padding-bottom: 1.2rem;
+            }
+
+            .campaign-grid-v3.vertical-scroll {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+              max-height: 520px;
+              overflow-y: auto;
+              padding: 0.5rem 0.5rem 1rem;
+              gap: 1rem;
+              scrollbar-width: thin;
+              scrollbar-color: rgba(217, 163, 35, 0.3) transparent;
+            }
+
+            .campaign-grid-v3.vertical-scroll::-webkit-scrollbar {
+              width: 6px;
+            }
+
+            .campaign-grid-v3.vertical-scroll::-webkit-scrollbar-thumb {
+              background: rgba(217, 163, 35, 0.3);
+              border-radius: 10px;
+            }
+
+            .campaign-grid-v3.vertical-scroll .campaign-card-v3 {
+              flex: unset;
+              min-width: unset;
+            }
+
+            .section-header-v3 {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 1rem;
+              flex-wrap: wrap;
+              gap: 1rem;
+            }
+
+            .fund-filters {
+              display: flex;
+              gap: 0.75rem;
+              align-items: center;
+            }
+
+            .filter-item {
+              display: flex;
+              align-items: center;
+              gap: 0.5rem;
+              background: rgba(255, 248, 234, 0.6);
+              border: 1px solid rgba(217, 163, 35, 0.2);
+              padding: 0.35rem 0.75rem;
+              border-radius: 12px;
+              backdrop-filter: blur(5px);
+            }
+
+            .filter-item .material-symbols-outlined {
+              font-size: 1.1rem;
+              color: #a36c09;
+            }
+
+            .filter-item select {
+              background: transparent;
+              border: 0;
+              color: #4a1e13;
+              font-weight: 800;
+              font-size: 0.85rem;
+              outline: none;
+              cursor: pointer;
+              padding-right: 0.5rem;
             }
 
             .campaign-card-v3 {
