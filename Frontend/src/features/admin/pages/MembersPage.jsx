@@ -39,6 +39,81 @@ const statusLabel = (status, t) => {
   return status || "N/A";
 };
 
+const FOLDERS_PER_PAGE = 20;
+const ACCOUNTS_PER_PAGE = 10;
+
+const Pagination = ({ currentPage, totalItems, itemsPerPage, onPageChange, t }) => {
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  if (totalPages <= 1) return null;
+
+  let startPage = Math.max(1, currentPage - 2);
+  let endPage = Math.min(totalPages, startPage + 4);
+
+  if (endPage - startPage < 4) {
+    startPage = Math.max(1, endPage - 4);
+  }
+
+  const pages = [];
+  for (let i = startPage; i <= endPage; i++) {
+    pages.push(i);
+  }
+
+  return (
+    <div className="admin-pagination">
+      <button 
+        type="button"
+        className="pagination-btn"
+        disabled={currentPage === 1} 
+        onClick={() => onPageChange(1)}
+      >
+        <span className="material-symbols-outlined">first_page</span>
+      </button>
+
+      {totalPages > 5 && (
+        <button 
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage === 1} 
+          onClick={() => onPageChange(currentPage - 1)}
+        >
+          <span className="material-symbols-outlined">chevron_left</span>
+        </button>
+      )}
+
+      {pages.map(p => (
+        <button 
+          type="button"
+          key={p} 
+          className={`pagination-number ${p === currentPage ? "active" : ""}`} 
+          onClick={() => onPageChange(p)}
+        >
+          {p}
+        </button>
+      ))}
+
+      {totalPages > 5 && (
+        <button 
+          type="button"
+          className="pagination-btn"
+          disabled={currentPage === totalPages} 
+          onClick={() => onPageChange(currentPage + 1)}
+        >
+          <span className="material-symbols-outlined">chevron_right</span>
+        </button>
+      )}
+
+      <button 
+        type="button"
+        className="pagination-btn"
+        disabled={currentPage === totalPages} 
+        onClick={() => onPageChange(totalPages)}
+      >
+        <span className="material-symbols-outlined">last_page</span>
+      </button>
+    </div>
+  );
+};
+
 export default function MembersPage() {
   const { t, i18n } = useTranslation();
   const [accounts, setAccounts] = useState([]);
@@ -52,6 +127,9 @@ export default function MembersPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const [currentFolderPage, setCurrentFolderPage] = useState(1);
+  const [currentAccountPage, setCurrentAccountPage] = useState(1);
 
   useEffect(() => {
     fetchData();
@@ -99,14 +177,21 @@ export default function MembersPage() {
 
   const filteredClanCards = useMemo(() => {
     const q = clanSearchTerm.trim().toLowerCase();
+    setCurrentFolderPage(1);
     if (!q) return clanCards;
     return clanCards.filter((clan) =>
       (clan.clan_name || "").toLowerCase().includes(q) || String(clan.member_count || 0).includes(q)
     );
   }, [clanCards, clanSearchTerm]);
 
+  const pagedClanCards = useMemo(() => {
+    const start = (currentFolderPage - 1) * FOLDERS_PER_PAGE;
+    return filteredClanCards.slice(start, start + FOLDERS_PER_PAGE);
+  }, [filteredClanCards, currentFolderPage]);
+
   const filteredAccounts = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
+    setCurrentAccountPage(1);
     return accounts.filter((a) => {
       const matchesSearch =
         !q ||
@@ -124,6 +209,11 @@ export default function MembersPage() {
       return matchesSearch && matchesRole && matchesClan;
     });
   }, [accounts, searchTerm, filterRole, selectedClan, t]);
+
+  const pagedAccounts = useMemo(() => {
+    const start = (currentAccountPage - 1) * ACCOUNTS_PER_PAGE;
+    return filteredAccounts.slice(start, start + ACCOUNTS_PER_PAGE);
+  }, [filteredAccounts, currentAccountPage]);
 
   const openClanFolder = (clanId) => {
     setSelectedClan(String(clanId));
@@ -241,7 +331,7 @@ export default function MembersPage() {
           </div>
 
           <div className="account-clan-grid">
-            {filteredClanCards.map((clan) => (
+            {pagedClanCards.map((clan) => (
               <button
                 type="button"
                 key={clan.id}
@@ -254,6 +344,14 @@ export default function MembersPage() {
               </button>
             ))}
           </div>
+
+          <Pagination 
+            currentPage={currentFolderPage}
+            totalItems={filteredClanCards.length}
+            itemsPerPage={FOLDERS_PER_PAGE}
+            onPageChange={setCurrentFolderPage}
+            t={t}
+          />
 
           {filteredClanCards.length === 0 && (
             <div className="empty-state">
@@ -313,7 +411,7 @@ export default function MembersPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredAccounts.map((a) => (
+            {pagedAccounts.map((a) => (
               <tr key={a.account_id}>
                 <td>
                   <div className="member-cell">
@@ -344,6 +442,14 @@ export default function MembersPage() {
             ))}
           </tbody>
         </table>
+
+        <Pagination 
+          currentPage={currentAccountPage}
+          totalItems={filteredAccounts.length}
+          itemsPerPage={ACCOUNTS_PER_PAGE}
+          onPageChange={setCurrentAccountPage}
+          t={t}
+        />
         {filteredAccounts.length === 0 && (
           <div className="empty-state">
             <span className="material-symbols-outlined">manage_accounts</span>

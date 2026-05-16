@@ -4069,7 +4069,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 }
 .account-clan-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin: 0 0 22px;
 }
@@ -4219,6 +4219,52 @@ input:checked + .slider:before { transform: translateX(26px); }
   .account-header .header-stats { flex-direction: column; align-items: stretch; }
   .admin-form-grid { grid-template-columns: 1fr; }
   .admin-form-full { grid-column: auto; }
+  .account-clan-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Pagination Styles */
+.admin-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 20px 0;
+}
+
+.pagination-btn,
+.pagination-number {
+  border: 1px solid #e0bd68;
+  background: #fff;
+  color: #8b0000;
+  border-radius: 8px;
+  min-width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.pagination-btn:not(:disabled):hover,
+.pagination-number:hover {
+  background: #8b0000;
+  color: #fff;
+  border-color: #8b0000;
+}
+
+.pagination-number.active {
+  background: #8b0000;
+  color: #fff;
+  border-color: #8b0000;
+  box-shadow: 0 4px 12px rgba(139, 0, 0, 0.2);
 }
 
 .account-folder-title-main {
