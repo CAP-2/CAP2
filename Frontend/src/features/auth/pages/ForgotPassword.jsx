@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import "./login.css";
 import { requestPasswordResetAPI, resetPasswordWithCodeAPI } from "../../../api/authService";
 
 const ForgotPassword = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -22,11 +24,11 @@ const ForgotPassword = () => {
     try {
       const res = await requestPasswordResetAPI(email.trim());
       if (res?.success) {
-        setInfo(res.message || "Đã xử lý yêu cầu.");
+        setInfo(res.message || t("auth.forgotPassword.processed"));
         setStep(2);
       }
     } catch (err) {
-      setError(err.message || "Không gửi được mã.");
+      setError(err.message || t("auth.forgotPassword.sendFailed"));
     } finally {
       setLoading(false);
     }
@@ -37,11 +39,11 @@ const ForgotPassword = () => {
     setError("");
     setInfo("");
     if (newPassword !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp.");
+      setError(t("auth.forgotPassword.passwordMismatch"));
       return;
     }
     if (newPassword.length < 6) {
-      setError("Mật khẩu tối thiểu 6 ký tự.");
+      setError(t("auth.forgotPassword.passwordMin"));
       return;
     }
     setLoading(true);
@@ -52,35 +54,34 @@ const ForgotPassword = () => {
         new_password: newPassword,
       });
       if (res?.success) {
-        setInfo(res.message || "Đặt lại thành công.");
+        setInfo(res.message || t("auth.forgotPassword.resetSuccess"));
         setTimeout(() => navigate("/login", { replace: true }), 1200);
       }
     } catch (err) {
-      setError(err.message || "Đặt lại thất bại.");
+      setError(err.message || t("auth.forgotPassword.resetFailed"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
+    <div className="login-page" data-no-translate="true">
       <Link to="/login" className="back-btn">
-        ← Đăng nhập
+        ← {t("navigation.login")}
       </Link>
       <div className="login-box">
         <div className="login-header">
-          <h2>Quên mật khẩu</h2>
+          <h2>{t("auth.forgotPassword.title")}</h2>
           <p>
             {step === 1
-              ? "Nhập email để nhận mã xác nhận (6 số)"
-              : "Nhập mã từ email và mật khẩu mới"}
+              ? t("auth.forgotPassword.stepEmail")
+              : t("auth.forgotPassword.stepReset")}
           </p>
         </div>
 
         {step === 1 && (
           <div className="forgot-hint">
-            Mã <strong>6 số</strong> gửi tới email đã đăng ký. Cần SMTP trong <code>Backend/.env</code>.
-            Không thấy thư — kiểm tra Spam.
+            {t("auth.forgotPassword.hint")}
           </div>
         )}
 
@@ -106,7 +107,7 @@ const ForgotPassword = () => {
             <div className="input-field">
               <input
                 type="email"
-                placeholder="Email đã đăng ký"
+                placeholder={t("auth.forgotPassword.registeredEmail")}
                 value={email}
                 required
                 autoComplete="email"
@@ -114,7 +115,7 @@ const ForgotPassword = () => {
               />
             </div>
             <button type="submit" className="btn-login" disabled={loading}>
-              {loading ? "Đang gửi…" : "Gửi mã qua email"}
+              {loading ? t("auth.forgotPassword.sending") : t("auth.forgotPassword.sendCode")}
             </button>
           </form>
         )}
@@ -130,7 +131,7 @@ const ForgotPassword = () => {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={6}
-                placeholder="Mã 6 số"
+                placeholder={t("auth.forgotPassword.code")}
                 value={code}
                 required
                 autoComplete="one-time-code"
@@ -140,7 +141,7 @@ const ForgotPassword = () => {
             <div className="input-field">
               <input
                 type="password"
-                placeholder="Mật khẩu mới"
+                placeholder={t("auth.forgotPassword.newPassword")}
                 value={newPassword}
                 required
                 minLength={6}
@@ -151,7 +152,7 @@ const ForgotPassword = () => {
             <div className="input-field">
               <input
                 type="password"
-                placeholder="Nhập lại mật khẩu mới"
+                placeholder={t("auth.forgotPassword.confirmPassword")}
                 value={confirmPassword}
                 required
                 minLength={6}
@@ -160,7 +161,7 @@ const ForgotPassword = () => {
               />
             </div>
             <button type="submit" className="btn-login" disabled={loading}>
-              {loading ? "Đang xử lý…" : "Đặt lại mật khẩu"}
+              {loading ? t("auth.forgotPassword.resetting") : t("auth.forgotPassword.reset")}
             </button>
             <button
               type="button"
@@ -175,7 +176,7 @@ const ForgotPassword = () => {
                 setInfo("");
               }}
             >
-              Gửi lại mã (bước 1)
+              {t("auth.forgotPassword.resend")}
             </button>
           </form>
         )}
@@ -183,7 +184,7 @@ const ForgotPassword = () => {
         <div className="login-footer">
           <p>
             <span>
-              <Link to="/login">← Về đăng nhập</Link>
+              <Link to="/login">← {t("auth.forgotPassword.backToLogin")}</Link>
             </span>
           </p>
         </div>

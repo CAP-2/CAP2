@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { uploadImage } from "../../api/memberService";
 import "./ImageUpload.css";
 
@@ -9,7 +10,7 @@ const CROP_AREA_SIZE = CROP_VIEWPORT_SIZE - CROP_CIRCLE_INSET * 2;
 
 const ImageUpload = ({
   onUploadSuccess,
-  label = "Tải ảnh lên",
+  label,
   value = "",
   disabled = false,
   usageType = "other",
@@ -17,6 +18,8 @@ const ImageUpload = ({
   accept = "image/*",
   allowVideo = false,
 }) => {
+  const { t } = useTranslation();
+  const uploadLabel = label || t("shared.upload.label");
   const avatarMode = useMemo(() => {
     if (typeof crop === "boolean") return crop;
     return String(usageType || "").toLowerCase().includes("avatar");
@@ -77,10 +80,10 @@ const ImageUpload = ({
           : uploadedUrl;
         onUploadSuccess?.(previewUrl, { ...result, mimeType: result.mimeType || result.mime_type || file.type });
       } else {
-        setError(result.message || "Tải ảnh thất bại");
+        setError(result.message || t("shared.upload.failed"));
       }
     } catch (err) {
-      setError(err.message || "Lỗi khi tải ảnh lên");
+      setError(err.message || t("shared.upload.error"));
     } finally {
       setLoading(false);
     }
@@ -102,12 +105,12 @@ const ImageUpload = ({
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
     if (!isImage && !(allowVideo && isVideo)) {
-      setError(allowVideo ? "Vui lòng chọn tệp ảnh hoặc video hợp lệ" : "Vui lòng chọn tệp hình ảnh (.jpg, .png, .webp, ...)");
+      setError(allowVideo ? t("shared.upload.invalidImageVideo") : t("shared.upload.invalidImage"));
       return;
     }
 
     if (avatarMode && !isImage) {
-      setError("Ảnh đại diện chỉ hỗ trợ tệp hình ảnh.");
+      setError(t("shared.upload.avatarOnlyImage"));
       return;
     }
 
@@ -226,7 +229,7 @@ const ImageUpload = ({
     try {
       const croppedFile = await buildCroppedFile();
       if (!croppedFile) {
-        setError("Không thể cắt ảnh này. Vui lòng chọn ảnh khác.");
+        setError(t("shared.upload.cropFailed"));
         setIsCropping(false);
         return;
       }
@@ -234,13 +237,13 @@ const ImageUpload = ({
       resetCropState();
       await uploadSelectedFile(croppedFile, localPreviewUrl);
     } catch (err) {
-      setError(err.message || "Không thể cắt ảnh");
+      setError(err.message || t("shared.upload.cropError"));
       setIsCropping(false);
     }
   };
 
   return (
-    <div className={`image-upload-container ${avatarMode ? "is-avatar-upload" : ""}`}>
+    <div className={`image-upload-container ${avatarMode ? "is-avatar-upload" : ""}`} data-no-translate="true">
       <div className="upload-options">
         <div
           className={`upload-dropzone ${isDragging ? "dragging" : ""} ${preview ? "has-preview" : ""}`}
@@ -270,13 +273,13 @@ const ImageUpload = ({
               {isVideoPreview ? (
                 <video src={preview} className="image-preview" controls muted playsInline preload="metadata" />
               ) : (
-                <img src={preview} alt="" className="image-preview" onError={() => setError("URL ảnh không hợp lệ")} />
+                <img src={preview} alt="" className="image-preview" onError={() => setError(t("shared.upload.invalidUrl"))} />
               )}
               <div className="preview-overlay">
-                <span>{avatarMode ? "Đổi ảnh đại diện" : allowVideo ? "Thay đổi ảnh/video" : "Thay đổi ảnh"}</span>
+                <span>{avatarMode ? t("shared.upload.changeAvatar") : allowVideo ? t("shared.upload.changeImageVideo") : t("shared.upload.changeImage")}</span>
               </div>
               <button className="preview-clear" type="button" onClick={clearImage} disabled={disabled || loading}>
-                Xóa
+                {t("common.deleteFile")}
               </button>
             </div>
           ) : (
@@ -286,16 +289,16 @@ const ImageUpload = ({
                   <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
                 </svg>
               </div>
-              <p>{label}</p>
-              <span className="upload-hint">Kéo thả hoặc nhấn để chọn file</span>
+              <p>{uploadLabel}</p>
+              <span className="upload-hint">{t("shared.upload.dragHint")}</span>
             </div>
           )}
 
-          {loading && <div className="upload-loader">Đang tải...</div>}
+          {loading && <div className="upload-loader">{t("common.loading")}</div>}
         </div>
 
         <div className="url-input-wrapper">
-          <span className="url-sep">hoặc dán URL:</span>
+          <span className="url-sep">{t("shared.upload.orPasteUrl")}</span>
           <input
             type="text"
             className="url-field"
@@ -309,12 +312,12 @@ const ImageUpload = ({
       {error && <p className="upload-error">{error}</p>}
 
       {cropSource ? (
-        <div className="avatar-crop-backdrop" role="dialog" aria-modal="true" aria-label="Cắt ảnh đại diện">
+        <div className="avatar-crop-backdrop" role="dialog" aria-modal="true" aria-label={t("shared.upload.cropAvatar")}>
           <div className="avatar-crop-modal">
             <div className="avatar-crop-header">
               <div>
-                <strong>Cắt ảnh đại diện</strong>
-                <span>Vùng bên trong vòng tròn sẽ là ảnh lưu cuối cùng. Kéo ảnh và thu/phóng để căn đúng khuôn.</span>
+                <strong>{t("shared.upload.cropAvatar")}</strong>
+                <span>{t("shared.upload.cropHelp")}</span>
               </div>
               <button type="button" className="avatar-crop-close" onClick={resetCropState} disabled={loading || isCropping}>
                 ×
@@ -348,7 +351,7 @@ const ImageUpload = ({
             </div>
 
             <label className="avatar-crop-zoom">
-              <span>Thu/phóng</span>
+              <span>{t("shared.upload.zoom")}</span>
               <input
                 type="range"
                 min="1"
@@ -361,10 +364,10 @@ const ImageUpload = ({
 
             <div className="avatar-crop-actions">
               <button type="button" className="avatar-crop-cancel" onClick={resetCropState} disabled={loading || isCropping}>
-                Hủy
+                {t("common.cancel")}
               </button>
               <button type="button" className="avatar-crop-confirm" onClick={confirmCrop} disabled={loading || isCropping}>
-                {isCropping || loading ? "Đang lưu..." : "Cắt và tải lên"}
+                {isCropping || loading ? t("shared.upload.saving") : t("shared.upload.cropAndUpload")}
               </button>
             </div>
           </div>

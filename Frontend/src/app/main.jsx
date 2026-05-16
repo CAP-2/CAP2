@@ -5,6 +5,7 @@ import AOS from "aos";
 import "aos/dist/aos.css";
 import App from "./App";
 import "../index.css";
+import "../i18n/i18n";
 
 AOS.init({
   duration: 850,

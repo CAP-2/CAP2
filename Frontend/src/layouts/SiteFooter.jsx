@@ -1,16 +1,19 @@
+import { useTranslation } from "react-i18next";
+
 export default function SiteFooter() {
+  const { t } = useTranslation();
   return (
-    <footer className="site-footer">
+    <footer className="site-footer" data-no-translate="true">
       <div className="container footer-wrap">
         <div>
-          <h4>Gia Phả Việt</h4>
-          <p>©2024 Gia Phả Việt - Lưu giữ bản sắc Việt</p>
+          <h4>{t("layout.brand")}</h4>
+          <p>{t("layout.footer.tagline")}</p>
         </div>
         <nav>
-          <a href="#">Liên hệ</a>
-          <a href="#">Chính sách bảo mật</a>
-          <a href="#">Điều khoản sử dụng</a>
-          <a href="#">Câu hỏi thường gặp</a>
+          <a href="#">{t("layout.footer.contact")}</a>
+          <a href="#">{t("layout.footer.privacy")}</a>
+          <a href="#">{t("layout.footer.terms")}</a>
+          <a href="#">{t("layout.footer.faq")}</a>
         </nav>
       </div>
     </footer>

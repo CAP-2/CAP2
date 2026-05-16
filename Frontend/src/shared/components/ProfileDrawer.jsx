@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../services/api";
 import { getStoredUser } from "../utils/auth";
 import "./ProfileDrawer.css";
@@ -7,7 +8,7 @@ const buildName = (profile) =>
   profile?.display_name ||
   [profile?.surname, profile?.middle_name, profile?.first_name].filter(Boolean).join(" ").trim() ||
   profile?.email ||
-  "Tài khoản";
+  "";
 
 function syncStoredUser(profile, setCurrentUser) {
   if (!profile) return;
@@ -38,9 +39,12 @@ export default function ProfileDrawer({
   onClose,
   currentUser,
   setCurrentUser,
-  roleLabel = "Thành viên dòng họ",
-  title = "Chỉnh sửa thông tin cá nhân",
+  roleLabel,
+  title,
 }) {
+  const { t } = useTranslation();
+  const drawerTitle = title || t("common.editProfile");
+  const drawerRoleLabel = roleLabel || t("layout.familyMember");
   const [loading, setLoading] = useState(false);
   const [savingBasic, setSavingBasic] = useState(false);
   const [savingContent, setSavingContent] = useState(false);
@@ -78,8 +82,8 @@ export default function ProfileDrawer({
   const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
 
   const displayName = useMemo(
-    () => buildName(profile) || currentUser?.name || currentUser?.display_name || currentUser?.email || "Tài khoản",
-    [profile, currentUser],
+    () => buildName(profile) || currentUser?.name || currentUser?.display_name || currentUser?.email || t("shared.profile.account"),
+    [profile, currentUser, t],
   );
 
   const avatarUrl =
@@ -95,12 +99,12 @@ export default function ProfileDrawer({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Vui lòng chọn file ảnh.");
+      alert(t("shared.upload.invalidImage"));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("Ảnh không được vượt quá 5MB.");
+      alert(t("shared.profile.maxSize"));
       return;
     }
 
@@ -150,7 +154,7 @@ export default function ProfileDrawer({
         const ctx = canvas.getContext("2d");
 
         if (!ctx) {
-          reject(new Error("Không thể tạo canvas để xử lý ảnh."));
+          reject(new Error(t("shared.profile.canvasFailed")));
           return;
         }
 
@@ -187,7 +191,7 @@ export default function ProfileDrawer({
       };
 
       image.onerror = () => {
-        reject(new Error("Không thể xử lý ảnh đã chọn."));
+        reject(new Error(t("shared.profile.processAvatarFailed")));
       };
 
       image.src = avatarPreview;
@@ -218,7 +222,7 @@ export default function ProfileDrawer({
       canvas.toBlob(
         (blob) => {
           if (!blob) {
-            reject(new Error("Không thể xử lý ảnh đã chọn."));
+            reject(new Error(t("shared.profile.processAvatarFailed")));
             return;
           }
 
@@ -243,7 +247,7 @@ export default function ProfileDrawer({
       const croppedDataUrl = await createCroppedAvatarDataUrl();
 
       if (!croppedDataUrl) {
-        setMessage("Không có ảnh để áp dụng.");
+        setMessage(t("shared.profile.noAvatarToApply"));
         return;
       }
 
@@ -263,9 +267,9 @@ export default function ProfileDrawer({
       setAvatarZoom(1);
       setAvatarPosition({ x: 50, y: 50 });
       setAvatarEditorOpen(false);
-      setMessage("Đã áp dụng khung ảnh. Bấm “Gửi duyệt ảnh và tiểu sử” để lưu.");
+      setMessage(t("shared.profile.avatarApplied"));
     } catch (error) {
-      setMessage(error?.message || "Không thể áp dụng chỉnh sửa ảnh.");
+      setMessage(error?.message || t("shared.profile.avatarApplyFailed"));
     }
   };
 
@@ -309,7 +313,7 @@ export default function ProfileDrawer({
 
       syncStoredUser(nextProfile, setCurrentUser);
     } catch (error) {
-      setMessage(error?.message || "Không tải được thông tin cá nhân.");
+      setMessage(error?.message || t("shared.profile.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -395,7 +399,7 @@ export default function ProfileDrawer({
     setMessage("");
 
     if (profile.person_id == null) {
-      setMessage("Tài khoản chưa liên kết hồ sơ người nên chưa thể cập nhật.");
+      setMessage(t("shared.profile.notLinked"));
       return;
     }
 
@@ -403,7 +407,7 @@ export default function ProfileDrawer({
     const generation = generationText === "" ? null : Number(generationText);
 
     if (generationText && !Number.isFinite(generation)) {
-      setMessage("Đời phải là một số hợp lệ.");
+      setMessage(t("shared.profile.invalidGeneration"));
       return;
     }
 
@@ -425,11 +429,11 @@ export default function ProfileDrawer({
 
       syncStoredUser(data.profile, setCurrentUser);
       setProfile((prev) => ({ ...prev, ...(data.profile || {}) }));
-      setMessage("Đã lưu thông tin cơ bản vào database.");
+      setMessage(t("shared.profile.basicSaved"));
 
       await loadProfile();
     } catch (error) {
-      setMessage(error?.message || "Không thể lưu thông tin cá nhân.");
+      setMessage(error?.message || t("shared.profile.basicSaveFailed"));
     } finally {
       setSavingBasic(false);
     }
@@ -439,7 +443,7 @@ export default function ProfileDrawer({
     setMessage("");
 
     if (profile.person_id == null) {
-      setMessage("Tài khoản chưa liên kết hồ sơ người nên chưa thể cập nhật ảnh/tiểu sử.");
+      setMessage(t("shared.profile.notLinkedContent"));
       return;
     }
 
@@ -453,7 +457,7 @@ export default function ProfileDrawer({
         const croppedFile = await createCroppedAvatarFile();
 
         if (!croppedFile) {
-          setMessage("Không thể xử lý ảnh đã chọn.");
+          setMessage(t("shared.profile.processAvatarFailed"));
           setSavingContent(false);
           return;
         }
@@ -484,7 +488,7 @@ export default function ProfileDrawer({
           null;
 
         if (!nextAvatarUrl) {
-          throw new Error("Upload ảnh thành công nhưng server không trả về url.");
+          throw new Error(t("shared.profile.uploadMissingUrl"));
         }
       }
 
@@ -520,12 +524,12 @@ export default function ProfileDrawer({
       setAvatarPosition({ x: 50, y: 50 });
       setAvatarEditorOpen(false);
 
-      setMessage("Đã lưu yêu cầu cập nhật ảnh và tiểu sử vào database để quản lý duyệt.");
+      setMessage(t("shared.profile.contentSubmitted"));
 
       await loadProfile();
     } catch (error) {
       console.error("Lỗi gửi cập nhật profile:", error);
-      setMessage(error?.message || "Lỗi gửi yêu cầu cập nhật hồ sơ.");
+      setMessage(error?.message || t("shared.profile.contentSubmitFailed"));
     } finally {
       setSavingContent(false);
     }
@@ -535,12 +539,12 @@ export default function ProfileDrawer({
     setMessage("");
 
     if (!passwordForm.current_password || !passwordForm.new_password) {
-      setMessage("Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.");
+      setMessage(t("shared.profile.passwordRequired"));
       return;
     }
 
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      setMessage("Mật khẩu xác nhận không khớp.");
+      setMessage(t("auth.forgotPassword.passwordMismatch"));
       return;
     }
 
@@ -561,21 +565,21 @@ export default function ProfileDrawer({
         confirm_password: "",
       });
 
-      setMessage("Đã đổi mật khẩu và lưu vào database.");
+      setMessage(t("shared.profile.passwordChanged"));
     } catch (error) {
-      setMessage(error?.message || "Không thể đổi mật khẩu.");
+      setMessage(error?.message || t("shared.profile.passwordChangeFailed"));
     } finally {
       setSavingPassword(false);
     }
   };
 
   return (
-    <div className="profile-drawer-layer" role="presentation" onMouseDown={onClose}>
+    <div className="profile-drawer-layer" role="presentation" onMouseDown={onClose} data-no-translate="true">
       <aside
         className="profile-drawer-panel"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={drawerTitle}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="profile-drawer-top">
@@ -585,7 +589,7 @@ export default function ProfileDrawer({
                 <span
                   className="profile-drawer-avatar-bg"
                   style={{ backgroundImage: `url(${avatarUrl})` }}
-                  aria-label="Ảnh đại diện"
+                  aria-label={t("shared.profile.avatar")}
                 />
               ) : (
                 <span className="material-symbols-outlined">person</span>
@@ -593,13 +597,13 @@ export default function ProfileDrawer({
             </div>
 
             <div>
-              <span className="profile-drawer-kicker">{roleLabel}</span>
-              <h2>{title}</h2>
-              <p>{loading ? "Đang tải thông tin..." : displayName}</p>
+              <span className="profile-drawer-kicker">{drawerRoleLabel}</span>
+              <h2>{drawerTitle}</h2>
+              <p>{loading ? t("shared.profile.loadingInfo") : displayName}</p>
             </div>
           </div>
 
-          <button type="button" className="profile-drawer-close" onClick={onClose} aria-label="Đóng">
+          <button type="button" className="profile-drawer-close" onClick={onClose} aria-label={t("auth.close")}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -610,54 +614,54 @@ export default function ProfileDrawer({
           <div className="profile-drawer-card-title">
             <span className="material-symbols-outlined">badge</span>
             <div>
-              <h3>Thông tin cơ bản</h3>
-              <p>Lưu trực tiếp vào tài khoản và hồ sơ thành viên.</p>
+              <h3>{t("shared.profile.basicInfo")}</h3>
+              <p>{t("shared.profile.basicInfoHelp")}</p>
             </div>
           </div>
 
           <div className="profile-drawer-grid">
             <label className="profile-drawer-full">
-              <span>Tên hiển thị đầy đủ (Gõ vào đây sẽ tự tách họ tên)</span>
+              <span>{t("shared.profile.displayNameHint")}</span>
               <input
                 name="display_name"
                 value={basicForm.display_name}
                 onChange={handleFullNameChange}
-                placeholder="Ví dụ: Nguyễn Văn A"
+                placeholder={t("shared.profile.examples.fullName")}
               />
             </label>
 
             <label>
-              <span>Họ</span>
+              <span>{t("shared.profile.surname")}</span>
               <input
                 name="surname"
                 value={basicForm.surname}
                 onChange={updateBasicField}
-                placeholder="Ví dụ: Nguyễn"
+                placeholder={t("shared.profile.examples.surname")}
               />
             </label>
 
             <label>
-              <span>Tên đệm</span>
+              <span>{t("shared.profile.middleName")}</span>
               <input
                 name="middle_name"
                 value={basicForm.middle_name}
                 onChange={updateBasicField}
-                placeholder="Ví dụ: Minh"
+                placeholder={t("shared.profile.examples.middleName")}
               />
             </label>
 
             <label>
-              <span>Tên</span>
+              <span>{t("common.firstName")}</span>
               <input
                 name="first_name"
                 value={basicForm.first_name}
                 onChange={updateBasicField}
-                placeholder="Ví dụ: Quân"
+                placeholder={t("shared.profile.examples.firstName")}
               />
             </label>
 
             <label>
-              <span>Email đăng nhập</span>
+              <span>{t("auth.login.emailPlaceholder")}</span>
               <input
                 name="email"
                 type="email"
@@ -668,24 +672,24 @@ export default function ProfileDrawer({
             </label>
 
             <label>
-              <span>Quê quán</span>
+              <span>{t("common.hometown")}</span>
               <input
                 name="hometown"
                 value={basicForm.hometown}
                 onChange={updateBasicField}
-                placeholder="Ví dụ: Thanh Hóa"
+                placeholder={t("shared.profile.examples.hometown")}
               />
             </label>
 
             <label>
-              <span>Đời</span>
+              <span>{t("shared.profile.generation")}</span>
               <input
                 name="generation"
                 type="number"
                 min="1"
                 value={basicForm.generation}
                 onChange={updateBasicField}
-                placeholder="Ví dụ: 3"
+                placeholder={t("shared.profile.examples.generation")}
               />
             </label>
           </div>
@@ -697,7 +701,7 @@ export default function ProfileDrawer({
             disabled={loading || savingBasic}
           >
             <span className="material-symbols-outlined">save</span>
-            {savingBasic ? "Đang lưu..." : "Lưu thông tin cơ bản"}
+            {savingBasic ? t("shared.upload.saving") : t("shared.profile.saveBasic")}
           </button>
         </section>
 
@@ -705,17 +709,17 @@ export default function ProfileDrawer({
           <div className="profile-drawer-card-title">
             <span className="material-symbols-outlined">photo_camera</span>
             <div>
-              <h3>Ảnh và tiểu sử</h3>
-              <p>Thông tin này được gửi vào hàng chờ duyệt của quản lý.</p>
+              <h3>{t("shared.profile.photoBio")}</h3>
+              <p>{t("shared.profile.photoBioHelp")}</p>
             </div>
           </div>
 
           {profile.moderation_status === "pending" && (
-            <div className="profile-drawer-note">Đang có yêu cầu cập nhật hồ sơ chờ duyệt.</div>
+            <div className="profile-drawer-note">{t("shared.profile.pendingUpdate")}</div>
           )}
 
           <div className="profile-drawer-full avatar-upload-field">
-            <span>Ảnh đại diện</span>
+            <span>{t("shared.profile.avatar")}</span>
 
             <div className="avatar-picker-row">
               <button
@@ -726,13 +730,13 @@ export default function ProfileDrawer({
                     setAvatarEditorOpen(true);
                   }
                 }}
-                title="Bấm để chỉnh sửa ảnh"
+                title={t("shared.profile.clickEditAvatar")}
               >
                 {avatarPreview ? (
                   <span
                     className="avatar-preview-bg"
                     style={{ backgroundImage: `url(${avatarPreview})` }}
-                    aria-label="Ảnh đại diện đã chọn"
+                    aria-label={t("shared.profile.avatar")}
                   />
                 ) : contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url ? (
                   <span
@@ -742,12 +746,12 @@ export default function ProfileDrawer({
                         contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url
                       })`,
                     }}
-                    aria-label="Ảnh đại diện hiện tại"
+                    aria-label={t("shared.profile.avatar")}
                   />
                 ) : (
                   <div className="avatar-empty-preview">
                     <span className="material-symbols-outlined">add_a_photo</span>
-                    <p>Chưa chọn ảnh</p>
+                    <p>{t("shared.profile.noAvatarSelected")}</p>
                   </div>
                 )}
 
@@ -767,7 +771,7 @@ export default function ProfileDrawer({
 
                 <label htmlFor="avatar-file-input" className="avatar-choose-button">
                   <span className="material-symbols-outlined">upload</span>
-                  Chọn ảnh từ máy
+                  {t("shared.profile.chooseAvatar")}
                 </label>
 
                 <button
@@ -777,7 +781,7 @@ export default function ProfileDrawer({
                   disabled={!avatarPreview && !contentForm.avatar_url && !profile.avatar_url && !currentUser?.avatar_url}
                 >
                   <span className="material-symbols-outlined">crop</span>
-                  Chỉnh khung ảnh
+                  {t("shared.profile.adjustAvatar")}
                 </button>
 
                 {avatarPreview && (
@@ -802,12 +806,12 @@ export default function ProfileDrawer({
                       }));
                     }}
                   >
-                    Xóa ảnh đã chọn
+                    {t("shared.profile.removeSelectedAvatar")}
                   </button>
                 )}
 
                 <small>
-                  Sau khi chọn ảnh, bấm vào avatar hoặc nút “Chỉnh khung ảnh” để căn ảnh.
+                  {t("shared.profile.avatarHelp")}
                 </small>
               </div>
             </div>
@@ -822,15 +826,15 @@ export default function ProfileDrawer({
                 <div className="avatar-editor-box">
                   <div className="avatar-editor-header">
                     <div>
-                      <h3>Chỉnh sửa ảnh đại diện</h3>
-                      <p>Kéo ảnh trong khung tròn và điều chỉnh thu phóng.</p>
+                      <h3>{t("shared.profile.editAvatar")}</h3>
+                      <p>{t("shared.profile.editAvatarHelp")}</p>
                     </div>
 
                     <button
                       type="button"
                       className="avatar-editor-close"
                       onClick={() => setAvatarEditorOpen(false)}
-                      aria-label="Đóng chỉnh sửa ảnh"
+                      aria-label={t("auth.close")}
                     >
                       <span className="material-symbols-outlined">close</span>
                     </button>
@@ -859,7 +863,7 @@ export default function ProfileDrawer({
                     {avatarPreview ? (
                       <img
                         src={avatarPreview}
-                        alt="Ảnh đại diện xem trước"
+                        alt={t("shared.profile.avatar")}
                         style={{
                           transform: `scale(${avatarZoom})`,
                           transformOrigin: `${avatarPosition.x}% ${avatarPosition.y}%`,
@@ -868,18 +872,18 @@ export default function ProfileDrawer({
                     ) : contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url ? (
                       <img
                         src={contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url}
-                        alt="Ảnh đại diện hiện tại"
+                        alt={t("shared.profile.avatar")}
                       />
                     ) : (
                       <div className="avatar-empty-preview">
                         <span className="material-symbols-outlined">add_a_photo</span>
-                        <p>Chưa chọn ảnh</p>
+                        <p>{t("shared.profile.noAvatarSelected")}</p>
                       </div>
                     )}
                   </div>
 
                   <div className="avatar-zoom-control">
-                    <span>Thu phóng ảnh</span>
+                    <span>{t("shared.upload.zoom")}</span>
                     <input
                       type="range"
                       min="1"
@@ -893,7 +897,7 @@ export default function ProfileDrawer({
                   <div className="avatar-editor-actions">
                     <label htmlFor="avatar-file-input" className="avatar-choose-button">
                       <span className="material-symbols-outlined">image</span>
-                      Đổi ảnh khác
+                      {t("shared.upload.changeImage")}
                     </label>
 
                     <button
@@ -902,7 +906,7 @@ export default function ProfileDrawer({
                       onClick={handleApplyAvatarEdit}
                     >
                       <span className="material-symbols-outlined">check</span>
-                      Áp dụng
+                      {t("shared.profile.apply")}
                     </button>
                   </div>
                 </div>
@@ -911,12 +915,12 @@ export default function ProfileDrawer({
           </div>
 
           <label className="profile-drawer-full">
-            <span>Tiểu sử / giới thiệu</span>
+            <span>{t("shared.profile.bio")}</span>
             <textarea
               name="bio"
               value={contentForm.bio}
               onChange={updateContentField}
-              placeholder="Viết vài dòng giới thiệu..."
+              placeholder={t("shared.profile.bioPlaceholder")}
               rows={4}
             />
           </label>
@@ -928,7 +932,7 @@ export default function ProfileDrawer({
             disabled={loading || savingContent || profile.moderation_status === "pending"}
           >
             <span className="material-symbols-outlined">send</span>
-            {savingContent ? "Đang gửi..." : "Gửi duyệt ảnh và tiểu sử"}
+            {savingContent ? t("common.submitting") : t("shared.profile.submitContent")}
           </button>
         </section>
 
@@ -936,42 +940,42 @@ export default function ProfileDrawer({
           <div className="profile-drawer-card-title">
             <span className="material-symbols-outlined">lock_reset</span>
             <div>
-              <h3>Đổi mật khẩu</h3>
-              <p>Mật khẩu mới sẽ được mã hóa và lưu lại trong database.</p>
+              <h3>{t("shared.profile.changePassword")}</h3>
+              <p>{t("shared.profile.changePasswordHelp")}</p>
             </div>
           </div>
 
           <div className="profile-drawer-grid">
             <label className="profile-drawer-full">
-              <span>Mật khẩu hiện tại</span>
+              <span>{t("shared.profile.currentPassword")}</span>
               <input
                 name="current_password"
                 type="password"
                 value={passwordForm.current_password}
                 onChange={updatePasswordField}
-                placeholder="Nhập mật khẩu hiện tại"
+                placeholder={t("shared.profile.currentPassword")}
               />
             </label>
 
             <label>
-              <span>Mật khẩu mới</span>
+              <span>{t("shared.profile.newPassword")}</span>
               <input
                 name="new_password"
                 type="password"
                 value={passwordForm.new_password}
                 onChange={updatePasswordField}
-                placeholder="Nhập mật khẩu mới"
+                placeholder={t("shared.profile.newPassword")}
               />
             </label>
 
             <label className="profile-drawer-full">
-              <span>Xác nhận mật khẩu mới</span>
+              <span>{t("shared.profile.confirmPassword")}</span>
               <input
                 name="confirm_password"
                 type="password"
                 value={passwordForm.confirm_password}
                 onChange={updatePasswordField}
-                placeholder="Nhập lại mật khẩu mới"
+                placeholder={t("shared.profile.confirmPassword")}
               />
             </label>
           </div>
@@ -983,7 +987,7 @@ export default function ProfileDrawer({
             disabled={savingPassword}
           >
             <span className="material-symbols-outlined">vpn_key</span>
-            {savingPassword ? "Đang đổi..." : "Đổi mật khẩu"}
+            {savingPassword ? t("shared.profile.changingPassword") : t("shared.profile.changePassword")}
           </button>
         </section>
       </aside>

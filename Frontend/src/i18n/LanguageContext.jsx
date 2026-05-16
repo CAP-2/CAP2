@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { additionalTranslations } from "./staticTranslations";
 
 const STORAGE_KEY = "app_language";
@@ -277,11 +278,10 @@ const dictionary = new Map(
   ].sort((a, b) => b[0].length - a[0].length),
 );
 
-const attrNames = ["title", "aria-label", "placeholder", "value"];
-let originalText = new WeakMap();
-let originalAttrs = new WeakMap();
 const LanguageContext = createContext(null);
-let isApplyingTranslation = false;
+const originalText = new WeakMap();
+const TRANSLATION_DELAY_MS = 150;
+const SKIPPED_TRANSLATION_TAGS = new Set(["SCRIPT", "STYLE", "INPUT", "TEXTAREA", "SELECT", "OPTION", "CODE", "PRE"]);
 const WORD_CHARS = "\\p{L}\\p{N}_";
 const reverseDictionary = new Map(
   Array.from(dictionary.entries())
@@ -361,7 +361,43 @@ export function translateByLanguage(
   return language === "en" ? translateText(text) : translateToVietnamese(text);
 }
 
-function readOriginalText(node, language) {
+function setDocumentLanguage(language) {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = language;
+  document.documentElement.dataset.lang = language;
+}
+
+function shouldSkipElement(element) {
+  return SKIPPED_TRANSLATION_TAGS.has(element.tagName) || element.closest("[data-no-translate='true']");
+}
+
+function shouldTranslateTextNode(node) {
+  if (!node.nodeValue || !node.nodeValue.trim()) return false;
+  const parent = node.parentElement;
+  return Boolean(parent) && !shouldSkipElement(parent);
+}
+
+function collectTextNodes(node, textNodes = []) {
+  if (!node) return textNodes;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    if (shouldTranslateTextNode(node)) textNodes.push(node);
+    return textNodes;
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+    return textNodes;
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE && shouldSkipElement(node)) {
+    return textNodes;
+  }
+
+  node.childNodes.forEach((child) => collectTextNodes(child, textNodes));
+  return textNodes;
+}
+
+function getOriginalText(node) {
   const current = node.nodeValue;
   if (!originalText.has(node)) {
     originalText.set(node, current);
@@ -369,8 +405,8 @@ function readOriginalText(node, language) {
   }
 
   const previous = originalText.get(node);
-  const expected = language === "en" ? translateText(previous) : translateToVietnamese(previous);
-  if (current !== previous && current !== expected) {
+  const expectedEnglish = translateText(previous);
+  if (current !== previous && current !== expectedEnglish) {
     originalText.set(node, current);
     return current;
   }
@@ -378,78 +414,34 @@ function readOriginalText(node, language) {
   return previous;
 }
 
-function readOriginalAttr(element, attr, language) {
-  if (!originalAttrs.has(element)) originalAttrs.set(element, {});
-  const originals = originalAttrs.get(element);
-  const current = element.getAttribute(attr);
-  if (!Object.prototype.hasOwnProperty.call(originals, attr)) {
-    originals[attr] = current;
-    return current;
-  }
-
-  const previous = originals[attr];
-  const expected = language === "en" ? translateText(previous) : translateToVietnamese(previous);
-  if (current !== previous && current !== expected) {
-    originals[attr] = current;
-    return current;
-  }
-
-  return previous;
-}
-
-function shouldSkipNode(node) {
-  const parent = node.parentElement;
-  if (!parent) return true;
-  const tag = parent.tagName;
-  return ["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE"].includes(tag) || parent.closest("[data-no-translate='true']");
-}
-
-function translateDocument(language) {
+function translateDocumentText(language) {
   if (typeof document === "undefined") return;
-  isApplyingTranslation = true;
-  document.documentElement.lang = language;
-  document.documentElement.dataset.lang = language;
+  setDocumentLanguage(language);
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const textNodes = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  const root = document.getElementById("root");
+  if (!root) return;
 
-  textNodes.forEach((node) => {
-    if (shouldSkipNode(node)) return;
-    const original = readOriginalText(node, language);
-    const nextValue = translateByLanguage(original, language);
+  collectTextNodes(root).forEach((node) => {
+    const original = getOriginalText(node);
+    const nextValue = language === "en" ? translateText(original) : original;
     if (node.nodeValue !== nextValue) node.nodeValue = nextValue;
-  });
-
-  document.querySelectorAll("*").forEach((element) => {
-    attrNames.forEach((attr) => {
-      if (!element.hasAttribute(attr)) return;
-      if (attr === "value" && !["BUTTON", "INPUT"].includes(element.tagName)) return;
-      const original = readOriginalAttr(element, attr, language);
-      const nextValue = translateByLanguage(original, language);
-      if (element.getAttribute(attr) !== nextValue) element.setAttribute(attr, nextValue);
-    });
-  });
-  window.requestAnimationFrame(() => {
-    isApplyingTranslation = false;
   });
 }
 
 export function LanguageProvider({ children }) {
   const [language, setLanguage] = useState(() => localStorage.getItem(STORAGE_KEY) || "vi");
+  const { pathname } = useLocation();
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, language);
-    originalText = new WeakMap();
-    originalAttrs = new WeakMap();
-    translateDocument(language);
-    const observer = new MutationObserver(() => {
-      if (isApplyingTranslation) return;
-      window.requestAnimationFrame(() => translateDocument(language));
-    });
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
-    return () => observer.disconnect();
-  }, [language]);
+    setDocumentLanguage(language);
+
+    const timer = window.setTimeout(() => {
+      translateDocumentText(language);
+    }, TRANSLATION_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [language, pathname]);
 
   const value = useMemo(() => ({
     language,

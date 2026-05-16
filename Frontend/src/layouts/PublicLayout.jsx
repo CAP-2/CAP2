@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Header from "./Header";
 import SiteFooter from "./SiteFooter";
 import Login from "../features/auth/pages/Login";
@@ -7,6 +8,7 @@ import Register from "../features/auth/pages/Register";
 import { getCurrentUser, logout } from "../shared/utils/auth";
 
 export default function UserLayout() {
+  const { t } = useTranslation();
   const [authMode, setAuthMode] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const navigate = useNavigate();
@@ -74,7 +76,7 @@ export default function UserLayout() {
     <>
       <Header
         isLoggedIn={isLoggedIn}
-        currentUsername={currentUser?.name || currentUser?.display_name || currentUser?.email || "Người dùng"}
+        currentUsername={currentUser?.name || currentUser?.display_name || currentUser?.email || t("layout.userFallback")}
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenLogin={openLogin}

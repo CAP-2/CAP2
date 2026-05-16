@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import LanguageToggle from "../shared/components/LanguageToggle";
 import "./Header.css";
 
 const navItems = [
-  { label: "Về chúng tôi", to: "/#ve-chung-toi" },
-  { label: "Tính năng", to: "/tinh-nang" },
-  { label: "Lợi ích", to: "/loi-ich" },
-  { label: "Tin tức", to: "/tin-tuc" },
-  { label: "Hướng dẫn", to: "/huong-dan" },
+  { labelKey: "layout.about", to: "/#ve-chung-toi" },
+  { labelKey: "layout.features", to: "/tinh-nang" },
+  { labelKey: "layout.benefits", to: "/loi-ich" },
+  { labelKey: "layout.news", to: "/tin-tuc" },
+  { labelKey: "layout.guide", to: "/huong-dan" },
 ];
 
 export default function Header({
@@ -18,6 +19,8 @@ export default function Header({
   onOpenLogin,
   onOpenRegister,
 }) {
+  const { t } = useTranslation();
+
   const getDashboardPath = () => {
     if (!currentUser) return "/";
     if (currentUser.role_name === "admin") return "/dashboard";
@@ -30,10 +33,10 @@ export default function Header({
     <header className="site-header">
       <div className="header-top">
         <div className="brand">
-          <Link to="/" aria-label="Về trang chủ Gia Phả Việt">
+          <Link to="/" aria-label={t("layout.homeAria")}>
             <img
               src="/logo-giaphaviet.png"
-              alt="Gia Phả Việt"
+              alt={t("layout.brand")}
               className="brand-logo"
             />
           </Link>
@@ -43,8 +46,8 @@ export default function Header({
       <nav className="main-nav">
         <div className="main-nav-links">
           {navItems.map((item) => (
-            <Link key={item.label} to={item.to}>
-              {item.label}
+            <Link key={item.labelKey} to={item.to}>
+              {t(item.labelKey)}
             </Link>
           ))}
         </div>
@@ -55,15 +58,15 @@ export default function Header({
             <>
               <Link to={getDashboardPath()} className="nav-dashboard-link">
                 <span className="material-symbols-outlined">dashboard</span>
-                Dashboard
+                {t("common.dashboard")}
               </Link>
-              <span className="auth-user">Xin chào, {currentUsername}</span>
+              <span className="auth-user">{t("layout.hello", { name: currentUsername })}</span>
               <button
                 type="button"
                 onClick={onLogout}
                 className="nav-btn nav-btn-logout"
               >
-                Đăng xuất
+                {t("common.logout")}
               </button>
             </>
           ) : (
@@ -73,14 +76,14 @@ export default function Header({
                 className="nav-btn nav-btn-register"
                 onClick={onOpenRegister}
               >
-                Đăng ký
+                {t("common.register")}
               </button>
               <button
                 type="button"
                 className="nav-btn nav-btn-login"
                 onClick={onOpenLogin}
               >
-                Đăng nhập
+                {t("common.login")}
               </button>
             </>
           )}

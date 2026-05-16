@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import "./login.css";
 import { loginAPI } from "../../../api/authService";
 
@@ -30,6 +31,7 @@ function persistSession(result) {
 }
 
 export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister }) {
+  const { t } = useTranslation();
   const isModal = typeof isOpen === "boolean";
   const navigate = useNavigate();
   const [loginForm, setLoginForm] = useState(initialLoginForm);
@@ -78,17 +80,17 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
     try {
       const email = loginForm.email.trim();
       if (!email) {
-        setError("Vui lòng nhập email.");
+        setError(t("auth.login.missingEmail"));
         return;
       }
 
       const result = await loginAPI({ email, password: loginForm.password });
       if (!result?.success) {
-        setError(result?.message || "Đăng nhập không thành công.");
+        setError(result?.message || t("auth.login.failed"));
         return;
       }
       if (!result.user) {
-        setError("Phản hồi từ server thiếu thông tin tài khoản.");
+        setError(t("auth.login.missingUser"));
         return;
       }
 
@@ -120,7 +122,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
         <input
           name="email"
           type="email"
-          placeholder="Email đăng nhập"
+          placeholder={t("auth.login.emailPlaceholder")}
           value={loginForm.email}
           required
           autoComplete="username"
@@ -132,7 +134,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
         <input
           name="password"
           type="password"
-          placeholder="Mật khẩu"
+          placeholder={t("auth.login.passwordPlaceholder")}
           value={loginForm.password}
           required
           autoComplete="current-password"
@@ -141,19 +143,19 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
       </div>
 
       <button type="submit" className="btn-login" disabled={isSubmitting}>
-        {isSubmitting ? "Đang xác thực..." : "Đăng nhập"}
+        {isSubmitting ? t("auth.login.submitting") : t("auth.login.submit")}
       </button>
     </form>
   );
 
   if (!isModal) {
     return (
-      <div className="login-page">
-        <Link to="/" className="back-btn">← Back to Home</Link>
+      <div className="login-page" data-no-translate="true">
+        <Link to="/" className="back-btn">← {t("navigation.backHome")}</Link>
         <div className="login-box">
           <div className="login-header">
-            <h2>Chào mừng đến với Gia Phả Việt!</h2>
-            <p>Hãy đăng nhập để tiếp tục</p>
+            <h2>{t("auth.login.title")}</h2>
+            <p>{t("auth.login.subtitle")}</p>
           </div>
 
           {error && <div className="error-alert">{error}</div>}
@@ -163,10 +165,10 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
 
           <div className="login-footer">
             <p>
-              <span>Chưa có tài khoản? <Link to="/register">Đăng ký</Link></span>
+              <span>{t("auth.login.noAccount")} <Link to="/register">{t("navigation.register")}</Link></span>
               <span>
-                <Link to="/forgot" title="Nhận mã 6 số qua email đã đăng ký">
-                  Quên mật khẩu?
+                <Link to="/forgot" title={t("auth.login.forgotTitle")}>
+                  {t("auth.login.forgotPassword")}
                 </Link>
               </span>
             </p>
@@ -177,16 +179,16 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
   }
 
   return (
-    <div className="auth-modal-overlay" onClick={onClose}>
+    <div className="auth-modal-overlay" onClick={onClose} data-no-translate="true">
       <div className="auth-modal-card auth-modal-card--login" onClick={(event) => event.stopPropagation()}>
-        <button className="auth-modal-close" onClick={onClose} type="button" aria-label="Đóng">
+        <button className="auth-modal-close" onClick={onClose} type="button" aria-label={t("auth.close")}>
           ×
         </button>
 
         <section className="auth-panel auth-panel--login">
           <div className="auth-modal-header">
-            <h2>Chào mừng đến với Gia Phả Việt!</h2>
-            <p>Hãy đăng nhập để tiếp tục</p>
+            <h2>{t("auth.login.title")}</h2>
+            <p>{t("auth.login.subtitle")}</p>
           </div>
 
           {error && <div className="auth-error">{error}</div>}
@@ -196,7 +198,7 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
 
           <div className="auth-modal-footer auth-modal-footer--between">
             <span>
-              Chưa có tài khoản?{" "}
+              {t("auth.login.noAccount")}{" "}
               <button
                 className="auth-link-btn"
                 type="button"
@@ -205,11 +207,11 @@ export default function Login({ isOpen, onClose, onLoginSuccess, onOpenRegister 
                   onOpenRegister?.();
                 }}
               >
-                Đăng ký
+                {t("navigation.register")}
               </button>
             </span>
             <Link className="auth-link-btn" to="/forgot" onClick={onClose}>
-              Quên mật khẩu?
+              {t("auth.login.forgotPassword")}
             </Link>
           </div>
         </section>

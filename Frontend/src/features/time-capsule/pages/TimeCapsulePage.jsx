@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../../services/api";
 import { formatDateTimeVN } from "../../../shared/utils/dateFormat";
 import "./TimeCapsulePage.css";
@@ -16,10 +17,10 @@ const emptyForm = {
   readers: [],
 };
 
-function getStatusLabel(status) {
-  if (status === "approved") return "Đã duyệt";
-  if (status === "rejected") return "Từ chối";
-  return "Chờ duyệt";
+function getStatusLabel(status, t) {
+  if (status === "approved") return t("timeCapsule.status.approved");
+  if (status === "rejected") return t("timeCapsule.status.rejected");
+  return t("timeCapsule.status.pending");
 }
 
 function getMediaKind(fileOrMemory) {
@@ -31,32 +32,32 @@ function getMediaKind(fileOrMemory) {
   return "text";
 }
 
-function getVisibilityLabel(visibility) {
-  if (visibility === "private") return "Chỉ mình tôi";
-  if (visibility === "selected") return "Người được chọn";
-  return "Cả dòng họ";
+function getVisibilityLabel(visibility, t) {
+  if (visibility === "private") return t("timeCapsule.visibility.private");
+  if (visibility === "selected") return t("timeCapsule.visibility.selected");
+  return t("timeCapsule.visibility.clan");
 }
 
 function getReaderKey(reader) {
   return `${reader.account_id || ""}:${reader.person_id || ""}`;
 }
 
-function MemoryMedia({ memory }) {
+function MemoryMedia({ memory, t }) {
   const url = memory.media_url || (memory.media_id ? `/api/media/${memory.media_id}` : "");
   if (!url) return null;
   const kind = getMediaKind(memory);
-  if (kind === "image") return <img className="memory-media" src={url} alt={memory.title || "Kỉ niệm"} />;
+  if (kind === "image") return <img className="memory-media" src={url} alt={memory.title || t("timeCapsule.defaultMemoryTitle")} />;
   if (kind === "video") return <video className="memory-media" src={url} controls preload="metadata" />;
   if (kind === "audio") return <audio className="memory-audio" src={url} controls />;
   return (
     <a className="memory-file-link" href={url} target="_blank" rel="noreferrer">
       <span className="material-symbols-outlined">attach_file</span>
-      {memory.original_filename || "Mở tệp đính kèm"}
+      {memory.original_filename || t("timeCapsule.openAttachment")}
     </a>
   );
 }
 
-function MemoryCard({ memory, isManagerView = false }) {
+function MemoryCard({ memory, isManagerView = false, t }) {
   return (
     <article className={`memory-card is-${memory.status || "approved"}`}>
       <div className="memory-card-head">
@@ -64,32 +65,33 @@ function MemoryCard({ memory, isManagerView = false }) {
           {(memory.author_name || "K").slice(0, 1).toUpperCase()}
         </div>
         <div>
-          <h3>{memory.title || "Kỉ niệm dòng họ"}</h3>
+          <h3>{memory.title || t("timeCapsule.defaultMemoryTitle")}</h3>
           <p>
-            {memory.author_name || "Thành viên dòng họ"} • {memory.created_at ? formatDateTimeVN(memory.created_at) : "Chưa cập nhật"}
+            {memory.author_name || t("timeCapsule.defaultAuthor")} • {memory.created_at ? formatDateTimeVN(memory.created_at) : t("timeCapsule.notUpdated")}
           </p>
         </div>
-        <span className={`memory-status is-${memory.status || "approved"}`}>{getStatusLabel(memory.status)}</span>
+        <span className={`memory-status is-${memory.status || "approved"}`}>{getStatusLabel(memory.status, t)}</span>
       </div>
       {memory.content && <p className="memory-content">{memory.content}</p>}
-      <MemoryMedia memory={memory} />
+      <MemoryMedia memory={memory} t={t} />
       <div className="memory-access-meta">
         <span className="material-symbols-outlined">visibility</span>
-        <span>{getVisibilityLabel(memory.visibility)}</span>
-        {memory.visibility === "selected" && Number(memory.reader_count || 0) > 0 ? <span>{memory.reader_count} người được đọc</span> : null}
-        {memory.scheduled_publish_at ? <span>Hẹn đăng: {formatDateTimeVN(memory.scheduled_publish_at)}</span> : null}
+        <span>{getVisibilityLabel(memory.visibility, t)}</span>
+        {memory.visibility === "selected" && Number(memory.reader_count || 0) > 0 ? <span>{t("timeCapsule.readerCount", { count: memory.reader_count })}</span> : null}
+        {memory.scheduled_publish_at ? <span>{t("timeCapsule.scheduledPost", { date: formatDateTimeVN(memory.scheduled_publish_at) })}</span> : null}
       </div>
       {memory.status === "pending" && !isManagerView && (
-        <div className="memory-note">Kỉ niệm này đang chờ trưởng họ duyệt trước khi hiển thị công khai.</div>
+        <div className="memory-note">{t("timeCapsule.pendingNotice")}</div>
       )}
       {memory.status === "rejected" && memory.rejection_reason && (
-        <div className="memory-note is-rejected">Lý do từ chối: {memory.rejection_reason}</div>
+        <div className="memory-note is-rejected">{t("timeCapsule.rejectionReason", { reason: memory.rejection_reason })}</div>
       )}
     </article>
   );
 }
 
 export default function TimeCapsulePage({ role = "member" }) {
+  const { t } = useTranslation();
   const isManager = role === "manager" || role === "admin";
   const [memories, setMemories] = useState([]);
   const [readerOptions, setReaderOptions] = useState([]);
@@ -110,6 +112,12 @@ export default function TimeCapsulePage({ role = "member" }) {
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
 
+  const visibilityOptions = useMemo(() => ([
+    { value: "clan", label: t("timeCapsule.visibility.clan"), icon: "groups" },
+    { value: "selected", label: t("timeCapsule.visibility.selected"), icon: "how_to_reg" },
+    { value: "private", label: t("timeCapsule.visibility.private"), icon: "lock" },
+  ]), [t]);
+
   const loadMemories = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -117,11 +125,11 @@ export default function TimeCapsulePage({ role = "member" }) {
       const result = await apiRequest("/api/member/memories?includeOwnPending=1");
       setMemories(result.memories || []);
     } catch (err) {
-      setError(err?.message || "Không thể tải kỉ niệm dòng họ.");
+      setError(err?.message || t("timeCapsule.errors.loadMemories"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadReaderOptions = useCallback(async () => {
     try {
@@ -219,9 +227,9 @@ export default function TimeCapsulePage({ role = "member" }) {
         mime_type: file.type,
         original_filename: file.name,
       }));
-      setMessage("Đã lưu tệp kỉ niệm vào database. Bạn có thể gửi kỉ niệm để chờ duyệt.");
+      setMessage(t("timeCapsule.messages.uploaded"));
     } catch (err) {
-      setError(err?.message || "Không thể tải tệp kỉ niệm.");
+      setError(err?.message || t("timeCapsule.errors.uploadMemory"));
     } finally {
       setUploading(false);
     }
@@ -246,7 +254,7 @@ export default function TimeCapsulePage({ role = "member" }) {
 
   const openCamera = async (mode) => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Trình duyệt hoặc thiết bị này chưa hỗ trợ mở camera/micro trực tiếp.");
+      setCameraError(t("timeCapsule.errors.cameraUnsupported"));
       return;
     }
     try {
@@ -261,7 +269,7 @@ export default function TimeCapsulePage({ role = "member" }) {
       setCaptureMode(mode);
       setRecorderState("idle");
     } catch (err) {
-      setCameraError("Không thể mở camera. Hãy kiểm tra quyền camera/micro của trình duyệt.");
+      setCameraError(t("timeCapsule.errors.cameraOpen"));
     }
   };
 
@@ -277,7 +285,7 @@ export default function TimeCapsulePage({ role = "member" }) {
     context.drawImage(video, 0, 0, width, height);
     canvas.toBlob(async (blob) => {
       if (!blob) {
-        setError("Không thể chụp ảnh từ camera.");
+        setError(t("timeCapsule.errors.capturePhoto"));
         return;
       }
       await uploadMemoryBlob(blob, `ky-niem-${Date.now()}.jpg`);
@@ -294,7 +302,7 @@ export default function TimeCapsulePage({ role = "member" }) {
 
   const startRecordingWithStream = (stream, mode) => {
     if (!window.MediaRecorder) {
-      setCameraError("Trình duyệt chưa hỗ trợ ghi âm/quay video trực tiếp.");
+      setCameraError(t("timeCapsule.errors.mediaRecorderUnsupported"));
       return;
     }
     recordedChunksRef.current = [];
@@ -305,7 +313,7 @@ export default function TimeCapsulePage({ role = "member" }) {
       if (event.data && event.data.size > 0) recordedChunksRef.current.push(event.data);
     };
     recorder.onerror = () => {
-      setCameraError("Không thể ghi dữ liệu từ micro/camera. Hãy thử lại.");
+      setCameraError(t("timeCapsule.errors.recordingData"));
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setCameraStream(null);
@@ -317,13 +325,13 @@ export default function TimeCapsulePage({ role = "member" }) {
         const blobType = recorder.mimeType || (mode === "audio" ? "audio/webm" : "video/webm");
         const blob = new Blob(recordedChunksRef.current, { type: blobType });
         if (!blob.size) {
-          setCameraError("Không có dữ liệu ghi âm. Hãy kiểm tra micro rồi thử lại.");
+          setCameraError(t("timeCapsule.errors.emptyRecording"));
           return;
         }
         const extension = blobType.includes("mp4") ? (mode === "audio" ? "m4a" : "mp4") : "webm";
         await uploadMemoryBlob(blob, `ky-niem-${mode === "audio" ? "ghi-am" : "video"}-${Date.now()}.${extension}`);
       } catch (err) {
-        setError(err?.message || "Không thể lưu bản ghi trực tiếp.");
+        setError(err?.message || t("timeCapsule.errors.saveRecording"));
       } finally {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -343,7 +351,7 @@ export default function TimeCapsulePage({ role = "member" }) {
 
   const startAudioRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Trình duyệt hoặc thiết bị này chưa hỗ trợ ghi âm trực tiếp.");
+      setCameraError(t("timeCapsule.errors.audioUnsupported"));
       return;
     }
     try {
@@ -355,7 +363,7 @@ export default function TimeCapsulePage({ role = "member" }) {
       setCaptureMode("audio");
       startRecordingWithStream(stream, "audio");
     } catch (err) {
-      setCameraError("Không thể mở micro. Hãy kiểm tra quyền micro của trình duyệt.");
+      setCameraError(t("timeCapsule.errors.microphoneOpen"));
     }
   };
 
@@ -391,11 +399,11 @@ export default function TimeCapsulePage({ role = "member" }) {
     event.preventDefault();
     const hasText = form.title.trim() || form.content.trim();
     if (!hasText && !form.media_id && !form.media_url) {
-      setError("Vui lòng nhập nội dung hoặc tải ảnh/video/ghi âm.");
+      setError(t("timeCapsule.errors.emptySubmit"));
       return;
     }
     if (form.visibility === "selected" && !(form.readers || []).length) {
-      setError("Vui lòng chọn ít nhất một người được đọc kỉ niệm.");
+      setError(t("timeCapsule.errors.selectReader"));
       return;
     }
     setSubmitting(true);
@@ -406,29 +414,29 @@ export default function TimeCapsulePage({ role = "member" }) {
         method: "POST",
         body: JSON.stringify(form),
       });
-      setMessage(result.message || "Đã gửi kỉ niệm dòng họ.");
+      setMessage(result.message || t("timeCapsule.messages.submitted"));
       resetForm();
       await loadMemories();
     } catch (err) {
-      setError(err?.message || "Không thể gửi kỉ niệm dòng họ.");
+      setError(err?.message || t("timeCapsule.errors.submitMemory"));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="time-capsule-page memory-page">
+    <div className="time-capsule-page memory-page" data-no-translate="true">
       <section className="time-capsule-header memory-hero">
         <div>
-          <span className="time-capsule-kicker">Kỉ niệm dòng họ</span>
-          <h2>Kỉ niệm dòng họ</h2>
+          <span className="time-capsule-kicker">{t("timeCapsule.title")}</span>
+          <h2>{t("timeCapsule.title")}</h2>
           <p>
-            Lưu giữ câu chuyện, hình ảnh, video và ghi âm của dòng họ. Thành viên gửi kỉ niệm sẽ chờ trưởng họ duyệt trước khi đăng công khai.
+            {t("timeCapsule.heroDescription")}
           </p>
         </div>
         <button type="button" className="time-capsule-refresh" onClick={loadMemories} disabled={loading}>
           <span className="material-symbols-outlined">refresh</span>
-          Tải lại
+          {t("common.reload")}
         </button>
       </section>
 
@@ -438,36 +446,32 @@ export default function TimeCapsulePage({ role = "member" }) {
         <form className="memory-form" onSubmit={handleSubmit}>
           <div className="memory-form-head">
             <div>
-              <h3>Đăng kỉ niệm</h3>
-              <p>{isManager ? "Kỉ niệm của trưởng họ được đăng ngay." : "Kỉ niệm của thành viên sẽ gửi vào hàng chờ duyệt."}</p>
+              <h3>{t("timeCapsule.postMemory.title")}</h3>
+              <p>{isManager ? t("timeCapsule.postMemory.managerNotice") : t("timeCapsule.postMemory.memberNotice")}</p>
             </div>
-            <span className="memory-form-badge">Ảnh • Video • Ghi âm</span>
+            <span className="memory-form-badge">{t("timeCapsule.postMemory.mediaBadge")}</span>
           </div>
 
           <label className="memory-field">
-            <span>Tiêu đề</span>
-            <input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder="Ví dụ: Họp mặt đầu xuân, kỉ niệm gia đình..." />
+            <span>{t("common.title")}</span>
+            <input value={form.title} onChange={(event) => updateField("title", event.target.value)} placeholder={t("timeCapsule.postMemory.titlePlaceholder")} />
           </label>
 
           <label className="memory-field">
-            <span>Nội dung</span>
-            <textarea rows={5} value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder="Chia sẻ câu chuyện hoặc lời nhắn đi kèm kỉ niệm..." />
+            <span>{t("common.content")}</span>
+            <textarea rows={5} value={form.content} onChange={(event) => updateField("content", event.target.value)} placeholder={t("timeCapsule.postMemory.contentPlaceholder")} />
           </label>
 
           <section className="memory-access-panel">
             <div className="memory-access-head">
               <div>
-                <strong>Ai được đọc kỉ niệm này</strong>
-                <span>Chọn phạm vi hiển thị sau khi kỉ niệm được duyệt và tới giờ hẹn.</span>
+                <strong>{t("timeCapsule.postMemory.accessTitle")}</strong>
+                <span>{t("timeCapsule.postMemory.accessDescription")}</span>
               </div>
             </div>
 
-            <div className="memory-visibility-options" role="radiogroup" aria-label="Ai được đọc kỉ niệm">
-              {[
-                { value: "clan", label: "Cả dòng họ", icon: "groups" },
-                { value: "selected", label: "Người được chọn", icon: "how_to_reg" },
-                { value: "private", label: "Chỉ mình tôi", icon: "lock" },
-              ].map((option) => (
+            <div className="memory-visibility-options" role="radiogroup" aria-label={t("timeCapsule.postMemory.accessTitle")}>
+              {visibilityOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
@@ -490,26 +494,26 @@ export default function TimeCapsulePage({ role = "member" }) {
                       <label className={selected ? "memory-reader-option is-selected" : "memory-reader-option"} key={getReaderKey(reader)}>
                         <input type="checkbox" checked={selected} onChange={() => toggleReader(reader)} />
                         <span>
-                          <strong>{reader.display_name || reader.email || "Thành viên"}</strong>
+                          <strong>{reader.display_name || reader.email || t("timeCapsule.defaultAuthor")}</strong>
                           <small>{reader.email || `Person #${reader.person_id}`}</small>
                         </span>
                       </label>
                     );
                   })
                 ) : (
-                  <div className="memory-reader-empty">Chưa có danh sách thành viên để chọn.</div>
+                  <div className="memory-reader-empty">{t("timeCapsule.postMemory.readerEmpty")}</div>
                 )}
               </div>
             ) : null}
 
             <label className="memory-schedule-field">
-              <span>Hẹn thời gian gửi / hiển thị</span>
+              <span>{t("timeCapsule.postMemory.scheduleLabel")}</span>
               <input
                 type="datetime-local"
                 value={form.scheduled_publish_at}
                 onChange={(event) => updateField("scheduled_publish_at", event.target.value)}
               />
-              <small>Bỏ trống để hiển thị ngay sau khi được duyệt.</small>
+              <small>{t("timeCapsule.postMemory.scheduleHelp")}</small>
             </label>
           </section>
 
@@ -517,26 +521,26 @@ export default function TimeCapsulePage({ role = "member" }) {
             <label className="memory-upload-box">
               <input type="file" accept="image/*,video/*,audio/*" onChange={handleFileChange} disabled={uploading || submitting} />
               <span className="material-symbols-outlined">upload_file</span>
-              <strong>{uploading ? "Đang tải lên..." : "Tải tệp từ máy"}</strong>
-              <small>Chọn ảnh, video hoặc audio đã có sẵn.</small>
+              <strong>{uploading ? t("common.uploading") : t("timeCapsule.postMemory.uploadFile")}</strong>
+              <small>{t("timeCapsule.postMemory.uploadHelp")}</small>
             </label>
 
             <button type="button" className="memory-capture-button" onClick={() => openCamera("photo")} disabled={uploading || submitting || recorderState === "recording"}>
               <span className="material-symbols-outlined">photo_camera</span>
-              <strong>Chụp ảnh</strong>
-              <small>Mở camera thiết bị để chụp trực tiếp.</small>
+              <strong>{t("timeCapsule.postMemory.takePhoto")}</strong>
+              <small>{t("timeCapsule.postMemory.takePhotoHelp")}</small>
             </button>
 
             <button type="button" className="memory-capture-button" onClick={() => openCamera("video")} disabled={uploading || submitting || recorderState === "recording"}>
               <span className="material-symbols-outlined">videocam</span>
-              <strong>Quay video</strong>
-              <small>Quay video trực tiếp từ camera.</small>
+              <strong>{t("timeCapsule.postMemory.recordVideo")}</strong>
+              <small>{t("timeCapsule.postMemory.recordVideoHelp")}</small>
             </button>
 
             <button type="button" className={`memory-capture-button ${recorderState === "recording" && captureMode === "audio" ? "is-recording" : ""}`} onClick={recorderState === "recording" && captureMode === "audio" ? stopRecording : startAudioRecording} disabled={uploading || submitting || recorderState === "stopping" || (recorderState === "recording" && captureMode !== "audio")}>
               <span className="material-symbols-outlined">mic</span>
-              <strong>{recorderState === "recording" && captureMode === "audio" ? "Dừng ghi âm" : "Ghi âm trực tiếp"}</strong>
-              <small>Chỉ lưu file âm thanh, không chuyển giọng nói thành văn bản.</small>
+              <strong>{recorderState === "recording" && captureMode === "audio" ? t("timeCapsule.postMemory.stopAudio") : t("timeCapsule.postMemory.recordAudio")}</strong>
+              <small>{t("timeCapsule.postMemory.recordAudioHelp")}</small>
             </button>
           </div>
 
@@ -545,13 +549,13 @@ export default function TimeCapsulePage({ role = "member" }) {
               <video ref={liveVideoRef} autoPlay muted playsInline />
               <div className="memory-live-actions">
                 {captureMode === "photo" ? (
-                  <button type="button" className="time-capsule-primary" onClick={capturePhoto} disabled={uploading || submitting}>Chụp ảnh này</button>
+                  <button type="button" className="time-capsule-primary" onClick={capturePhoto} disabled={uploading || submitting}>{t("timeCapsule.postMemory.captureThisPhoto")}</button>
                 ) : recorderState === "recording" ? (
-                  <button type="button" className="time-capsule-danger" onClick={stopRecording}>Dừng quay video</button>
+                  <button type="button" className="time-capsule-danger" onClick={stopRecording}>{t("timeCapsule.postMemory.stopVideo")}</button>
                 ) : (
-                  <button type="button" className="time-capsule-primary" onClick={startVideoRecording} disabled={uploading || submitting}>Bắt đầu quay</button>
+                  <button type="button" className="time-capsule-primary" onClick={startVideoRecording} disabled={uploading || submitting}>{t("timeCapsule.postMemory.startRecording")}</button>
                 )}
-                <button type="button" className="time-capsule-secondary" onClick={stopCameraStream} disabled={uploading || recorderState === "stopping"}>Đóng camera</button>
+                <button type="button" className="time-capsule-secondary" onClick={stopCameraStream} disabled={uploading || recorderState === "stopping"}>{t("common.closeCamera")}</button>
               </div>
             </div>
           ) : null}
@@ -559,7 +563,7 @@ export default function TimeCapsulePage({ role = "member" }) {
           {captureMode === "audio" && recorderState === "recording" ? (
             <div className="memory-recording-strip">
               <span className="memory-recording-dot" />
-              Đang ghi âm trực tiếp từ micro...
+              {t("timeCapsule.postMemory.recordingAudio")}
             </div>
           ) : null}
 
@@ -567,49 +571,49 @@ export default function TimeCapsulePage({ role = "member" }) {
 
           {filePreview && (
             <div className="memory-preview">
-              {filePreview.kind === "image" && <img src={filePreview.url} alt="Xem trước" />}
+              {filePreview.kind === "image" && <img src={filePreview.url} alt={t("timeCapsule.postMemory.previewAlt")} />}
               {filePreview.kind === "video" && <video src={filePreview.url} controls />}
               {filePreview.kind === "audio" && <audio src={filePreview.url} controls />}
               <div className="memory-preview-footer">
                 <span>{filePreview.name}</span>
-                <button type="button" onClick={removeAttachedMedia} disabled={submitting || uploading}>Xóa tệp</button>
+                <button type="button" onClick={removeAttachedMedia} disabled={submitting || uploading}>{t("common.deleteFile")}</button>
               </div>
             </div>
           )}
 
           <div className="memory-actions">
-            <button type="button" className="time-capsule-secondary" onClick={resetForm} disabled={submitting || uploading}>Xóa form</button>
-            <button type="submit" className="time-capsule-primary" disabled={submitting || uploading}>{submitting ? "Đang gửi..." : "Gửi kỉ niệm"}</button>
+            <button type="button" className="time-capsule-secondary" onClick={resetForm} disabled={submitting || uploading}>{t("timeCapsule.postMemory.clearForm")}</button>
+            <button type="submit" className="time-capsule-primary" disabled={submitting || uploading}>{submitting ? t("common.submitting") : t("timeCapsule.postMemory.submit")}</button>
           </div>
         </form>
 
         <aside className="memory-stats-panel">
-          <div><strong>{stats.approved}</strong><span>Kỉ niệm đã duyệt</span></div>
-          <div><strong>{stats.pending}</strong><span>Đang chờ duyệt</span></div>
-          <div><strong>{stats.media}</strong><span>Có tệp đính kèm</span></div>
+          <div><strong>{stats.approved}</strong><span>{t("timeCapsule.stats.approved")}</span></div>
+          <div><strong>{stats.pending}</strong><span>{t("timeCapsule.stats.pending")}</span></div>
+          <div><strong>{stats.media}</strong><span>{t("timeCapsule.stats.media")}</span></div>
         </aside>
       </section>
 
       <section className="time-capsule-list memory-list-section">
         <div className="time-capsule-list-head">
           <div>
-            <h3>Kỉ niệm đã lưu</h3>
-            <span>Hiển thị kỉ niệm đã duyệt và kỉ niệm của chính bạn đang chờ duyệt.</span>
+            <h3>{t("timeCapsule.list.title")}</h3>
+            <span>{t("timeCapsule.list.description")}</span>
           </div>
           <div className="memory-filter-group">
-            <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Tất cả</button>
-            <button className={filter === "approved" ? "active" : ""} onClick={() => setFilter("approved")}>Đã duyệt</button>
-            <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>Chờ duyệt</button>
+            <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t("common.all")}</button>
+            <button className={filter === "approved" ? "active" : ""} onClick={() => setFilter("approved")}>{t("common.approved")}</button>
+            <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>{t("common.pending")}</button>
           </div>
         </div>
 
         {loading ? (
-          <div className="time-capsule-empty">Đang tải kỉ niệm...</div>
+          <div className="time-capsule-empty">{t("timeCapsule.list.loading")}</div>
         ) : visibleMemories.length === 0 ? (
-          <div className="time-capsule-empty">Chưa có kỉ niệm nào.</div>
+          <div className="time-capsule-empty">{t("timeCapsule.list.empty")}</div>
         ) : (
           <div className="memory-feed">
-            {visibleMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} />)}
+            {visibleMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} t={t} />)}
           </div>
         )}
       </section>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getStoredUser, logout, isAuthenticated } from "../shared/utils/auth";
 import { formatDateVN } from "../shared/utils/dateFormat";
 import LanguageToggle from "../shared/components/LanguageToggle";
@@ -7,17 +8,18 @@ import "./AdminLayout.css";
 
 const menuItems = [
  
-  { icon: "dashboard", label: "Tổng quan", path: "/dashboard" },
-  { icon: "account_tree", label: "Quản lý phả hệ", path: "/dashboard/genealogy" },
-  { icon: "group", label: "Quản lý Tài khoản", path: "/dashboard/members" },
-  { icon: "article", label: "Quản lý bài viết", path: "/dashboard/posts" },
-  { icon: "assignment", label: "Quản lý sự kiện ", path: "/dashboard/tasks" },
-  { icon: "workspace_premium", label: "Gói sử dụng", path: "/dashboard/billing" },
-  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/dashboard/calendar" },
-  { icon: "settings", label: "Cài đặt Hệ thống", path: "/dashboard/settings" },
+  { icon: "dashboard", labelKey: "layout.adminMenu.overview", path: "/dashboard" },
+  { icon: "account_tree", labelKey: "layout.adminMenu.genealogy", path: "/dashboard/genealogy" },
+  { icon: "group", labelKey: "layout.adminMenu.accounts", path: "/dashboard/members" },
+  { icon: "article", labelKey: "layout.adminMenu.posts", path: "/dashboard/posts" },
+  { icon: "assignment", labelKey: "layout.adminMenu.events", path: "/dashboard/tasks" },
+  { icon: "workspace_premium", labelKey: "layout.adminMenu.billing", path: "/dashboard/billing" },
+  { icon: "calendar_month", labelKey: "layout.adminMenu.calendar", path: "/dashboard/calendar" },
+  { icon: "settings", labelKey: "layout.adminMenu.settings", path: "/dashboard/settings" },
 ];
 
 export default function AdminLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -45,14 +47,14 @@ export default function AdminLayout() {
           type="button"
           className="sidebar-toggle"
           onClick={() => setSidebarOpen((v) => !v)}
-          title={sidebarOpen ? "Thu gọn" : "Mở rộng"}
+          title={sidebarOpen ? t("layout.collapse") : t("layout.expand")}
         >
           <span className="material-symbols-outlined">{sidebarOpen ? "chevron_left" : "chevron_right"}</span>
         </button>
 
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt={t("layout.brand")} />
           </Link>
         </div>
 
@@ -62,7 +64,7 @@ export default function AdminLayout() {
           </div>
           <div className="user-details">
             <strong>{currentUser?.name || currentUser?.display_name || "Admin"}</strong>
-            <span className="admin-badge-chip">Quản trị viên hệ thống</span>
+            <span className="admin-badge-chip">{t("layout.systemAdmin")}</span>
           </div>
         </div>
 
@@ -74,7 +76,7 @@ export default function AdminLayout() {
               className={`nav-item ${location.pathname === item.path ? "active" : ""}`}
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </Link>
           ))}
         </nav>
@@ -82,7 +84,7 @@ export default function AdminLayout() {
         <div className="sidebar-footer">
           <button type="button" onClick={handleLogout} className="logout-btn">
             <span className="material-symbols-outlined">logout</span>
-            <span>Đăng xuất</span>
+            <span>{t("common.logout")}</span>
           </button>
         </div>
       </aside>
@@ -90,7 +92,7 @@ export default function AdminLayout() {
       <main className="admin-main-content">
         <header className="admin-top-header glass-effect">
           <div className="header-context">
-            <h1>Hệ thống Quản trị Gia Phả Việt</h1>
+            <h1>{t("layout.adminTitle")}</h1>
             <p>{currentTime.toLocaleTimeString('vi-VN')} | {formatDateVN(currentTime)}</p>
           </div>
           <div className="admin-header-utils">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getStoredUser, isAuthenticated, logout as clearAuth } from "../shared/utils/auth";
 import { apiRequest } from "../services/api";
 import { connectSocketFromStorage, disconnectSocket } from "../services/socket";
@@ -10,20 +11,21 @@ import ProfileDrawer from "../shared/components/ProfileDrawer";
 import "./MemberLayout.css";
 
 const menuItems = [
-  { icon: "assignment", label: "Sự kiện dòng họ", path: "/user/tasks" },
-  { icon: "account_tree", label: "Gia phả dòng họ", path: "/user/family-tree" },
-  { icon: "collections_bookmark", label: "Kỉ niệm dòng họ", path: "/user/time-capsule" },
-  { icon: "history_edu", label: "Bảng tin dòng họ", path: "/user/posts" },
-  { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/user/fund" },
-  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/user/calendar" },
-  { icon: "person", label: "Hồ sơ cá nhân", path: "/user/profile" },
+  { icon: "assignment", labelKey: "layout.portalMenu.events", path: "/user/tasks" },
+  { icon: "account_tree", labelKey: "layout.portalMenu.familyTree", path: "/user/family-tree" },
+  { icon: "collections_bookmark", labelKey: "layout.portalMenu.memories", path: "/user/time-capsule" },
+  { icon: "history_edu", labelKey: "layout.portalMenu.posts", path: "/user/posts" },
+  { icon: "account_balance_wallet", labelKey: "layout.portalMenu.fund", path: "/user/fund" },
+  { icon: "calendar_month", labelKey: "layout.portalMenu.calendar", path: "/user/calendar" },
+  { icon: "person", labelKey: "layout.portalMenu.profile", path: "/user/profile" },
 ];
 
-function getUserName(user) {
-  return user?.name || user?.display_name || user?.email || "Thành viên";
+function getUserName(user, fallback) {
+  return user?.name || user?.display_name || user?.email || fallback;
 }
 
 export default function MemberLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [currentUser, setCurrentUser] = useState(() => getStoredUser() || {});
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -89,36 +91,36 @@ export default function MemberLayout() {
 
   return (
     <div className={`member-portal-container ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
-      <aside className="member-sidebar glass-effect" aria-label="Menu thành viên">
+      <aside className="member-sidebar glass-effect" aria-label={t("layout.member.title")}>
         <button
           type="button"
           className="member-sidebar-toggle"
           onClick={() => setSidebarOpen((value) => !value)}
-          title={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
-          aria-label={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
+          title={sidebarOpen ? t("layout.collapseMenu") : t("layout.openMenu")}
+          aria-label={sidebarOpen ? t("layout.collapseMenu") : t("layout.openMenu")}
           aria-expanded={sidebarOpen}
         >
           <span className="material-symbols-outlined">{sidebarOpen ? "chevron_left" : "chevron_right"}</span>
         </button>
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
-            <span>Gia Phả Việt</span>
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt={t("layout.brand")} />
+            <span>{t("layout.brand")}</span>
           </Link>
         </div>
 
-        <button type="button" className="sidebar-user-profile" onClick={() => setProfileOpen(true)} title="Chỉnh sửa thông tin cá nhân">
+        <button type="button" className="sidebar-user-profile" onClick={() => setProfileOpen(true)} title={t("common.editProfile")}>
           <div className="profile-img-container">
             <img src={resolveImageUrl({ mediaId: currentUser?.avatar_media_id, avatar_url: currentUser?.avatar_url, fallback: "/logo-giaphaviet.png" })} alt="" className="user-avatar-circle" />
             <div className="status-indicator online" />
           </div>
           <div className="user-text">
-            <h4>{getUserName(currentUser)}</h4>
-            <span className="role-text">Thành viên dòng họ</span>
+            <h4>{getUserName(currentUser, t("layout.familyMember"))}</h4>
+            <span className="role-text">{t("layout.familyMember")}</span>
           </div>
         </button>
 
-        <nav className="member-nav" aria-label="Điều hướng thành viên">
+        <nav className="member-nav" aria-label={t("layout.memberNavigation")}>
           {menuItems.map((item) =>
             item.path === "/user/profile" ? (
               <button
@@ -128,7 +130,7 @@ export default function MemberLayout() {
                 onClick={() => setProfileOpen(true)}
               >
                 <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </button>
             ) : (
               <Link
@@ -137,7 +139,7 @@ export default function MemberLayout() {
                 className={`member-nav-item ${location.pathname === item.path ? "active" : ""}`}
               >
                 <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </Link>
             ),
           )}
@@ -146,7 +148,7 @@ export default function MemberLayout() {
         <div className="member-sidebar-footer">
           <button type="button" onClick={handleLogout} className="member-logout-link">
             <span className="material-symbols-outlined">logout</span>
-            <span>Rời hệ thống</span>
+            <span>{t("layout.leaveSystem")}</span>
           </button>
         </div>
       </aside>
@@ -156,14 +158,14 @@ export default function MemberLayout() {
           <div className="topbar-welcome">
             <span className="material-symbols-outlined">waving_hand</span>
             <span>
-              Chào mừng, <strong>{getUserName(currentUser)}</strong>
+              {t("common.welcome")}, <strong>{getUserName(currentUser, t("layout.familyMember"))}</strong>
             </span>
           </div>
           <div className="member-topbar-actions">
             <NotificationBell role="member" buttonClassName="top-icon-btn glass-btn" />
             <LanguageToggle className="top-icon-btn glass-btn" />
             <div className="divider" />
-            <button type="button" className="top-icon-btn glass-btn" onClick={() => setProfileOpen(true)} title="Chỉnh sửa thông tin cá nhân">
+            <button type="button" className="top-icon-btn glass-btn" onClick={() => setProfileOpen(true)} title={t("common.editProfile")}>
               <span className="material-symbols-outlined">settings</span>
             </button>
           </div>
@@ -179,8 +181,8 @@ export default function MemberLayout() {
         onClose={() => setProfileOpen(false)}
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
-        roleLabel="Thành viên dòng họ"
-        title="Chỉnh sửa thông tin cá nhân"
+        roleLabel={t("layout.familyMember")}
+        title={t("common.editProfile")}
       />
     </div>
   );

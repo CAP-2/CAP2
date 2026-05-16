@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getStoredUser, logout, isAuthenticated } from "../shared/utils/auth";
 import { formatDateVN } from "../shared/utils/dateFormat";
 import { apiRequest } from "../services/api";
@@ -11,19 +12,20 @@ import ProfileDrawer from "../shared/components/ProfileDrawer";
 import "./ManagerLayout.css";
 
 const menuItems = [
-  { icon: "dashboard", label: "Tổng quan", path: "/manager/dashboard" },
-  { icon: "account_tree", label: "Phả hệ dòng họ", path: "/manager/genealogy" },
-  { icon: "assignment", label: "Sự kiện dòng họ", path: "/manager/tasks" },
-  { icon: "post_add", label: "Bảng tin dòng họ", path: "/manager/posts" },
-  { icon: "collections_bookmark", label: "Kỉ niệm dòng họ", path: "/manager/time-capsule" },
-  { icon: "group", label: "Thành viên dòng họ", path: "/manager/account" },
-  { icon: "pending_actions", label: "Duyệt chờ", path: "/manager/pending" },
-  { icon: "account_balance_wallet", label: "Quỹ dòng họ", path: "/manager/fund" },
-  { icon: "calendar_month", label: "Lịch Việt Nam", path: "/manager/calendar" },
-  { icon: "payments", label: "Gói sử dụng", path: "/manager/billing" },
+  { icon: "dashboard", labelKey: "layout.portalMenu.overview", path: "/manager/dashboard" },
+  { icon: "account_tree", labelKey: "layout.portalMenu.genealogy", path: "/manager/genealogy" },
+  { icon: "assignment", labelKey: "layout.portalMenu.events", path: "/manager/tasks" },
+  { icon: "post_add", labelKey: "layout.portalMenu.posts", path: "/manager/posts" },
+  { icon: "collections_bookmark", labelKey: "layout.portalMenu.memories", path: "/manager/time-capsule" },
+  { icon: "group", labelKey: "layout.portalMenu.members", path: "/manager/account" },
+  { icon: "pending_actions", labelKey: "layout.portalMenu.pending", path: "/manager/pending" },
+  { icon: "account_balance_wallet", labelKey: "layout.portalMenu.fund", path: "/manager/fund" },
+  { icon: "calendar_month", labelKey: "layout.portalMenu.calendar", path: "/manager/calendar" },
+  { icon: "payments", labelKey: "layout.portalMenu.billing", path: "/manager/billing" },
 ];
 
 export default function ManagerLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -59,7 +61,7 @@ export default function ManagerLayout() {
     connectSocketFromStorage();
 
     return undefined;
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!isAuthenticated()) return undefined;
@@ -154,7 +156,7 @@ export default function ManagerLayout() {
       });
       syncStoredUser(profile);
     } catch (error) {
-      setAccountMessage(error?.message || "Không tải được thông tin tài khoản.");
+      setAccountMessage(error?.message || t("layout.accountMessages.loadFailed"));
     } finally {
       setAccountLoading(false);
     }
@@ -177,14 +179,14 @@ export default function ManagerLayout() {
   const saveAccountInfo = async () => {
     setAccountMessage("");
     if (accountForm.person_id == null) {
-      setAccountMessage("Tài khoản chưa liên kết hồ sơ người nên chưa thể cập nhật.");
+      setAccountMessage(t("layout.accountMessages.notLinked"));
       return;
     }
 
     const generationText = String(accountForm.generation || "").trim();
     const generation = generationText === "" ? null : Number(generationText);
     if (generationText && !Number.isFinite(generation)) {
-      setAccountMessage("Đời phải là một số hợp lệ.");
+      setAccountMessage(t("layout.accountMessages.invalidGeneration"));
       return;
     }
 
@@ -202,10 +204,10 @@ export default function ManagerLayout() {
         }),
       });
       syncStoredUser(data.profile);
-      setAccountMessage("Đã cập nhật thông tin tài khoản.");
+      setAccountMessage(t("layout.accountMessages.updated"));
       await loadAccountProfile();
     } catch (error) {
-      setAccountMessage(error?.message || "Không thể lưu thông tin tài khoản.");
+      setAccountMessage(error?.message || t("layout.accountMessages.saveFailed"));
     } finally {
       setAccountSaving(false);
     }
@@ -214,7 +216,7 @@ export default function ManagerLayout() {
   const submitProfileContent = async () => {
     setAccountMessage("");
     if (accountForm.person_id == null) {
-      setAccountMessage("Tài khoản chưa liên kết hồ sơ người nên chưa thể gửi duyệt ảnh/bio.");
+      setAccountMessage(t("layout.accountMessages.notLinkedContent"));
       return;
     }
 
@@ -228,10 +230,10 @@ export default function ManagerLayout() {
           avatar_media_id: accountForm.avatar_media_id || null,
         }),
       });
-      setAccountMessage("Đã gửi yêu cầu cập nhật ảnh và tiểu sử.");
+      setAccountMessage(t("layout.accountMessages.contentSubmitted"));
       await loadAccountProfile();
     } catch (error) {
-      setAccountMessage(error?.message || "Không thể gửi yêu cầu cập nhật hồ sơ.");
+      setAccountMessage(error?.message || t("layout.accountMessages.contentSubmitFailed"));
     } finally {
       setAccountSaving(false);
     }
@@ -240,7 +242,7 @@ export default function ManagerLayout() {
   const savePassword = async () => {
     setAccountMessage("");
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      setAccountMessage("Mật khẩu xác nhận không khớp.");
+      setAccountMessage(t("auth.forgotPassword.passwordMismatch"));
       return;
     }
 
@@ -254,9 +256,9 @@ export default function ManagerLayout() {
         }),
       });
       setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
-      setAccountMessage("Đã đổi mật khẩu thành công.");
+      setAccountMessage(t("layout.accountMessages.passwordChanged"));
     } catch (error) {
-      setAccountMessage(error?.message || "Không thể đổi mật khẩu.");
+      setAccountMessage(error?.message || t("layout.accountMessages.passwordChangeFailed"));
     } finally {
       setPasswordSaving(false);
     }
@@ -264,13 +266,13 @@ export default function ManagerLayout() {
 
   return (
     <div className={`manager-portal-container ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
-      <aside className="manager-sidebar glass-effect" aria-label="Menu quản lý">
+      <aside className="manager-sidebar glass-effect" aria-label={t("layout.managerTitle")}>
         <button
           type="button"
           className="sidebar-toggle"
           onClick={() => setSidebarOpen((value) => !value)}
-          title={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
-          aria-label={sidebarOpen ? "Thu gọn menu" : "Mở menu"}
+          title={sidebarOpen ? t("layout.collapseMenu") : t("layout.openMenu")}
+          aria-label={sidebarOpen ? t("layout.collapseMenu") : t("layout.openMenu")}
           aria-expanded={sidebarOpen}
         >
           <span className="material-symbols-outlined">{sidebarOpen ? "chevron_left" : "chevron_right"}</span>
@@ -278,11 +280,11 @@ export default function ManagerLayout() {
 
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt="Gia Phả Việt" />
+            <img src={sidebarOpen ? "/gia-pha-full-logo.png" : "/gia-pha-g-logo.png"} alt={t("layout.brand")} />
           </Link>
         </div>
 
-        <button type="button" className="sidebar-user-section" onClick={openAccountModal} title="Sửa tài khoản">
+        <button type="button" className="sidebar-user-section" onClick={openAccountModal} title={t("layout.editAccount")}>
           <div className="manager-avatar-wrapper">
            {(() => {
             const avatarSrc = resolveImageUrl({
@@ -299,7 +301,7 @@ export default function ManagerLayout() {
           </div>
           <div className="user-details">
             <strong>{currentUser?.name || currentUser?.display_name || "Manager"}</strong>
-            <span className="role-chip">Quản trị viên dòng họ</span>
+            <span className="role-chip">{t("layout.clanManager")}</span>
           </div>
         </button>
 
@@ -311,7 +313,7 @@ export default function ManagerLayout() {
               className={`nav-item ${location.pathname === item.path ? "active" : ""}`}
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </Link>
           ))}
         </nav>
@@ -319,7 +321,7 @@ export default function ManagerLayout() {
         <div className="sidebar-footer">
           <button type="button" onClick={handleLogout} className="logout-btn">
             <span className="material-symbols-outlined">logout</span>
-            <span>Đăng xuất</span>
+            <span>{t("common.logout")}</span>
           </button>
         </div>
       </aside>
@@ -327,16 +329,16 @@ export default function ManagerLayout() {
       <main className="manager-main-content">
         <header className="manager-top-header glass-effect">
           <div className="header-context">
-            <h1>Hệ thống quản trị Gia Phả</h1>
-            <p>Phiên làm việc: {formatDateVN(new Date())}</p>
+            <h1>{t("layout.managerTitle")}</h1>
+            <p>{t("layout.session", { date: formatDateVN(new Date()) })}</p>
           </div>
           <div className="header-utils">
             <NotificationBell role="manager" buttonClassName="util-btn" />
             <LanguageToggle className="util-btn" />
-            <button className="util-btn" title="Sửa tài khoản" onClick={openAccountModal}>
+            <button className="util-btn" title={t("layout.editAccount")} onClick={openAccountModal}>
               <span className="material-symbols-outlined">account_circle</span>
             </button>
-            <button className="util-btn" title="Hỗ trợ">
+            <button className="util-btn" title={t("common.help")}>
               <span className="material-symbols-outlined">help</span>
             </button>
           </div>
@@ -351,8 +353,8 @@ export default function ManagerLayout() {
         onClose={() => setAccountOpen(false)}
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
-        roleLabel="Quản trị viên dòng họ"
-        title="Chỉnh sửa thông tin cá nhân"
+        roleLabel={t("layout.clanManager")}
+        title={t("common.editProfile")}
       />
     </div>
   );

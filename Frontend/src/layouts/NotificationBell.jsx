@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../services/api";
 import { onSocketEvent } from "../services/socket";
 import { formatDateTimeVN } from "../shared/utils/dateFormat";
@@ -17,11 +18,11 @@ function formatTime(value) {
   return formatDateTimeVN(value);
 }
 
-function normalizeRealtimeNotification(notification) {
+function normalizeRealtimeNotification(notification, t) {
   return {
     id: notification.id || `realtime-${Date.now()}`,
-    title: notification.title || "Thông báo mới",
-    message: notification.message || "Bạn có cập nhật mới trong hệ thống.",
+    title: notification.title || t("shared.notification.new"),
+    message: notification.message || t("shared.notification.defaultMessage"),
     link_url: notification.link_url || notification.linkUrl || null,
     is_read: Number(notification.is_read ?? notification.isRead ?? 0),
     created_at: notification.created_at || notification.createdAt || new Date().toISOString(),
@@ -30,6 +31,7 @@ function normalizeRealtimeNotification(notification) {
 }
 
 export default function NotificationBell({ role = "member", buttonClassName = "" }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const wrapperRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -64,7 +66,7 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
     const cleanupNewNotification = onSocketEvent("new_notification", (notification) => {
       console.log("New realtime notification:", notification);
 
-      const normalizedNotification = normalizeRealtimeNotification(notification);
+      const normalizedNotification = normalizeRealtimeNotification(notification, t);
 
       let shouldIncreaseUnread = false;
 
@@ -88,7 +90,7 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
     });
 
     return cleanupNewNotification;
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -130,12 +132,12 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
   };
 
   return (
-    <div className="notification-bell" ref={wrapperRef}>
+    <div className="notification-bell" ref={wrapperRef} data-no-translate="true">
       <button
         type="button"
         className={`notification-bell-button ${buttonClassName}`.trim()}
-        title="Thông báo"
-        aria-label={`Thông báo${unreadCount > 0 ? `, ${unreadCount} chưa đọc` : ""}`}
+        title={t("shared.notification.title")}
+        aria-label={`${t("shared.notification.title")}${unreadCount > 0 ? `, ${t("shared.notification.unread", { count: unreadCount })}` : ""}`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
@@ -147,19 +149,19 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
         <div className="notification-panel" role="menu">
           <div className="notification-head">
             <div>
-              <strong>Thông báo</strong>
-              <span>{unreadCount > 0 ? `${unreadCount} chưa đọc` : "Không có thông báo mới"}</span>
+              <strong>{t("shared.notification.title")}</strong>
+              <span>{unreadCount > 0 ? t("shared.notification.unread", { count: unreadCount }) : t("shared.notification.noneNew")}</span>
             </div>
             {unreadCount > 0 && (
               <button type="button" onClick={markAllRead}>
-                Đã đọc hết
+                {t("shared.notification.markAllRead")}
               </button>
             )}
           </div>
 
           <div className="notification-list">
-            {loading && visibleNotifications.length === 0 && <div className="notification-empty">Đang tải...</div>}
-            {!loading && visibleNotifications.length === 0 && <div className="notification-empty">Chưa có thông báo.</div>}
+            {loading && visibleNotifications.length === 0 && <div className="notification-empty">{t("common.loading")}</div>}
+            {!loading && visibleNotifications.length === 0 && <div className="notification-empty">{t("shared.notification.empty")}</div>}
             {visibleNotifications.map((item) => (
               <button
                 key={item.id}
@@ -169,8 +171,8 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
               >
                 <span className="notification-item-dot" />
                 <span className="notification-item-body">
-                  <strong>{item.title || "Thông báo mới"}</strong>
-                  <span>{item.message || "Bạn có cập nhật mới trong hệ thống."}</span>
+                  <strong>{item.title || t("shared.notification.new")}</strong>
+                  <span>{item.message || t("shared.notification.defaultMessage")}</span>
                   <small>{formatTime(item.created_at)}</small>
                 </span>
               </button>
