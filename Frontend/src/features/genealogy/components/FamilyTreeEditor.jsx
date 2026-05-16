@@ -1140,6 +1140,44 @@ function getChildrenForFamily(familyId, childRows) {
     .filter((id) => Number.isFinite(id) && id > 0);
 }
 
+function getPreferredChildFamilyForParent(parentId, families, people = []) {
+  const parentFamilies = getFamiliesForPerson(parentId, families);
+  if (!parentFamilies.length) return { family: null };
+  if (parentFamilies.length === 1) return { family: parentFamilies[0] };
+
+  const activeFamilies = parentFamilies.filter((family) => isActiveFamilyForPerson(family, parentId, people));
+  if (activeFamilies.length === 1) return { family: activeFamilies[0] };
+
+  const spouseFamilies = parentFamilies.filter((family) => {
+    const id = Number(parentId);
+    const spouseId = Number(family.father_id) === id ? Number(family.mother_id) : Number(family.father_id);
+    return Number.isFinite(spouseId) && spouseId > 0 && String(family.relationship_status || "active") === "active";
+  });
+  if (spouseFamilies.length === 1) return { family: spouseFamilies[0] };
+
+  return { family: null, error: "multipleFamilies" };
+}
+
+function buildChildRelationPayload(parentId, childId, families, childRows, people = []) {
+  const sourceId = Number(parentId);
+  const targetId = Number(childId);
+  const { family, error } = getPreferredChildFamilyForParent(sourceId, families, people);
+  if (error) return { error };
+
+  const existingChildren = family ? getChildrenForFamily(family.id, childRows) : [];
+  const childrenIds = Array.from(new Set([...existingChildren, targetId])).filter(
+    (id) => Number(id) !== sourceId,
+  );
+
+  return {
+    data: {
+      person_id: sourceId,
+      ...(family ? { family_id: family.id } : {}),
+      children_person_ids: childrenIds,
+    },
+  };
+}
+
 function findSpouse(person, families, people) {
   if (!person) return null;
   const family = getActiveFamiliesForPerson(person.id, families, people)[0] || findFamilyForParent(person.id, families);
@@ -2543,21 +2581,18 @@ const quickCreateSourcePerson = useMemo(
       }
 
       if (relation === "child") {
-        const parentFamilies = getFamiliesForPerson(sourceId, canonicalTree.families);
-        if (parentFamilies.length !== 1) {
-          setConstraintNotice(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
+        const childPayload = buildChildRelationPayload(
+          sourceId,
+          nextTargetId,
+          canonicalTree.families,
+          canonicalTree.childRows,
+          people,
+        );
+        if (childPayload.error) {
+          setConstraintNotice(t("tree.messages.multipleFamiliesError"));
           return false;
         }
-        const family = parentFamilies[0];
-        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
-        const childrenIds = Array.from(new Set([...existingChildren, nextTargetId])).filter(
-          (id) => Number(id) !== sourceId,
-        );
-        await linkRelationsAPI({
-          person_id: sourceId,
-          family_id: family.id,
-          children_person_ids: childrenIds,
-        });
+        await linkRelationsAPI(childPayload.data);
       }
 
       if (relation === "father" || relation === "mother") {
@@ -2580,7 +2615,7 @@ const quickCreateSourcePerson = useMemo(
     } finally {
       setDialogSaving(false);
     }
-  }, [canEditAll, canonicalTree.families, canonicalTree.childRows, onReload]);
+  }, [canEditAll, canonicalTree.families, canonicalTree.childRows, onReload, people, t]);
 
   const submitTreeRelationPick = useCallback((targetPerson) => {
     if (!treeRelationPicker || !targetPerson) return;
@@ -2915,22 +2950,17 @@ const submitCreateDialog = async () => {
       }
 
       if (relation === "child") {
-        const parentFamilies = getFamiliesForPerson(sourcePersonId, canonicalTree.families);
-        if (parentFamilies.length !== 1) {
-          throw new Error(parentFamilies.length > 1 ? "Vui long chon family/cuoc hon nhan cu the de them con." : "Can tao family truoc khi them con.");
-        }
-        const family = parentFamilies[0];
-        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
-
-        const childrenIds = Array.from(new Set([...existingChildren, newPersonId])).filter(
-          (id) => Number(id) !== Number(sourcePersonId)
+        const childPayload = buildChildRelationPayload(
+          sourcePersonId,
+          newPersonId,
+          canonicalTree.families,
+          canonicalTree.childRows,
+          people,
         );
-
-        await linkRelationsAPI({
-          person_id: sourcePersonId,
-          family_id: family.id,
-          children_person_ids: childrenIds,
-        });
+        if (childPayload.error) {
+          throw new Error(t("tree.messages.multipleFamiliesError"));
+        }
+        await linkRelationsAPI(childPayload.data);
       }
 
       if (relation === "father" || relation === "mother") {
@@ -3003,21 +3033,18 @@ const submitCreateDialog = async () => {
       }
 
       if (relation === "child") {
-        const parentFamilies = getFamiliesForPerson(selectedPerson.id, canonicalTree.families);
-        if (parentFamilies.length !== 1) {
-          setConstraintNotice(parentFamilies.length > 1 ? t("tree.messages.multipleFamiliesError") : t("tree.messages.noFamilyError"));
+        const childPayload = buildChildRelationPayload(
+          selectedPerson.id,
+          targetId,
+          canonicalTree.families,
+          canonicalTree.childRows,
+          people,
+        );
+        if (childPayload.error) {
+          setConstraintNotice(t("tree.messages.multipleFamiliesError"));
           return;
         }
-        const family = parentFamilies[0];
-        const existingChildren = getChildrenForFamily(family.id, canonicalTree.childRows);
-        const childrenIds = Array.from(new Set([...existingChildren, targetId])).filter(
-          (id) => Number(id) !== Number(selectedPerson.id),
-        );
-        await linkRelationsAPI({
-          person_id: selectedPerson.id,
-          family_id: family.id,
-          children_person_ids: childrenIds,
-        });
+        await linkRelationsAPI(childPayload.data);
       }
 
       if (relation === "father" || relation === "mother") {
