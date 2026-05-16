@@ -227,6 +227,47 @@
       },
       "messages": {
         "loadError": "Không thể tải dữ liệu tổng quan"
+      },
+      "charts": {
+        "loading": "Đang tải biểu đồ...",
+        "genderTitle": "Thành viên theo giới tính",
+        "genderSubtitle": "Tỷ lệ nam, nữ trong dòng họ",
+        "emptyGender": "Chưa có dữ liệu giới tính.",
+        "familyTitle": "Gia đình theo quý",
+        "familySubtitle": "Mỗi cặp con trai đã có vợ được tính là 1 gia đình",
+        "threeMonths": "3 tháng",
+        "emptyFamily": "Chưa có dữ liệu gia đình theo quý.",
+        "financeTitle": "Thu / Chi theo quý",
+        "financeSubtitle": "Mỗi quý gồm 2 cột: tổng thu và tổng chi",
+        "emptyFinance": "Chưa có dữ liệu thu chi.",
+        "tasksTitle": "Phân công công việc",
+        "tasksSubtitle": "Danh sách công việc đang được giao gần nhất",
+        "emptyTasks": "Chưa có công việc nào.",
+        "quarterLabel": "Quý {{quarter}}/{{year}}",
+        "unknownQuarter": "Chưa rõ",
+        "peoplePercent": "{{count}} người - {{percent}}%",
+        "familyCount": "{{count}} gia đình",
+        "quantity": "Số lượng",
+        "familyCountName": "Số gia đình",
+        "income": "Thu",
+        "expense": "Chi",
+        "money": {
+          "millionShort": "tr",
+          "thousandShort": "k"
+        },
+        "gender": {
+          "male": "Nam",
+          "female": "Nữ",
+          "unknown": "Chưa cập nhật"
+        },
+        "taskStatus": {
+          "assigned": "Đang giao",
+          "completed": "Hoàn thành",
+          "pending": "Chờ xử lý",
+          "in_progress": "Đang làm",
+          "cancelled": "Đã hủy",
+          "unknown": "Không rõ"
+        }
       }
     },
     "accounts": {
@@ -804,6 +845,75 @@
       "cash": "Tiền mặt",
       "transfer": "Chuyển khoản"
     },
+    "member": {
+      "hero": {
+        "title": "Quỹ Dòng Họ",
+        "subtitle": "Góp sức xây dựng dòng họ vững mạnh qua các hoạt động đóng góp minh bạch."
+      },
+      "sections": {
+        "obligations": "Nghĩa Vụ Đóng Góp",
+        "transparency": "Minh Bạch Thu Chi"
+      },
+      "actions": {
+        "voluntaryContribution": "Đóng Góp Tự Nguyện",
+        "payNow": "Đóng Quỹ Ngay",
+        "sendReport": "Gửi Báo Cáo",
+        "sendContribution": "Gửi Đóng Góp"
+      },
+      "labels": {
+        "deadline": "Hạn",
+        "amountPerUnit": "Mức đóng (1 suất)",
+        "target": "Đối tượng"
+      },
+      "contributionUnits": {
+        "malesOnly": "Nam giới",
+        "adultsAll": "Người trưởng thành"
+      },
+      "ledger": {
+        "defaultNote": "Đóng góp dòng họ",
+        "pending": "Đang duyệt"
+      },
+      "modal": {
+        "payTitle": "Xác Nhận Đóng Quỹ"
+      },
+      "bank": {
+        "bankName": "Ngân hàng",
+        "bankAccount": "STK",
+        "bankOwner": "Chủ TK",
+        "qrHelp": "Quét mã QR để thanh toán nhanh"
+      },
+      "cash": {
+        "title": "Thanh toán tiền mặt",
+        "desc1": "Vui lòng nộp tiền trực tiếp cho Trưởng họ hoặc người phụ trách ngân quỹ.",
+        "desc2": "Sau khi nộp, hãy gửi báo cáo này để Trưởng họ xác nhận vào sổ quỹ."
+      },
+      "form": {
+        "reportTitle": "Báo cáo đóng góp",
+        "contributionAmount": "Số tiền đóng",
+        "billImage": "Ảnh bill chuyển khoản",
+        "billAttached": "Đã đính kèm ảnh",
+        "uploadBill": "Tải ảnh bill",
+        "notePlaceholder": "Nhập ghi chú nếu có...",
+        "contributionNote": "Đóng góp"
+      },
+      "messages": {
+        "loadCampaignDetailError": "Không thể tải chi tiết đợt thu",
+        "uploadBillError": "Lỗi khi upload ảnh bill",
+        "reportSuccess": "Gửi báo cáo thành công! Chờ trưởng họ xác nhận.",
+        "reportError": "Lỗi khi gửi báo cáo",
+        "generalSuccess": "Đã ghi nhận đóng góp của bạn.",
+        "thankYou": "Cảm ơn bạn!"
+      }
+    },
+    "analytics": {
+      "loading": "Đang tải phân tích dữ liệu...",
+      "title": "Thống Kê & Phân Tích",
+      "yearlyGrowth": "Tăng trưởng Quỹ theo Năm",
+      "expenseCategories": "Hạng mục Chi ({{prevYear}} vs {{curYear}})",
+      "income": "Thu vào",
+      "expense": "Chi ra",
+      "yearLabel": "Năm {{year}}"
+    },
     "campaigns": {
       "title": "Danh sách đợt thu",
       "allYears": "Tất cả các năm",
@@ -1028,6 +1138,32 @@
       "upgradeNow": "Nâng cấp ngay",
       "pending": "Đang có giao dịch chờ",
       "cannotDowngrade": "Không thể hạ gói"
+    },
+    "planCatalog": {
+      "free": {
+        "name": "Free",
+        "description": "Gói miễn phí cho cây gia phả nhỏ"
+      },
+      "basic": {
+        "name": "Basic",
+        "description": "Mở rộng cây gia phả đến 100 người"
+      },
+      "pro": {
+        "name": "Pro",
+        "description": "Mở rộng cây gia phả đến 500 người"
+      },
+      "plus": {
+        "name": "Family Plus",
+        "description": "Gói lớn cho dòng họ đông thành viên"
+      }
+    },
+    "statusLabel": {
+      "active": "Đang hoạt động",
+      "pending": "Chờ thanh toán",
+      "paid": "Đã thanh toán",
+      "cancelled": "Đã hủy",
+      "expired": "Hết hạn",
+      "ended": "Đã kết thúc"
     },
     "status": {
       "paid": "Giao dịch đã thanh toán, không thể thanh toán lại.",
@@ -1579,6 +1715,86 @@
     }
   },
   "tree": {
+    "page": {
+      "memberFallback": "Thành viên",
+      "clanFallback": "Dòng họ",
+      "keyDefaultExpiry": "1 giờ từ lúc tạo key",
+      "clanInfo": "Thông tin dòng họ",
+      "managerClanInfoHelp": "Manager có thể chỉnh sửa tên dòng họ, lịch sử và địa chỉ nhà thờ/từ đường.",
+      "memberClanInfoHelp": "Thành viên chỉ được xem thông tin dòng họ do quản trị viên cập nhật.",
+      "clanDbId": "ID dòng họ trong database",
+      "clanId": "ID dòng họ",
+      "clanName": "Tên dòng họ",
+      "clanNamePlaceholder": "Ví dụ: Nguyễn Minh",
+      "clanHistory": "Lịch sử dòng họ",
+      "clanHistoryPlaceholder": "Ghi lại nguồn gốc, lịch sử, truyền thống của dòng họ...",
+      "clanHallAddress": "Địa chỉ nhà thờ / từ đường",
+      "clanHallAddressShort": "Nhà thờ / từ đường",
+      "clanHallAddressPlaceholder": "Nhập địa chỉ nhà thờ họ, từ đường hoặc nơi sinh hoạt dòng họ...",
+      "emptyClanHistory": "Chưa cập nhật lịch sử dòng họ.",
+      "emptyClanHallAddress": "Chưa cập nhật địa chỉ nhà thờ hoặc từ đường.",
+      "members": "Thành viên",
+      "families": "Gia đình",
+      "childLinks": "Liên kết con",
+      "saving": "Đang lưu...",
+      "saveClanInfo": "Lưu thông tin dòng họ",
+      "temporaryEditKey": "Temporary edit key",
+      "temporaryEditKeyHelp": "Hiệu lực 1 giờ từ lúc tạo key",
+      "searchMemberByName": "Tìm member theo tên",
+      "searchMemberPlaceholder": "Nhập tên, email hoặc account id",
+      "selectedMembers": "{{count}} member đã chọn",
+      "selectFiltered": "Chọn kết quả lọc",
+      "clearSelection": "Bỏ chọn",
+      "generating": "Đang tạo...",
+      "generateKeys": "Generate {{count}} edit key",
+      "noMatchingMember": "Không có member phù hợp",
+      "activeKeys": "Key còn hiệu lực",
+      "noActiveKeys": "Chưa có key còn hiệu lực",
+      "noNewKeys": "Không có key mới",
+      "copy": "Copy",
+      "copyAllNewKeys": "Copy tất cả key mới",
+      "hiddenOldKey": "Key cũ không thể hiển thị",
+      "keyCreatedAt": "Tạo: {{value}}",
+      "keyExpiresAt": "Hết hạn: {{value}}",
+      "managerDescription": "Quan hệ cha, mẹ, vợ/chồng và con được lấy trực tiếp từ bảng people, families và children.",
+      "editorTitle": "Trình chỉnh sửa cây gia phả",
+      "memberCount": "{{count}} thành viên",
+      "generatedKeysTitle": "Key vừa tạo",
+      "generatedKeysSubtitle": "{{count}} key mới, sắp xếp theo thời gian tạo mới nhất",
+      "refreshActiveKeys": "Cập nhật key còn hiệu lực",
+      "newestFirst": "Mới nhất đến lâu nhất",
+      "exitFullscreen": "Thu nhỏ",
+      "treeInfo": "Thông tin cây",
+      "memberTreeInfoHelp": "Thành viên chỉ được xem cây gia phả, phóng to/thu nhỏ, toàn màn hình và xem chi tiết từng người.",
+      "memberTreeNote": "Bấm vào một người trên cây để xem thông tin chi tiết. Các thao tác thêm, sửa, xóa và chỉnh quan hệ chỉ dành cho quản trị viên dòng họ.",
+      "memberHeroDescription": "Xem toàn bộ cây gia phả của dòng họ. Thành viên chỉ có quyền xem, phóng to thu nhỏ và xem chi tiết từng người.",
+      "enterTemporaryKey": "Nhập temporary edit key",
+      "checking": "Đang kiểm tra...",
+      "enableEdit": "Mở quyền sửa",
+      "disableEdit": "Tắt quyền sửa",
+      "remainingTime": "Còn hạn: {{value}}",
+      "emptyTree": "Chưa có dữ liệu cây gia phả để hiển thị.",
+      "generationLabel": "đời {{generation}}",
+      "currentGenerationPlusMinus": "đời hiện tại ±1",
+      "messages": {
+        "saveClanSuccess": "Đã lưu thông tin dòng họ.",
+        "temporaryEditEnabled": "Bạn có quyền chỉnh sửa tạm thời đến khi temporary edit key hết hạn. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.",
+        "temporaryEditExpired": "Temporary edit key đã hết hạn. Cây gia phả đã quay về chế độ chỉ xem.",
+        "temporaryEditDisabled": "Đã tắt quyền chỉnh sửa tạm thời."
+      },
+      "errors": {
+        "loadTree": "Không thể tải cây gia phả từ database.",
+        "loadKeys": "Không thể tải danh sách key còn hiệu lực.",
+        "selectMemberForKey": "Vui lòng chọn ít nhất một member cần cấp quyền.",
+        "createKey": "Không thể tạo temporary edit key.",
+        "copyKey": "Không thể copy key tự động. Hãy copy thủ công.",
+        "copyKeyList": "Không thể copy danh sách key tự động. Hãy copy thủ công.",
+        "saveClan": "Không thể lưu thông tin dòng họ.",
+        "enterTemporaryKey": "Vui lòng nhập temporary edit key.",
+        "keyExpiredAskManager": "Temporary edit key đã hết hạn. Vui lòng xin manager tạo key mới.",
+        "invalidTemporaryKey": "Temporary edit key không hợp lệ hoặc đã hết hạn."
+      }
+    },
     "title": "Gia phả",
     "sidebar": {
       "title": "Tìm người",

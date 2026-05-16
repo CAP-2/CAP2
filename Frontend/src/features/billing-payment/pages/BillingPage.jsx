@@ -141,6 +141,17 @@ function getClanName(clan) {
   return clan?.clan_name || clan?.name || `Clan #${clan?.id}`;
 }
 
+function getPlanCodeKey(planCodeOrName) {
+  return (
+    String(planCodeOrName || "")
+      .trim()
+      .toLowerCase()
+      .replace(/family\s*plus/g, "plus")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "unknown"
+  );
+}
+
 function formatMoney(value) {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
 }
@@ -225,6 +236,25 @@ const getPaymentStatusText = (payment, t) => {
 
   return t("billingPayment.status.ended");
 };
+
+const getPlanNameText = (plan) => {
+  const key = getPlanCodeKey(plan?.code || plan?.plan_code || plan?.name || plan?.plan_name);
+  return t(`billingPayment.planCatalog.${key}.name`, {
+    defaultValue: plan?.name || plan?.plan_name || plan?.code || plan?.plan_code || t("billingPayment.history.unknown"),
+  });
+};
+
+const getPlanDescriptionText = (plan) => {
+  const key = getPlanCodeKey(plan?.code || plan?.plan_code || plan?.name || plan?.plan_name);
+  return t(`billingPayment.planCatalog.${key}.description`, {
+    defaultValue: plan?.description || "",
+  });
+};
+
+const getStatusText = (status) =>
+  t(`billingPayment.statusLabel.${String(status || "pending").toLowerCase()}`, {
+    defaultValue: status || "pending",
+  });
 
   const loadBillingForClan = async (targetClanId) => {
     if (!targetClanId) {
@@ -505,7 +535,7 @@ const handlePaySelectedPayment = (payment) => {
         {billing && (
           <div className="billing-current-pill">
             <span>{t("billingPayment.currentPlan.title")}</span>
-            <strong>{billing.plan_name}</strong>
+            <strong>{getPlanNameText(billing)}</strong>
           </div>
         )}
       </section>
@@ -552,9 +582,9 @@ const handlePaySelectedPayment = (payment) => {
       <div className="billing-card-head">
         <div>
           <span className="billing-kicker">{t("billingPayment.currentPlan.title")}</span>
-          <h2>{billing.plan_name}</h2>
+          <h2>{getPlanNameText(billing)}</h2>
         </div>
-        <span className="billing-status-badge">{billing.status}</span>
+        <span className="billing-status-badge">{getStatusText(billing.status)}</span>
       </div>
 
       <div className="billing-info-list">
@@ -638,7 +668,7 @@ const handlePaySelectedPayment = (payment) => {
             >
               <div>
                 <strong>
-                  {payment.plan_name || payment.plan_code || t("billingPayment.history.unknown")}
+                  {getPlanNameText(payment)}
                 </strong>
                 <span>
                   {payment.payer_email || t("billingPayment.history.unknown")} ·{" "}
@@ -660,7 +690,7 @@ const handlePaySelectedPayment = (payment) => {
                   payment.status || "pending"
                 ).toLowerCase()}`}
               >
-                {payment.status}
+                {getStatusText(payment.status)}
               </span>
             </div>
           ))}
@@ -676,9 +706,7 @@ const handlePaySelectedPayment = (payment) => {
       <div>
         <span className="billing-kicker">{t("billingPayment.transactionDetail.title")}</span>
         <h2>
-          {selectedPayment.plan_name ||
-            selectedPayment.plan_code ||
-            t("billingPayment.history.unknown")}
+          {getPlanNameText(selectedPayment)}
         </h2>
       </div>
 
@@ -700,9 +728,7 @@ const handlePaySelectedPayment = (payment) => {
       <div>
         <span>{t("billingPayment.transactionDetail.plan")}</span>
         <strong>
-          {selectedPayment.plan_name ||
-            selectedPayment.plan_code ||
-            t("billingPayment.history.unknown")}
+          {getPlanNameText(selectedPayment)}
         </strong>
       </div>
 
@@ -713,7 +739,7 @@ const handlePaySelectedPayment = (payment) => {
 
       <div>
         <span>{t("billingPayment.transactionDetail.status")}</span>
-        <strong>{selectedPayment.status || "pending"}</strong>
+        <strong>{getStatusText(selectedPayment.status)}</strong>
       </div>
 
       <div>
@@ -789,9 +815,9 @@ const handlePaySelectedPayment = (payment) => {
           <div className="billing-card-head">
             <div>
               <span className="billing-kicker">{t("billingPayment.paymentDialog.title")}</span>
-              <h2>{paymentDialog.plan?.name}</h2>
+              <h2>{getPlanNameText(paymentDialog.plan)}</h2>
             </div>
-            <span className="billing-status-badge">{paymentDialog.status}</span>
+            <span className="billing-status-badge">{getStatusText(paymentDialog.status)}</span>
           </div>
 
           <div className="billing-payment-content">
@@ -854,8 +880,8 @@ const handlePaySelectedPayment = (payment) => {
               <article key={plan.id} className={`billing-plan-card ${isCurrent ? "is-current" : ""} ${isFeatured ? "is-featured" : ""}`}>
                 {isCurrent && <span className="billing-plan-ribbon">{t("billingPayment.plans.current")}</span>}
                 {isFeatured && !isCurrent && <span className="billing-plan-ribbon is-featured-ribbon">{t("billingPayment.plans.featured")}</span>}
-                <h3>{plan.name}</h3>
-                <p>{plan.description}</p>
+                <h3>{getPlanNameText(plan)}</h3>
+                <p>{getPlanDescriptionText(plan)}</p>
                 <div className="billing-plan-price">
                   <strong>{formatMoney(plan.price_vnd)}</strong>
                   {plan.billing_cycle === "monthly" ? <span>{t("billingPayment.plans.monthly")}</span> : null}
@@ -872,13 +898,13 @@ const handlePaySelectedPayment = (payment) => {
                     type="button"
                     className="billing-primary-btn"
                     onClick={async () => {
-                      const ok = window.confirm(t("billingPayment.messages.upgradeTestConfirm", { id: clanId, name: plan.name }));
+                      const ok = window.confirm(t("billingPayment.messages.upgradeTestConfirm", { id: clanId, name: getPlanNameText(plan) }));
                       if (!ok) return;
                       try {
                         setMessage("");
                         await manualUpgradeClan(clanId, { plan_code: plan.code, months: 1 });
                         await loadBillingForClan(clanId);
-                        setMessage(t("billingPayment.messages.upgradeTestSuccess", { id: clanId, name: plan.name }));
+                        setMessage(t("billingPayment.messages.upgradeTestSuccess", { id: clanId, name: getPlanNameText(plan) }));
                       } catch (error) {
                         setMessage(error.message || t("billingPayment.messages.upgradeTestError"));
                       }

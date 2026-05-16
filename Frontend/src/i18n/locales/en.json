@@ -226,6 +226,47 @@
       },
       "messages": {
         "loadError": "Could not load dashboard data"
+      },
+      "charts": {
+        "loading": "Loading charts...",
+        "genderTitle": "Members by Gender",
+        "genderSubtitle": "Male/female ratio in the clan",
+        "emptyGender": "No gender data yet.",
+        "familyTitle": "Families by Quarter",
+        "familySubtitle": "Each son with a spouse is counted as one family",
+        "threeMonths": "3 months",
+        "emptyFamily": "No quarterly family data yet.",
+        "financeTitle": "Income / Expense by Quarter",
+        "financeSubtitle": "Each quarter has two bars: total income and total expense",
+        "emptyFinance": "No income/expense data yet.",
+        "tasksTitle": "Task Assignments",
+        "tasksSubtitle": "Recently assigned tasks",
+        "emptyTasks": "No tasks yet.",
+        "quarterLabel": "Q{{quarter}}/{{year}}",
+        "unknownQuarter": "Unknown",
+        "peoplePercent": "{{count}} people - {{percent}}%",
+        "familyCount": "{{count}} families",
+        "quantity": "Quantity",
+        "familyCountName": "Families",
+        "income": "Income",
+        "expense": "Expense",
+        "money": {
+          "millionShort": "m",
+          "thousandShort": "k"
+        },
+        "gender": {
+          "male": "Male",
+          "female": "Female",
+          "unknown": "Not updated"
+        },
+        "taskStatus": {
+          "assigned": "Assigned",
+          "completed": "Completed",
+          "pending": "Pending",
+          "in_progress": "In progress",
+          "cancelled": "Cancelled",
+          "unknown": "Unknown"
+        }
       }
     },
     "accounts": {
@@ -803,6 +844,75 @@
       "cash": "Cash",
       "transfer": "Transfer"
     },
+    "member": {
+      "hero": {
+        "title": "Clan Fund",
+        "subtitle": "Help build a stronger clan through transparent contributions."
+      },
+      "sections": {
+        "obligations": "Contribution Obligations",
+        "transparency": "Income & Expense Transparency"
+      },
+      "actions": {
+        "voluntaryContribution": "Voluntary Contribution",
+        "payNow": "Contribute Now",
+        "sendReport": "Send Report",
+        "sendContribution": "Send Contribution"
+      },
+      "labels": {
+        "deadline": "Due",
+        "amountPerUnit": "Amount (1 unit)",
+        "target": "Applies to"
+      },
+      "contributionUnits": {
+        "malesOnly": "Male members",
+        "adultsAll": "Adults"
+      },
+      "ledger": {
+        "defaultNote": "Clan contribution",
+        "pending": "Pending"
+      },
+      "modal": {
+        "payTitle": "Confirm Contribution"
+      },
+      "bank": {
+        "bankName": "Bank",
+        "bankAccount": "Account No.",
+        "bankOwner": "Account owner",
+        "qrHelp": "Scan the QR code to pay quickly"
+      },
+      "cash": {
+        "title": "Cash payment",
+        "desc1": "Please pay directly to the clan manager or fund treasurer.",
+        "desc2": "After paying, send this report so the manager can confirm it in the fund ledger."
+      },
+      "form": {
+        "reportTitle": "Contribution report",
+        "contributionAmount": "Contribution amount",
+        "billImage": "Transfer proof image",
+        "billAttached": "Image attached",
+        "uploadBill": "Upload proof image",
+        "notePlaceholder": "Enter a note if needed...",
+        "contributionNote": "Contribution for"
+      },
+      "messages": {
+        "loadCampaignDetailError": "Could not load campaign details",
+        "uploadBillError": "Error uploading proof image",
+        "reportSuccess": "Report sent successfully. Please wait for clan manager confirmation.",
+        "reportError": "Error sending report",
+        "generalSuccess": "Your contribution has been recorded.",
+        "thankYou": "Thank you!"
+      }
+    },
+    "analytics": {
+      "loading": "Loading analytics data...",
+      "title": "Statistics & Analytics",
+      "yearlyGrowth": "Fund Growth by Year",
+      "expenseCategories": "Expense Categories ({{prevYear}} vs {{curYear}})",
+      "income": "Income",
+      "expense": "Expense",
+      "yearLabel": "Year {{year}}"
+    },
     "campaigns": {
       "title": "Campaign List",
       "allYears": "All years",
@@ -1027,6 +1137,32 @@
       "upgradeNow": "Upgrade Now",
       "pending": "Pending Transaction",
       "cannotDowngrade": "Cannot downgrade"
+    },
+    "planCatalog": {
+      "free": {
+        "name": "Free",
+        "description": "Free plan for a small family tree"
+      },
+      "basic": {
+        "name": "Basic",
+        "description": "Expand the family tree up to 100 people"
+      },
+      "pro": {
+        "name": "Pro",
+        "description": "Expand the family tree up to 500 people"
+      },
+      "plus": {
+        "name": "Family Plus",
+        "description": "Large plan for active clans"
+      }
+    },
+    "statusLabel": {
+      "active": "Active",
+      "pending": "Pending",
+      "paid": "Paid",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "ended": "Ended"
     },
     "status": {
       "paid": "Transaction paid, cannot repay.",
@@ -1582,6 +1718,86 @@
   },
   "tree": {
     "title": "Family Tree",
+    "page": {
+      "memberFallback": "Member",
+      "clanFallback": "Clan",
+      "keyDefaultExpiry": "1 hour from key creation",
+      "clanInfo": "Clan information",
+      "managerClanInfoHelp": "Managers can edit the clan name, history, and ancestral hall address.",
+      "memberClanInfoHelp": "Members can only view clan information updated by administrators.",
+      "clanDbId": "Clan ID in database",
+      "clanId": "Clan ID",
+      "clanName": "Clan name",
+      "clanNamePlaceholder": "Example: Nguyen Minh",
+      "clanHistory": "Clan history",
+      "clanHistoryPlaceholder": "Record the clan origin, history, and traditions...",
+      "clanHallAddress": "Ancestral hall address",
+      "clanHallAddressShort": "Ancestral hall",
+      "clanHallAddressPlaceholder": "Enter the clan ancestral hall or meeting place address...",
+      "emptyClanHistory": "Clan history has not been updated yet.",
+      "emptyClanHallAddress": "Ancestral hall address has not been updated yet.",
+      "members": "Members",
+      "families": "Families",
+      "childLinks": "Child links",
+      "saving": "Saving...",
+      "saveClanInfo": "Save clan information",
+      "temporaryEditKey": "Temporary edit key",
+      "temporaryEditKeyHelp": "Valid for 1 hour from key creation",
+      "searchMemberByName": "Find member by name",
+      "searchMemberPlaceholder": "Enter name, email, or account ID",
+      "selectedMembers": "{{count}} members selected",
+      "selectFiltered": "Select filtered results",
+      "clearSelection": "Clear selection",
+      "generating": "Generating...",
+      "generateKeys": "Generate {{count}} edit key",
+      "noMatchingMember": "No matching member",
+      "activeKeys": "Active keys",
+      "noActiveKeys": "No active keys",
+      "noNewKeys": "No new keys",
+      "copy": "Copy",
+      "copyAllNewKeys": "Copy all new keys",
+      "hiddenOldKey": "Old key cannot be displayed",
+      "keyCreatedAt": "Created: {{value}}",
+      "keyExpiresAt": "Expires: {{value}}",
+      "managerDescription": "Parent, spouse, and child relationships are loaded directly from people, families, and children tables.",
+      "editorTitle": "Family tree editor",
+      "memberCount": "{{count}} members",
+      "generatedKeysTitle": "Generated keys",
+      "generatedKeysSubtitle": "{{count}} new keys, sorted by newest creation time",
+      "refreshActiveKeys": "Refresh active keys",
+      "newestFirst": "Newest to oldest",
+      "exitFullscreen": "Exit fullscreen",
+      "treeInfo": "Tree information",
+      "memberTreeInfoHelp": "Members can view the tree, zoom, use fullscreen, and inspect each person.",
+      "memberTreeNote": "Click a person in the tree to view details. Adding, editing, deleting, and changing relationships are reserved for clan administrators.",
+      "memberHeroDescription": "View the full family tree for your clan. Members have view, zoom, and detail-inspection access only.",
+      "enterTemporaryKey": "Enter temporary edit key",
+      "checking": "Checking...",
+      "enableEdit": "Enable editing",
+      "disableEdit": "Disable editing",
+      "remainingTime": "Remaining: {{value}}",
+      "emptyTree": "No family tree data to display yet.",
+      "generationLabel": "generation {{generation}}",
+      "currentGenerationPlusMinus": "current generation ±1",
+      "messages": {
+        "saveClanSuccess": "Clan information saved.",
+        "temporaryEditEnabled": "You have temporary edit permission until the key expires. Scope: current generation, one generation above, and one generation below.",
+        "temporaryEditExpired": "Temporary edit key expired. The family tree returned to view-only mode.",
+        "temporaryEditDisabled": "Temporary edit permission disabled."
+      },
+      "errors": {
+        "loadTree": "Could not load family tree from database.",
+        "loadKeys": "Could not load active key list.",
+        "selectMemberForKey": "Select at least one member to grant permission.",
+        "createKey": "Could not create temporary edit key.",
+        "copyKey": "Could not copy key automatically. Please copy it manually.",
+        "copyKeyList": "Could not copy key list automatically. Please copy it manually.",
+        "saveClan": "Could not save clan information.",
+        "enterTemporaryKey": "Please enter a temporary edit key.",
+        "keyExpiredAskManager": "Temporary edit key expired. Please ask a manager to create a new key.",
+        "invalidTemporaryKey": "Temporary edit key is invalid or expired."
+      }
+    },
     "sidebar": {
       "title": "Find Person",
       "placeholder": "Name, gen, birth date, year",

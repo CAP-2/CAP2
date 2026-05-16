@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createTreeEditKeyAPI, getActiveTreeEditKeysAPI, getManagerTree, updateManagerClanInfo } from "../../../api/managerService";
 import FamilyTreeEditor from "../components/FamilyTreeEditor";
 import { formatDateTimeVN } from "../../../shared/utils/dateFormat";
@@ -6,6 +7,7 @@ import { onSocketEvent } from "../../../services/socket";
 import "../../manager/pages/manager.css";
 
 export default function GenealogySection() {
+  const { t } = useTranslation();
   const [people, setPeople] = useState([]);
   const [families, setFamilies] = useState([]);
   const [children, setChildren] = useState([]);
@@ -33,7 +35,7 @@ export default function GenealogySection() {
   const formatPersonName = (person) =>
     person?.display_name ||
     [person?.surname, person?.middle_name, person?.first_name].filter(Boolean).join(" ").trim() ||
-    "Thành viên";
+    t("tree.page.memberFallback");
 
   const normalizeSearchText = (value) =>
     String(value || "")
@@ -42,7 +44,7 @@ export default function GenealogySection() {
       .toLowerCase()
       .trim();
 
-  const formatDateTime = (value) => (value ? formatDateTimeVN(value) : "1 giờ từ lúc tạo key");
+  const formatDateTime = (value) => (value ? formatDateTimeVN(value) : t("tree.page.keyDefaultExpiry"));
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -55,7 +57,7 @@ export default function GenealogySection() {
       setLayoutSettings(data.layoutSettings || { line_routes: {}, card_sizes: {} });
       setClan(data.clan || null);
     } catch (err) {
-      setError(err?.message || "Không thể tải cây gia phả từ database");
+      setError(err?.message || t("tree.page.errors.loadTree"));
       setLayoutSettings({ line_routes: {}, card_sizes: {} });
     } finally {
       setLoading(false);
@@ -120,7 +122,7 @@ export default function GenealogySection() {
         }),
       );
     } catch (err) {
-      setKeyError(err?.message || "Không thể tải danh sách key còn hiệu lực.");
+      setKeyError(err?.message || t("tree.page.errors.loadKeys"));
     } finally {
       setActiveKeysLoading(false);
     }
@@ -173,7 +175,7 @@ export default function GenealogySection() {
 
   const handleGenerateKey = async () => {
     if (!selectedMemberAccountIds.length) {
-      setKeyError("Vui lòng chọn ít nhất một member cần cấp quyền.");
+      setKeyError(t("tree.page.errors.selectMemberForKey"));
       return;
     }
 
@@ -190,7 +192,7 @@ export default function GenealogySection() {
       setKeyModalOpen(true);
       await loadActiveKeys();
     } catch (err) {
-      setKeyError(err?.message || "Không thể tạo temporary edit key.");
+      setKeyError(err?.message || t("tree.page.errors.createKey"));
     } finally {
       setKeySaving(false);
     }
@@ -201,20 +203,20 @@ export default function GenealogySection() {
     try {
       await navigator.clipboard.writeText(key);
     } catch {
-      setKeyError("Không thể copy key tự động. Hãy copy thủ công.");
+      setKeyError(t("tree.page.errors.copyKey"));
     }
   };
 
   const copyGeneratedKeys = async () => {
     const text = generatedKeys
       .filter((item) => item?.key)
-      .map((item) => `${item.member_name || `Thành viên`}: ${item.key}`)
+      .map((item) => `${item.member_name || t("tree.page.memberFallback")}: ${item.key}`)
       .join("\n");
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      setKeyError("Không thể copy danh sách key tự động. Hãy copy thủ công.");
+      setKeyError(t("tree.page.errors.copyKeyList"));
     }
   };
 
@@ -226,14 +228,14 @@ export default function GenealogySection() {
         {items.map((item) => (
           <div className="tree-key-row" key={item.id || `${item.member_account_id}-${item.created_at}-${item.key}`}>
             <div className="tree-key-row-main">
-              <strong>{item.member_name || "Member"}</strong>
-              <span>Tạo: {formatDateTime(item.created_at)}</span>
-              <span>Hết hạn: {formatDateTime(item.expires_at)}</span>
+              <strong>{item.member_name || t("tree.page.memberFallback")}</strong>
+              <span>{t("tree.page.keyCreatedAt", { value: formatDateTime(item.created_at) })}</span>
+              <span>{t("tree.page.keyExpiresAt", { value: formatDateTime(item.expires_at) })}</span>
             </div>
-            <code>{item.key || "Key cũ không thể hiển thị"}</code>
+            <code>{item.key || t("tree.page.hiddenOldKey")}</code>
             {item.key ? (
               <button className="mgr-btnGhost" type="button" onClick={() => copyKey(item.key)}>
-                Copy
+                {t("tree.page.copy")}
               </button>
             ) : null}
           </div>
@@ -264,10 +266,10 @@ export default function GenealogySection() {
     try {
       const response = await updateManagerClanInfo(clanForm);
       setClan(response?.clan || { ...clan, ...clanForm });
-      setClanMessage(response?.message || "Đã lưu thông tin dòng họ.");
+      setClanMessage(response?.message || t("tree.page.messages.saveClanSuccess"));
       await loadTree();
     } catch (err) {
-      setClanError(err?.message || "Không thể lưu thông tin dòng họ.");
+      setClanError(err?.message || t("tree.page.errors.saveClan"));
     } finally {
       setClanSaving(false);
     }
@@ -278,12 +280,12 @@ export default function GenealogySection() {
       <form className="clan-info-modal" onSubmit={saveClanInfo}>
         <div className="clan-info-modalHead">
           <div>
-            <span>Thông tin dòng họ</span>
-            <h2>{clan?.clan_name || "Dòng họ"}</h2>
-            <p>Manager có thể chỉnh sửa tên dòng họ, lịch sử và địa chỉ nhà thờ/từ đường.</p>
-            <p className="clan-info-dbId">ID dòng họ trong database: <strong>{clan?.id ?? clan?.clan_id ?? "Chưa có"}</strong></p>
+            <span>{t("tree.page.clanInfo")}</span>
+            <h2>{clan?.clan_name || t("tree.page.clanFallback")}</h2>
+            <p>{t("tree.page.managerClanInfoHelp")}</p>
+            <p className="clan-info-dbId">{t("tree.page.clanDbId")}: <strong>{clan?.id ?? clan?.clan_id ?? t("common.noInfo")}</strong></p>
           </div>
-          <button className="clan-info-close" type="button" onClick={() => setIsClanInfoOpen(false)} aria-label="Đóng">
+          <button className="clan-info-close" type="button" onClick={() => setIsClanInfoOpen(false)} aria-label={t("common.close")}>
             ×
           </button>
         </div>
@@ -292,28 +294,28 @@ export default function GenealogySection() {
         {clanMessage ? <div className="manager-inline-success">{clanMessage}</div> : null}
 
         <label className="clan-info-field">
-          <span>Tên dòng họ</span>
-          <input value={clanForm.clan_name} onChange={(event) => handleClanFormChange("clan_name", event.target.value)} placeholder="Ví dụ: Nguyễn Minh" />
+          <span>{t("tree.page.clanName")}</span>
+          <input value={clanForm.clan_name} onChange={(event) => handleClanFormChange("clan_name", event.target.value)} placeholder={t("tree.page.clanNamePlaceholder")} />
         </label>
         <label className="clan-info-field">
-          <span>Lịch sử dòng họ</span>
-          <textarea value={clanForm.history} onChange={(event) => handleClanFormChange("history", event.target.value)} rows={6} placeholder="Ghi lại nguồn gốc, lịch sử, truyền thống của dòng họ..." />
+          <span>{t("tree.page.clanHistory")}</span>
+          <textarea value={clanForm.history} onChange={(event) => handleClanFormChange("history", event.target.value)} rows={6} placeholder={t("tree.page.clanHistoryPlaceholder")} />
         </label>
         <label className="clan-info-field">
-          <span>Địa chỉ nhà thờ / từ đường</span>
-          <textarea value={clanForm.hall_address} onChange={(event) => handleClanFormChange("hall_address", event.target.value)} rows={3} placeholder="Nhập địa chỉ nhà thờ họ, từ đường hoặc nơi sinh hoạt dòng họ..." />
+          <span>{t("tree.page.clanHallAddress")}</span>
+          <textarea value={clanForm.hall_address} onChange={(event) => handleClanFormChange("hall_address", event.target.value)} rows={3} placeholder={t("tree.page.clanHallAddressPlaceholder")} />
         </label>
 
         <div className="clan-info-metaGrid clan-info-metaGrid--four">
-          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>ID dòng họ</span></div>
-          <div><strong>{people.length}</strong><span>Thành viên</span></div>
-          <div><strong>{families.length}</strong><span>Gia đình</span></div>
-          <div><strong>{children.length}</strong><span>Liên kết con</span></div>
+          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>{t("tree.page.clanId")}</span></div>
+          <div><strong>{people.length}</strong><span>{t("tree.page.members")}</span></div>
+          <div><strong>{families.length}</strong><span>{t("tree.page.families")}</span></div>
+          <div><strong>{children.length}</strong><span>{t("tree.page.childLinks")}</span></div>
         </div>
 
         <div className="clan-info-actions">
-          <button className="mgr-btnGhost" type="button" onClick={() => setIsClanInfoOpen(false)}>Đóng</button>
-          <button className="mgr-btnPrimary" type="submit" disabled={clanSaving}>{clanSaving ? "Đang lưu..." : "Lưu thông tin dòng họ"}</button>
+          <button className="mgr-btnGhost" type="button" onClick={() => setIsClanInfoOpen(false)}>{t("common.close")}</button>
+          <button className="mgr-btnPrimary" type="submit" disabled={clanSaving}>{clanSaving ? t("tree.page.saving") : t("tree.page.saveClanInfo")}</button>
         </div>
       </form>
     </div>
@@ -334,38 +336,38 @@ export default function GenealogySection() {
   const renderTemporaryKeyPanel = () => (
     <div className="panel-card tree-key-panel tree-key-panel--compact">
       <div className="panel-header">
-        <h2>Temporary edit key</h2>
-        <span>Hiệu lực 1 giờ từ lúc tạo key</span>
+        <h2>{t("tree.page.temporaryEditKey")}</h2>
+        <span>{t("tree.page.temporaryEditKeyHelp")}</span>
       </div>
 
       <div className="tree-key-bulk">
         <label className="tree-key-field">
-          <span>Tìm member theo tên</span>
+          <span>{t("tree.page.searchMemberByName")}</span>
           <input
             className="mgr-field"
             value={memberSearch}
             onChange={(event) => setMemberSearch(event.target.value)}
-            placeholder="Nhập tên, email hoặc account id"
+            placeholder={t("tree.page.searchMemberPlaceholder")}
             disabled={keySaving || !editableMembers.length}
           />
         </label>
 
         <div className="tree-key-toolbar">
-          <span>{selectedCount} member đã chọn</span>
+          <span>{t("tree.page.selectedMembers", { count: selectedCount })}</span>
           <button className="mgr-btnGhost" type="button" onClick={selectFilteredMembers} disabled={keySaving || !filteredEditableMembers.length}>
-            Chọn kết quả lọc
+            {t("tree.page.selectFiltered")}
           </button>
           <button className="mgr-btnGhost" type="button" onClick={clearSelectedMembers} disabled={keySaving || !selectedCount}>
-            Bỏ chọn
+            {t("tree.page.clearSelection")}
           </button>
           <button className="mgr-btnPrimary" type="button" onClick={handleGenerateKey} disabled={keySaving || !selectedCount}>
-            {keySaving ? "Đang tạo..." : `Generate ${selectedCount || ""} edit key`}
+            {keySaving ? t("tree.page.generating") : t("tree.page.generateKeys", { count: selectedCount || "" })}
           </button>
         </div>
 
         <div className="tree-key-member-list">
           {filteredEditableMembers.length === 0 ? (
-            <div className="tree-key-empty">Không có member phù hợp</div>
+            <div className="tree-key-empty">{t("tree.page.noMatchingMember")}</div>
           ) : (
             filteredEditableMembers.map((person) => {
               const checked = selectedMemberAccountIds.some((accountId) => Number(accountId) === Number(person.account_id));
@@ -379,7 +381,7 @@ export default function GenealogySection() {
                   />
                   <span>
                     <strong>{formatPersonName(person)}</strong>
-                    <small>{person.account_email || person.account_email || "Thành viên"}</small>
+                    <small>{person.account_email || person.account_email || t("tree.page.memberFallback")}</small>
                   </span>
                 </label>
               );
@@ -392,12 +394,12 @@ export default function GenealogySection() {
 
       <div className="tree-key-active">
         <div className="tree-key-section-head">
-          <strong>Key còn hiệu lực</strong>
+          <strong>{t("tree.page.activeKeys")}</strong>
           <button className="mgr-btnGhost" type="button" onClick={loadActiveKeys} disabled={activeKeysLoading}>
-            {activeKeysLoading ? "Đang tải..." : "Tải lại"}
+            {activeKeysLoading ? t("common.loading") : t("common.reload")}
           </button>
         </div>
-        {renderKeyList(activeKeys, "Chưa có key còn hiệu lực")}
+        {renderKeyList(activeKeys, t("tree.page.noActiveKeys"))}
       </div>
     </div>
   );
@@ -406,12 +408,12 @@ export default function GenealogySection() {
     <section className="manager-genealogy-page">
       <div className="manager-data-header">
         <div>
-          <h2>{clan?.clan_name || "Cây gia phả"}</h2>
-          <p>Quan hệ cha, mẹ, vợ/chồng và con được lấy trực tiếp từ bảng people, families và children.</p>
+          <h2>{clan?.clan_name || t("tree.title")}</h2>
+          <p>{t("tree.page.managerDescription")}</p>
         </div>
         <div className="tree-panel-actions">
           <button className="mgr-btnGhost" type="button" onClick={openClanInfo}>
-            Thông tin dòng họ
+            {t("tree.page.clanInfo")}
           </button>
           <div className="tree-action-popover">
             <button
@@ -419,12 +421,12 @@ export default function GenealogySection() {
               type="button"
               onClick={() => setIsKeyPanelOpen((value) => !value)}
             >
-              Temporary edit key
+              {t("tree.page.temporaryEditKey")}
             </button>
             {isKeyPanelOpen ? renderTemporaryKeyPanel() : null}
           </div>
           <button className="mgr-btnGhost" type="button" onClick={loadTree} disabled={loading}>
-            Tải lại
+            {t("common.reload")}
           </button>
         </div>
       </div>
@@ -435,8 +437,8 @@ export default function GenealogySection() {
       <div className="management-grid management-grid--single">
         <div className="panel-card tree-preview-panel">
           <div className="panel-header">
-            <h2>Trình chỉnh sửa cây gia phả</h2>
-            <span>{people.length} thành viên</span>
+            <h2>{t("tree.page.editorTitle")}</h2>
+            <span>{t("tree.page.memberCount", { count: people.length })}</span>
           </div>
           <div className="tree-container">{renderEditor()}</div>
         </div>
@@ -447,8 +449,8 @@ export default function GenealogySection() {
           <div className="tree-key-modal">
             <div className="tree-key-modal-head">
               <div>
-                <h2>Key vừa tạo</h2>
-                <span>{generatedKeys.length} key mới, sắp xếp theo thời gian tạo mới nhất</span>
+                <h2>{t("tree.page.generatedKeysTitle")}</h2>
+                <span>{t("tree.page.generatedKeysSubtitle", { count: generatedKeys.length })}</span>
               </div>
               <button className="mgr-modalClose" type="button" onClick={() => setKeyModalOpen(false)}>
                 ×
@@ -456,19 +458,19 @@ export default function GenealogySection() {
             </div>
             <div className="tree-key-modal-actions">
               <button className="mgr-btnPrimary" type="button" onClick={copyGeneratedKeys} disabled={!generatedKeys.length}>
-                Copy tất cả key mới
+                {t("tree.page.copyAllNewKeys")}
               </button>
               <button className="mgr-btnGhost" type="button" onClick={loadActiveKeys} disabled={activeKeysLoading}>
-                {activeKeysLoading ? "Đang tải..." : "Cập nhật key còn hiệu lực"}
+                {activeKeysLoading ? t("common.loading") : t("tree.page.refreshActiveKeys")}
               </button>
             </div>
-            {renderKeyList(generatedKeys, "Không có key mới")}
+            {renderKeyList(generatedKeys, t("tree.page.noNewKeys"))}
             <div className="tree-key-modal-section">
               <div className="tree-key-section-head">
-                <strong>Key còn hiệu lực</strong>
-                <span>Mới nhất đến lâu nhất</span>
+                <strong>{t("tree.page.activeKeys")}</strong>
+                <span>{t("tree.page.newestFirst")}</span>
               </div>
-              {renderKeyList(activeKeys, "Chưa có key còn hiệu lực")}
+              {renderKeyList(activeKeys, t("tree.page.noActiveKeys"))}
             </div>
           </div>
         </div>
@@ -478,9 +480,9 @@ export default function GenealogySection() {
         <div className="tree-fullscreen-overlay" role="dialog" aria-modal="true">
           <div className="tree-fullscreen-panel">
             <div className="panel-header">
-              <h2>{clan?.clan_name || "Cây gia phả"}</h2>
+              <h2>{clan?.clan_name || t("tree.title")}</h2>
               <button className="mgr-btnGhost" type="button" onClick={() => setIsFullscreen(false)}>
-                Thu nhỏ
+                {t("tree.page.exitFullscreen")}
               </button>
             </div>
             <div className="tree-container tree-container--fullscreen">{renderEditor()}</div>
