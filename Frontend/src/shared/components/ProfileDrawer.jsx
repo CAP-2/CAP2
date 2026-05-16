@@ -143,6 +143,7 @@ export default function ProfileDrawer({
       }
 
       const image = new Image();
+      image.crossOrigin = "anonymous";
 
       image.onload = () => {
         const size = 420;
@@ -208,7 +209,7 @@ export default function ProfileDrawer({
   };
 
   const createCroppedAvatarFile = async () => {
-    if (!avatarPreview || !avatarFile) {
+    if (!avatarPreview) {
       return null;
     }
 
@@ -226,7 +227,7 @@ export default function ProfileDrawer({
             return;
           }
 
-          const baseName = avatarFile.name?.replace(/\.[^.]+$/, "") || "avatar";
+          const baseName = avatarFile?.name?.replace(/\.[^.]+$/, "") || "avatar";
 
           const croppedFile = new File([blob], `${baseName}-avatar.jpg`, {
             type: "image/jpeg",
@@ -453,7 +454,7 @@ export default function ProfileDrawer({
       let nextAvatarUrl = contentForm.avatar_url || "";
       let nextAvatarMediaId = contentForm.avatar_media_id || null;
 
-      if (avatarPreview && avatarFile) {
+      if (avatarPreview && (avatarFile || avatarPreview.startsWith("data:"))) {
         const croppedFile = await createCroppedAvatarFile();
 
         if (!croppedFile) {
@@ -726,7 +727,9 @@ export default function ProfileDrawer({
                 type="button"
                 className="avatar-click-preview"
                 onClick={() => {
-                  if (avatarPreview || contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url) {
+                  const currentAvatar = avatarPreview || contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url;
+                  if (currentAvatar) {
+                    if (!avatarPreview) setAvatarPreview(currentAvatar);
                     setAvatarEditorOpen(true);
                   }
                 }}
@@ -777,7 +780,13 @@ export default function ProfileDrawer({
                 <button
                   type="button"
                   className="avatar-open-editor-button"
-                  onClick={() => setAvatarEditorOpen(true)}
+                  onClick={() => {
+                    const currentAvatar = avatarPreview || contentForm.avatar_url || profile.avatar_url || currentUser?.avatar_url;
+                    if (currentAvatar) {
+                      if (!avatarPreview) setAvatarPreview(currentAvatar);
+                      setAvatarEditorOpen(true);
+                    }
+                  }}
                   disabled={!avatarPreview && !contentForm.avatar_url && !profile.avatar_url && !currentUser?.avatar_url}
                 >
                   <span className="material-symbols-outlined">crop</span>
