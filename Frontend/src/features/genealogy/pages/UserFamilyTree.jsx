@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getMemberDashboard, verifyTreeEditSession } from "../../../api/memberService";
 import FamilyTreeEditor from "../components/FamilyTreeEditor";
 import { onSocketEvent, connectSocketFromStorage } from "../../../services/socket";
@@ -6,10 +7,10 @@ import { clearTreeEditSession, readTreeEditSession, saveTreeEditSession } from "
 import "../../member/pages/MemberDashboard.css";
 
 export default function FamilyTreePage() {
+  const { t } = useTranslation();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [isClanInfoOpen, setIsClanInfoOpen] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [keySaving, setKeySaving] = useState(false);
@@ -43,7 +44,7 @@ export default function FamilyTreePage() {
       const response = await getMemberDashboard();
       setDashboard(response);
     } catch (err) {
-      setError(err?.message || "Không thể tải cây gia phả.");
+      setError(err?.message || t("tree.page.errors.loadTree"));
     } finally {
       setLoading(false);
     }
@@ -106,7 +107,7 @@ export default function FamilyTreePage() {
       const key = String(rawKey || "").trim();
       const silent = options.silent === true;
       if (!key) {
-        setKeyError("Vui lòng nhập temporary edit key.");
+        setKeyError(t("tree.page.errors.enterTemporaryKey"));
         return;
       }
 
@@ -121,7 +122,7 @@ export default function FamilyTreePage() {
         const expiresAt = resolvePermissionExpiry(response);
         if (!expiresAt) {
           resetTemporaryPermission("");
-          setKeyError("Temporary edit key đã hết hạn. Vui lòng xin manager tạo key mới.");
+          setKeyError(t("tree.page.errors.keyExpiredAskManager"));
           return;
         }
         saveTreeEditSession({ key, expiresAt });
@@ -134,11 +135,11 @@ export default function FamilyTreePage() {
         });
         setPermissionExpiry(expiresAt);
         setKeyInput(key);
-        setKeyStatus("Bạn có quyền chỉnh sửa tạm thời đến khi temporary edit key hết hạn. Phạm vi: đời hiện tại, trên 1 đời và dưới 1 đời.");
+        setKeyStatus(t("tree.page.messages.temporaryEditEnabled"));
         setKeyError("");
       } catch (err) {
         resetTemporaryPermission("");
-        setKeyError(err?.message || "Temporary edit key không hợp lệ hoặc đã hết hạn.");
+        setKeyError(err?.message || t("tree.page.errors.invalidTemporaryKey"));
       } finally {
         setKeySaving(false);
       }
@@ -158,7 +159,7 @@ export default function FamilyTreePage() {
 
     const syncExpiry = () => {
       if (Date.parse(permissionExpiry) <= Date.now()) {
-        resetTemporaryPermission("Temporary edit key đã hết hạn. Cây gia phả đã quay về chế độ chỉ xem.");
+        resetTemporaryPermission(t("tree.page.messages.temporaryEditExpired"));
       }
     };
 
@@ -171,84 +172,56 @@ export default function FamilyTreePage() {
   const families = Array.isArray(dashboard?.families) ? dashboard.families : [];
   const children = Array.isArray(dashboard?.children) ? dashboard.children : [];
   const clan = dashboard?.clan || {};
-  const clanName = clan?.clan_name || "Gia phả";
+  const clanName = clan?.clan_name || t("tree.title");
 
   const remainingMs = permissionExpiry ? Math.max(0, Date.parse(permissionExpiry) - Date.now()) : 0;
   const remainingText = permissionExpiry
     ? `${Math.floor(remainingMs / 60000)}:${String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0")}`
     : "";
   const generationScopeText = permission.allowedGenerations?.length
-    ? permission.allowedGenerations.map((generation) => `đời ${generation}`).join(", ")
-    : "đời hiện tại ±1";
+    ? permission.allowedGenerations.map((generation) => t("tree.page.generationLabel", { generation })).join(", ")
+    : t("tree.page.currentGenerationPlusMinus");
 
   const renderClanInfoModal = () => (
     <div className="member-clan-modalOverlay" role="dialog" aria-modal="true">
       <div className="member-clan-modal">
         <div className="member-clan-modalHead">
           <div>
-            <span>Thông tin dòng họ</span>
+            <span>{t("tree.page.clanInfo")}</span>
             <h2>{clanName}</h2>
-            <p>Thành viên chỉ được xem thông tin dòng họ do quản trị viên cập nhật.</p>
-            <p className="member-clan-dbId">ID dòng họ trong database: <strong>{clan?.id ?? clan?.clan_id ?? "Chưa có"}</strong></p>
+            <p>{t("tree.page.memberClanInfoHelp")}</p>
+            <p className="member-clan-dbId">{t("tree.page.clanDbId")}: <strong>{clan?.id ?? clan?.clan_id ?? t("common.noInfo")}</strong></p>
           </div>
-          <button type="button" onClick={() => setIsClanInfoOpen(false)} aria-label="Đóng">×</button>
+          <button type="button" onClick={() => setIsClanInfoOpen(false)} aria-label={t("common.close")}>×</button>
         </div>
         <div className="member-clan-infoGrid">
           <article>
-            <span>Lịch sử dòng họ</span>
-            <p>{clan?.history || "Chưa cập nhật lịch sử dòng họ."}</p>
+            <span>{t("tree.page.clanHistory")}</span>
+            <p>{clan?.history || t("tree.page.emptyClanHistory")}</p>
           </article>
           <article>
-            <span>Nhà thờ / từ đường</span>
-            <p>{clan?.hall_address || "Chưa cập nhật địa chỉ nhà thờ hoặc từ đường."}</p>
+            <span>{t("tree.page.clanHallAddressShort")}</span>
+            <p>{clan?.hall_address || t("tree.page.emptyClanHallAddress")}</p>
           </article>
         </div>
         <div className="member-clan-stats member-clan-stats--four">
-          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>ID dòng họ</span></div>
-          <div><strong>{treeMembers.length}</strong><span>Thành viên</span></div>
-          <div><strong>{families.length}</strong><span>Gia đình</span></div>
-          <div><strong>{children.length}</strong><span>Liên kết con</span></div>
+          <div><strong>{clan?.id ?? clan?.clan_id ?? "-"}</strong><span>{t("tree.page.clanId")}</span></div>
+          <div><strong>{treeMembers.length}</strong><span>{t("tree.page.members")}</span></div>
+          <div><strong>{families.length}</strong><span>{t("tree.page.families")}</span></div>
+          <div><strong>{children.length}</strong><span>{t("tree.page.childLinks")}</span></div>
         </div>
         <div className="member-clan-actions">
-          <button className="member-btn member-btn-primary" type="button" onClick={() => setIsClanInfoOpen(false)}>Đã hiểu</button>
+          <button className="member-btn member-btn-primary" type="button" onClick={() => setIsClanInfoOpen(false)}>{t("common.close")}</button>
         </div>
       </div>
     </div>
-  );
-
-  const renderTreeInfoPanel = () => (
-    <aside className="member-panel member-tree-side member-tree-side--compact">
-      <div className="member-panel-header">
-        <div>
-          <h2>Thông tin cây</h2>
-          <p>Thành viên chỉ được xem cây gia phả, phóng to/thu nhỏ, toàn màn hình và xem chi tiết từng người.</p>
-        </div>
-      </div>
-      <div className="member-tree-summary">
-        <div>
-          <strong>{treeMembers.length}</strong>
-          <span>Thành viên</span>
-        </div>
-        <div>
-          <strong>{families.length}</strong>
-          <span>Gia đình</span>
-        </div>
-        <div>
-          <strong>{children.length}</strong>
-          <span>Liên kết con</span>
-        </div>
-      </div>
-      <div className="member-tree-note">
-        Bấm vào một người trên cây để xem thông tin chi tiết. Các thao tác thêm, sửa, xóa và chỉnh quan hệ chỉ dành cho quản trị viên dòng họ.
-      </div>
-    </aside>
   );
 
   if (loading) {
     return (
       <div className="member-portal-page">
         <section className="member-panel">
-          <div className="member-empty">Đang tải cây gia phả...</div>
+          <div className="member-empty">{t("tree.messages.loading")}</div>
         </section>
       </div>
     );
@@ -262,9 +235,9 @@ export default function FamilyTreePage() {
 
       <section className="member-hero-panel">
         <div>
-          <span className="member-kicker">Cây gia phả</span>
+          <span className="member-kicker">{t("tree.title")}</span>
           <h1>{clanName}</h1>
-          <p>Xem toàn bộ cây gia phả của dòng họ. Thành viên chỉ có quyền xem, phóng to thu nhỏ và xem chi tiết từng người.</p>
+          <p>{t("tree.page.memberHeroDescription")}</p>
         </div>
       </section>
 
@@ -272,16 +245,16 @@ export default function FamilyTreePage() {
 
       <div className="member-tree-toolbar">
         <button className="member-btn member-btn-ghost" type="button" onClick={loadTree} disabled={loading}>
-          Tải lại
+          {t("common.reload")}
         </button>
         <button className="member-btn member-btn-ghost" type="button" onClick={() => setIsClanInfoOpen(true)}>
-          Thông tin dòng họ
+          {t("tree.page.clanInfo")}
         </button>
         <div className="member-tree-keyBox">
         <input
           className="member-tree-keyInput"
           type="text"
-          placeholder="Nhập temporary edit key"
+          placeholder={t("tree.page.enterTemporaryKey")}
           value={keyInput}
           disabled={keySaving || permission.canEdit}
           onChange={(e) => setKeyInput(e.target.value)}
@@ -294,40 +267,30 @@ export default function FamilyTreePage() {
             disabled={keySaving || !keyInput.trim()}
             onClick={() => activateTemporaryPermission(keyInput)}
           >
-            {keySaving ? "Đang kiểm tra..." : "Mở quyền sửa"}
+            {keySaving ? t("tree.page.checking") : t("tree.page.enableEdit")}
           </button>
         ) : (
           <button
             className="member-btn member-btn-ghost"
             type="button"
-            onClick={() => resetTemporaryPermission("Đã tắt quyền chỉnh sửa tạm thời.")}
+            onClick={() => resetTemporaryPermission(t("tree.page.messages.temporaryEditDisabled"))}
           >
-            Tắt quyền sửa
+            {t("tree.page.disableEdit")}
           </button>
         )}
 
         {permission.canEdit && remainingText ? (
           <span className="member-tree-keyStatus">
-            Còn hạn: {remainingText}
+            {t("tree.page.remainingTime", { value: remainingText })}
           </span>
         ) : null}
       </div>
-        <div className="member-tree-info-popover">
-          <button
-            className={`member-btn member-btn-ghost ${isInfoPanelOpen ? "is-active" : ""}`}
-            type="button"
-            onClick={() => setIsInfoPanelOpen((value) => !value)}
-          >
-            Thông tin cây
-          </button>
-          {isInfoPanelOpen ? renderTreeInfoPanel() : null}
-        </div>
       </div>
 
       <div className="member-tree-layout member-tree-layout--viewer">
         <section className="member-panel member-tree-main">
           {treeMembers.length === 0 ? (
-            <div className="member-empty">Chưa có dữ liệu cây gia phả để hiển thị.</div>
+            <div className="member-empty">{t("tree.page.emptyTree")}</div>
           ) : (
             <div className="member-tree-editorWrap">
               <FamilyTreeEditor

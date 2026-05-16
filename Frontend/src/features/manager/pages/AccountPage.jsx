@@ -61,6 +61,21 @@ const emptyRelationForm = {
   children_ids: "",
 };
 
+const isDeceasedMember = (member) => {
+  const value = member?.is_living;
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  return (
+    value === 0 ||
+    value === false ||
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "dead" ||
+    normalized === "deceased" ||
+    Boolean(member?.death_date)
+  );
+};
+
 const toEditForm = (member) => ({
   ...emptyEditForm,
   email: member.email || "",
@@ -72,7 +87,7 @@ const toEditForm = (member) => ({
   gender: member.gender == null ? "" : String(member.gender),
   birth_date: isoToVietnamDate(member.birth_date),
   death_date: isoToVietnamDate(member.death_date),
-  is_living: member.is_living === 0 || member.is_living === false ? "0" : "1",
+  is_living: isDeceasedMember(member) ? "0" : "1",
   generation: member.generation == null ? "1" : String(member.generation),
   branch: member.branch == null ? "" : String(member.branch),
   hometown: member.hometown || "",
@@ -146,7 +161,7 @@ export default function AccountPage() {
   };
 
   const getLivingLabel = (member) => {
-    if (member.is_living === 0 || member.is_living === false) return t("manager.accounts.form.statusDead");
+    if (isDeceasedMember(member)) return t("manager.accounts.form.statusDead");
     return t("manager.accounts.form.statusLiving");
   };
 
@@ -206,9 +221,9 @@ export default function AccountPage() {
       const matchLiving =
         !livingFilter ||
         (livingFilter === "living" &&
-          !(member.is_living === 0 || member.is_living === false)) ||
+          !isDeceasedMember(member)) ||
         (livingFilter === "dead" &&
-          (member.is_living === 0 || member.is_living === false));
+          isDeceasedMember(member));
 
       const matchStatus =
         !statusFilter || String(member.status || "") === String(statusFilter);
@@ -226,7 +241,7 @@ export default function AccountPage() {
     const male = members.filter((m) => String(m.gender) === "1").length;
     const female = members.filter((m) => String(m.gender) === "2").length;
     const living = members.filter(
-      (m) => !(m.is_living === 0 || m.is_living === false)
+      (m) => !isDeceasedMember(m)
     ).length;
     const pending = members.filter((m) => m.status === "pending").length;
 
@@ -297,6 +312,11 @@ export default function AccountPage() {
 
   const updateEditField = (event) => {
     const { name, value } = event.target;
+    if (name === "is_living" && value === "1") {
+      setEditForm((prev) => ({ ...prev, is_living: value, death_date: "" }));
+      return;
+    }
+
     if (["surname", "middle_name", "first_name"].includes(name)) {
       const cleanValue = value.replace(/[^\p{L}\s]/gu, "");
       setEditForm((prev) => ({ ...prev, [name]: cleanValue }));
