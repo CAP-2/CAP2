@@ -577,35 +577,6 @@ exports.deleteMember = async (req, res) => {
   }
 };
 
-/** Quản lý Cấu hình hệ thống */
-exports.getSettings = async (req, res) => {
-  try {
-    const [rows] = await db.query("SELECT * FROM system_settings");
-    const settings = {};
-    rows.forEach(r => { settings[r.setting_key] = r.setting_value; });
-    return res.json({ success: true, settings });
-  } catch (e) {
-    console.error("getSettings:", e);
-    return res.status(500).json({ success: false, message: "Lỗi tải cài đặt" });
-  }
-};
-
-exports.updateSettings = async (req, res) => {
-  const settings = req.body; // { key1: value1, key2: value2 }
-  try {
-    for (const key in settings) {
-      await db.query(
-        "INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
-        [key, settings[key]]
-      );
-    }
-    return res.json({ success: true, message: "Đã lưu cài đặt" });
-  } catch (e) {
-    console.error("updateSettings:", e);
-    return res.status(500).json({ success: false, message: "Lỗi lưu cài đặt" });
-  }
-};
-
 /** Quản lý Sự kiện */
 exports.getEvents = async (req, res) => {
   try {

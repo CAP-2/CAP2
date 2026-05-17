@@ -135,8 +135,7 @@
       "posts": "Post management",
       "events": "Event management",
       "billing": "Subscription",
-      "calendar": "Vietnam calendar",
-      "settings": "System settings"
+      "calendar": "Vietnam calendar"
     },
     "portalMenu": {
       "overview": "Overview",
@@ -1677,32 +1676,6 @@
         "deleteConfirm": "Delete clan \"{{name}}\"? All genealogy data, members, posts, events and related data will be deleted.",
         "deleteError": "Could not delete clan",
         "loading": "Loading clan list..."
-      }
-    },
-    "settings": {
-      "title": "System Settings",
-      "subtitle": "Configure basic information and operating options for the website.",
-      "sections": {
-        "general": "General Information",
-        "contact": "Contact & Support",
-        "status": "System Status"
-      },
-      "fields": {
-        "siteName": "Site Name",
-        "siteDescription": "Short Description",
-        "supportEmail": "Support Email",
-        "phone": "Phone Number",
-        "address": "Office Address",
-        "maintenanceMode": "Maintenance Mode",
-        "maintenanceHint": "When enabled, only Admins can access the system."
-      },
-      "actions": {
-        "save": "Save Changes",
-        "saving": "Saving..."
-      },
-      "messages": {
-        "loading": "Loading...",
-        "saveSuccess": "Settings saved successfully!"
       }
     },
     "actions": {

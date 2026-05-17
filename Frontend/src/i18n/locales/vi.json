@@ -134,8 +134,7 @@
       "posts": "Quản lý bài viết",
       "events": "Quản lý sự kiện",
       "billing": "Gói sử dụng",
-      "calendar": "Lịch Việt Nam",
-      "settings": "Cài đặt Hệ thống"
+      "calendar": "Lịch Việt Nam"
     },
     "portalMenu": {
       "overview": "Tổng quan",
@@ -1673,32 +1672,6 @@
         "deleteConfirm": "Xóa dòng họ \"{{name}}\"? Toàn bộ phả hệ, thành viên, bài viết, sự kiện và dữ liệu liên quan của dòng họ này sẽ bị xóa.",
         "deleteError": "Xóa dòng họ thất bại",
         "loading": "Đang tải danh sách dòng họ..."
-      }
-    },
-    "settings": {
-      "title": "Cài đặt hệ thống",
-      "subtitle": "Cấu hình các thông tin cơ bản và tùy chọn vận hành của trang web.",
-      "sections": {
-        "general": "Thông tin chung",
-        "contact": "Liên hệ & Hỗ trợ",
-        "status": "Trạng thái hệ thống"
-      },
-      "fields": {
-        "siteName": "Tên trang web",
-        "siteDescription": "Mô tả ngắn",
-        "supportEmail": "Email hỗ trợ",
-        "phone": "Số điện thoại",
-        "address": "Địa chỉ văn phòng",
-        "maintenanceMode": "Chế độ bảo trì",
-        "maintenanceHint": "Khi bật, chỉ Admin mới có thể truy cập hệ thống."
-      },
-      "actions": {
-        "save": "Lưu thay đổi",
-        "saving": "Đang lưu..."
-      },
-      "messages": {
-        "loading": "Đang tải...",
-        "saveSuccess": "Cài đặt đã được lưu thành công!"
       }
     },
     "actions": {

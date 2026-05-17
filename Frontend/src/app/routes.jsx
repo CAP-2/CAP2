@@ -22,7 +22,6 @@ const DashboardHome = lazy(() => import("../features/admin/pages/DashboardHome")
 const GenealogyManagement = lazy(() => import("../features/admin/pages/GenealogyManagement"));
 const PostsPage = lazy(() => import("../features/admin/pages/PostsPage"));
 const MembersPage = lazy(() => import("../features/admin/pages/MembersPage"));
-const SettingsPage = lazy(() => import("../features/admin/pages/SettingsPage"));
 
 const AccountPage = lazy(() => import("../features/manager/pages/AccountPage"));
 const GenealogySection = lazy(() => import("../features/genealogy/pages/ManagerGenealogy"));
@@ -112,7 +111,6 @@ export default function AppRoutes() {
             <Route path="/dashboard/events" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard/gallery" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard/billing" element={<BillingPage />} />
-            <Route path="/dashboard/settings" element={<SettingsPage />} />
             <Route path="/dashboard/calendar" element={<VietnamCalendarPage />} />
           </Route>
         </Route>

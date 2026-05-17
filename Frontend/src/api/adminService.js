@@ -140,25 +140,6 @@ export const deleteAdminMember = async (id) => {
   return data;
 };
 
-// Quản lý Cài đặt
-export const getAdminSettings = async () => {
-  const res = await fetch(`${BASE_URL}/settings`, { headers: getAuthHeaders() });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Không lấy được cài đặt");
-  return data;
-};
-
-export const updateAdminSettings = async (body) => {
-  const res = await fetch(`${BASE_URL}/settings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Cập nhật cài đặt thất bại");
-  return data;
-};
-
 // Quản lý Sự kiện
 export const getAdminEvents = async () => {
   const res = await fetch(`${BASE_URL}/events`, { headers: getAuthHeaders() });

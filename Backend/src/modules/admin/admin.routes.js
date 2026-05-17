@@ -20,10 +20,6 @@ router.get("/members", verifyToken, checkRole(["admin"]), adminController.getMem
 router.put("/members/:id", verifyToken, checkRole(["admin"]), adminController.updateMember);
 router.delete("/members/:id", verifyToken, checkRole(["admin"]), adminController.deleteMember);
 
-// Quản lý Cài đặt
-router.get("/settings", verifyToken, checkRole(["admin"]), adminController.getSettings);
-router.post("/settings", verifyToken, checkRole(["admin"]), adminController.updateSettings);
-
 // Quản lý Sự kiện
 router.get("/events", verifyToken, checkRole(["admin"]), adminController.getEvents);
 router.post("/events", verifyToken, checkRole(["admin"]), adminController.createEvent);
