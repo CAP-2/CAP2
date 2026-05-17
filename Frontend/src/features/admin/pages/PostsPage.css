@@ -364,26 +364,25 @@
     display: inline-flex;
     align-items: center;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    color: #ffffff !important;
-    /* Khóa màu trắng tuyệt đối */
-    text-shadow: none !important;
-    /* Loại bỏ bóng màu làm nhòe chữ */
 }
 
 /* Trạng thái rực rỡ và dễ phân biệt */
 .status-badge.approved {
     background: rgba(16, 185, 129, 0.25);
     border: 1px solid rgba(74, 222, 128, 0.5);
+    color: #4ade80 !important; /* Xanh lá */
 }
 
 .status-badge.pending {
     background: rgba(245, 158, 11, 0.25);
     border: 1px solid rgba(251, 191, 36, 0.5);
+    color: #fbbf24 !important; /* Vàng cam */
 }
 
 .status-badge.rejected {
     background: rgba(239, 68, 68, 0.25);
     border: 1px solid rgba(252, 165, 165, 0.5);
+    color: #f87171 !important; /* Đỏ */
 }
 
 /* --- NÚT HÀNH ĐỘNG PHÂN LOẠI --- */

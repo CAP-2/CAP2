@@ -1555,7 +1555,7 @@
   border: 1px solid rgba(122, 69, 21, 0.14);
   border-radius: 999px;
   padding: 0 10px;
-  background: rgba(255, 255, 255, 0.67);
+  background: rgba(155, 155, 155, 0.327);
   color: #7a4515;
   font-size: 0.82rem;
   font-weight: 850;
@@ -1575,11 +1575,11 @@
   border: 1px dashed rgba(91, 36, 24, 0.18);
   border-radius: 16px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 254, 254, 0.645);
 }
 
 .ai-task-card-compact {
-  border-color: rgba(91, 36, 24, 0.12);
+  border-color: rgba(91, 36, 24, 0.355);
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -2025,22 +2025,29 @@
   font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
-  color: #ffffff !important;
+  display: inline-flex;
+  align-items: center;
 }
 
 .status-badge.approved {
-  background: rgba(16, 185, 129, 0.25);
-  border: 1px solid rgba(74, 222, 128, 0.5);
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  color: #4ade80 !important;
+  /* Màu xanh lá tươi sáng */
 }
 
 .status-badge.pending {
-  background: rgba(245, 158, 11, 0.25);
-  border: 1px solid rgba(251, 191, 36, 0.5);
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24 !important;
+  /* Màu vàng cam sậm dễ đọc */
 }
 
 .status-badge.rejected {
-  background: rgba(239, 68, 68, 0.25);
-  border: 1px solid rgba(252, 165, 165, 0.5);
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(252, 165, 165, 0.4);
+  color: #f87171 !important;
+  /* Màu đỏ tươi sáng */
 }
 
 /* 🌟 Premium Metrics Badges */
