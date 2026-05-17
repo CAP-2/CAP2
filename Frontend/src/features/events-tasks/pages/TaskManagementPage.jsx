@@ -1391,7 +1391,7 @@ const openEvent = (eventId) => {
                 <DateInput value={editEventForm.end_date} onChange={(event) => setEditEventForm((prev) => ({ ...prev, end_date: event.target.value }))} />
               </label>
               <label>
-                <span>{t("common.status")}</span>
+                <span>{t("common.status.title")}</span>
                 <div className={`event-status-pill ${eventStatusClass(selectedEvent.status)}`}>{eventStatusLabel(selectedEvent.status, t)}</div>
               </label>
               <label>
@@ -1512,7 +1512,7 @@ const openEvent = (eventId) => {
                 <th>{t("eventsTasks.form.eventName") || "Tên sự kiện"}</th>
                 <th>{t("eventsTasks.form.time") || "Thời gian"}</th>
                 <th>{t("eventsTasks.form.description") || "Mô tả"}</th>
-                <th>{t("common.status.title") || t("common.status") || "Trạng thái"}</th>
+                <th>{t("common.status.title")}</th>
                 <th>{t("eventsTasks.stats.totalTasksLabel") || "Công việc"}</th>
               </tr>
             </thead>

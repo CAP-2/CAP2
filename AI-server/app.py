@@ -1,4 +1,5 @@
 import calendar
+from difflib import SequenceMatcher
 import json
 import os
 import re
@@ -27,8 +28,8 @@ Không thêm field ngoài schema.
 
 Schema output bắt buộc:
 {
-  "status": "success | unsupported",
-  "mode": "event_create | task_create",
+  "status": "success",
+  "mode": "event_create",
   "event": {
     "title": "",
     "event_date": null,
@@ -48,11 +49,13 @@ Schema output bắt buộc:
 }
 
 Quy tắc bắt buộc:
+0. status chỉ được là "success" hoặc "unsupported"; mode chỉ được là "event_create" hoặc "task_create".
 1. Chỉ hỗ trợ yêu cầu liên quan sự kiện, nghi lễ, sinh hoạt, họp mặt, cưới hỏi, mừng thọ, giỗ chạp, tảo mộ, khuyến học, gây quỹ, họp họ, tu sửa, hoạt động gia đình hoặc dòng họ.
 2. Nếu không liên quan, trả status = "unsupported", event rỗng như schema và manager_tasks = [].
 3. mode phải lấy theo input: event_create hoặc task_create.
 4. mode = event_create: tạo dữ liệu nháp event mới, manager_tasks[*].event_id luôn null.
 5. mode = task_create: dựa vào current_event và existing_tasks để tạo thêm công việc mới, manager_tasks[*].event_id = current_event.id.
+5a. AI chỉ sinh dữ liệu nháp để Manager kiểm tra/chỉnh sửa trước khi lưu; không tự ghi database.
 6. clan_id lấy từ input clan_id hoặc current_event.clan_id.
 7. member_id luôn null.
 8. task.status luôn là "assigned".
@@ -124,10 +127,55 @@ def base_year_from_today(today: str | None = None) -> int:
     return datetime.now().year
 
 
+def base_date_from_today(today: str | None = None) -> date:
+    parsed_today = valid_iso_date(today)
+    if parsed_today:
+        return datetime.strptime(parsed_today, "%Y-%m-%d").date()
+    return datetime.now().date()
+
+
 def parse_iso_date_from_text(text: str, today: str | None = None) -> str | None:
     raw = str(text or "")
     normalized = normalize_vietnamese(raw)
-    base_year = base_year_from_today(today)
+    base_date = base_date_from_today(today)
+    base_year = base_date.year
+
+    weekday_next_week = {
+        "thu 2": 0,
+        "thu hai": 0,
+        "thu 3": 1,
+        "thu ba": 1,
+        "thu 4": 2,
+        "thu tu": 2,
+        "thu 5": 3,
+        "thu nam": 3,
+        "thu 6": 4,
+        "thu sau": 4,
+        "thu 7": 5,
+        "thu bay": 5,
+        "chu nhat": 6,
+    }
+    for keyword, weekday in weekday_next_week.items():
+        if re.search(rf"\b{re.escape(keyword)}\s+tuan\s+sau\b", normalized):
+            days_to_next_monday = 7 - base_date.weekday()
+            return (base_date + timedelta(days=days_to_next_monday + weekday)).isoformat()
+
+    if re.search(r"\btuan\s+sau\b", normalized):
+        return (base_date + timedelta(days=7)).isoformat()
+
+    if re.search(r"\bhom\s+nay\b", normalized):
+        return base_date.isoformat()
+
+    if re.search(r"\bngay\s+mai\b", normalized) or re.search(r"\bmai\b", raw.lower()):
+        return (base_date + timedelta(days=1)).isoformat()
+
+    raw_lower = raw.lower()
+    if (
+        re.search(r"\bngay\s+kia\b", normalized)
+        or re.search(r"\bngay\s+mot\b", normalized)
+        or re.search(r"\bmốt\b", raw_lower)
+    ):
+        return (base_date + timedelta(days=2)).isoformat()
 
     m = re.search(r"\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b", raw)
     if m:
@@ -150,6 +198,14 @@ def parse_iso_date_from_text(text: str, today: str | None = None) -> str | None:
         day, month = m.groups()
         try:
             return date(base_year, int(month), int(day)).isoformat()
+        except ValueError:
+            return None
+
+    m = re.search(r"\b(?:ngay\s+)?(?:mung\s+)?(\d{1,2})\s+thang\s+(\d{1,2})(?:\s+nam\s+(\d{4}))?\b", normalized)
+    if m:
+        day, month, year = m.groups()
+        try:
+            return date(int(year) if year else base_year, int(month), int(day)).isoformat()
         except ValueError:
             return None
 
@@ -217,6 +273,16 @@ def fill_missing_task_due_dates(tasks: list[dict[str, Any]], event_date: str | N
     return fixed
 
 
+def sort_tasks_by_due_date(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        tasks or [],
+        key=lambda task: (
+            valid_iso_date(task.get("due_date")) is None,
+            valid_iso_date(task.get("due_date")) or "",
+        ),
+    )
+
+
 def make_task(event_id: int | None, title: str, description: str, due_date: str | None) -> dict[str, Any]:
     return {
         "event_id": event_id,
@@ -263,10 +329,17 @@ def task_purpose(task: dict[str, Any]) -> str | None:
 
 
 def task_duplicate_key(task: dict[str, Any]) -> str:
-    purpose = task_purpose(task)
-    if purpose:
-        return f"purpose:{purpose}"
-    return f"title:{normalize_task_title_for_compare(task)}"
+    return normalize_task_title_for_compare(task)
+
+
+def task_titles_too_similar(title: str, existing_title: str) -> bool:
+    current = normalize_vietnamese(title)
+    existing = normalize_vietnamese(existing_title)
+    if not current or not existing:
+        return False
+    if current == existing:
+        return True
+    return SequenceMatcher(None, current, existing).ratio() >= 0.9
 
 
 def append_unique_task(
@@ -278,7 +351,7 @@ def append_unique_task(
         return False
 
     key = task_duplicate_key(task)
-    if key in seen_keys:
+    if any(task_titles_too_similar(key, seen_key) for seen_key in seen_keys):
         return False
 
     target.append(task)
@@ -297,8 +370,14 @@ def is_supported_event_prompt(body: dict[str, Any]) -> bool:
         "su kien",
         "nghi le",
         "sinh hoat",
+        "to chuc",
+        "lap ke hoach",
+        "chuan bi",
         "gia dinh",
         "dong ho",
+        "buoi le",
+        "buoi hop",
+        "lien hoan",
         "gio",
         "gio to",
         "gio dau",
@@ -558,6 +637,7 @@ def fallback_event_form(body: dict[str, Any]) -> dict[str, Any]:
 
     tasks = fill_missing_task_due_dates(tasks, event.get("event_date"))
     tasks = enforce_requested_task_count(tasks, body, mode, event)
+    tasks = sort_tasks_by_due_date(tasks)
 
     return {
         "status": "success",
@@ -677,9 +757,20 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
     fallback = fallback_event_form(body)
 
     status = str(result.get("status") or "").strip()
-    if status not in VALID_STATUSES:
-        return unsupported_result(mode)
     if status == "unsupported":
+        return unsupported_result(mode)
+    raw_event = result.get("event") if isinstance(result.get("event"), dict) else {}
+    raw_tasks = result.get("manager_tasks") if isinstance(result.get("manager_tasks"), list) else []
+    has_valid_event = bool(
+        str(raw_event.get("title") or "").strip()
+        or valid_iso_date(raw_event.get("event_date"))
+        or str(raw_event.get("description") or "").strip()
+    )
+    has_valid_tasks = any(
+        isinstance(task, dict) and bool(str(task.get("title") or "").strip())
+        for task in raw_tasks
+    )
+    if status != "success" and not (has_valid_event or has_valid_tasks):
         return unsupported_result(mode)
 
     current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
@@ -687,7 +778,7 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
     if mode == "task_create" and not event_id:
         return unsupported_result(mode)
 
-    event = result.get("event") if isinstance(result.get("event"), dict) else {}
+    event = raw_event
     fallback_event = fallback.get("event") if isinstance(fallback.get("event"), dict) else {}
 
     event_date = (
@@ -708,7 +799,6 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
         "clan_id": event.get("clan_id") or current_event.get("clan_id") or body.get("clan_id"),
     }
 
-    raw_tasks = result.get("manager_tasks") if isinstance(result.get("manager_tasks"), list) else []
     normalized_tasks: list[dict[str, Any]] = []
     for task in raw_tasks:
         if not isinstance(task, dict):
@@ -723,6 +813,7 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
         normalized_tasks = fallback.get("manager_tasks") or []
 
     normalized_tasks = enforce_requested_task_count(normalized_tasks, body, mode, normalized_event)
+    normalized_tasks = sort_tasks_by_due_date(normalized_tasks)
 
     return {
         "status": "success",
