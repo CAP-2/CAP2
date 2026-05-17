@@ -309,6 +309,7 @@ const getArchivedMembers = async(req, res) => {
         await ensureArchivedMembersTable();
         let sql = `
             SELECT id, account_id, archived_by_account_id, clan_id, archived_reason, archived_at,
+                   account_json, person_json,
                    JSON_UNQUOTE(JSON_EXTRACT(account_json, '$.email')) AS email,
                    JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.surname')) AS surname,
                    JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.middle_name')) AS middle_name,
@@ -395,18 +396,25 @@ const deleteArchivedMemberPermanently = async(req, res) => {
                 return res.status(403).json({ success: false, message: 'Chỉ được xóa dữ liệu lưu trữ của cùng dòng họ' });
             }
         }
-        const [archivedRows] = await db.query('SELECT account_id FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
+        const [archivedRows] = await db.query(
+            `SELECT account_id, CAST(JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.id')) AS UNSIGNED) AS person_id 
+             FROM archived_members WHERE id = ? LIMIT 1`,
+            [archiveId]
+        );
         if (!archivedRows.length) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
         }
         const accountId = Number(archivedRows[0].account_id);
-        const [ctxRows] = await db.query('SELECT person_id FROM accounts WHERE id = ? LIMIT 1', [accountId]);
-        const personId = ctxRows[0]?.person_id ?? null;
+        const personId = archivedRows[0].person_id ? Number(archivedRows[0].person_id) : null;
+
         if (personId) {
             await deletePersonCompletely(personId, { deleteAccounts: false });
         }
-        await db.query('DELETE FROM accounts WHERE id = ?', [accountId]);
+        if (accountId > 0) {
+            await db.query('DELETE FROM accounts WHERE id = ?', [accountId]);
+        }
         const [result] = await db.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
+
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
         }

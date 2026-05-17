@@ -20,7 +20,7 @@ import { autoLayoutPeople, findFounderIds, mergeManualAndAutoLayout } from "../u
 import { buildTreeLines } from "../utils/tree-editor/treeLines";
 import { blankCreateForm, buildChildRelationPayload, findParentFamilyForChild, findSpouse, findSpouseFamily, getChildrenForFamily, getFamiliesForPerson, relationCandidates, relationLinkedIds } from "../utils/tree-editor/treeRelations";
 import { downloadBlob, exportFileName, renderFamilyTreePngBlob } from "../utils/tree-editor/treeExport";
-import { CenterNoticeDialog, CreatePersonDialog, PersonInspector, QuickCreateRelationDialog, RelationSelectDialog } from "./FamilyTreeEditorParts/index.js";
+import { CenterNoticeDialog, CreatePersonDialog, PersonInspector, QuickCreateRelationDialog, RelationSelectDialog, ArchivedMembersDialog } from "./FamilyTreeEditorParts/index.js";
 import "./FamilyTreeEditor.css";
 
 const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
@@ -63,6 +63,7 @@ export default function FamilyTreeEditor({
   const [relationDialog, setRelationDialog] = useState(null);
   const [quickCreateDialog, setQuickCreateDialog] = useState(null);
   const [treeRelationPicker, setTreeRelationPicker] = useState(null);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [dialogSaving, setDialogSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState(() => new Map());
   const [selfPersonId, setSelfPersonId] = useState(null);
@@ -582,10 +583,10 @@ const quickCreateSourcePerson = useMemo(
     setSaving(true);
     setStatus("");
     try {
-      await deletePersonAPI(person.id);
+      const res = await deletePersonAPI(person.id);
       setPeople((current) => current.filter((item) => item.id !== person.id));
       setSelectedId((current) => (Number(current) === Number(person.id) ? null : current));
-      setStatus(t("tree.messages.deleteSuccess"));
+      setStatus(res?.message || t("tree.messages.deleteSuccess"));
       await onReload?.();
     } catch (error) {
       setStatus(error?.message || t("tree.messages.deleteError"));
@@ -843,10 +844,10 @@ const quickCreateSourcePerson = useMemo(
     setSaving(true);
     setStatus("");
     try {
-      await deletePersonAPI(selectedPerson.id);
+      const res = await deletePersonAPI(selectedPerson.id);
       setPeople((current) => current.filter((person) => person.id !== selectedPerson.id));
       setSelectedId(null);
-      setStatus(t("tree.messages.deleteSuccess"));
+      setStatus(res?.message || t("tree.messages.deleteSuccess"));
       await onReload?.();
     } catch (error) {
       setStatus(error?.message || t("tree.messages.deleteError"));
@@ -1270,6 +1271,17 @@ const submitCreateDialog = async () => {
                 >
                   <span className="material-symbols-outlined">person_add</span>
                 </button>
+                {canEditAll && (
+                  <button
+                    type="button"
+                    onClick={() => setArchiveDialogOpen(true)}
+                    disabled={loading || saving}
+                    title="Kho lưu trữ thành viên"
+                    className="fte-iconButton"
+                  >
+                    <span className="material-symbols-outlined">inventory_2</span>
+                  </button>
+                )}
               </div>
               {canEditLimited ? (
                 <div className="fte-toolbarGroup fte-toolbarGroup--notice">
@@ -1548,6 +1560,15 @@ const submitCreateDialog = async () => {
             onCancel={() => !dialogSaving && setDialog(null)}
             onSubmit={submitCreateDialog}
           />
+        {archiveDialogOpen && (
+          <ArchivedMembersDialog
+            people={people}
+            onClose={() => setArchiveDialogOpen(false)}
+            onReload={async () => {
+              await onReload?.();
+            }}
+          />
+        )}
     </section>
   );
 

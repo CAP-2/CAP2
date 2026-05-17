@@ -130,11 +130,12 @@ const getFamilyTree = async(req, res) => {
                 a.status AS account_status
             FROM people p
             LEFT JOIN accounts a ON a.person_id = p.id
-            LEFT JOIN archived_members am ON am.account_id = a.id
+            LEFT JOIN archived_members am ON (a.id IS NOT NULL AND am.account_id = a.id) OR (am.person_json->>'$.id' = p.id)
             WHERE p.clan_id = ?
               AND am.id IS NULL
             ORDER BY p.generation, p.display_order, p.surname, p.middle_name, p.first_name, p.id
             `, [clanId]
+
         );
 
         const [familyRows] = await db.query(

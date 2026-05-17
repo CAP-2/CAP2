@@ -281,10 +281,8 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
 const validatePersonLifeDates = (birthDate, deathDate) => validateBirthDeathDates(birthDate, deathDate);
 
 const assertCanDeleteTreePerson = async(personId) => {
-    const [accountRows] = await db.query('SELECT id FROM accounts WHERE person_id = ? LIMIT 1', [personId]);
-    if (accountRows.length) {
-        return { ok: false, message: 'Không thể xóa người đang liên kết với tài khoản.' };
-    }
+    // Ràng buộc liên kết tài khoản đã được gỡ bỏ để tự động chuyển vào kho lưu trữ khi xóa
+
 
     const [parentFamilyRows] = await db.query(
         'SELECT id FROM families WHERE father_id = ? OR mother_id = ? LIMIT 1',
