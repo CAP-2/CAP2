@@ -2198,3 +2198,333 @@ body.fte-bodyFullscreen {
     margin-top: 10px;
     padding-top: 10px;
 }
+
+/* Archived Members Dialog Styles */
+.fte-archiveDialog {
+    width: min(720px, 100%) !important;
+    max-height: min(85vh, 760px) !important;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.fte-archiveTabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #ead9a6;
+    padding-bottom: 2px;
+}
+
+.fte-archiveTab {
+    background: transparent;
+    border: none;
+    padding: 10px 16px;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #7a5f3e;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.16s ease;
+    border-bottom: 3px solid transparent;
+}
+
+.fte-archiveTab:hover {
+    background: #fff8ef;
+    color: #8b1e13;
+}
+
+.fte-archiveTab.is-active {
+    color: #8b1e13;
+    border-bottom-color: #8b1e13;
+    background: #fff8ef;
+}
+
+.fte-archiveContent {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+}
+
+.fte-archiveSearch {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border: 1px solid #d6bf84;
+    border-radius: 8px;
+    background: #fff;
+    padding: 0 10px;
+}
+
+.fte-archiveSearch input {
+    width: 100%;
+    border: none;
+    outline: none;
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 0.98rem;
+    color: #1f2933;
+}
+
+.fte-archiveSearch .search-icon {
+    color: #a37b42;
+    font-size: 20px;
+}
+
+.fte-archiveSearch .clear-search-btn {
+    border: none;
+    background: transparent;
+    min-height: auto;
+    padding: 4px;
+    cursor: pointer;
+    color: #9ca3af;
+}
+
+.fte-archiveSearch .clear-search-btn:hover {
+    color: #4b5563;
+}
+
+.fte-archiveError {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.fte-archiveLoading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px 0;
+    color: #7a5f3e;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.spinning-icon {
+    animation: fte-spin 1.4s linear infinite;
+    font-size: 28px !important;
+}
+
+@keyframes fte-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fte-archiveEmpty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 60px 20px;
+    color: #9ca3af;
+    text-align: center;
+    border: 1px dashed #d6bf84;
+    border-radius: 8px;
+}
+
+.fte-archiveEmpty span {
+    font-size: 48px;
+    color: #d6bf84;
+}
+
+.fte-archiveEmpty p {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.fte-archiveList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.fte-archiveItem {
+    border: 1px solid #e0c684;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.16s ease;
+}
+
+.fte-archiveItem:hover {
+    border-color: #8b1e13;
+    box-shadow: 0 4px 12px rgba(139, 30, 19, 0.08);
+}
+
+.fte-archiveItemInfo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fte-archiveItemHeader {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.fte-archiveItemHeader strong {
+    font-size: 1.1rem;
+    color: #311b08;
+}
+
+.fte-archiveItemEmail {
+    font-size: 0.88rem;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.fte-archiveItemDetails {
+    font-size: 0.92rem;
+    color: #4b5563;
+}
+
+.fte-archiveItemDetails p {
+    margin: 0;
+    line-height: 1.4;
+}
+
+.reason-text {
+    font-weight: 600;
+    color: #1f2933;
+}
+
+.archived-meta {
+    font-size: 0.82rem;
+    color: #9ca3af;
+    margin-top: 4px !important;
+    font-weight: 600;
+}
+
+.fte-archiveItemActions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.fte-restoreBtn,
+.fte-deletePermanentlyBtn {
+    border: 1px solid #d6bf84;
+    background: #fff;
+    color: #7c4a14;
+    border-radius: 6px;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+
+.fte-restoreBtn:hover:not(:disabled) {
+    background: #fff8ef;
+    border-color: #8b1e13;
+    color: #8b1e13;
+}
+
+.fte-deletePermanentlyBtn {
+    border-color: #fca5a5;
+    background: #fff;
+    color: #dc2626;
+}
+
+.fte-deletePermanentlyBtn:hover:not(:disabled) {
+    background: #fef2f2;
+    border-color: #ef4444;
+    color: #b91c1c;
+}
+
+/* Archive form styling */
+.fte-archiveForm {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.fte-archiveFormHelp {
+    background: #fff8ef;
+    border-left: 4px solid #d6bf84;
+    padding: 12px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.94rem;
+    line-height: 1.45;
+    color: #7c4a14;
+    font-weight: 600;
+}
+
+.fte-archiveFormLabel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #5f4730;
+}
+
+.fte-archiveFormLabel select,
+.fte-archiveFormLabel textarea {
+    width: 100%;
+    border: 1px solid #d6bf84;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px 12px;
+    font: inherit;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.16s ease;
+}
+
+.fte-archiveFormLabel select:focus,
+.fte-archiveFormLabel textarea:focus {
+    border-color: #8b1e13;
+}
+
+.fte-archiveFormFooter {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+@media (max-width: 680px) {
+    .fte-archiveItem {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .fte-archiveItemActions {
+        flex-direction: row;
+    }
+    .fte-archiveItemActions button {
+        flex: 1;
+    }
+}
+

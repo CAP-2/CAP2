@@ -1300,32 +1300,68 @@ const deleteTreePerson = async (req, res) => {
         }
         const gate = await assertCanManagePersonId(req, personId);
         if (!gate.ok) return res.status(gate.status).json({ success: false, message: gate.message });
-            const [personRows] = await db.query(
-            'SELECT clan_id FROM people WHERE id = ? LIMIT 1',
+        const [personRows] = await db.query(
+            'SELECT * FROM people WHERE id = ? LIMIT 1',
             [personId]
         );
-        const clanId = personRows[0]?.clan_id || null;
-        const deleteGate = await assertCanDeleteTreePerson(personId);
-        if (!deleteGate.ok) {
-            return res.status(400).json({ success: false, message: deleteGate.message });
+        if (!personRows.length) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thành viên cần xóa' });
         }
+        const person = personRows[0];
+        const clanId = person.clan_id || null;
 
-        const result = await deletePersonCompletely(personId, { deleteAccounts: false });
+        // Tự động lưu trữ thành viên vào Kho lưu trữ khi xóa khỏi sơ đồ cây gia phả
+        const { ensureArchivedMembersTable } = require('../manager/archive.service');
+        await ensureArchivedMembersTable();
+
+        const [accountRows] = await db.query(
+            'SELECT * FROM accounts WHERE person_id = ? LIMIT 1',
+            [personId]
+        );
+
+        const account = accountRows[0] || null;
+        const targetAccountId = account ? account.id : -personId;
+        const accountJson = account ? JSON.stringify(account) : '{}';
+        const reason = 'Tự động lưu trữ khi xóa khỏi sơ đồ cây gia phả';
+
+        await db.query(
+            `INSERT INTO archived_members
+             (account_id, archived_by_account_id, clan_id, archived_reason, account_json, person_json)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                archived_by_account_id = VALUES(archived_by_account_id),
+                clan_id = VALUES(clan_id),
+                archived_reason = VALUES(archived_reason),
+                account_json = VALUES(account_json),
+                person_json = VALUES(person_json),
+                archived_at = CURRENT_TIMESTAMP`, [
+                targetAccountId,
+                req.user.id,
+                clanId,
+                reason,
+                accountJson,
+                JSON.stringify(person),
+            ]
+        );
+
         emitTreeUpdated(req, clanId, {
             action: 'person_deleted',
             person_id: personId,
         });
-        res.json({
+
+        return res.json({
             success: true,
             person_id: personId,
-            deleted_family_ids: result.deleted_family_ids,
-            message: 'Da xoa nguoi khoi cay va go toan bo lien ket vo/chong, cha/me/con lien quan.',
+            archived: true,
+            message: 'Thành viên đã được tự động chuyển vào Kho lưu trữ thành viên để có thể phục hồi sau này.',
         });
     } catch (error) {
         console.error('deleteTreePerson error:', error);
         res.status(500).json({ success: false, message: 'Loi xoa nguoi khoi gia pha' });
     }
 };
+
+
 
 module.exports = {
     createPerson,
