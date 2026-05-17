@@ -97,7 +97,7 @@ Base URL mặc định: `http://localhost:8001`
 
 | Method | Endpoint | Quyền | Mô tả ngắn |
 |---|---|---|---|
-| GET | `/health` | Public | Kiểm tra AI-server và cấu hình Groq/DB |
+| GET | `/health` | Public | Kiểm tra AI-server và cấu hình Groq |
 | POST | `/event-form/generate` | Gọi nội bộ từ backend | Sinh dữ liệu form sự kiện/task bằng AI hoặc fallback |
 
 ## Admin

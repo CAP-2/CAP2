@@ -112,101 +112,9 @@ const saveChatMessage = async (conversationId, senderType, content) => {
   }
 };
 
-const AI_SERVER_URL = (process.env.AI_SERVER_URL || "http://localhost:8001").replace(/\/+$/, "");
+const AI_CHAT_DISABLED_REPLY =
+  "Trợ lý hỏi đáp gia phả đã được tắt. Hiện AI chỉ hỗ trợ lập kế hoạch sự kiện và sinh danh sách công việc.";
 
-const buildAiReplyFallback = (text) => {
-  const t = String(text || "").toLowerCase();
-  if (t.includes("đời") || t.includes("thế hệ")) {
-    return "Bạn có thể vào mục Khám phá di sản để lọc thành viên theo đời và quê quán.";
-  }
-  if (t.includes("gia phả") || t.includes("cây")) {
-    return "Mình đã ghi nhận. Bạn hãy mở mục Cây gia phả để xem sơ đồ trực quan các thế hệ.";
-  }
-  if (t.includes("sự kiện") || t.includes("giỗ") || t.includes("nhắc")) {
-    return "Bạn có thể thêm lịch nhắc trong mục Reminders để lưu vào cơ sở dữ liệu.";
-  }
-  return "Mình đã nhận câu hỏi. Bạn có thể hỏi theo tên thành viên, đời hoặc sự kiện gia đình.";
-};
-
-const extractAiServerText = (data) => {
-  if (data == null) return "";
-  if (typeof data === "string") return data;
-  if (typeof data.answer === "string") return data.answer;
-  if (typeof data.text === "string") return data.text;
-  if (typeof data.message === "string") return data.message;
-  if (data.data != null) {
-    const d = data.data;
-    if (typeof d === "string") return d;
-    if (typeof d === "object" && d) {
-      if (typeof d.answer === "string") return d.answer;
-      if (typeof d.text === "string") return d.text;
-      if (typeof d.message === "string") return d.message;
-    }
-  }
-  return "";
-};
-
-const buildAiResultFallback = (text, overrides = {}) => {
-  const answer = typeof overrides.answer === "string" && overrides.answer.trim()
-    ? overrides.answer
-    : buildAiReplyFallback(text);
-  return {
-    success: true,
-    intent: overrides.intent || "FALLBACK",
-    confidence: overrides.confidence ?? 0,
-    user: overrides.user || null,
-    data: overrides.data ?? null,
-    answer,
-    ai_message: answer,
-  };
-};
-
-const buildAiContextPayload = (ctx, reqUser) => {
-  const role = reqUser?.role_name || reqUser?.role || getRoleName(ctx.role_id);
-  return {
-    account_id: ctx.account_id,
-    person_id: ctx.person_id,
-    clan_id: ctx.clan_id,
-    role,
-    role_id: ctx.role_id,
-    display_name: ctx.display_name,
-    scope: role === "admin" ? "admin" : "clan",
-  };
-};
-
-const fetchAiServerReply = async (text, context) => {
-  try {
-    const body = { prompt: text, ...(context || {}) };
-    const res = await fetch(`${AI_SERVER_URL}/ask-db`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.error("AI server HTTP:", res.status, data);
-      return buildAiResultFallback(text, {
-        intent: data.intent || "ERROR",
-        answer: data.answer || data.message,
-        user: data.user || null,
-        data: data.data ?? null,
-      });
-    }
-    const reply = extractAiServerText(data).trim();
-    const answer = reply || buildAiReplyFallback(text);
-    return {
-      ...data,
-      success: data.success !== false,
-      intent: data.intent || "UNKNOWN",
-      confidence: data.confidence ?? 0,
-      answer,
-      ai_message: answer,
-    };
-  } catch (e) {
-    console.error("fetchAiServerReply:", e);
-    return buildAiResultFallback(text);
-  }
-};
 
 const parseNullableId = (value) => {
   if (value === undefined || value === null || String(value).trim() === "") return null;
@@ -1207,23 +1115,6 @@ exports.sendChatMessage = async (req, res) => {
 
     const conversationId = await getOrCreateConversationId(accountId);
     await saveChatMessage(conversationId, "user", text);
-    if (ctx.role_id === 1 || req.user?.role_name === "admin") {
-      const aiResult = await fetchAiServerReply(text, buildAiContextPayload(ctx, req.user));
-      const aiReply = aiResult.answer || aiResult.ai_message || buildAiReplyFallback(text);
-      await saveChatMessage(conversationId, "ai", aiReply);
-      return res.json({
-        success: true,
-        conversation_id: conversationId,
-        user_message: text,
-        ai_message: aiReply,
-        answer: aiReply,
-        intent: aiResult.intent,
-        confidence: aiResult.confidence,
-        user: aiResult.user,
-        data: aiResult.data,
-      });
-    }
-
     if (!ctx.clan_id) {
       const aiReply = "Tài khoản của bạn chưa được gắn vào dòng họ (clan). Vui lòng liên hệ quản lý để được cấp quyền truy cập cây gia phả.";
       await saveChatMessage(conversationId, "ai", aiReply);
@@ -1246,8 +1137,7 @@ exports.sendChatMessage = async (req, res) => {
       });
     }
 
-    const aiResult = await fetchAiServerReply(text, buildAiContextPayload(ctx, req.user));
-    const aiReply = aiResult.answer || aiResult.ai_message || buildAiReplyFallback(text);
+    const aiReply = AI_CHAT_DISABLED_REPLY;
     await saveChatMessage(conversationId, "ai", aiReply);
 
     return res.json({
@@ -1256,10 +1146,16 @@ exports.sendChatMessage = async (req, res) => {
       user_message: text,
       ai_message: aiReply,
       answer: aiReply,
-      intent: aiResult.intent,
-      confidence: aiResult.confidence,
-      user: aiResult.user,
-      data: aiResult.data,
+      intent: "AI_EVENT_ONLY",
+      confidence: 1,
+      user: {
+        account_id: ctx.account_id,
+        person_id: ctx.person_id,
+        clan_id: ctx.clan_id,
+        display_name: ctx.display_name,
+        role: req.user?.role_name || getRoleName(ctx.role_id),
+      },
+      data: null,
     });
   } catch (error) {
     console.error("sendChatMessage error:", error);

@@ -22,7 +22,7 @@ Module lớn trong source:
 | Frontend SPA | `Frontend/src`, `Frontend/vite.config.js` | React 18 + Vite, route theo role |
 | Backend API | `Backend/server.js`, `Backend/src/routes/*`, `Backend/src/controllers/*` | Express 5, REST API, Socket.IO |
 | Database | `docker/init.sql`, `defaultdb.sql`, `dump-defaultdb-202605022138.sql`, `migrations/*`, `voice/schema.sql` | MySQL/Aiven; schema hiện bị phân mảnh |
-| AI-server | `AI-server/app.py` | Flask + Groq + MySQL, hiện chỉ expose `/health` và `/event-form/generate` |
+| AI-server | `AI-server/app.py` | Flask + Groq, hiện chỉ expose `/health` và `/event-form/generate` |
 | Voice/time capsule | `voice/backendRoutes.js`, `voice/worker.py`, `Frontend/src/voice/*` | Upload audio, local faster-whisper worker, schedule gửi voice |
 | Upload/media | `Backend/server.js`, `Backend/src/utils/media.js`, `Backend/src/routes/mediaRoutes.js` | Ảnh mới lưu MySQL `media_files` qua LONGBLOB |
 | Billing/payment/quỹ | `billingController.js`, `paymentController.js`, `fundController.js` | Có code nhưng đang tồn tại 2 hướng schema/cách lưu khác nhau, cần thống nhất trước khi vận hành ổn định |
@@ -34,7 +34,7 @@ Module lớn trong source:
 | Frontend | React 18, Vite 7, React Router, Recharts, html-to-image, react-zoom-pan-pinch | `Frontend/package.json` | `npm run build` chạy thành công; bundle JS ~965 kB, có cảnh báo chunk lớn |
 | Backend | Node.js, Express 5, mysql2 promise pool, Socket.IO, Multer, bcryptjs, jsonwebtoken, nodemailer, xlsx | `Backend/package.json`, `Backend/server.js` | Thiếu helmet, rate limit, centralized error handler, migration runner |
 | Database | MySQL | `Backend/src/config/db.js`, SQL dumps | Hỗ trợ SSL/public DNS cho cloud DB; schema chưa đồng bộ |
-| AI | Flask, Groq SDK, mysql-connector-python | `AI-server/requirements.txt`, `AI-server/app.py` | Luồng AI đang dùng thực tế là `/event-form/generate`; `/ask-db` là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án |
+| AI | Flask, Groq SDK | `AI-server/requirements.txt`, `AI-server/app.py` | Luồng AI đang dùng thực tế là `/event-form/generate`; luồng AI hỏi DB cũ là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án |
 | Voice/STT | Python, faster-whisper, ffmpeg, mysql-connector-python | `voice/worker.py`, `voice/requirements.txt` | Cần worker riêng ngoài backend; cần ffmpeg và venv riêng |
 | Realtime | Socket.IO | `Backend/server.js`, `NotificationBell.jsx` | Lưu online user theo in-memory map, không scale đa instance |
 | Upload | Multer memory storage cho ảnh; disk storage cho audio | `Backend/server.js`, `voice/backendRoutes.js` | Ảnh có auth/MIME/size; audio có auth/MIME/size nhưng MIME filter còn rộng với `audio/*` |
@@ -46,7 +46,7 @@ Công nghệ/khai báo lệch:
 | Vấn đề | Chi tiết |
 |---|---|
 | Docker local | `docker/docker-compose.yml` chỉ chạy `phpmyadmin`; phù hợp nếu DB/cloud được cấu hình ngoài, nhưng README/onboarding cần nói rõ Docker không phải bộ production stack |
-| AI `/ask-db` legacy | Backend/README còn dấu vết `/ask-db`; theo xác nhận dự án luồng này đã loại bỏ/không sử dụng, nên cần dọn tài liệu/code cũ để tránh hiểu nhầm |
+| AI hỏi DB legacy | Backend/README còn dấu vết luồng AI hỏi DB cũ; theo xác nhận dự án luồng này đã loại bỏ/không sử dụng, nên cần dọn tài liệu/code cũ để tránh hiểu nhầm |
 | Billing/quỹ/payment có 2 hướng schema/cách lưu | Code dùng `plans`, `subscriptions`, `payments`, `fund_campaigns` và các cột quỹ mở rộng, trong khi dump/schema chính còn theo cấu trúc cũ; cần chọn một schema chuẩn |
 | Upload DB dùng `media_files` | Có migration tạo `media_files`, nhưng `docker/init.sql`, `defaultdb.sql`, `dump-defaultdb-202605022138.sql` chưa có bảng này |
 
@@ -127,11 +127,11 @@ Công nghệ/khai báo lệch:
 | Mục | Chi tiết |
 |---|---|
 | API Backend | `/api/member/chat`, `/api/ai/event-form/generate` |
-| API AI-server | Thực tế source hiện có `/health`, `/event-form/generate`; `/ask-db` là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án |
+| API AI-server | Thực tế source hiện có `/health`, `/event-form/generate`; luồng AI hỏi DB cũ là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án |
 | Source chính | `memberController.js`, `aiController.js`, `AI-server/app.py`, `AIChatGateway.jsx`, `TaskManagementPage.jsx` |
-| Bảng DB | `conversations`, `messages`, `ai_audit_logs` |
+| Bảng DB | `conversations`, `messages` |
 | Flow chính | Event AI -> Backend `/api/ai/event-form/generate` -> AI-server `/event-form/generate` -> trả JSON event/task. Nếu UI chat còn được bật, backend lưu hội thoại vào `conversations/messages` và cần xác định rõ nguồn trả lời hiện hành. |
-| Rủi ro | Không xem `/ask-db` là blocker vì dự án đã loại bỏ/không sử dụng; rủi ro còn lại là dấu vết code/tài liệu legacy có thể gây hiểu nhầm khi maintain hoặc review bảo mật. |
+| Rủi ro | Không xem luồng AI hỏi DB cũ là blocker vì dự án đã loại bỏ/không sử dụng; rủi ro còn lại là dấu vết code/tài liệu legacy có thể gây hiểu nhầm khi maintain hoặc review bảo mật. |
 
 ### 3.9 Upload File / Hình Ảnh
 
@@ -184,7 +184,6 @@ Công nghệ/khai báo lệch:
 | `system_settings` | Admin settings | Có trong dump 20260502, không có trong `docker/init.sql/defaultdb.sql` |
 | `member_tree_edit_keys` | Temporary key cho member chỉnh cây | Có trong dump 20260502 và auto-create |
 | `tree_layout_settings` | JSON line routes/card sizes của cây | Có trong dump 20260502 và auto-create |
-| `ai_audit_logs` | Audit AI | Có migration và dump 20260502 |
 | `recordings` | Voice recording/transcript | Có trong dump 20260502 và `voice/schema.sql` |
 | `voice_recording_recipients` | Lịch gửi voice cho người nhận | Có trong `voice/schema.sql` và migration, chưa thấy trong dump chính |
 | `media_files` | Lưu ảnh LONGBLOB | Có migration, chưa thấy trong dump chính |
@@ -256,7 +255,7 @@ MySQL Database
 Backend /api/member/chat
   |
   | lưu conversations/messages nếu UI chat còn bật
-  | /ask-db là luồng cũ đã loại bỏ/không sử dụng
+  | luồng AI hỏi DB cũ là luồng cũ đã loại bỏ/không sử dụng
   v
 Local/service response hiện hành
 
@@ -287,7 +286,7 @@ Cách frontend gọi backend:
 Cách backend gọi AI-server:
 
 - Event AI dùng `aiController.generateEventFormAI()` gọi `${AI_SERVER_URL}/event-form/generate`.
-- `/ask-db` còn là dấu vết legacy trong code/tài liệu, nhưng theo xác nhận dự án đã loại bỏ/không sử dụng nên không tính là blocker production; nên dọn để tránh hiểu nhầm.
+- luồng AI hỏi DB cũ còn là dấu vết legacy trong code/tài liệu, nhưng theo xác nhận dự án đã loại bỏ/không sử dụng nên không tính là blocker production; nên dọn để tránh hiểu nhầm.
 - `AI_SERVER_URL` fallback `http://localhost:8001`.
 
 Cách backend kết nối DB:
@@ -438,7 +437,7 @@ TaskManagementPage -> POST /api/ai/event-form/generate
   -> frontend dùng JSON để điền form tạo sự kiện/task
 ```
 
-Trạng thái hiện tại: `/ask-db` là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án, nên không xếp là lỗi production. Cần dọn các dấu vết code/tài liệu còn nhắc `/ask-db` để tránh reviewer hoặc developer mới hiểu nhầm rằng hệ thống vẫn có AI hỏi đáp trực tiếp database.
+Trạng thái hiện tại: luồng AI hỏi DB cũ là luồng cũ đã loại bỏ/không sử dụng theo xác nhận dự án, nên không xếp là lỗi production. Cần dọn các dấu vết code/tài liệu còn nhắc luồng AI hỏi DB cũ để tránh reviewer hoặc developer mới hiểu nhầm rằng hệ thống vẫn có AI hỏi đáp trực tiếp database.
 
 ## 7. Phân Tích Bảo Mật
 
@@ -451,7 +450,7 @@ Trạng thái hiện tại: `/ask-db` là luồng cũ đã loại bỏ/không s�
 | Upload audio | Auth có, size/duration có, path traversal có kiểm soát khi stream | Audio MIME cho phép mọi `audio/*`; token query string cho audio có thể lộ |
 | Rate limit | Chưa thấy `express-rate-limit` | Login, forgot password, upload, AI có thể bị brute force/abuse |
 | SQL injection | Phần lớn backend dùng parameterized query; có dynamic `IN` placeholders | Cần audit các raw string từ AI và các query ghép; hiện chưa thấy user input trực tiếp vào SQL nguy hiểm trong backend chính |
-| AI SQL | `/ask-db` đã loại bỏ/không sử dụng; AI hiện dùng chính cho sinh JSON event/task | Nếu khôi phục LLM SQL/DB Q&A trong tương lai cần DB user read-only, SQL parser thật, audit log và giới hạn intent rõ ràng |
+| AI SQL | luồng AI hỏi DB cũ đã loại bỏ/không sử dụng; AI hiện dùng chính cho sinh JSON event/task | Nếu khôi phục LLM SQL/DB Q&A trong tương lai cần DB user read-only, SQL parser thật, audit log và giới hạn intent rõ ràng |
 | Password reset | OTP hash, expire 15 phút, generic response | Bảng `password_reset_tokens` chưa có; memory fallback mất khi restart; không rate limit |
 | Webhook payment | SePay webhook check secret nếu configured | Nếu `SEPAY_WEBHOOK_SECRET` trống, webhook không có xác thực thực tế |
 | Hardcode localhost | Có trong `Backend/.env.example`, `Frontend/.env.example`, Vite proxy, backend fallback AI | Production cần env/reverse proxy chuẩn |
@@ -511,7 +510,7 @@ Trạng thái hiện tại: `/ask-db` là luồng cũ đã loại bỏ/không s�
 | Media storage | Ảnh DB LONGBLOB, audio disk local | Object storage/CDN; volume persistent cho voice nếu chưa chuyển |
 | Scaling frontend | Vite build static | Nginx/CDN/Vercel; cache static assets |
 | Scaling backend | Single process in-memory socket map | Stateless API + Redis session/socket adapter |
-| Scaling AI-server | Flask dev server trong `app.py` nếu chạy trực tiếp | Gunicorn/Waitress, timeout, worker limit, read-only DB user |
+| Scaling AI-server | Flask dev server trong `app.py` nếu chạy trực tiếp | Gunicorn/Waitress, timeout và worker limit |
 | Scaling voice | Worker polling DB | Queue/job table với locking tốt hơn, supervisor/systemd/container restart |
 | Cost cloud | MySQL LONGBLOB và Whisper CPU tốn tài nguyên | Object storage cho media, autoscale AI/worker riêng, chọn Whisper model theo SLA |
 
@@ -527,7 +526,7 @@ Trạng thái hiện tại: `/ask-db` là luồng cũ đã loại bỏ/không s�
 | Frontend thiếu `reactflow`, `socket.io-client` dependency | Không còn đúng theo build hiện tại | `npm run build` thành công; source hiện không import các package đó trực tiếp |
 | Manager tasks runtime, event link chưa chuẩn | Vẫn còn một phần | Có migration event link nhưng `docker/init.sql` vẫn thiếu tasks; runtime DDL vẫn tồn tại |
 | `system_settings` code dùng nhưng schema thiếu | Một phần đã sửa | Dump 20260502 có `system_settings`, nhưng `docker/init.sql/defaultdb.sql` chưa có |
-| AI `/ask-db` whitelist intent | Không còn áp dụng cho production | Theo xác nhận dự án, `/ask-db` đã loại bỏ/không sử dụng; chỉ còn là dấu vết legacy cần dọn khỏi code/tài liệu |
+| AI DB legacy whitelist intent | Không còn áp dụng cho production | Theo xác nhận dự án, luồng AI hỏi DB cũ đã loại bỏ/không sử dụng; chỉ còn là dấu vết legacy cần dọn khỏi code/tài liệu |
 | Docker compose production | Không còn là yêu cầu | Production triển khai qua cloud; compose chỉ còn vai trò local/dev/phpMyAdmin |
 | Upload local disk | Đã thay đổi với ảnh | Ảnh mới vào MySQL `media_files`; voice vẫn lưu disk |
 
@@ -565,4 +564,4 @@ Rủi ro đã được sửa hoặc cải thiện:
 
 Gia Phả Việt là hệ thống web số hóa quản lý dòng họ và cây gia phả, hỗ trợ Admin, Manager và Member. Kiến trúc chính gồm Frontend React/Vite, Backend Node.js/Express kết nối MySQL cloud, Socket.IO cho thông báo realtime, AI-server Flask/Groq cho tạo kế hoạch sự kiện/task, cùng voice worker dùng faster-whisper để chuyển giọng nói thành văn bản. Các chức năng chính gồm đăng ký/đăng nhập JWT, duyệt thành viên, quản lý cây phả hệ, bài viết cộng đồng, task/notification, sự kiện/reminder, upload ảnh, quỹ dòng họ, billing/thanh toán và time capsule bằng ghi âm.
 
-Trạng thái hiện tại chưa sẵn sàng production. Các việc bắt buộc cần làm trước deploy gồm bỏ JWT secret fallback hardcode, chuẩn hóa migration cho toàn bộ bảng/cột đang được code sử dụng, thống nhất một schema/cách lưu cho billing-quỹ-payment, hoàn thiện schema media/voice/reset password, bắt buộc xác thực webhook thanh toán, bổ sung rate limit/logging/CI, thay runtime DDL bằng migration kiểm soát được và dọn dấu vết legacy `/ask-db` nếu không còn dùng.
+Trạng thái hiện tại chưa sẵn sàng production. Các việc bắt buộc cần làm trước deploy gồm bỏ JWT secret fallback hardcode, chuẩn hóa migration cho toàn bộ bảng/cột đang được code sử dụng, thống nhất một schema/cách lưu cho billing-quỹ-payment, hoàn thiện schema media/voice/reset password, bắt buộc xác thực webhook thanh toán, bổ sung rate limit/logging/CI, thay runtime DDL bằng migration kiểm soát được và dọn dấu vết luồng AI hỏi DB cũ nếu không còn dùng.

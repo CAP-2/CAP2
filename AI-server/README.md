@@ -1,90 +1,93 @@
 # AI-server
 
-AI-server la Flask service cho cac tinh nang AI cua Gia Pha Viet: hoi dap du lieu gia pha, tra loi tu nhien, va ho tro tao form su kien/cong viec. Server uu tien luong an toan: intent detection + SQL whitelist/fixed query, khong de model tu sinh SQL roi chay truc tiep.
+AI-server la Flask service dung rieng cho tinh nang AI sinh form su kien va danh sach cong viec nhap cua Gia Pha Viet.
 
-## Cau truc thu muc
+Service nay khong truy van du lieu rieng, khong tao su kien/cong viec that, va khong expose luong hoi dap gia pha. Backend goi service qua endpoint event-form, sau do frontend/backend hien thi du lieu nhap de nguoi dung kiem tra.
 
-```text
-AI-server/
-├── tests/                     # Test/kiem tra endpoint va logic AI
-├── __pycache__/               # Python cache, sinh ra khi chay
-├── .venv/                     # Virtual environment rieng cua AI-server
-├── .env                       # Cau hinh local, khong commit
-├── .env.ai                    # Cau hinh AI phu neu can
-├── .env.example               # Mau bien moi truong
-├── .gitignore                 # Ignore Python env/cache
-├── app.py                     # Flask app entry va API handlers
-├── sql/
-│   ├── demo_data_checks.sql   # SQL kiem tra du lieu demo
-│   └── demo_data_seed.sql     # SQL seed du lieu demo
-├── requirements.txt           # Python dependencies
-└── README.md                  # Tai lieu AI-server
-```
+## API
 
-Khong dung `.venv` cua AI-server cho voice worker. Voice worker co virtual environment rieng o repo root: `.venv-whisper/`.
+### `GET /health`
 
-## Luong xu ly AI an toan
-
-```text
-User prompt
--> normalize tieng Viet/context nguoi dung
--> detect intent
--> neu hoi DB: chay fixed SQL theo whitelist
--> lay rows tu MySQL
--> model dien giai ket qua thanh cau tra loi tieng Viet
--> neu khong can DB: model tra loi tu nhien theo guardrail
-```
-
-## API chinh
-
-### `POST /ask-db`
-
-Dung cho hoi dap du lieu gia pha theo context account/person/clan.
-
-Request mau:
-
-```json
-{
-  "prompt": "Bố mẹ tôi là ai?",
-  "account_id": 20,
-  "person_id": 10,
-  "clan_id": 3,
-  "role": "member"
-}
-```
-
-Response mau:
+Response:
 
 ```json
 {
   "success": true,
-  "intent": "PARENTS",
-  "prompt": "Bố mẹ tôi là ai?",
-  "row_count": 1,
-  "data": {
-    "intent": "PARENTS",
-    "rows": [],
-    "row_count": 1
-  },
-  "answer": "Câu trả lời tiếng Việt dựa trên dữ liệu trong database."
+  "service": "ai-server",
+  "groq_configured": true
 }
 ```
 
-## Cai dat
+### `POST /event-form/generate`
 
-```powershell
-cd D:\cap2\AI-server
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
+Request:
+
+```json
+{
+  "mode": "event_create",
+  "prompt": "Tao su kien gio to thang 8 tai nha tho ho, khoang 50 nguoi tham du",
+  "today": "2026-05-17",
+  "clan_id": 1,
+  "requested_task_count": 6
+}
 ```
 
-## Chay server
+Response:
+
+```json
+{
+  "success": true,
+  "status": "success",
+  "mode": "event_create",
+  "event": {
+    "title": "Gio to",
+    "event_date": "2026-08-01",
+    "description": "Tao su kien gio to thang 8 tai nha tho ho, khoang 50 nguoi tham du",
+    "clan_id": 1
+  },
+  "manager_tasks": [
+    {
+      "event_id": null,
+      "member_id": null,
+      "title": "Lap danh sach con chau tham du",
+      "description": "Tong hop so luong thanh vien tham du de chuan bi le va tiep don.",
+      "due_date": "2026-07-25",
+      "status": "assigned"
+    }
+  ]
+}
+```
+
+## Cai Dat
 
 ```powershell
-cd D:\cap2\AI-server
-.\.venv\Scripts\Activate.ps1
+cd AI-server
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+python app.py
+```
+
+Bien moi truong chinh:
+
+```text
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_TIMEOUT_SECONDS=8
+AI_DISABLE_GROQ=false
+HOST=0.0.0.0
+PORT=8001
+DEBUG=false
+```
+
+Neu khong co `GROQ_API_KEY`, server van tra fallback JSON voi `success: true` cho prompt hop le.
+
+## Chay
+
+```powershell
+cd AI-server
+.venv\Scripts\Activate.ps1
 python app.py
 ```
 
@@ -100,31 +103,9 @@ Backend can tro toi AI-server bang:
 AI_SERVER_URL=http://localhost:8001
 ```
 
-## Bien moi truong
-
-Ten bien phu thuoc `app.py`, nhung thuong gom:
-
-```text
-GROQ_API_KEY=...
-DB_HOST=...
-DB_PORT=...
-DB_USER=...
-DB_PASSWORD=...
-DB_NAME=...
-```
-
-## Gioi han va quy tac
-
-- Khong chay SQL do AI sinh truc tiep.
-- Chi dung fixed SQL/whitelist theo intent.
-- Chan cac cau lenh thay doi du lieu nhu `INSERT`, `UPDATE`, `DELETE`, `DROP`.
-- Endpoint AI tao su kien/cong viec chi nen tra ve cau truc JSON hop le de frontend/backend xu ly tiep.
-- Khong dung chung virtual environment voi voice worker.
-
-## Kiem tra nhanh
+## Kiem Tra
 
 ```powershell
-cd D:\cap2\AI-server
-.\.venv\Scripts\python.exe -m py_compile app.py
-python app.py
+cd AI-server
+python -m unittest discover tests
 ```

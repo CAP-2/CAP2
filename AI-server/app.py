@@ -1,1692 +1,29 @@
+import calendar
 import json
 import os
 import re
-import time
 import unicodedata
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from groq import Groq
-from mysql.connector.pooling import MySQLConnectionPool
 
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-READ_ONLY_SQL = ("select",)
-BLOCKED_SQL = (
-    r"\binsert\b",
-    r"\bupdate\b",
-    r"\bdelete\b",
-    r"\bdrop\b",
-    r"\balter\b",
-    r"\btruncate\b",
-    r"\bcreate\b",
-    r"\breplace\b",
-)
 MODEL_NAME = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-PUBLIC_SYSTEM_PROMPT = """
-Bạn là trợ lý AI của Gia Phả Việt.
-Trả lời ngắn gọn, tự nhiên bằng tiếng Việt có dấu.
-Bạn có thể hướng dẫn người dùng về đăng ký, đăng nhập, tạo dòng họ,
-quản lý cây gia phả, thành viên, bài viết, sự kiện và thư viện.
-Không được nói rằng bạn đã truy cập dữ liệu riêng tư nếu người dùng chưa đăng nhập.
-"""
-
-
-def normalize_text(text: str) -> str:
-    return normalize_vietnamese(text)
-
-
-def phrase_pattern(phrase: str) -> str:
-    escaped = re.escape(phrase.strip())
-    escaped = escaped.replace(r"\ ", r"\s+")
-    return rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
-
-
-def has_phrase(text: str, phrase: str) -> bool:
-    return re.search(phrase_pattern(phrase), text) is not None
-
-
-def has_any_phrase(text: str, phrases: tuple[str, ...] | list[str]) -> bool:
-    return any(has_phrase(text, phrase) for phrase in phrases)
-
-
-def has_token(text: str, token: str) -> bool:
-    return has_phrase(text, token)
-
-
-def parse_int(value: Any) -> int | None:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
-
-
-def extract_sql_candidate(text: str) -> str:
-    if not text:
-        return ""
-    cleaned = text.strip()
-    cleaned = re.sub(r"^```(?:sql)?\s*", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-    match = re.search(r"select\b[\s\S]*", cleaned, flags=re.IGNORECASE)
-    if match:
-        cleaned = match.group(0)
-    return cleaned.split(";")[0].strip()
-
-
-def safe_sql(sql: str) -> bool:
-    candidate = extract_sql_candidate(sql).lower()
-    if not candidate.startswith(READ_ONLY_SQL):
-        return False
-    return not any(re.search(pattern, candidate) for pattern in BLOCKED_SQL)
-
-
-def enforce_clan(sql: str, clan_id: int) -> str:
-    lowered = sql.lower()
-    if "clan_id" in lowered:
-        return sql
-
-    table_match = re.search(
-        r"\b(from|join)\s+(people|families|events|posts|clans)(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?",
-        lowered,
-    )
-    table = table_match.group(2) if table_match else None
-    alias = table_match.group(3) if table_match else None
-    if alias in {"where", "join", "left", "right", "inner", "outer", "on", "order", "group", "limit"}:
-        alias = None
-
-    qualifier = alias or table
-    column = "id" if table == "clans" else "clan_id"
-    clan_expr = f"{qualifier}.{column} = {clan_id}" if qualifier else f"clan_id = {clan_id}"
-
-    if " where " in lowered:
-        return f"{sql} AND {clan_expr}"
-    return f"{sql} WHERE {clan_expr}"
-
-
-def add_limit(sql: str, limit: int = 50) -> str:
-    if "limit" in sql.lower():
-        return sql
-    return f"{sql} LIMIT {limit}"
-
-
-def get_db() -> MySQLConnectionPool:
-    return MySQLConnectionPool(
-        pool_name="ai_pool",
-        pool_size=5,
-        host=os.getenv("DB_HOST"),
-        port=parse_int(os.getenv("DB_PORT")) or 3306,
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
-    )
-
-
-def extract_member_name(prompt: str) -> str | None:
-    patterns = [
-        r"ten\s+['\"]?([^'\"]+?)['\"]?$",
-        r"nguoi\s+ten\s+['\"]?([^'\"]+?)['\"]?$",
-        r"thanh vien\s+ten\s+['\"]?([^'\"]+?)['\"]?$",
-        r"ai la\s+['\"]?([^'\"]+?)['\"]?$",
-        r"tim\s+['\"]?([^'\"]+?)['\"]?$",
-    ]
-    raw = prompt.strip()
-    for pattern in patterns:
-        match = re.search(pattern, raw, flags=re.IGNORECASE)
-        if match:
-            name = match.group(1).strip(" .,!?:;")
-            if name:
-                return name
-    return None
-
-
-def member_lookup_query(name: str, clan_id: int) -> str:
-    escaped = name.replace("'", "''")
-    return f"""
-    SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown, bio
-    FROM people
-    WHERE clan_id = {clan_id}
-      AND (
-        display_name LIKE '%{escaped}%'
-        OR CONCAT_WS(' ', surname, middle_name, first_name) LIKE '%{escaped}%'
-      )
-    ORDER BY
-      CASE WHEN display_name = '{escaped}' THEN 0 ELSE 1 END,
-      generation ASC,
-      display_name ASC
-    """
-
-
-def semantic_query(prompt: str, user_id: int, clan_id: int) -> str | None:
-    p = normalize_text(prompt)
-    member_name = extract_member_name(prompt)
-
-    if "toi la ai" in p or "thong tin cua toi" in p:
-        return f"""
-        SELECT p.id, p.display_name, p.gender, p.generation, p.birth_date, p.hometown, c.clan_name
-        FROM accounts a
-        JOIN people p ON p.id = a.person_id
-        LEFT JOIN clans c ON c.id = p.clan_id
-        WHERE a.id = {user_id} AND p.clan_id = {clan_id}
-        """
-
-    if "lich su dong ho" in p or "lich su gia pha" in p or "nguon goc dong ho" in p:
-        return f"""
-        SELECT id, clan_name, history, hall_address, created_at
-        FROM clans
-        WHERE id = {clan_id}
-        LIMIT 1
-        """
-
-    if "tu duong" in p or "nha tho" in p or "dia chi nha tho" in p:
-        return f"""
-        SELECT clan_name, hall_address
-        FROM clans
-        WHERE id = {clan_id}
-        LIMIT 1
-        """
-
-    if "bo me" in p:
-        return f"""
-        SELECT father.display_name AS father, mother.display_name AS mother
-        FROM accounts a
-        JOIN people me ON me.id = a.person_id
-        JOIN children ch ON ch.person_id = me.id
-        JOIN families fam ON fam.id = ch.family_id
-        LEFT JOIN people father ON father.id = fam.father_id
-        LEFT JOIN people mother ON mother.id = fam.mother_id
-        WHERE a.id = {user_id} AND me.clan_id = {clan_id}
-        LIMIT 1
-        """
-
-    if "cay gia pha" in p or "so do gia pha" in p:
-        return f"""
-        SELECT p.id, p.display_name, p.generation, p.branch, p.birth_date, p.death_date, p.is_living
-        FROM people p
-        WHERE p.clan_id = {clan_id}
-        ORDER BY p.generation ASC, p.branch ASC, p.display_name ASC
-        """
-
-    if ("bao nhieu" in p or "so luong" in p or "tong cong" in p) and (
-        "nguoi" in p or "thanh vien" in p or "gia pha" in p
-    ):
-        return f"""
-        SELECT COUNT(*) AS member_count
-        FROM people
-        WHERE clan_id = {clan_id}
-        """
-
-    if "con toi" in p or "cac con" in p:
-        return f"""
-        SELECT child.id, child.display_name, child.gender, child.generation, child.birth_date
-        FROM accounts a
-        JOIN people me ON me.id = a.person_id
-        JOIN families fam ON fam.father_id = me.id OR fam.mother_id = me.id
-        JOIN children ch ON ch.family_id = fam.id
-        JOIN people child ON child.id = ch.person_id
-        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND child.clan_id = {clan_id}
-        ORDER BY ch.sort_order, child.id
-        """
-
-    if "vo" in p or "chong" in p:
-        return f"""
-        SELECT spouse.id, spouse.display_name, spouse.gender, spouse.generation, spouse.birth_date
-        FROM accounts a
-        JOIN people me ON me.id = a.person_id
-        JOIN families fam ON fam.father_id = me.id OR fam.mother_id = me.id
-        JOIN people spouse
-          ON (spouse.id = fam.father_id OR spouse.id = fam.mother_id)
-         AND spouse.id <> me.id
-        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND spouse.clan_id = {clan_id}
-        LIMIT 1
-        """
-
-    if "anh chi em" in p or re.search(r"\banh\b|\bchi\b|\bem\b", p):
-        return f"""
-        SELECT sibling.id, sibling.display_name, sibling.gender, sibling.generation, sibling.birth_date
-        FROM accounts a
-        JOIN people me ON me.id = a.person_id
-        JOIN children my_row ON my_row.person_id = me.id
-        JOIN children sibling_row ON sibling_row.family_id = my_row.family_id
-        JOIN people sibling ON sibling.id = sibling_row.person_id
-        WHERE a.id = {user_id}
-          AND me.clan_id = {clan_id}
-          AND sibling.clan_id = {clan_id}
-          AND sibling.id <> me.id
-        ORDER BY sibling_row.sort_order, sibling.id
-        """
-
-    if "vo chong" in p or "hon nhan" in p:
-        return f"""
-        SELECT fam.id, fam.marriage_date, father.display_name AS father_name, mother.display_name AS mother_name
-        FROM families fam
-        LEFT JOIN people father ON father.id = fam.father_id
-        LEFT JOIN people mother ON mother.id = fam.mother_id
-        WHERE fam.clan_id = {clan_id}
-        ORDER BY fam.marriage_date DESC, fam.id DESC
-        """
-
-    if "ong ba" in p:
-        return f"""
-        SELECT DISTINCT gp.display_name AS grandparent_name
-        FROM accounts a
-        JOIN people me ON me.id = a.person_id
-        JOIN children my_row ON my_row.person_id = me.id
-        JOIN families parent_fam ON parent_fam.id = my_row.family_id
-        JOIN people parent_person ON parent_person.id IN (parent_fam.father_id, parent_fam.mother_id)
-        JOIN children parent_row ON parent_row.person_id = parent_person.id
-        JOIN families grand_fam ON grand_fam.id = parent_row.family_id
-        JOIN people gp ON gp.id IN (grand_fam.father_id, grand_fam.mother_id)
-        WHERE a.id = {user_id} AND me.clan_id = {clan_id} AND gp.clan_id = {clan_id}
-        """
-
-    if "doi" in p or "the he" in p:
-        return f"""
-        SELECT generation, COUNT(*) AS member_count
-        FROM people
-        WHERE clan_id = {clan_id}
-        GROUP BY generation
-        ORDER BY generation ASC
-        """
-
-    if "chi" in p and "bao nhieu" in p:
-        return f"""
-        SELECT branch, COUNT(*) AS member_count
-        FROM people
-        WHERE clan_id = {clan_id}
-        GROUP BY branch
-        ORDER BY branch ASC
-        """
-
-    if "truong ho" in p or "quan ly" in p or "thong bao" in p:
-        return f"""
-        SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at
-        FROM manager_announcements ma
-        JOIN accounts acc ON acc.id = ma.manager_account_id
-        LEFT JOIN people p ON p.id = acc.person_id
-        WHERE (p.clan_id = {clan_id} OR EXISTS (
-            SELECT 1 FROM account_clans ac
-            WHERE ac.account_id = acc.id AND ac.clan_id = {clan_id} AND ac.status = 'active'
-        ))
-        ORDER BY ma.created_at DESC, ma.id DESC
-        """
-
-    if "su kien" in p or "gio" in p or "nhac" in p:
-        return f"""
-        SELECT id, title, event_date, description
-        FROM events
-        WHERE clan_id = {clan_id}
-        ORDER BY event_date DESC, id DESC
-        """
-
-    if "dong gop" in p or "ung ho" in p:
-        return f"""
-        SELECT ev.title, p.display_name, ec.amount, ec.contribution_date, ec.method
-        FROM event_contributions ec
-        JOIN events ev ON ev.id = ec.event_id
-        JOIN people p ON p.id = ec.person_id
-        WHERE ev.clan_id = {clan_id}
-        ORDER BY ec.contribution_date DESC, ec.id DESC
-        """
-
-    if "chi phi su kien" in p or "kinh phi" in p or "chi tieu" in p:
-        return f"""
-        SELECT ev.title, c.item_name, c.amount, c.note, c.created_at
-        FROM event_costs c
-        JOIN events ev ON ev.id = c.event_id
-        WHERE ev.clan_id = {clan_id}
-        ORDER BY c.created_at DESC, c.id DESC
-        """
-
-    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
-        return f"""
-        SELECT post.id, post.content, post.image_url, post.created_at, COALESCE(pe.display_name, a.email) AS author_name
-        FROM posts post
-        JOIN accounts a ON a.id = post.author_id
-        LEFT JOIN people pe ON pe.id = a.person_id
-        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
-        ORDER BY post.created_at DESC, post.id DESC
-        """
-
-    if "binh luan" in p or "comment" in p:
-        return f"""
-        SELECT pc.id, pc.content, pc.created_at, pe.display_name AS author_name, post.id AS post_id
-        FROM post_comments pc
-        JOIN people pe ON pe.id = pc.person_id
-        JOIN posts post ON post.id = pc.post_id
-        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
-        ORDER BY pc.created_at DESC, pc.id DESC
-        """
-
-    if "luot thich" in p or "like" in p:
-        return f"""
-        SELECT post.id AS post_id, COUNT(pl.id) AS like_count
-        FROM posts post
-        LEFT JOIN post_likes pl ON pl.post_id = post.id
-        WHERE post.clan_id = {clan_id} AND post.status = 'approved'
-        GROUP BY post.id
-        ORDER BY like_count DESC, post.id DESC
-        """
-
-    if "thanh vien moi" in p or "nguoi moi" in p:
-        return f"""
-        SELECT id, display_name, generation, hometown, created_at
-        FROM people
-        WHERE clan_id = {clan_id}
-        ORDER BY created_at DESC, id DESC
-        """
-
-    if "thanh vien da mat" in p or "qua doi" in p:
-        return f"""
-        SELECT id, display_name, generation, death_date, hometown
-        FROM people
-        WHERE clan_id = {clan_id} AND (is_living = 0 OR death_date IS NOT NULL)
-        ORDER BY death_date DESC, generation ASC, display_name ASC
-        """
-
-    if "thanh vien con song" in p or "con song" in p:
-        return f"""
-        SELECT id, display_name, generation, birth_date, hometown
-        FROM people
-        WHERE clan_id = {clan_id} AND (is_living = 1 OR death_date IS NULL)
-        ORDER BY generation ASC, display_name ASC
-        """
-
-    if member_name:
-        return member_lookup_query(member_name, clan_id)
-
-    if "thanh vien" in p or "gia pha" in p or "dong ho" in p:
-        return f"""
-        SELECT id, display_name, generation, branch, hometown, birth_date, is_living
-        FROM people
-        WHERE clan_id = {clan_id}
-        ORDER BY generation ASC, branch ASC, display_name ASC
-        """
-
-    return None
-
-
-def semantic_query_global(prompt: str, user_id: int | None) -> str | None:
-    p = normalize_text(prompt)
-
-    if "dong ho" in p or "danh sach clan" in p or "danh sach dong" in p or "cac dong" in p:
-        return """
-        SELECT c.id, c.clan_name, c.hall_address, COUNT(p.id) AS member_count
-        FROM clans c
-        LEFT JOIN people p ON p.clan_id = c.id
-        GROUP BY c.id, c.clan_name, c.hall_address
-        ORDER BY c.id ASC
-        """
-
-    if "tong quan" in p or "thong ke" in p or "dashboard" in p:
-        return """
-        SELECT
-          (SELECT COUNT(*) FROM clans) AS clan_count,
-          (SELECT COUNT(*) FROM people) AS member_count,
-          (SELECT COUNT(*) FROM accounts) AS account_count,
-          (SELECT COUNT(*) FROM posts WHERE status = 'pending') AS pending_post_count
-        """
-
-    if "tai khoan" in p or "account" in p or "nguoi dung" in p:
-        return """
-        SELECT a.id, a.email, a.role_id, a.status, p.display_name, p.clan_id
-        FROM accounts a
-        LEFT JOIN people p ON p.id = a.person_id
-        ORDER BY a.created_at DESC, a.id DESC
-        """
-
-    if "bai viet" in p or "bang tin" in p or "tin moi" in p:
-        return """
-        SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
-               COALESCE(pe.display_name, a.email) AS author_name
-        FROM posts post
-        JOIN accounts a ON a.id = post.author_id
-        LEFT JOIN people pe ON pe.id = a.person_id
-        ORDER BY post.created_at DESC, post.id DESC
-        """
-
-    if "su kien" in p or "gio" in p or "nhac" in p:
-        return """
-        SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
-        FROM events ev
-        LEFT JOIN clans c ON c.id = ev.clan_id
-        ORDER BY ev.event_date DESC, ev.id DESC
-        """
-
-    if "thanh vien" in p or "gia pha" in p or "people" in p:
-        return """
-        SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
-        FROM people p
-        LEFT JOIN clans c ON c.id = p.clan_id
-        ORDER BY p.created_at DESC, p.id DESC
-        """
-
-    return None
-
-
-def public_answer(client: Groq | None, model: str, prompt: str) -> str:
-    fallback = (
-        "Tôi là trợ lý AI của Gia Phả Việt. Bạn có thể hỏi về cách đăng ký, đăng nhập, "
-        "tạo dòng họ, quản lý cây gia phả, thành viên, bài viết, sự kiện và thư viện."
-    )
-    if client is None:
-        p = normalize_text(prompt)
-        if "dang ky" in p:
-            return "Bạn có thể đăng ký tài khoản hoặc đăng ký dòng họ mới trên trang chủ, sau đó chờ quản trị viên xét duyệt."
-        if "dang nhap" in p:
-            return "Bạn đăng nhập bằng email và mật khẩu đã được cấp. Hệ thống sẽ đưa bạn vào trang phù hợp với vai trò."
-        return fallback
-
-    try:
-        res = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": PUBLIC_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return (res.choices[0].message.content or "").strip() or fallback
-    except Exception:
-        return fallback
-
-
-def answer_general(client: Groq | None, model: str, prompt: str) -> str:
-    fallback = (
-        "Tôi là trợ lý AI của hệ thống Gia Phả Việt. "
-        "Bạn có thể hỏi tôi về cách sử dụng hệ thống, quản lý thành viên, "
-        "dòng họ, bài viết, sự kiện hoặc các thông tin gia phả nếu bạn có quyền truy cập."
-    )
-
-    if client is None:
-        return fallback
-
-    try:
-        res = client.chat.completions.create(
-            model=model,
-            temperature=0.4,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Bạn là trợ lý AI của hệ thống Gia Phả Việt. "
-                        "Trả lời tự nhiên bằng tiếng Việt có dấu, rõ ràng, dễ hiểu. "
-                        "Bạn có thể hỗ trợ người dùng về cách sử dụng hệ thống, "
-                        "quản lý gia phả, thành viên, dòng họ, bài viết, sự kiện, "
-                        "và các câu hỏi thông thường. "
-                        "Nếu câu hỏi cần dữ liệu riêng tư nhưng chưa có dữ liệu được cung cấp, "
-                        "hãy nói rằng cần đăng nhập hoặc cần quyền truy cập. "
-                        "Không bịa dữ liệu từ database."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-        )
-
-        text = (res.choices[0].message.content or "").strip()
-        return text or fallback
-    except Exception:
-        return fallback
-
-
-def answer_with_database(client: Groq | None, model: str, prompt: str, data: dict[str, Any]) -> str:
-    fallback = "Tôi đã lấy được dữ liệu, nhưng hiện chưa thể diễn giải bằng AI."
-
-    if client is None:
-        return fallback
-
-    try:
-        res = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Bạn là trợ lý AI của hệ thống Gia Phả Việt. "
-                        "Hãy trả lời bằng tiếng Việt có dấu, tự nhiên, dễ hiểu. "
-                        "Chỉ được sử dụng dữ liệu được cung cấp trong DATABASE_CONTEXT. "
-                        "Không được bịa thêm người, quan hệ, ngày tháng, sự kiện hoặc số liệu. "
-                        "Nếu DATABASE_CONTEXT không có dữ liệu phù hợp, hãy nói rõ rằng "
-                        "hệ thống chưa có dữ liệu phù hợp."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Câu hỏi của người dùng:\n{prompt}\n\n"
-                        f"DATABASE_CONTEXT:\n{json.dumps(data, ensure_ascii=False, default=str)}"
-                    ),
-                },
-            ],
-        )
-
-        text = (res.choices[0].message.content or "").strip()
-        return text or fallback
-    except Exception:
-        return fallback
-
-
-def simple_answer(prompt: str, rows: list[dict[str, Any]]) -> str:
-    if not rows:
-        return "Không tìm thấy dữ liệu phù hợp trong gia phả cho câu hỏi này."
-
-    first = rows[0]
-    if len(rows) == 1 and "father" in first and "mother" in first:
-        father = first.get("father") or "chưa có dữ liệu"
-        mother = first.get("mother") or "chưa có dữ liệu"
-        return f"Bố: {father}. Mẹ: {mother}."
-
-    if len(rows) == 1 and "clan_name" in first and ("history" in first or "hall_address" in first):
-        clan_name = first.get("clan_name") or "Dòng họ hiện tại"
-        history = first.get("history")
-        hall_address = first.get("hall_address")
-        parts = [f"Thông tin của {clan_name}."]
-        if history:
-            parts.append(f"Lịch sử: {history}")
-        if hall_address:
-            parts.append(f"Từ đường: {hall_address}")
-        return " ".join(parts)
-
-    if "generation" in first and "member_count" in first:
-        parts = [f"Đời {row['generation']}: {row['member_count']} người" for row in rows]
-        return "Thống kê theo đời: " + "; ".join(parts) + "."
-
-    if len(rows) == 1 and "member_count" in first:
-        return f"Gia phả hiện có {first.get('member_count') or 0} thành viên."
-
-    if "branch" in first and "member_count" in first:
-        parts = [f"Chi {row['branch']}: {row['member_count']} người" for row in rows]
-        return "Thống kê theo chi: " + "; ".join(parts) + "."
-
-    if "like_count" in first and "post_id" in first:
-        parts = [f"Bài viết {row['post_id']}: {row['like_count']} lượt thích" for row in rows[:10]]
-        return "Thống kê lượt thích: " + "; ".join(parts) + "."
-
-    labels = []
-    for row in rows[:10]:
-        if row.get("display_name"):
-            labels.append(str(row["display_name"]))
-        elif row.get("grandparent_name"):
-            labels.append(str(row["grandparent_name"]))
-        elif row.get("father_name") or row.get("mother_name"):
-            father_name = row.get("father_name") or "chưa rõ"
-            mother_name = row.get("mother_name") or "chưa rõ"
-            marriage_date = row.get("marriage_date")
-            suffix = f" ({marriage_date})" if marriage_date else ""
-            labels.append(f"{father_name} - {mother_name}{suffix}")
-        elif row.get("title"):
-            labels.append(str(row["title"]))
-        elif row.get("author_name") and row.get("content"):
-            labels.append(f"{row['author_name']}: {str(row['content'])[:50]}")
-        else:
-            values = [str(v) for v in row.values() if v not in (None, "")]
-            if values:
-                labels.append(", ".join(values[:3]))
-
-    if not labels:
-        return f"Tìm thấy {len(rows)} bản ghi phù hợp."
-    if len(rows) <= 10:
-        return f"Tìm thấy {len(rows)} kết quả: " + "; ".join(labels) + "."
-    return f"Tìm thấy {len(rows)} kết quả. Một vài mục đầu: " + "; ".join(labels) + "."
-
-
-def summarize_rows(client: Groq | None, model: str, prompt: str, rows: list[dict[str, Any]]) -> str:
-    fallback = simple_answer(prompt, rows)
-    if client is None or not rows:
-        return fallback
-
-    try:
-        preview = json.dumps(rows[:8], ensure_ascii=False, default=str)
-        res = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Bạn là trợ lý gia phả. Hãy tóm tắt kết quả truy vấn thành tiếng Việt "
-                        "rõ ràng, ngắn gọn, thân thiện. Không được bịa thêm thông tin."
-                    ),
-                },
-                {"role": "user", "content": f"Câu hỏi: {prompt}\nDữ liệu: {preview}"},
-            ],
-        )
-        text = (res.choices[0].message.content or "").strip()
-        return text or fallback
-    except Exception:
-        return fallback
-
-
-ROLE_NAMES = {1: "admin", 2: "manager", 3: "member"}
-
-GENERAL_INTENTS = {
-    "GREETING",
-    "HELP",
-    "CAPABILITY",
-    "HOW_TO_USE",
-    "GENERAL_QUESTION",
-    "PUBLIC",
-    "UNKNOWN",
-}
-
-RELATION_INTENTS = {
-    "PARENTS",
-    "CHILDREN",
-    "SPOUSE",
-    "SIBLINGS",
-    "GRANDPARENTS",
-}
-
-CLAN_INTENTS = {
-    "PROFILE",
-    "CLAN_INFO",
-    "CLAN_OVERVIEW",
-    "MEMBER_SEARCH",
-    "TREE",
-    "MEMBER_COUNT",
-    "GENERATION_STATS",
-    "BRANCH_STATS",
-    "EVENTS",
-    "POSTS",
-    "ANNOUNCEMENTS",
-    "NOTIFICATIONS",
-    "CONTRIBUTIONS",
-    "EVENT_COSTS",
-    "LIVING_MEMBERS",
-    "DECEASED_MEMBERS",
-    "RECENT_MEMBERS",
-}
-
-MANAGER_INTENTS = CLAN_INTENTS | RELATION_INTENTS | {"CONTRIBUTIONS", "EVENT_COSTS"}
-MEMBER_INTENTS = CLAN_INTENTS | RELATION_INTENTS
-ADMIN_INTENTS = MANAGER_INTENTS | {
-    "ADMIN_OVERVIEW",
-    "ADMIN_CLANS",
-    "ADMIN_ACCOUNTS",
-    "ADMIN_POSTS",
-    "ADMIN_EVENTS",
-    "ADMIN_MEMBERS",
-}
-
-DB_INTENTS = ADMIN_INTENTS | MANAGER_INTENTS | MEMBER_INTENTS | {
-    "WHO_AM_I",
-    "MY_PARENTS",
-    "MY_CHILDREN",
-    "MY_SPOUSE",
-    "CLAN_MEMBERS_COUNT",
-    "CLAN_HISTORY",
-    "PERSON_INFO",
-    "RECENT_POSTS",
-    "UPCOMING_EVENTS",
-}
-
-SENSITIVE_PATTERNS = (
-    "mat khau",
-    "password",
-    "pass",
-    "hash",
-    "token",
-    "jwt",
-    "secret",
-    "otp",
-    "reset",
-    "database url",
-    "connection string",
-)
-
-
-def strip_accents(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", text or "")
-    without_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
-    return without_marks.replace("đ", "d").replace("Đ", "D")
-
-
-def normalize_vietnamese(text: str) -> str:
-    normalized = strip_accents(text).lower().strip()
-    normalized = re.sub(r"\s+", " ", normalized)
-    replacements = (
-        ("cha me", "bo me"),
-        ("ba me", "bo me"),
-        ("me cha", "bo me"),
-        ("phu mau", "bo me"),
-        ("ong noi", "ong ba"),
-        ("ba noi", "ong ba"),
-        ("ong ngoai", "ong ba"),
-        ("ba ngoai", "ong ba"),
-        ("nha tho", "tu duong"),
-        ("gia toc", "gia pha"),
-        ("dong toc", "dong ho"),
-    )
-    for src, dst in replacements:
-        normalized = normalized.replace(src, dst)
-    return normalized
-
-
-def normalize_role(role: Any, role_id: Any = None) -> str:
-    raw = str(role or "").strip().lower()
-    if raw in {"admin", "manager", "member"}:
-        return raw
-    parsed_role_id = parse_int(role_id)
-    return ROLE_NAMES.get(parsed_role_id or 3, "member")
-
-
-def build_request_context(body: dict[str, Any]) -> dict[str, Any]:
-    role = normalize_role(body.get("role") or body.get("role_name"), body.get("role_id"))
-    account_id = parse_int(body.get("account_id")) or parse_int(body.get("user_id"))
-    return {
-        "account_id": account_id,
-        "person_id": parse_int(body.get("person_id")),
-        "clan_id": parse_int(body.get("clan_id")),
-        "role": role,
-        "display_name": str(body.get("display_name") or "").strip() or None,
-    }
-
-
-def context_user_payload(ctx: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "account_id": ctx.get("account_id"),
-        "person_id": ctx.get("person_id"),
-        "clan_id": ctx.get("clan_id"),
-        "role": ctx.get("role"),
-        "display_name": ctx.get("display_name"),
-    }
-
-
-def extract_member_name_vn(prompt: str) -> str | None:
-    raw = str(prompt or "").strip()
-    patterns = (
-        r"^(?:tim|tìm)\s+(?:nguoi|người|thanh vien|thành viên)?\s*(?:ten|tên)?\s+(.+)$",
-        r"(?:nguoi|người|thanh vien|thành viên)\s+(?:ten|tên)\s+(.+)$",
-        r"(?:ai la|ai là)\s+(.+)$",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, raw, flags=re.IGNORECASE)
-        if match:
-            name = match.group(1).strip(" .,!?:;\"'")
-            if name:
-                return name
-    return extract_member_name(strip_accents(raw))
-
-
-def detect_intent(prompt: str) -> tuple[str, float, dict[str, Any]]:
-    p = normalize_vietnamese(prompt)
-    slots: dict[str, Any] = {}
-
-    member_name = extract_member_name_vn(prompt)
-    if member_name and (has_token(p, "tim") or has_token(p, "ten") or has_any_phrase(p, ("ai la",))):
-        slots["name"] = member_name
-        return "MEMBER_SEARCH", 0.92, slots
-
-    if has_any_phrase(p, ("mat khau", "password", "token", "secret")):
-        return "SENSITIVE_DATA", 0.99, slots
-
-    if p in {"xin chao", "chao", "hello", "hi"} or has_phrase(p, "xin chao"):
-        return "GREETING", 0.95, slots
-    if has_any_phrase(p, ("ban la ai", "ban co the lam gi", "ban lam duoc gi", "chuc nang cua ban", "tro ly ai")):
-        return "CAPABILITY", 0.95, slots
-    if has_any_phrase(
-        p,
-        (
-            "huong dan",
-            "cach su dung",
-            "lam sao",
-            "lam the nao",
-            "bat dau",
-            "them thanh vien",
-            "tao gia pha",
-            "tao dong ho",
-        ),
-    ):
-        return "HOW_TO_USE", 0.8, slots
-    if has_any_phrase(p, ("ngay le", "le lon")) or (
-        has_any_phrase(p, ("thang toi", "thang sau")) and not has_phrase(p, "su kien")
-    ):
-        return "GENERAL_QUESTION", 0.75, slots
-
-    # Specific database intents must be checked before broad intents.
-    if has_any_phrase(p, ("chi phi su kien", "kinh phi su kien", "chi tieu su kien", "chi phi")):
-        return "EVENT_COSTS", 0.9, slots
-    if has_any_phrase(p, ("dong gop su kien", "dong gop", "ung ho su kien", "ung ho")):
-        return "CONTRIBUTIONS", 0.9, slots
-    if has_any_phrase(p, ("thong bao quan ly", "thong bao truong ho", "thong bao tu quan ly", "truong ho")):
-        return "ANNOUNCEMENTS", 0.9, slots
-    if has_any_phrase(p, ("thong bao cua toi", "thong bao cho toi", "thong bao ca nhan", "notification cua toi")):
-        return "NOTIFICATIONS", 0.9, slots
-    if has_phrase(p, "thong bao"):
-        return "NOTIFICATIONS", 0.82, slots
-    if has_any_phrase(p, ("nguoi con song", "thanh vien con song", "con song trong dong ho", "con song")):
-        return "LIVING_MEMBERS", 0.88, slots
-    if has_any_phrase(p, ("nguoi da mat", "thanh vien da mat", "nhung nguoi da mat", "da mat", "qua doi")):
-        return "DECEASED_MEMBERS", 0.88, slots
-    if has_any_phrase(p, ("bo me", "bo toi", "me toi", "cha toi", "cha me toi", "con cua ai")):
-        return "PARENTS", 0.95, slots
-    if (
-        has_any_phrase(p, ("con toi", "cac con cua toi", "con cua toi", "toi co may nguoi con", "toi co may con"))
-        or re.search(r"(?<![a-z0-9])bao nhieu\s+con(?![a-z0-9])", p)
-        or re.search(r"(?<![a-z0-9])may\s+nguoi\s+con(?![a-z0-9])", p)
-    ):
-        return "CHILDREN", 0.92, slots
-    if has_any_phrase(p, ("vo toi", "chong toi", "vo cua toi", "chong cua toi", "vo chong cua toi")):
-        return "SPOUSE", 0.9, slots
-    if has_any_phrase(p, ("anh chi em", "anh em toi", "chi em toi", "anh chi em toi")):
-        return "SIBLINGS", 0.9, slots
-    if has_any_phrase(p, ("ong ba", "ong noi", "ba noi", "ong ngoai", "ba ngoai")):
-        return "GRANDPARENTS", 0.9, slots
-    if has_any_phrase(p, ("su kien sap toi", "lich su kien sap toi")) or (
-        has_phrase(p, "su kien") and has_any_phrase(p, ("sap toi", "gan toi", "toi day"))
-    ):
-        slots["time"] = "upcoming"
-        return "EVENTS", 0.86, slots
-    if has_phrase(p, "su kien") or has_token(p, "gio") or has_token(p, "nhac"):
-        return "EVENTS", 0.82, slots
-    if has_any_phrase(p, ("bai viet moi nhat", "bai viet", "bang tin", "tin moi")):
-        return "POSTS", 0.82, slots
-    if has_any_phrase(p, ("tai khoan cua toi", "thong tin tai khoan", "toi la ai", "thong tin cua toi")):
-        return "PROFILE", 0.95, slots
-    if has_any_phrase(p, ("lich su dong ho", "lich su gia pha", "nguon goc dong ho", "tu duong", "tong quan dong ho")):
-        return "CLAN_OVERVIEW", 0.9, slots
-    if has_token(p, "tong quan") or has_token(p, "dashboard") or (has_token(p, "thong ke") and has_token(p, "he thong")):
-        return "ADMIN_OVERVIEW", 0.88, slots
-    if has_any_phrase(p, ("danh sach clan", "cac dong ho", "tat ca dong ho")):
-        return "ADMIN_CLANS", 0.9, slots
-    if has_token(p, "tai khoan") or has_token(p, "account") or has_any_phrase(p, ("nguoi dung",)):
-        return "ADMIN_ACCOUNTS", 0.85, slots
-    if has_phrase(p, "bai viet toan he thong"):
-        return "ADMIN_POSTS", 0.85, slots
-    if has_phrase(p, "su kien toan he thong"):
-        return "ADMIN_EVENTS", 0.85, slots
-    if has_phrase(p, "thanh vien toan he thong"):
-        return "ADMIN_MEMBERS", 0.85, slots
-    if has_any_phrase(p, ("cay gia pha", "so do gia pha")):
-        return "TREE", 0.86, slots
-    if (has_any_phrase(p, ("bao nhieu", "so luong", "tong cong"))) and (
-        has_token(p, "nguoi") or has_phrase(p, "thanh vien") or has_phrase(p, "gia pha")
-    ):
-        return "MEMBER_COUNT", 0.88, slots
-    if has_phrase(p, "the he") or has_token(p, "doi"):
-        return "GENERATION_STATS", 0.82, slots
-    if has_token(p, "chi") and has_any_phrase(p, ("bao nhieu", "thong ke")):
-        return "BRANCH_STATS", 0.82, slots
-    if has_any_phrase(p, ("thanh vien moi", "nguoi moi")):
-        return "RECENT_MEMBERS", 0.82, slots
-    if has_phrase(p, "dong ho") or has_phrase(p, "gia pha"):
-        return "CLAN_OVERVIEW", 0.65, slots
-    if has_phrase(p, "thanh vien"):
-        return "TREE", 0.65, slots
-    return "UNKNOWN", 0.0, slots
-
-
-def permission_denial(intent: str, ctx: dict[str, Any], prompt: str) -> str | None:
-    p = normalize_vietnamese(prompt)
-    role = ctx.get("role") or "member"
-
-    if intent in GENERAL_INTENTS or intent == "UNKNOWN":
-        return None
-
-    if intent == "SENSITIVE_DATA" or any(has_phrase(p, pattern) for pattern in SENSITIVE_PATTERNS):
-        return "Tôi không thể cung cấp mật khẩu, token, khóa bí mật hoặc dữ liệu nhạy cảm."
-
-    allowed = ADMIN_INTENTS if role == "admin" else MANAGER_INTENTS if role == "manager" else MEMBER_INTENTS
-    if intent not in allowed:
-        if role == "admin" and intent == "UNKNOWN":
-            return None
-        return "Bạn không có quyền hỏi loại dữ liệu này hoặc câu hỏi chưa nằm trong danh sách intent được hỗ trợ."
-
-    if role != "admin" and not ctx.get("clan_id"):
-        return "Tài khoản của bạn chưa được gắn với dòng họ nên chưa thể tra cứu dữ liệu gia phả."
-
-    if intent in RELATION_INTENTS and not ctx.get("person_id"):
-        return "Tài khoản của bạn chưa được liên kết với hồ sơ thành viên nên chưa thể tra cứu quan hệ gia đình."
-
-    return None
-
-
-def fixed_query(intent: str, ctx: dict[str, Any], slots: dict[str, Any]) -> tuple[str, list[Any]] | None:
-    account_id = ctx.get("account_id")
-    person_id = ctx.get("person_id")
-    clan_id = ctx.get("clan_id")
-    role = ctx.get("role")
-
-    if role == "admin" and not clan_id:
-        if intent == "MEMBER_SEARCH":
-            name = str(slots.get("name") or "").strip()
-            like_name = f"%{name}%"
-            return (
-                """
-                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.gender, p.generation,
-                       p.branch, p.birth_date, p.death_date, p.is_living, p.hometown, p.bio
-                FROM people p
-                LEFT JOIN clans c ON c.id = p.clan_id
-                WHERE p.display_name LIKE %s
-                   OR CONCAT_WS(' ', p.surname, p.middle_name, p.first_name) LIKE %s
-                ORDER BY
-                  CASE WHEN p.display_name = %s THEN 0 ELSE 1 END,
-                  p.clan_id ASC,
-                  p.generation ASC,
-                  p.display_name ASC
-                """,
-                [like_name, like_name, name],
-            )
-        if intent == "TREE":
-            return (
-                """
-                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
-                FROM people p
-                LEFT JOIN clans c ON c.id = p.clan_id
-                ORDER BY p.created_at DESC, p.id DESC
-                """,
-                [],
-            )
-        if intent == "MEMBER_COUNT":
-            return ("SELECT COUNT(*) AS member_count FROM people", [])
-        if intent == "GENERATION_STATS":
-            return (
-                """
-                SELECT generation, COUNT(*) AS member_count
-                FROM people
-                GROUP BY generation
-                ORDER BY generation ASC
-                """,
-                [],
-            )
-        if intent == "BRANCH_STATS":
-            return (
-                """
-                SELECT branch, COUNT(*) AS member_count
-                FROM people
-                GROUP BY branch
-                ORDER BY branch ASC
-                """,
-                [],
-            )
-        if intent == "EVENTS":
-            if slots.get("time") == "upcoming":
-                return (
-                    """
-                    SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
-                    FROM events ev
-                    LEFT JOIN clans c ON c.id = ev.clan_id
-                    WHERE ev.event_date >= CURDATE()
-                    ORDER BY ev.event_date ASC, ev.id ASC
-                    """,
-                    [],
-                )
-            return (
-                """
-                SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
-                FROM events ev
-                LEFT JOIN clans c ON c.id = ev.clan_id
-                ORDER BY ev.event_date DESC, ev.id DESC
-                """,
-                [],
-            )
-        if intent == "POSTS":
-            return (
-                """
-                SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
-                       COALESCE(pe.display_name, a.email) AS author_name
-                FROM posts post
-                JOIN accounts a ON a.id = post.author_id
-                LEFT JOIN people pe ON pe.id = a.person_id
-                ORDER BY post.created_at DESC, post.id DESC
-                """,
-                [],
-            )
-        if intent == "LIVING_MEMBERS":
-            return (
-                """
-                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.birth_date, p.hometown
-                FROM people p
-                LEFT JOIN clans c ON c.id = p.clan_id
-                WHERE p.is_living = 1 OR p.death_date IS NULL
-                ORDER BY p.clan_id ASC, p.generation ASC, p.display_name ASC
-                """,
-                [],
-            )
-        if intent == "DECEASED_MEMBERS":
-            return (
-                """
-                SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.death_date, p.hometown
-                FROM people p
-                LEFT JOIN clans c ON c.id = p.clan_id
-                WHERE p.is_living = 0 OR p.death_date IS NOT NULL
-                ORDER BY p.death_date DESC, p.clan_id ASC, p.display_name ASC
-                """,
-                [],
-            )
-        if intent == "CONTRIBUTIONS":
-            return (
-                """
-                SELECT ev.clan_id, c.clan_name, ev.title, p.display_name, ec.amount,
-                       ec.contribution_date, ec.method, ec.note
-                FROM event_contributions ec
-                JOIN events ev ON ev.id = ec.event_id
-                LEFT JOIN clans c ON c.id = ev.clan_id
-                JOIN people p ON p.id = ec.person_id AND p.clan_id = ev.clan_id
-                ORDER BY ec.contribution_date DESC, ec.id DESC
-                """,
-                [],
-            )
-        if intent == "EVENT_COSTS":
-            return (
-                """
-                SELECT ev.clan_id, c.clan_name, ev.title, cost.item_name, cost.amount, cost.note, cost.created_at
-                FROM event_costs cost
-                JOIN events ev ON ev.id = cost.event_id
-                LEFT JOIN clans c ON c.id = ev.clan_id
-                ORDER BY cost.created_at DESC, cost.id DESC
-                """,
-                [],
-            )
-        if intent == "ANNOUNCEMENTS":
-            return (
-                """
-                SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at,
-                       ma.manager_account_id, acc.email AS manager_email
-                FROM manager_announcements ma
-                JOIN accounts acc ON acc.id = ma.manager_account_id
-                ORDER BY ma.created_at DESC, ma.id DESC
-                """,
-                [],
-            )
-        if intent == "NOTIFICATIONS":
-            return (
-                """
-                SELECT n.id, n.receiver_account_id, n.receiver_person_id,
-                       related.clan_id, c.clan_name, n.type, n.title, n.message,
-                       n.is_read, n.link_url, n.created_at,
-                       a.email AS receiver_email, related.display_name AS related_person_name
-                FROM notifications n
-                LEFT JOIN accounts a ON a.id = n.receiver_account_id
-                LEFT JOIN people related ON related.id = n.receiver_person_id
-                LEFT JOIN clans c ON c.id = related.clan_id
-                ORDER BY n.created_at DESC, n.id DESC
-                """,
-                [],
-            )
-
-    if intent == "PROFILE":
-        if role == "admin":
-            return (
-                """
-                SELECT a.id AS account_id, a.email, a.role_id, a.status, p.id AS person_id,
-                       p.display_name, p.gender, p.generation, p.birth_date, p.hometown,
-                       c.id AS clan_id, c.clan_name
-                FROM accounts a
-                LEFT JOIN people p ON p.id = a.person_id
-                LEFT JOIN clans c ON c.id = p.clan_id
-                WHERE a.id = %s
-                LIMIT 1
-                """,
-                [account_id],
-            )
-        return (
-            """
-            SELECT a.id AS account_id, a.email, a.role_id, a.status, p.id AS person_id,
-                   p.display_name, p.gender, p.generation, p.birth_date, p.hometown,
-                   COALESCE(p.clan_id, ac.clan_id) AS clan_id, c.clan_name
-            FROM accounts a
-            LEFT JOIN account_clans ac
-              ON ac.account_id = a.id
-             AND ac.status = 'active'
-             AND (%s IS NULL OR ac.clan_id = %s)
-            LEFT JOIN people p ON p.id = COALESCE(a.person_id, ac.person_id)
-            LEFT JOIN clans c ON c.id = COALESCE(p.clan_id, ac.clan_id)
-            WHERE a.id = %s AND COALESCE(p.clan_id, ac.clan_id) = %s
-            LIMIT 1
-            """,
-            [clan_id, clan_id, account_id, clan_id],
-        )
-
-    if intent == "PARENTS":
-        return (
-            """
-            SELECT father.display_name AS father, mother.display_name AS mother
-            FROM people me
-            JOIN children ch ON ch.person_id = me.id
-            JOIN families fam ON fam.id = ch.family_id AND fam.clan_id = %s
-            LEFT JOIN people father ON father.id = fam.father_id
-            LEFT JOIN people mother ON mother.id = fam.mother_id
-            WHERE me.id = %s AND me.clan_id = %s
-            LIMIT 1
-            """,
-            [clan_id, person_id, clan_id],
-        )
-
-    if intent == "CHILDREN":
-        return (
-            """
-            SELECT child.id, child.display_name, child.gender, child.generation, child.birth_date
-            FROM people me
-            JOIN families fam ON (fam.father_id = me.id OR fam.mother_id = me.id) AND fam.clan_id = %s
-            JOIN children ch ON ch.family_id = fam.id
-            JOIN people child ON child.id = ch.person_id
-            WHERE me.id = %s AND me.clan_id = %s AND child.clan_id = %s
-            ORDER BY ch.sort_order, child.id
-            """,
-            [clan_id, person_id, clan_id, clan_id],
-        )
-
-    if intent == "SPOUSE":
-        return (
-            """
-            SELECT spouse.id, spouse.display_name, spouse.gender, spouse.generation, spouse.birth_date
-            FROM people me
-            JOIN families fam ON (fam.father_id = me.id OR fam.mother_id = me.id) AND fam.clan_id = %s
-            JOIN people spouse
-              ON (spouse.id = fam.father_id OR spouse.id = fam.mother_id)
-             AND spouse.id <> me.id
-            WHERE me.id = %s AND me.clan_id = %s AND spouse.clan_id = %s
-            LIMIT 1
-            """,
-            [clan_id, person_id, clan_id, clan_id],
-        )
-
-    if intent == "SIBLINGS":
-        return (
-            """
-            SELECT sibling.id, sibling.display_name, sibling.gender, sibling.generation, sibling.birth_date
-            FROM people me
-            JOIN children my_row ON my_row.person_id = me.id
-            JOIN children sibling_row ON sibling_row.family_id = my_row.family_id
-            JOIN people sibling ON sibling.id = sibling_row.person_id
-            WHERE me.id = %s
-              AND me.clan_id = %s
-              AND sibling.clan_id = %s
-              AND sibling.id <> me.id
-            ORDER BY sibling_row.sort_order, sibling.id
-            """,
-            [person_id, clan_id, clan_id],
-        )
-
-    if intent == "GRANDPARENTS":
-        return (
-            """
-            SELECT DISTINCT gp.display_name AS grandparent_name
-            FROM people me
-            JOIN children my_row ON my_row.person_id = me.id
-            JOIN families parent_fam ON parent_fam.id = my_row.family_id AND parent_fam.clan_id = %s
-            JOIN people parent_person ON parent_person.id IN (parent_fam.father_id, parent_fam.mother_id)
-            JOIN children parent_row ON parent_row.person_id = parent_person.id
-            JOIN families grand_fam ON grand_fam.id = parent_row.family_id AND grand_fam.clan_id = %s
-            JOIN people gp ON gp.id IN (grand_fam.father_id, grand_fam.mother_id)
-            WHERE me.id = %s AND me.clan_id = %s AND gp.clan_id = %s
-            """,
-            [clan_id, clan_id, person_id, clan_id, clan_id],
-        )
-
-    if intent in {"CLAN_INFO", "CLAN_OVERVIEW"}:
-        return (
-            """
-            SELECT id, clan_name, history, hall_address, created_at
-            FROM clans
-            WHERE id = %s
-            LIMIT 1
-            """,
-            [clan_id],
-        )
-
-    if intent == "MEMBER_SEARCH":
-        name = str(slots.get("name") or "").strip()
-        like_name = f"%{name}%"
-        return (
-            """
-            SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown, bio
-            FROM people
-            WHERE clan_id = %s
-              AND (
-                display_name LIKE %s
-                OR CONCAT_WS(' ', surname, middle_name, first_name) LIKE %s
-              )
-            ORDER BY
-              CASE WHEN display_name = %s THEN 0 ELSE 1 END,
-              generation ASC,
-              display_name ASC
-            """,
-            [clan_id, like_name, like_name, name],
-        )
-
-    if intent == "TREE":
-        return (
-            """
-            SELECT id, display_name, gender, generation, branch, birth_date, death_date, is_living, hometown
-            FROM people
-            WHERE clan_id = %s
-            ORDER BY generation ASC, branch ASC, display_name ASC
-            """,
-            [clan_id],
-        )
-
-    if intent == "MEMBER_COUNT":
-        return ("SELECT COUNT(*) AS member_count FROM people WHERE clan_id = %s", [clan_id])
-
-    if intent == "GENERATION_STATS":
-        return (
-            """
-            SELECT generation, COUNT(*) AS member_count
-            FROM people
-            WHERE clan_id = %s
-            GROUP BY generation
-            ORDER BY generation ASC
-            """,
-            [clan_id],
-        )
-
-    if intent == "BRANCH_STATS":
-        return (
-            """
-            SELECT branch, COUNT(*) AS member_count
-            FROM people
-            WHERE clan_id = %s
-            GROUP BY branch
-            ORDER BY branch ASC
-            """,
-            [clan_id],
-        )
-
-    if intent == "ANNOUNCEMENTS":
-        return (
-            """
-            SELECT ma.id, ma.title, ma.content, ma.priority, ma.created_at
-            FROM manager_announcements ma
-            JOIN accounts acc ON acc.id = ma.manager_account_id
-            LEFT JOIN people p ON p.id = acc.person_id
-            WHERE (p.clan_id = %s OR EXISTS (
-                SELECT 1 FROM account_clans ac
-                WHERE ac.account_id = acc.id AND ac.clan_id = %s AND ac.status = 'active'
-            ))
-            ORDER BY ma.created_at DESC, ma.id DESC
-            """,
-            [clan_id, clan_id],
-        )
-
-    if intent == "NOTIFICATIONS":
-        return (
-            """
-            SELECT n.id, n.type, n.title, n.message, n.is_read, n.link_url, n.created_at,
-                   n.receiver_account_id, n.receiver_person_id,
-                   related.display_name AS related_person_name
-            FROM notifications n
-            LEFT JOIN people related ON related.id = n.receiver_person_id
-            WHERE n.receiver_account_id = %s
-               OR (
-                    n.receiver_account_id IS NULL
-                    AND n.receiver_person_id = %s
-                    AND related.clan_id = %s
-                  )
-            ORDER BY n.created_at DESC, n.id DESC
-            """,
-            [account_id, person_id, clan_id],
-        )
-
-    if intent == "EVENTS":
-        if slots.get("time") == "upcoming":
-            return (
-                """
-                SELECT id, title, event_date, description
-                FROM events
-                WHERE clan_id = %s AND event_date >= CURDATE()
-                ORDER BY event_date ASC, id ASC
-                """,
-                [clan_id],
-            )
-        return (
-            """
-            SELECT id, title, event_date, description
-            FROM events
-            WHERE clan_id = %s
-            ORDER BY event_date DESC, id DESC
-            """,
-            [clan_id],
-        )
-
-    if intent == "CONTRIBUTIONS":
-        return (
-            """
-            SELECT ev.title, p.display_name, ec.amount, ec.contribution_date, ec.method
-            FROM event_contributions ec
-            JOIN events ev ON ev.id = ec.event_id
-            JOIN people p ON p.id = ec.person_id AND p.clan_id = ev.clan_id
-            WHERE ev.clan_id = %s
-            ORDER BY ec.contribution_date DESC, ec.id DESC
-            """,
-            [clan_id],
-        )
-
-    if intent == "EVENT_COSTS":
-        return (
-            """
-            SELECT ev.title, c.item_name, c.amount, c.note, c.created_at
-            FROM event_costs c
-            JOIN events ev ON ev.id = c.event_id
-            WHERE ev.clan_id = %s
-            ORDER BY c.created_at DESC, c.id DESC
-            """,
-            [clan_id],
-        )
-
-    if intent == "POSTS":
-        return (
-            """
-            SELECT post.id, post.content, post.image_url, post.created_at,
-                   COALESCE(pe.display_name, a.email) AS author_name
-            FROM posts post
-            JOIN accounts a ON a.id = post.author_id
-            LEFT JOIN people pe ON pe.id = a.person_id
-            WHERE post.clan_id = %s AND post.status = 'approved'
-            ORDER BY post.created_at DESC, post.id DESC
-            """,
-            [clan_id],
-        )
-
-    if intent == "RECENT_MEMBERS":
-        return (
-            """
-            SELECT id, display_name, generation, hometown, created_at
-            FROM people
-            WHERE clan_id = %s
-            ORDER BY created_at DESC, id DESC
-            """,
-            [clan_id],
-        )
-
-    if intent == "DECEASED_MEMBERS":
-        return (
-            """
-            SELECT id, display_name, generation, death_date, hometown
-            FROM people
-            WHERE clan_id = %s AND (is_living = 0 OR death_date IS NOT NULL)
-            ORDER BY death_date DESC, generation ASC, display_name ASC
-            """,
-            [clan_id],
-        )
-
-    if intent == "LIVING_MEMBERS":
-        return (
-            """
-            SELECT id, display_name, generation, birth_date, hometown
-            FROM people
-            WHERE clan_id = %s AND (is_living = 1 OR death_date IS NULL)
-            ORDER BY generation ASC, display_name ASC
-            """,
-            [clan_id],
-        )
-
-    if intent == "ADMIN_OVERVIEW":
-        return (
-            """
-            SELECT
-              (SELECT COUNT(*) FROM clans) AS clan_count,
-              (SELECT COUNT(*) FROM people) AS member_count,
-              (SELECT COUNT(*) FROM accounts) AS account_count,
-              (SELECT COUNT(*) FROM posts WHERE status = 'pending') AS pending_post_count
-            """,
-            [],
-        )
-
-    if intent == "ADMIN_CLANS":
-        return (
-            """
-            SELECT c.id, c.clan_name, c.hall_address, COUNT(p.id) AS member_count
-            FROM clans c
-            LEFT JOIN people p ON p.clan_id = c.id
-            GROUP BY c.id, c.clan_name, c.hall_address
-            ORDER BY c.id ASC
-            """,
-            [],
-        )
-
-    if intent == "ADMIN_ACCOUNTS":
-        return (
-            """
-            SELECT a.id, a.email, a.role_id, a.status, p.display_name, p.clan_id
-            FROM accounts a
-            LEFT JOIN people p ON p.id = a.person_id
-            ORDER BY a.created_at DESC, a.id DESC
-            """,
-            [],
-        )
-
-    if intent == "ADMIN_POSTS":
-        return (
-            """
-            SELECT post.id, post.clan_id, post.content, post.image_url, post.status, post.created_at,
-                   COALESCE(pe.display_name, a.email) AS author_name
-            FROM posts post
-            JOIN accounts a ON a.id = post.author_id
-            LEFT JOIN people pe ON pe.id = a.person_id
-            ORDER BY post.created_at DESC, post.id DESC
-            """,
-            [],
-        )
-
-    if intent == "ADMIN_EVENTS":
-        return (
-            """
-            SELECT ev.id, ev.clan_id, c.clan_name, ev.title, ev.event_date, ev.description
-            FROM events ev
-            LEFT JOIN clans c ON c.id = ev.clan_id
-            ORDER BY ev.event_date DESC, ev.id DESC
-            """,
-            [],
-        )
-
-    if intent == "ADMIN_MEMBERS":
-        return (
-            """
-            SELECT p.id, p.clan_id, c.clan_name, p.display_name, p.generation, p.branch, p.hometown, p.created_at
-            FROM people p
-            LEFT JOIN clans c ON c.id = p.clan_id
-            ORDER BY p.created_at DESC, p.id DESC
-            """,
-            [],
-        )
-
-    return None
-
-
-def json_safe(value: Any) -> Any:
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, list):
-        return [json_safe(item) for item in value]
-    if isinstance(value, dict):
-        return {key: json_safe(item) for key, item in value.items()}
-    return value
-
-
-def shape_data(intent: str, rows: list[dict[str, Any]]) -> Any:
-    safe_rows = json_safe(rows)
-    first = safe_rows[0] if safe_rows else {}
-    if intent == "PARENTS":
-        return {"father": first.get("father"), "mother": first.get("mother")}
-    if intent in {"PROFILE", "CLAN_INFO", "CLAN_OVERVIEW", "MEMBER_COUNT", "ADMIN_OVERVIEW"}:
-        return first or {}
-    return safe_rows
-
-
-def missing_data_answer(intent: str) -> str:
-    messages = {
-        "PARENTS": (
-            "Không tìm thấy dữ liệu bố mẹ của bạn trong gia phả hiện tại. "
-            "Nguyên nhân có thể là bạn chưa được gán vào bảng children hoặc gia đình chưa có father_id/mother_id."
-        ),
-        "CHILDREN": "Không tìm thấy dữ liệu con của bạn trong gia phả hiện tại.",
-        "SPOUSE": "Không tìm thấy dữ liệu vợ/chồng của bạn trong gia phả hiện tại.",
-        "SIBLINGS": "Không tìm thấy dữ liệu anh chị em của bạn trong gia phả hiện tại.",
-        "GRANDPARENTS": "Không tìm thấy dữ liệu ông bà của bạn trong gia phả hiện tại.",
-        "PROFILE": "Không tìm thấy hồ sơ thành viên liên kết với tài khoản của bạn.",
-        "CLAN_INFO": "Không tìm thấy thông tin dòng họ hiện tại.",
-    }
-    return messages.get(intent, "Không tìm thấy dữ liệu phù hợp trong phạm vi bạn được phép truy cập.")
-
-
-def deterministic_answer(intent: str, data: Any, rows: list[dict[str, Any]], prompt: str) -> str:
-    if not rows:
-        return missing_data_answer(intent)
-
-    if intent == "PARENTS":
-        father = data.get("father")
-        mother = data.get("mother")
-        if not father and not mother:
-            return missing_data_answer(intent)
-        parts = []
-        parts.append(f"Bố của bạn là {father}." if father else "Chưa có dữ liệu bố của bạn.")
-        parts.append(f"Mẹ của bạn là {mother}." if mother else "Chưa có dữ liệu mẹ của bạn.")
-        return " ".join(parts)
-
-    if intent == "PROFILE":
-        name = data.get("display_name") or "chưa có tên"
-        clan = data.get("clan_name") or "chưa gắn dòng họ"
-        generation = data.get("generation")
-        suffix = f", đời {generation}" if generation else ""
-        return f"Bạn là {name}, thuộc dòng họ {clan}{suffix}."
-
-    if intent in {"CLAN_INFO", "CLAN_OVERVIEW"}:
-        clan_name = data.get("clan_name") or "dòng họ hiện tại"
-        history = data.get("history")
-        hall = data.get("hall_address")
-        parts = [f"Thông tin {clan_name}."]
-        if history:
-            parts.append(f"Lịch sử: {history}")
-        if hall:
-            parts.append(f"Từ đường/nhà thờ: {hall}")
-        if len(parts) == 1:
-            parts.append("Hiện chưa có lịch sử hoặc địa chỉ từ đường trong dữ liệu.")
-        return " ".join(parts)
-
-    if intent == "MEMBER_COUNT":
-        return f"Dòng họ hiện có {data.get('member_count') or 0} thành viên."
-
-    if intent == "SPOUSE":
-        first = rows[0]
-        return f"Vợ/chồng của bạn là {first.get('display_name')}." if first.get("display_name") else missing_data_answer(intent)
-
-    if intent in {"CHILDREN", "SIBLINGS", "GRANDPARENTS", "MEMBER_SEARCH", "TREE", "LIVING_MEMBERS", "DECEASED_MEMBERS", "RECENT_MEMBERS"}:
-        key = "grandparent_name" if intent == "GRANDPARENTS" else "display_name"
-        names = [str(row.get(key)) for row in rows[:10] if row.get(key)]
-        if names:
-            prefix = {
-                "CHILDREN": "Các con của bạn",
-                "SIBLINGS": "Anh chị em của bạn",
-                "GRANDPARENTS": "Ông bà của bạn",
-                "MEMBER_SEARCH": "Kết quả tìm thành viên",
-                "TREE": "Một số thành viên trong gia phả",
-                "LIVING_MEMBERS": "Thành viên còn sống",
-                "DECEASED_MEMBERS": "Thành viên đã mất",
-                "RECENT_MEMBERS": "Thành viên mới",
-            }[intent]
-            more = "" if len(rows) <= 10 else f" và {len(rows) - 10} người khác"
-            return f"{prefix}: {', '.join(names)}{more}."
-
-    if intent in {"POSTS", "EVENTS", "CONTRIBUTIONS", "EVENT_COSTS", "ANNOUNCEMENTS", "NOTIFICATIONS"}:
-        labels = []
-        for row in rows[:10]:
-            if row.get("title") and row.get("display_name") and row.get("amount") is not None:
-                labels.append(f"{row.get('title')} - {row.get('display_name')}: {row.get('amount')}")
-            elif row.get("title") and row.get("item_name"):
-                labels.append(f"{row.get('title')} - {row.get('item_name')}: {row.get('amount')}")
-            elif row.get("title"):
-                labels.append(str(row.get("title")))
-            elif row.get("message"):
-                labels.append(str(row.get("message"))[:80])
-        if labels:
-            more = "" if len(rows) <= 10 else f" va {len(rows) - 10} muc khac"
-            return f"Tim thay {len(rows)} ket qua: " + "; ".join(labels) + more + "."
-
-    return simple_answer(prompt, rows)
-
-
-AI_AUDIT_DDL = """
-CREATE TABLE IF NOT EXISTS ai_audit_logs (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  account_id INT NULL,
-  person_id INT NULL,
-  clan_id INT NULL,
-  role VARCHAR(50) NULL,
-  prompt TEXT NOT NULL,
-  intent VARCHAR(80) NULL,
-  confidence DECIMAL(5,4) NULL,
-  row_count INT NOT NULL DEFAULT 0,
-  duration_ms INT NOT NULL DEFAULT 0,
-  error TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_ai_audit_account (account_id),
-  KEY idx_ai_audit_clan (clan_id),
-  KEY idx_ai_audit_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-"""
-
-
-def write_ai_audit(
-    get_pool,
-    ctx: dict[str, Any],
-    prompt: str,
-    intent: str,
-    confidence: float,
-    row_count: int,
-    duration_ms: int,
-    error: str | None = None,
-) -> None:
-    conn = None
-    cur = None
-    try:
-        conn = get_pool().get_connection()
-        cur = conn.cursor()
-        cur.execute(AI_AUDIT_DDL)
-        cur.execute(
-            """
-            INSERT INTO ai_audit_logs
-              (account_id, person_id, clan_id, role, prompt, intent, confidence, row_count, duration_ms, error)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            [
-                ctx.get("account_id"),
-                ctx.get("person_id"),
-                ctx.get("clan_id"),
-                ctx.get("role"),
-                prompt[:5000],
-                intent,
-                confidence,
-                row_count,
-                duration_ms,
-                (error or "")[:4000] or None,
-            ],
-        )
-        conn.commit()
-    except Exception:
-        # Audit must never break the user-facing AI flow.
-        pass
-    finally:
-        if cur is not None:
-            cur.close()
-        if conn is not None:
-            conn.close()
-
-
-
 
 EVENT_FORM_SYSTEM_PROMPT = """
-Bạn là AI chuyên phân tích yêu cầu tiếng Việt và sinh JSON để điền form tạo sự kiện dòng họ/gia đình.
+Bạn là AI chuyên sinh JSON cho form tạo sự kiện và công việc chuẩn bị của Gia Phả Việt.
 
-Bạn không phải chatbot hỏi đáp.
+Bạn không trả lời hội thoại tự do.
 Không giải thích.
 Không markdown.
+Không dùng ```json.
 Chỉ trả JSON hợp lệ.
-
-Nhiệm vụ:
-- Đọc prompt của người dùng.
-- Tự suy luận chủ đề sự kiện, địa điểm, thời gian, người tham gia, mục đích.
-- Sinh dữ liệu event cho bảng events.
-- Sinh danh sách công việc thực tế cho bảng manager_tasks.
-- Công việc phải phù hợp với chính chủ đề người dùng đưa ra, không dùng một template chung.
+Không thêm field ngoài schema.
 
 Schema output bắt buộc:
 {
@@ -1710,28 +47,55 @@ Schema output bắt buộc:
   ]
 }
 
-Quy tắc:
-1. Chỉ hỗ trợ yêu cầu liên quan sự kiện, nghi lễ, sinh hoạt, họp mặt, cưới hỏi, mừng thọ, cúng giỗ, tu sửa, hoạt động gia đình hoặc dòng họ.
-2. Nếu không liên quan, trả status = "unsupported" và manager_tasks = [].
-3. mode = "event_create": tạo event mới, manager_tasks[*].event_id = null.
-4. mode = "task_create": dựa vào current_event và existing_tasks để tạo thêm công việc mới, manager_tasks[*].event_id = current_event.id.
-5. clan_id lấy từ input clan_id hoặc current_event.clan_id.
-6. member_id luôn null.
-7. task.status luôn là "assigned".
-8. Không tạo task trùng hoặc gần giống existing_tasks. existing_tasks có thể gồm công việc đã giao và công việc AI đã đề xuất nhưng chưa giao. Không được tạo lại các việc có cùng mục đích, cùng đầu việc, hoặc chỉ đổi cách diễn đạt.
-9. Tên sự kiện phải ngắn gọn, tự nhiên, không copy nguyên prompt.
-10. Mô tả phải tóm tắt đúng yêu cầu người dùng.
-11. event_date dùng YYYY-MM-DD.
-12. Nếu prompt chỉ có tháng, ví dụ "tháng 8", chọn ngày 01 của tháng đó theo năm trong today.
-13. Nếu prompt nói "cuối năm" nhưng không có ngày/tháng, chọn 31/12 theo năm trong today.
-14. Nếu prompt có cả "cuối năm" và tháng cụ thể, ưu tiên tháng cụ thể.
-15. Nếu có event_date thì mỗi task phải có due_date.
-16. due_date phải trước hoặc đúng event_date, trừ task tổng kết/hậu cần sau sự kiện có thể bằng event_date.
-17. Nếu input có requested_task_count thì phải sinh đúng requested_task_count task, không ít hơn và không nhiều hơn. Nếu không có requested_task_count thì sinh 5 đến 10 task tùy độ phức tạp.
-18. Task phải cụ thể, giao được cho một người thực hiện.
-19. Nếu prompt có địa điểm như "nhà bác Quân", "nhà thờ tổ", "từ đường", phải đưa địa điểm đó vào description của task liên quan.
-20. Nếu chủ đề lạ, hãy tự suy luận các việc cần làm theo logic tổ chức sự kiện: chuẩn bị, thông báo, hậu cần, điều phối, ghi nhận chi phí, tổng kết.
+Quy tắc bắt buộc:
+1. Chỉ hỗ trợ yêu cầu liên quan sự kiện, nghi lễ, sinh hoạt, họp mặt, cưới hỏi, mừng thọ, giỗ chạp, tảo mộ, khuyến học, gây quỹ, họp họ, tu sửa, hoạt động gia đình hoặc dòng họ.
+2. Nếu không liên quan, trả status = "unsupported", event rỗng như schema và manager_tasks = [].
+3. mode phải lấy theo input: event_create hoặc task_create.
+4. mode = event_create: tạo dữ liệu nháp event mới, manager_tasks[*].event_id luôn null.
+5. mode = task_create: dựa vào current_event và existing_tasks để tạo thêm công việc mới, manager_tasks[*].event_id = current_event.id.
+6. clan_id lấy từ input clan_id hoặc current_event.clan_id.
+7. member_id luôn null.
+8. task.status luôn là "assigned".
+9. Không tạo task trùng hoặc gần giống existing_tasks.
+10. Task phải cụ thể, giao được cho một người thực hiện, bám sát chủ đề người dùng nhập.
+11. Không dùng một template chung cho mọi sự kiện.
+12. event.title tối đa 80 ký tự.
+13. task.title tối đa 120 ký tự.
+14. task.description tối đa 500 ký tự.
+15. event_date và due_date chỉ được là YYYY-MM-DD hoặc null.
+16. Nếu không chắc ngày thì để null, không bịa ngày cụ thể.
+17. Nếu prompt chỉ có tháng, ví dụ "tháng 8", chọn ngày 01 của tháng đó theo năm trong today.
+18. Nếu prompt có "đầu tháng N", chọn ngày 01; "giữa tháng N", chọn ngày 15; "cuối tháng N", chọn ngày cuối tháng.
+19. Nếu prompt nói "cuối năm" nhưng không có tháng cụ thể, chọn 31/12 theo năm trong today.
+20. Nếu có cả "cuối năm" và tháng cụ thể, ưu tiên tháng cụ thể.
+21. Nếu có event_date thì mỗi task nên có due_date trước hoặc đúng event_date.
+22. Nếu input có requested_task_count thì sinh đúng requested_task_count task, không ít hơn và không nhiều hơn.
 """
+
+VALID_MODES = {"event_create", "task_create"}
+VALID_STATUSES = {"success", "unsupported"}
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def strip_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFD", text or "")
+    without_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return without_marks.replace("đ", "d").replace("Đ", "D")
+
+
+def normalize_vietnamese(text: str) -> str:
+    normalized = strip_accents(text).lower().strip()
+    return re.sub(r"\s+", " ", normalized)
+
+
 def strip_json_block(text: str) -> str:
     raw = str(text or "").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
@@ -1743,52 +107,65 @@ def strip_json_block(text: str) -> str:
     return raw
 
 
+def valid_iso_date(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not ISO_DATE_RE.match(text):
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        return None
+
+
+def base_year_from_today(today: str | None = None) -> int:
+    parsed_today = valid_iso_date(today)
+    if parsed_today:
+        return datetime.strptime(parsed_today, "%Y-%m-%d").year
+    return datetime.now().year
+
+
 def parse_iso_date_from_text(text: str, today: str | None = None) -> str | None:
     raw = str(text or "")
     normalized = normalize_vietnamese(raw)
+    base_year = base_year_from_today(today)
 
-    base_year = datetime.now().year
-    if today:
-        try:
-            base_year = datetime.strptime(str(today)[:10], "%Y-%m-%d").year
-        except Exception:
-            base_year = datetime.now().year
-
-    # dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy
     m = re.search(r"\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b", raw)
     if m:
-        d, mo, y = m.groups()
+        day, month, year = m.groups()
         try:
-            return date(int(y), int(mo), int(d)).isoformat()
+            return date(int(year), int(month), int(day)).isoformat()
         except ValueError:
             return None
 
-    # yyyy-mm-dd
     m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", raw)
     if m:
-        y, mo, d = m.groups()
+        year, month, day = m.groups()
         try:
-            return date(int(y), int(mo), int(d)).isoformat()
+            return date(int(year), int(month), int(day)).isoformat()
         except ValueError:
             return None
 
-    # dd/mm không có năm -> lấy năm hiện tại
     m = re.search(r"\b(\d{1,2})[\/\-.](\d{1,2})\b", raw)
     if m:
-        d, mo = m.groups()
+        day, month = m.groups()
         try:
-            return date(base_year, int(mo), int(d)).isoformat()
+            return date(base_year, int(month), int(day)).isoformat()
         except ValueError:
             return None
 
-    # "tháng 8", "thang 8" -> chọn ngày 01 của tháng đó
-    m = re.search(r"\bthang\s+(\d{1,2})\b", normalized)
+    m = re.search(r"\b(dau|giua|cuoi)?\s*thang\s+(\d{1,2})\b", normalized)
     if m:
-        month = int(m.group(1))
+        position, month_text = m.groups()
+        month = int(month_text)
         if 1 <= month <= 12:
-            return date(base_year, month, 1).isoformat()
+            if position == "giua":
+                day = 15
+            elif position == "cuoi":
+                day = calendar.monthrange(base_year, month)[1]
+            else:
+                day = 1
+            return date(base_year, month, day).isoformat()
 
-    # "cuối năm" nếu không có tháng cụ thể
     if "cuoi nam" in normalized:
         return date(base_year, 12, 31).isoformat()
 
@@ -1796,42 +173,57 @@ def parse_iso_date_from_text(text: str, today: str | None = None) -> str | None:
 
 
 def date_add_days(iso_date: str | None, days: int) -> str | None:
-    if not iso_date:
+    parsed = valid_iso_date(iso_date)
+    if not parsed:
         return None
-    try:
-        value = datetime.strptime(iso_date, "%Y-%m-%d").date()
-        from datetime import timedelta
-        return (value + timedelta(days=days)).isoformat()
-    except Exception:
+    value = datetime.strptime(parsed, "%Y-%m-%d").date()
+    return (value + timedelta(days=days)).isoformat()
+
+
+def clamp_due_date(due_date: str | None, event_date: str | None) -> str | None:
+    due = valid_iso_date(due_date)
+    event = valid_iso_date(event_date)
+    if not due:
         return None
+    if event and due > event:
+        return event
+    return due
+
 
 def fill_missing_task_due_dates(tasks: list[dict[str, Any]], event_date: str | None) -> list[dict[str, Any]]:
-    if not event_date:
+    event = valid_iso_date(event_date)
+    if not event:
         return tasks
 
-    offsets = [-7, -5, -3, -2, -1, 0, 0, 0]
+    offsets = [-7, -5, -3, -1, 0]
+    fixed: list[dict[str, Any]] = []
+    total = len(tasks or [])
 
-    fixed = []
     for index, task in enumerate(tasks or []):
         if not isinstance(task, dict):
             continue
 
         item = dict(task)
-        if not item.get("due_date"):
-            offset = offsets[index] if index < len(offsets) else 0
-            item["due_date"] = date_add_days(event_date, offset)
-
+        if not valid_iso_date(item.get("due_date")):
+            if total > 1 and index == total - 1:
+                offset = 0
+            else:
+                offset = offsets[index] if index < len(offsets) else 0
+            item["due_date"] = date_add_days(event, offset)
+        else:
+            item["due_date"] = clamp_due_date(item.get("due_date"), event)
         fixed.append(item)
 
     return fixed
+
 
 def make_task(event_id: int | None, title: str, description: str, due_date: str | None) -> dict[str, Any]:
     return {
         "event_id": event_id,
         "member_id": None,
-        "title": title,
-        "description": description,
-        "due_date": due_date,
+        "title": title[:120].strip(),
+        "description": description[:500].strip(),
+        "due_date": valid_iso_date(due_date),
         "status": "assigned",
     }
 
@@ -1847,115 +239,142 @@ def normalize_task_title_for_compare(task: dict[str, Any]) -> str:
     return normalize_vietnamese(str(task.get("title") or "")).strip()
 
 
-def enforce_requested_task_count(
-    tasks: list[dict[str, Any]],
-    body: dict[str, Any],
-    mode: str,
-    event: dict[str, Any],
-) -> list[dict[str, Any]]:
-    target = requested_task_count_from_body(body)
-    if not target:
-        return tasks
+TASK_PURPOSE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "notify": ("thong bao", "gui thong bao", "bao lich", "moi tham du", "thu moi", "thiep moi"),
+    "guest_list": ("danh sach tham du", "xac nhan so luong", "chot danh sach", "khach moi", "nguoi tham gia"),
+    "venue": ("dia diem", "don dep", "sap xep ban ghe", "kiem tra am thanh", "nha tho", "tu duong"),
+    "offering": ("mam cung", "le vat", "huong hoa", "trai cay", "do le"),
+    "food": ("mam com", "dat tiec", "nuoc uong", "thuc don", "do an"),
+    "finance": ("chi phi", "dong gop", "du toan", "quy", "thu chi", "kinh phi"),
+    "media": ("chup anh", "quay video", "luu niem", "tu lieu", "hinh anh"),
+    "coordination": ("phan cong", "dieu phoi", "nguoi phu trach", "don tiep"),
+    "summary": ("tong ket", "bao cao", "rut kinh nghiem", "cong khai"),
+}
 
-    event_id = None
+
+def task_purpose(task: dict[str, Any]) -> str | None:
+    text = normalize_vietnamese(
+        f"{task.get('title') or ''} {task.get('description') or ''}"
+    )
+    for purpose, keywords in TASK_PURPOSE_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            return purpose
+    return None
+
+
+def task_duplicate_key(task: dict[str, Any]) -> str:
+    purpose = task_purpose(task)
+    if purpose:
+        return f"purpose:{purpose}"
+    return f"title:{normalize_task_title_for_compare(task)}"
+
+
+def append_unique_task(
+    target: list[dict[str, Any]],
+    task: dict[str, Any],
+    seen_keys: set[str],
+) -> bool:
+    if not isinstance(task, dict) or not str(task.get("title") or "").strip():
+        return False
+
+    key = task_duplicate_key(task)
+    if key in seen_keys:
+        return False
+
+    target.append(task)
+    seen_keys.add(key)
+    return True
+
+
+def is_supported_event_prompt(body: dict[str, Any]) -> bool:
+    mode = "task_create" if body.get("mode") == "task_create" else "event_create"
     if mode == "task_create":
         current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
-        event_id = parse_int(current_event.get("id"))
+        return bool(parse_int(current_event.get("id")))
 
-    event_title = str(event.get("title") or "Sự kiện dòng họ").strip()
-    event_date = event.get("event_date") or parse_iso_date_from_text(str(body.get("prompt") or ""), str(body.get("today") or ""))
-    event_description = str(event.get("description") or body.get("prompt") or "").strip()
-
-    cleaned: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    for task in tasks or []:
-        if not isinstance(task, dict):
-            continue
-        title_key = normalize_task_title_for_compare(task)
-        if not title_key or title_key in seen:
-            continue
-        item = dict(task)
-        item["event_id"] = None if mode == "event_create" else event_id
-        item["member_id"] = None
-        item["status"] = "assigned"
-        cleaned.append(item)
-        seen.add(title_key)
-        if len(cleaned) >= target:
-            return cleaned[:target]
-
-    existing_tasks = body.get("existing_tasks") if isinstance(body.get("existing_tasks"), list) else []
-    fallback_candidates = default_tasks_for_event(
-        event_title,
-        event_date,
-        None if mode == "event_create" else event_id,
-        existing_tasks + cleaned,
-        event_description,
+    text = normalize_vietnamese(str(body.get("prompt") or ""))
+    keywords = (
+        "su kien",
+        "nghi le",
+        "sinh hoat",
+        "gia dinh",
+        "dong ho",
+        "gio",
+        "gio to",
+        "gio dau",
+        "gio man tang",
+        "gap mat",
+        "hop mat",
+        "hop ho",
+        "cuoi nam",
+        "cuoi hoi",
+        "le cuoi",
+        "dam cuoi",
+        "dam hoi",
+        "mung tho",
+        "tao mo",
+        "thanh minh",
+        "khuyen hoc",
+        "trao thuong",
+        "gay quy",
+        "quyen gop",
+        "bau ban dai dien",
+        "tu sua",
+        "sua chua",
+        "nha tho",
+        "tu duong",
+        "day thang",
+        "thoi noi",
     )
-
-    for candidate in fallback_candidates:
-        title_key = normalize_task_title_for_compare(candidate)
-        if not title_key or title_key in seen:
-            continue
-        cleaned.append(candidate)
-        seen.add(title_key)
-        if len(cleaned) >= target:
-            return cleaned[:target]
-
-    while len(cleaned) < target:
-        index = len(cleaned) + 1
-        due_date = date_add_days(event_date, -max(target - index, 0)) or event_date
-        cleaned.append(
-            make_task(
-                None if mode == "event_create" else event_id,
-                f"Chuẩn bị bổ sung {index}",
-                "Rà soát và hoàn thiện một đầu việc cần thiết để sự kiện diễn ra suôn sẻ.",
-                due_date,
-            )
-        )
-
-    return cleaned[:target]
+    return any(keyword in text for keyword in keywords)
 
 
 def default_event_title(prompt: str) -> str:
     p = normalize_vietnamese(prompt)
 
+    if "gio dau" in p:
+        return "Giỗ đầu"
+    if "gio man tang" in p:
+        return "Giỗ mãn tang"
     if "gio to" in p:
         return "Giỗ tổ"
-
+    if "tao mo" in p or "thanh minh" in p:
+        return "Tảo mộ Thanh minh"
+    if "khuyen hoc" in p or "trao thuong" in p:
+        return "Khuyến học dòng họ"
+    if "gay quy" in p or "quyen gop" in p:
+        return "Gây quỹ dòng họ"
+    if "bau ban dai dien" in p or "hop ho" in p:
+        return "Họp họ"
+    if "cuoi hoi" in p or "le cuoi" in p or "dam cuoi" in p or "dam hoi" in p:
+        return "Lễ cưới hỏi"
+    if "day thang" in p:
+        return "Lễ đầy tháng"
+    if "thoi noi" in p:
+        return "Lễ thôi nôi"
     if "gap mat cuoi nam" in p or ("gap mat" in p and "cuoi nam" in p):
         return "Gặp mặt cuối năm"
-
-    if "gap mat" in p or "hop mat" in p or "hop ho" in p or "tu hop" in p:
+    if "gap mat" in p or "hop mat" in p or "tu hop" in p:
         return "Gặp mặt dòng họ"
-
     if "mung tho" in p:
         return "Mừng thọ"
-
     if "le to tien" in p or "cung to tien" in p:
         return "Lễ tưởng nhớ tổ tiên"
-
     if "tu sua" in p or "sua chua" in p or "nha tho ho" in p or "tu duong" in p or "nha tho to" in p:
         return "Tu sửa nhà thờ tổ"
 
     cleaned = str(prompt or "").strip()
-
-    # bỏ các từ lệnh đầu câu
     cleaned = re.sub(
         r"^(tạo|tao|thêm|them|lập|lap)\s+(một\s+|mot\s+)?(sự kiện|su kien)\s*",
         "",
         cleaned,
         flags=re.IGNORECASE,
     )
-
-    # cắt phần ngày/tháng khỏi title
     cleaned = re.sub(r",?\s*ngày\s+\d{1,2}[\/\-.]\d{1,2}([\/\-.]\d{4})?", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r",?\s*tháng\s+\d{1,2}", "", cleaned, flags=re.IGNORECASE)
-
-    # chỉ lấy mệnh đề đầu làm title
+    cleaned = re.sub(r",?\s*(đầu|giữa|cuối)?\s*tháng\s+\d{1,2}", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.split(r",|\.|\n", cleaned)[0].strip()
 
-    return cleaned[:80].strip() or "Sự kiện dòng họ"
+    return (cleaned[:80].strip() or "Sự kiện dòng họ")
 
 
 def default_tasks_for_event(
@@ -1966,39 +385,97 @@ def default_tasks_for_event(
     description: str = "",
 ) -> list[dict[str, Any]]:
     text = normalize_vietnamese(f"{title} {description}")
-    existing = {
-        normalize_vietnamese(str(item.get("title") or ""))
-        for item in (existing_tasks or [])
-        if isinstance(item, dict)
-    }
-
+    before_14 = date_add_days(event_date, -14)
+    before_10 = date_add_days(event_date, -10)
     before_7 = date_add_days(event_date, -7)
+    before_5 = date_add_days(event_date, -5)
     before_3 = date_add_days(event_date, -3)
     before_1 = date_add_days(event_date, -1)
-    same_day = event_date
+    same_day = valid_iso_date(event_date)
 
-    if "gio to" in text:
+    if "gio dau" in text or "gio man tang" in text:
+        rows = [
+            ("Thông báo ngày giỗ cho con cháu", "Gửi thông báo thời gian, địa điểm và nội dung ngày giỗ cho các nhánh gia đình.", before_7),
+            ("Chuẩn bị lễ vật và mâm cúng", "Chuẩn bị hương hoa, trái cây, lễ vật và mâm cúng phù hợp với nghi lễ.", before_3),
+            ("Dọn dẹp khu vực thờ cúng", "Vệ sinh bàn thờ, khu vực tiếp khách và lối đi trước ngày giỗ.", before_1),
+            ("Phân công tiếp khách", "Bố trí người đón tiếp, hướng dẫn chỗ ngồi và hỗ trợ người lớn tuổi.", same_day),
+            ("Chuẩn bị mâm cơm thân mật", "Dự trù số mâm, thực đơn, nước uống và người phụ trách hậu cần.", before_1),
+            ("Ghi nhận chi phí và đóng góp", "Tổng hợp khoản đóng góp, khoản chi và lưu lại để báo cáo sau ngày giỗ.", same_day),
+        ]
+    elif "gio to" in text:
         rows = [
             ("Lập danh sách con cháu tham dự", "Tổng hợp số lượng thành viên tham dự để chuẩn bị lễ và tiếp đón.", before_7),
             ("Thông báo thời gian giỗ tổ", "Gửi thông báo ngày giờ, địa điểm và nội dung buổi giỗ tổ cho các nhánh trong dòng họ.", before_7),
-            ("Chuẩn bị mâm cúng tổ tiên", "Chuẩn bị lễ vật, hương hoa, trái cây, xôi chè và các vật phẩm thờ cúng.", before_1),
+            ("Chuẩn bị mâm cúng tổ tiên", "Chuẩn bị lễ vật, hương hoa, trái cây, xôi chè và các vật phẩm thờ cúng.", before_3),
             ("Dọn dẹp nhà thờ tổ", "Vệ sinh bàn thờ, sân nhà thờ tổ, khu vực tiếp khách và lối đi.", before_1),
             ("Phân công đón tiếp con cháu", "Sắp xếp người đón khách, hướng dẫn chỗ ngồi và hỗ trợ người lớn tuổi.", same_day),
             ("Ghi nhận đóng góp và chi phí", "Tổng hợp khoản đóng góp, khoản chi và lưu lại để báo cáo sau sự kiện.", same_day),
         ]
-
+    elif "cuoi hoi" in text or "le cuoi" in text or "dam cuoi" in text or "dam hoi" in text:
+        rows = [
+            ("Chốt danh sách khách mời hai bên", "Tổng hợp khách mời của hai gia đình để chuẩn bị thiệp, bàn tiệc và đón tiếp.", before_14),
+            ("Chuẩn bị thiệp mời hoặc thông báo", "Soạn nội dung, kiểm tra thông tin ngày giờ địa điểm và gửi đến khách mời.", before_10),
+            ("Sắp xếp địa điểm tổ chức", "Kiểm tra không gian, bàn ghế, âm thanh, khu vực đón khách và lối đi.", before_7),
+            ("Chuẩn bị lễ vật cưới hỏi", "Lập danh sách lễ vật cần có và phân công người chuẩn bị đúng nghi thức.", before_5),
+            ("Phân công đón tiếp khách", "Bố trí người đón khách, hướng dẫn chỗ ngồi và hỗ trợ hai bên gia đình.", same_day),
+            ("Ghi nhận chi phí tổ chức", "Theo dõi các khoản chi chính, khoản phát sinh và tổng hợp sau lễ.", same_day),
+        ]
+    elif "tao mo" in text or "thanh minh" in text:
+        rows = [
+            ("Chốt danh sách người tham gia tảo mộ", "Xác nhận số lượng người tham dự để chuẩn bị phương tiện và dụng cụ.", before_7),
+            ("Thông báo thời gian tập trung", "Gửi lịch tập trung, địa điểm gặp và lịch trình di chuyển cho các thành viên.", before_5),
+            ("Chuẩn bị hương hoa và dụng cụ vệ sinh mộ", "Chuẩn bị hương, hoa, khăn lau, chổi, bao rác và dụng cụ cần thiết.", before_3),
+            ("Phân công nhóm dọn dẹp từng khu mộ", "Chia người phụ trách từng khu để việc vệ sinh diễn ra gọn và đầy đủ.", before_1),
+            ("Chuẩn bị phương tiện di chuyển", "Sắp xếp xe, điểm đón và người phụ trách điều phối di chuyển.", before_1),
+            ("Tổng kết chi phí và lưu hình ảnh", "Ghi lại chi phí, chụp ảnh tư liệu và lưu vào hồ sơ dòng họ.", same_day),
+        ]
+    elif "khuyen hoc" in text or "trao thuong" in text:
+        rows = [
+            ("Lập danh sách học sinh sinh viên được khen thưởng", "Tổng hợp người được đề xuất khen thưởng theo từng nhánh gia đình.", before_14),
+            ("Xác minh thành tích", "Kiểm tra giấy khen, điểm số hoặc thông tin thành tích trước khi công bố.", before_10),
+            ("Chuẩn bị phần thưởng và giấy khen", "Dự trù ngân sách, mua phần thưởng và chuẩn bị giấy khen.", before_5),
+            ("Thông báo lịch trao thưởng", "Gửi thông báo thời gian, địa điểm và danh sách người được khen thưởng.", before_3),
+            ("Phân công người dẫn chương trình", "Chuẩn bị kịch bản ngắn, thứ tự trao thưởng và người điều phối.", before_1),
+            ("Chụp ảnh và lưu tư liệu", "Ghi lại hình ảnh trao thưởng để lưu trong thư viện dòng họ.", same_day),
+        ]
+    elif "gay quy" in text or "quyen gop" in text:
+        rows = [
+            ("Lập mục tiêu gây quỹ", "Xác định mục đích, số tiền cần vận động và thời hạn đóng góp.", before_14),
+            ("Thông báo kế hoạch đóng góp", "Gửi kế hoạch gây quỹ, cách chuyển khoản hoặc nộp trực tiếp cho thành viên.", before_10),
+            ("Tạo danh sách người phụ trách thu quỹ", "Phân công người tiếp nhận, kiểm tra và cập nhật đóng góp.", before_7),
+            ("Theo dõi khoản đóng góp", "Cập nhật từng khoản đóng góp, người đóng và ghi chú liên quan.", before_3),
+            ("Công khai thu chi", "Tổng hợp số tiền nhận được, khoản chi và công khai minh bạch cho dòng họ.", same_day),
+            ("Tổng kết kết quả gây quỹ", "Báo cáo kết quả so với mục tiêu và đề xuất bước tiếp theo.", same_day),
+        ]
+    elif "hop ho" in text or "bau ban dai dien" in text:
+        rows = [
+            ("Chuẩn bị nội dung cuộc họp", "Lập danh sách vấn đề cần trao đổi, tài liệu kèm theo và thứ tự thảo luận.", before_7),
+            ("Thông báo thời gian và địa điểm họp", "Gửi lịch họp, địa điểm và nội dung chính đến các thành viên liên quan.", before_7),
+            ("Lập danh sách người tham dự", "Xác nhận đại diện các nhánh tham gia để chuẩn bị chỗ ngồi và tài liệu.", before_5),
+            ("Chuẩn bị biên bản họp", "Chuẩn bị mẫu biên bản, danh sách ký tên và người ghi chép.", before_3),
+            ("Điều phối phần thảo luận bầu chọn", "Sắp xếp thứ tự phát biểu, phương án biểu quyết và người kiểm phiếu nếu có.", same_day),
+            ("Tổng hợp kết quả cuộc họp", "Hoàn thiện biên bản, kết luận và gửi lại cho các thành viên sau họp.", same_day),
+        ]
+    elif "day thang" in text or "thoi noi" in text:
+        rows = [
+            ("Chốt danh sách khách mời", "Xác nhận số lượng khách gia đình và họ hàng tham dự để chuẩn bị chu đáo.", before_7),
+            ("Chuẩn bị lễ cúng", "Chuẩn bị lễ vật, mâm cúng, hương hoa và đồ dùng cần thiết.", before_3),
+            ("Chuẩn bị địa điểm tổ chức", "Sắp xếp không gian, bàn ghế, khu vực đón khách và khu vực làm lễ.", before_1),
+            ("Đặt tiệc hoặc chuẩn bị đồ ăn", "Dự trù thực đơn, số phần ăn, nước uống và người phụ trách hậu cần.", before_1),
+            ("Phân công chụp ảnh lưu niệm", "Chọn người ghi lại hình ảnh buổi lễ để lưu làm kỷ niệm.", same_day),
+            ("Tổng kết chi phí", "Ghi nhận các khoản chi và khoản hỗ trợ sau buổi lễ.", same_day),
+        ]
     elif "gap mat" in text or "hop mat" in text or "tu hop" in text or "cuoi nam" in text:
         rows = [
             ("Chốt danh sách con cháu tham dự", "Liên hệ các nhánh gia đình để xác nhận số lượng người tham gia buổi gặp mặt.", before_7),
-            ("Thông báo lịch gặp mặt cuối năm", "Gửi thông báo về thời gian, địa điểm nhà thờ tổ và nội dung chương trình.", before_7),
-            ("Chuẩn bị nhà thờ tổ", "Dọn dẹp, sắp xếp bàn ghế, kiểm tra điện nước và khu vực sinh hoạt chung.", before_3),
+            ("Thông báo lịch gặp mặt cuối năm", "Gửi thông báo về thời gian, địa điểm và nội dung chương trình.", before_7),
+            ("Chuẩn bị nhà thờ tổ hoặc địa điểm gặp mặt", "Dọn dẹp, sắp xếp bàn ghế, kiểm tra điện nước và khu vực sinh hoạt chung.", before_3),
             ("Xây dựng chương trình gặp mặt", "Lên thứ tự hoạt động: chào hỏi, báo cáo dòng họ, dùng bữa, chụp ảnh lưu niệm.", before_3),
             ("Chuẩn bị mâm cơm thân mật", "Dự trù thực đơn, số mâm, nước uống và phân công người phụ trách hậu cần.", before_1),
             ("Phân công đón tiếp và hướng dẫn", "Bố trí người đón con cháu, hướng dẫn để xe, chỗ ngồi và hỗ trợ người lớn tuổi.", same_day),
             ("Ghi hình và chụp ảnh lưu niệm", "Phân công người chụp ảnh, quay video và lưu lại tư liệu cho dòng họ.", same_day),
             ("Tổng kết đóng góp sau sự kiện", "Ghi nhận đóng góp, chi phí tổ chức và báo cáo lại cho manager.", same_day),
         ]
-
     elif "mung tho" in text:
         rows = [
             ("Xác nhận danh sách khách mừng thọ", "Tổng hợp con cháu, họ hàng và khách mời tham dự lễ mừng thọ.", before_7),
@@ -2006,8 +483,8 @@ def default_tasks_for_event(
             ("Trang trí khu vực tổ chức", "Sắp xếp phông nền, bàn ghế, hoa và khu vực chụp ảnh.", before_1),
             ("Chuẩn bị tiệc mừng thọ", "Dự trù số mâm, thực đơn, nước uống và người phụ trách hậu cần.", before_1),
             ("Chụp ảnh và lưu niệm", "Ghi lại hình ảnh buổi lễ để lưu trữ trong dòng họ.", same_day),
+            ("Ghi nhận chi phí mừng thọ", "Tổng hợp khoản chi và khoản đóng góp liên quan đến buổi lễ.", same_day),
         ]
-
     elif "tu sua" in text or "sua chua" in text or "nha tho to" in text or "nha tho ho" in text or "tu duong" in text:
         rows = [
             ("Khảo sát hiện trạng nhà thờ tổ", "Kiểm tra mái, tường, sân, bàn thờ, hệ thống điện nước và các hạng mục cần sửa.", before_7),
@@ -2017,7 +494,6 @@ def default_tasks_for_event(
             ("Thông báo kế hoạch đóng góp", "Gửi kế hoạch tu sửa và kêu gọi đóng góp minh bạch từ các thành viên.", before_1),
             ("Theo dõi nghiệm thu công việc", "Kiểm tra tiến độ, chất lượng thi công và xác nhận hoàn thành từng hạng mục.", same_day),
         ]
-
     else:
         rows = [
             ("Làm rõ nội dung sự kiện", "Xác định mục đích, thời gian, địa điểm và số lượng người dự kiến tham gia.", before_7),
@@ -2028,70 +504,23 @@ def default_tasks_for_event(
             ("Tổng kết sau sự kiện", "Ghi nhận kết quả, chi phí, đóng góp và các việc cần rút kinh nghiệm.", same_day),
         ]
 
-    return [
-        make_task(event_id, task_title, desc, due)
-        for task_title, desc, due in rows
-        if normalize_vietnamese(task_title) not in existing
-    ]
+    seen_keys = {
+        task_duplicate_key(item)
+        for item in (existing_tasks or [])
+        if isinstance(item, dict) and normalize_task_title_for_compare(item)
+    }
+    tasks: list[dict[str, Any]] = []
+    for task_title, desc, due in rows:
+        append_unique_task(tasks, make_task(event_id, task_title, desc, due), seen_keys)
+    return tasks
+
 
 def fallback_event_form(body: dict[str, Any]) -> dict[str, Any]:
     mode = "task_create" if body.get("mode") == "task_create" else "event_create"
     prompt = str(body.get("prompt") or "").strip()
     today = str(body.get("today") or "")
-    event_date = parse_iso_date_from_text(prompt, today)
 
-    current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
-
-    if mode == "task_create":
-        event_id = parse_int(current_event.get("id"))
-        if not event_id:
-            return {
-                "status": "unsupported",
-                "mode": mode,
-                "event": {"title": "", "event_date": None, "description": "", "clan_id": None},
-                "manager_tasks": [],
-            }
-
-        title = str(current_event.get("title") or "Sự kiện dòng họ").strip()
-        event_date = parse_iso_date_from_text(str(current_event.get("event_date") or ""), today)
-        description = str(current_event.get("description") or prompt).strip()
-
-        return {
-            "status": "success",
-            "mode": mode,
-            "event": {
-                "title": title,
-                "event_date": event_date,
-                "description": description,
-                "clan_id": current_event.get("clan_id") or body.get("clan_id"),
-            },
-            "manager_tasks": [
-                make_task(event_id, "Làm rõ công việc cần bổ sung", "Xác nhận đầu việc cần thêm cho sự kiện hiện tại.", date_add_days(event_date, -3)),
-                make_task(event_id, "Phân công người phụ trách", "Chọn người thực hiện và thống nhất thời hạn hoàn thành.", date_add_days(event_date, -2)),
-                make_task(event_id, "Kiểm tra hoàn tất trước sự kiện", "Rà soát công việc đã giao trước ngày diễn ra sự kiện.", date_add_days(event_date, -1)),
-            ],
-        }
-
-    return {
-        "status": "success",
-        "mode": mode,
-        "event": {
-            "title": default_event_title(prompt),
-            "event_date": event_date,
-            "description": prompt,
-            "clan_id": body.get("clan_id"),
-        },
-        "manager_tasks": [
-            make_task(None, "Làm rõ kế hoạch sự kiện", "Xác nhận nội dung, thời gian, địa điểm và số lượng người tham gia.", date_add_days(event_date, -7)),
-            make_task(None, "Phân công người phụ trách", "Chọn người phụ trách chính và các đầu việc cần chuẩn bị.", date_add_days(event_date, -5)),
-            make_task(None, "Chuẩn bị trước ngày diễn ra", "Chuẩn bị các vật dụng, địa điểm và thông báo cần thiết.", date_add_days(event_date, -1)),
-        ],
-    }
-
-def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
-    mode = "task_create" if result.get("mode") == "task_create" or body.get("mode") == "task_create" else "event_create"
-
-    if result.get("status") == "unsupported":
+    if not is_supported_event_prompt(body):
         return {
             "status": "unsupported",
             "mode": mode,
@@ -2099,51 +528,201 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
             "manager_tasks": [],
         }
 
-    event = result.get("event") if isinstance(result.get("event"), dict) else {}
-    tasks = (
-        result.get("manager_tasks")
-        if isinstance(result.get("manager_tasks"), list)
-        else result.get("tasks")
-        if isinstance(result.get("tasks"), list)
-        else []
-    )
+    current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
+    existing_tasks = body.get("existing_tasks") if isinstance(body.get("existing_tasks"), list) else []
+
+    if mode == "task_create":
+        event_id = parse_int(current_event.get("id"))
+        event_date = valid_iso_date(current_event.get("event_date")) or parse_iso_date_from_text(
+            str(current_event.get("event_date") or ""), today
+        )
+        title = str(current_event.get("title") or "Sự kiện dòng họ").strip()[:80]
+        description = str(current_event.get("description") or prompt).strip()
+        event = {
+            "title": title,
+            "event_date": event_date,
+            "description": description,
+            "clan_id": current_event.get("clan_id") or body.get("clan_id"),
+        }
+        tasks = default_tasks_for_event(title, event_date, event_id, existing_tasks, f"{description} {prompt}")
+    else:
+        event_date = parse_iso_date_from_text(prompt, today)
+        title = default_event_title(prompt)
+        event = {
+            "title": title,
+            "event_date": event_date,
+            "description": prompt,
+            "clan_id": body.get("clan_id"),
+        }
+        tasks = default_tasks_for_event(title, event_date, None, existing_tasks, prompt)
+
+    tasks = fill_missing_task_due_dates(tasks, event.get("event_date"))
+    tasks = enforce_requested_task_count(tasks, body, mode, event)
+
+    return {
+        "status": "success",
+        "mode": mode,
+        "event": event,
+        "manager_tasks": tasks,
+    }
+
+
+def normalize_mode(value: Any, body: dict[str, Any]) -> str:
+    if value in VALID_MODES:
+        return str(value)
+    body_mode = body.get("mode")
+    return str(body_mode) if body_mode in VALID_MODES else "event_create"
+
+
+def unsupported_result(mode: str) -> dict[str, Any]:
+    return {
+        "status": "unsupported",
+        "mode": mode,
+        "event": {"title": "", "event_date": None, "description": "", "clan_id": None},
+        "manager_tasks": [],
+    }
+
+
+def normalize_task(
+    task: dict[str, Any],
+    mode: str,
+    event_id: int | None,
+    event_date: str | None,
+) -> dict[str, Any] | None:
+    title = str(task.get("title") or "").strip()[:120]
+    if not title:
+        return None
+
+    return {
+        "event_id": None if mode == "event_create" else event_id,
+        "member_id": None,
+        "title": title,
+        "description": str(task.get("description") or "").strip()[:500],
+        "due_date": clamp_due_date(task.get("due_date"), event_date),
+        "status": "assigned",
+    }
+
+
+def enforce_requested_task_count(
+    tasks: list[dict[str, Any]],
+    body: dict[str, Any],
+    mode: str,
+    event: dict[str, Any],
+) -> list[dict[str, Any]]:
+    target = requested_task_count_from_body(body)
 
     current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
     event_id = parse_int(current_event.get("id")) if mode == "task_create" else None
+    event_title = str(event.get("title") or current_event.get("title") or "Sự kiện dòng họ").strip()
+    event_date = valid_iso_date(event.get("event_date")) or valid_iso_date(current_event.get("event_date"))
+    event_description = str(
+        event.get("description") or current_event.get("description") or body.get("prompt") or ""
+    ).strip()
+
+    existing_tasks = body.get("existing_tasks") if isinstance(body.get("existing_tasks"), list) else []
+    seen_keys = {
+        task_duplicate_key(item)
+        for item in existing_tasks
+        if isinstance(item, dict) and normalize_task_title_for_compare(item)
+    }
+
+    cleaned: list[dict[str, Any]] = []
+    for task in tasks or []:
+        if append_unique_task(cleaned, task, seen_keys) and target and len(cleaned) >= target:
+            break
+
+    if target is None:
+        return fill_missing_task_due_dates(cleaned, event_date)
+
+    if len(cleaned) < target:
+        fallback_candidates = default_tasks_for_event(
+            event_title,
+            event_date,
+            None if mode == "event_create" else event_id,
+            existing_tasks + cleaned,
+            event_description,
+        )
+        for candidate in fallback_candidates:
+            if append_unique_task(cleaned, candidate, seen_keys) and len(cleaned) >= target:
+                break
+
+    while len(cleaned) < target:
+        index = len(cleaned) + 1
+        due_date = date_add_days(event_date, -max(target - index, 0)) or event_date
+        append_unique_task(
+            cleaned,
+            make_task(
+                None if mode == "event_create" else event_id,
+                f"Chuẩn bị bổ sung {index}",
+                "Rà soát và hoàn thiện một đầu việc cần thiết để sự kiện diễn ra suôn sẻ.",
+                due_date,
+            ),
+            seen_keys,
+        )
+        if len(cleaned) < index:
+            cleaned.append(
+                make_task(
+                    None if mode == "event_create" else event_id,
+                    f"Công việc bổ sung {index}",
+                    "Hoàn thiện đầu việc bổ sung theo yêu cầu của người quản lý.",
+                    due_date,
+                )
+            )
+
+    return fill_missing_task_due_dates(cleaned[:target], event_date)
+
+
+def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    mode = normalize_mode(result.get("mode"), body)
+    fallback = fallback_event_form(body)
+
+    status = str(result.get("status") or "").strip()
+    if status not in VALID_STATUSES:
+        return unsupported_result(mode)
+    if status == "unsupported":
+        return unsupported_result(mode)
+
+    current_event = body.get("current_event") if isinstance(body.get("current_event"), dict) else {}
+    event_id = parse_int(current_event.get("id")) if mode == "task_create" else None
+    if mode == "task_create" and not event_id:
+        return unsupported_result(mode)
+
+    event = result.get("event") if isinstance(result.get("event"), dict) else {}
+    fallback_event = fallback.get("event") if isinstance(fallback.get("event"), dict) else {}
+
+    event_date = (
+        valid_iso_date(event.get("event_date"))
+        or valid_iso_date(current_event.get("event_date"))
+        or parse_iso_date_from_text(str(body.get("prompt") or ""), str(body.get("today") or ""))
+        or fallback_event.get("event_date")
+    )
+    title = str(event.get("title") or current_event.get("title") or fallback_event.get("title") or "").strip()[:80]
+    description = str(
+        event.get("description") or current_event.get("description") or fallback_event.get("description") or ""
+    ).strip()
 
     normalized_event = {
-        "title": str(event.get("title") or current_event.get("title") or "").strip(),
-        "event_date": event.get("event_date")
-        or parse_iso_date_from_text(str(current_event.get("event_date") or ""))
-        or parse_iso_date_from_text(str(body.get("prompt") or ""), str(body.get("today") or "")),
-        "description": str(event.get("description") or current_event.get("description") or "").strip(),
+        "title": title,
+        "event_date": valid_iso_date(event_date),
+        "description": description,
         "clan_id": event.get("clan_id") or current_event.get("clan_id") or body.get("clan_id"),
     }
 
-    normalized_tasks = [
-        {
-            "event_id": None if mode == "event_create" else event_id,
-            "member_id": None,
-            "title": str(task.get("title") or "").strip(),
-            "description": str(task.get("description") or "").strip(),
-            "due_date": task.get("due_date") or None,
-            "status": "assigned",
-        }
-        for task in tasks
-        if isinstance(task, dict) and str(task.get("title") or "").strip()
-    ]
+    raw_tasks = result.get("manager_tasks") if isinstance(result.get("manager_tasks"), list) else []
+    normalized_tasks: list[dict[str, Any]] = []
+    for task in raw_tasks:
+        if not isinstance(task, dict):
+            continue
+        normalized = normalize_task(task, mode, event_id, normalized_event.get("event_date"))
+        if normalized:
+            normalized_tasks.append(normalized)
 
-    normalized_tasks = fill_missing_task_due_dates(
-        normalized_tasks,
-        normalized_event.get("event_date"),
-    )
+    normalized_tasks = fill_missing_task_due_dates(normalized_tasks, normalized_event.get("event_date"))
 
-    normalized_tasks = enforce_requested_task_count(
-        normalized_tasks,
-        body,
-        mode,
-        normalized_event,
-    )
+    if not normalized_tasks and fallback.get("status") == "success":
+        normalized_tasks = fallback.get("manager_tasks") or []
+
+    normalized_tasks = enforce_requested_task_count(normalized_tasks, body, mode, normalized_event)
 
     return {
         "status": "success",
@@ -2152,18 +731,17 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
         "manager_tasks": normalized_tasks,
     }
 
+
 def create_app() -> Flask:
     app = Flask(__name__)
-
     groq_key = os.getenv("GROQ_API_KEY")
-    groq_client = Groq(api_key=groq_key) if groq_key else None
-    db_pool = None
-
-    def get_pool():
-        nonlocal db_pool
-        if db_pool is None:
-            db_pool = get_db()
-        return db_pool
+    groq_disabled = str(os.getenv("AI_DISABLE_GROQ", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        groq_timeout = float(os.getenv("GROQ_TIMEOUT_SECONDS", "8"))
+    except ValueError:
+        groq_timeout = 8.0
+    groq_client = Groq(api_key=groq_key, timeout=groq_timeout) if groq_key and not groq_disabled else None
+    debug_enabled = str(os.getenv("DEBUG", "false")).strip().lower() in {"1", "true", "yes", "on"}
 
     @app.get("/health")
     def health():
@@ -2171,11 +749,9 @@ def create_app() -> Flask:
             {
                 "success": True,
                 "service": "ai-server",
-                "groq_configured": bool(groq_key),
-                "db_configured": bool(os.getenv("DB_HOST") and os.getenv("DB_USER") and os.getenv("DB_NAME")),
+                "groq_configured": bool(groq_key and not groq_disabled),
             }
         )
-
 
     @app.post("/event-form/generate")
     def event_form_generate():
@@ -2183,20 +759,10 @@ def create_app() -> Flask:
         prompt = str(body.get("prompt") or "").strip()
 
         if not prompt:
-            return jsonify({
-                "success": False,
-                "message": "Prompt không được để trống"
-            }), 400
+            return jsonify({"success": False, "message": "Prompt không được để trống"}), 400
 
         fallback = fallback_event_form(body)
-        fallback["manager_tasks"] = enforce_requested_task_count(
-            fallback.get("manager_tasks") or [],
-            body,
-            fallback.get("mode") or ("task_create" if body.get("mode") == "task_create" else "event_create"),
-            fallback.get("event") or {},
-        )
-
-        if groq_client is None:
+        if groq_client is None or fallback.get("status") == "unsupported":
             return jsonify({"success": True, **fallback})
 
         user_payload = {
@@ -2213,63 +779,24 @@ def create_app() -> Flask:
             res = groq_client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": EVENT_FORM_SYSTEM_PROMPT,
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(user_payload, ensure_ascii=False),
-                    },
+                    {"role": "system", "content": EVENT_FORM_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
                 ],
-                temperature=0.6,
+                temperature=0.2,
                 max_tokens=1800,
             )
-
             content = res.choices[0].message.content or "{}"
-            app.logger.info("EVENT_FORM_AI_RAW=%s", content)
+            if debug_enabled:
+                app.logger.debug("EVENT_FORM_AI_RAW=%s", content[:4000])
 
             parsed = json.loads(strip_json_block(content))
             normalized = normalize_event_form_result(parsed, body)
-
-            if normalized.get("status") == "success":
-                normalized_event = normalized.setdefault("event", {})
-
-                if not normalized_event.get("title"):
-                    normalized_event["title"] = fallback["event"]["title"]
-
-                if not normalized_event.get("event_date"):
-                    normalized_event["event_date"] = fallback["event"]["event_date"]
-
-                if not normalized_event.get("description"):
-                    normalized_event["description"] = fallback["event"]["description"]
-
-                normalized["manager_tasks"] = fill_missing_task_due_dates(
-                    normalized.get("manager_tasks") or [],
-                    normalized_event.get("event_date"),
-                )
-
-                # Chỉ dùng fallback task nếu AI không sinh được task nào.
-                if not normalized["manager_tasks"]:
-                    normalized["manager_tasks"] = fallback["manager_tasks"]
-
-                normalized["manager_tasks"] = enforce_requested_task_count(
-                    normalized.get("manager_tasks") or [],
-                    body,
-                    normalized.get("mode") or "event_create",
-                    normalized.get("event") or {},
-                )
-
-                return jsonify({"success": True, **normalized})
-
+            return jsonify({"success": True, **normalized})
+        except Exception as exc:
+            if debug_enabled:
+                app.logger.exception("AI event form generation failed: %s", exc)
             return jsonify({"success": True, **fallback})
 
-        except Exception:
-            app.logger.exception("AI event form generation failed")
-            return jsonify({"success": True, **fallback})
-        
-    
-   
     return app
 
 
