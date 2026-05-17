@@ -1510,6 +1510,7 @@
         "subtitle": "Select \"Admin Accounts\" or a clan to open the account list inside.",
         "searchPlaceholder": "Search clans or admin accounts...",
         "adminFolder": "Admin Accounts",
+        "adminSubtitle": "System administrator accounts",
         "allFolder": "All Clans",
         "noneFolder": "Unassigned Clans",
         "countLabel": "{{count}} accounts",
