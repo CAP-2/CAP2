@@ -379,7 +379,7 @@ export default function MembersPage() {
                 <button type="button" className="action-btn-circle" onClick={backToClanFolders} title={t("admin.accounts.actions.back")}>
                     <span className="material-symbols-outlined">arrow_back</span>
                 </button>
-                <h2 style={{ margin: 0, color: '#fff6dc', fontSize: '1.4rem' }}>{selectedClanName}</h2>
+                <h2 style={{ margin: 0, color: '#4a160f', fontSize: '1.4rem' }}>{selectedClanName}</h2>
             </div>
             
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -515,8 +515,8 @@ export default function MembersPage() {
                 <div className="warning-icon-wrapper">
                     <span className="material-symbols-outlined">warning</span>
                 </div>
-                <h3 style={{ color: '#fff', fontSize: '1.4rem', margin: '0 0 10px' }}>{t("admin.accounts.modal.deleteTitle") || "Xác nhận xóa"}</h3>
-                <p style={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                <h3 style={{ color: '#4a160f', fontSize: '1.4rem', margin: '0 0 10px' }}>{t("admin.accounts.modal.deleteTitle") || "Xác nhận xóa"}</h3>
+                <p style={{ color: '#7d5b43', lineHeight: 1.5 }}>
                     {t("admin.accounts.messages.deleteConfirm", { email: confirmDelete.account?.email })}
                 </p>
                 <div className="confirm-actions">
