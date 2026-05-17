@@ -136,18 +136,20 @@
     margin: 0;
 }
 
-/* --- 🌟 SIÊU PHẨM: CONTAINER PREMIUM DARK GLASS --- */
+/* --- 🌟 SIÊU PHẨM: CONTAINER PREMIUM CHAMPAGNE GOLDEN GLASS (BRIGHTER) --- */
 .posts-list-container.premium-dark-glass {
-    background: linear-gradient(145deg, rgba(35, 15, 15, 0.8), rgba(15, 8, 8, 0.92));
-    border: 1px solid rgba(214, 178, 100, 0.35);
+    background: linear-gradient(145deg, rgba(255, 250, 244, 0.16), rgba(255, 244, 230, 0.08));
+    border: 1px solid rgba(214, 178, 100, 0.58);
     border-radius: 24px;
     padding: 2rem;
-    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45),
+        inset 0 1px 1px rgba(255, 255, 255, 0.3),
+        0 0 35px rgba(214, 178, 100, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     position: relative;
     overflow: visible;
-    /* Cho phép popup nhảy ra ngoài bảng */
+    transition: all 0.3s ease;
 }
 
 /* Trang trí hiệu ứng hào quang nhẹ góc card */
@@ -362,8 +364,10 @@
     display: inline-flex;
     align-items: center;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    color: #ffffff !important; /* Khóa màu trắng tuyệt đối */
-    text-shadow: none !important; /* Loại bỏ bóng màu làm nhòe chữ */
+    color: #ffffff !important;
+    /* Khóa màu trắng tuyệt đối */
+    text-shadow: none !important;
+    /* Loại bỏ bóng màu làm nhòe chữ */
 }
 
 /* Trạng thái rực rỡ và dễ phân biệt */

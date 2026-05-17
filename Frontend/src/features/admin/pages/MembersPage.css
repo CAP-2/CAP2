@@ -172,15 +172,19 @@
     font-size: 1.15rem;
 }
 
-/* Premium Dark Glass Table Container */
+/* Premium Champagne Golden Glass Container (Brighter & Consistently Styled) */
 .premium-dark-glass {
-    background: linear-gradient(145deg, rgba(35, 15, 15, 0.8), rgba(15, 8, 8, 0.92));
-    border: 1px solid rgba(214, 178, 100, 0.35);
+    background: linear-gradient(145deg, rgba(255, 250, 244, 0.16), rgba(255, 244, 230, 0.08));
+    border: 1px solid rgba(214, 178, 100, 0.58);
     border-radius: 24px;
     padding: 1.5rem;
-    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(24px);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45), 
+                inset 0 1px 1px rgba(255, 255, 255, 0.3), 
+                0 0 35px rgba(214, 178, 100, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     overflow: auto;
+    transition: all 0.3s ease;
 }
 
 /* Premium Table */
