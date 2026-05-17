@@ -724,13 +724,13 @@
       "upcoming": "Sắp diễn ra"
     },
     "admin": {
-      "title": "Quản trị hệ thống",
+      "title": "Sự kiện & Công việc toàn hệ thống",
       "description": "Theo dõi và quản lý công việc, sự kiện của tất cả dòng tộc.",
       "clanTasks": "Công việc dòng họ {{clanName}}",
       "eventScopeNotice": "Quyền quản trị toàn hệ thống."
     },
     "manager": {
-      "title": "Quản lý dòng họ",
+      "title": "Sự kiện & Công việc dòng họ",
       "eventScopeNotice": "Điều phối công việc và sự kiện trong dòng tộc."
     },
     "actions": {

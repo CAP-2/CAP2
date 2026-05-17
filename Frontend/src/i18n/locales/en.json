@@ -725,13 +725,13 @@
       "upcoming": "Upcoming"
     },
     "admin": {
-      "title": "System Administration",
+      "title": "System Events & Tasks",
       "description": "Monitor and manage tasks and events for all clans.",
       "clanTasks": "Clan Tasks: {{clanName}}",
       "eventScopeNotice": "System-wide administrative access."
     },
     "manager": {
-      "title": "Clan Manager",
+      "title": "Clan Events & Tasks",
       "eventScopeNotice": "Coordinate tasks and events within the clan."
     },
     "actions": {

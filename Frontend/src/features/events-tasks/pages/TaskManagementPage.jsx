@@ -1030,11 +1030,6 @@ const openEvent = (eventId) => {
     return (
       <div className="task-page-admin">
         <header className="page-header">
-          <div className="breadcrumb-nav">
-            <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
-            <span className="separator">/</span>
-            <span className="active">{t("eventsTasks.admin.title")}</span>
-          </div>
           <h1>{t("eventsTasks.admin.title")}</h1>
         </header>
 
@@ -1081,11 +1076,6 @@ const openEvent = (eventId) => {
     return (
       <div className="task-page-admin">
         <header className="page-header">
-          <div className="breadcrumb-nav">
-            <Link to="/dashboard">{t("member.dashboard.title")}</Link>
-            <span className="separator">/</span>
-            <span className="active">{t("eventsTasks.member.title")}</span>
-          </div>
           <h1>{t("eventsTasks.member.title")}</h1>
         </header>
         {message && <div className="task-alert is-success">{message}</div>}
@@ -1163,14 +1153,10 @@ const openEvent = (eventId) => {
       <div className="task-page-admin">
         <header className="page-header">
             <div className="breadcrumb-nav">
-                <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
-                <span className="separator">/</span>
-                <Link to="/dashboard/tasks">{t("eventsTasks.admin.title")}</Link>
-                {clanId && (
-                    <>
-                        <span className="separator">/</span>
-                        <Link to={`/dashboard/tasks/clan/${clanId}`}>{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</Link>
-                    </>
+                {clanId ? (
+                    <Link to={`/dashboard/tasks/clan/${clanId}`}>{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</Link>
+                ) : (
+                    <Link to="/dashboard/tasks">{t("eventsTasks.admin.title")}</Link>
                 )}
                 <span className="separator">/</span>
                 <span className="active">{selectedEvent.title}</span>
@@ -1464,17 +1450,13 @@ const openEvent = (eventId) => {
   return (
     <div className="task-page-admin">
       <header className="page-header">
-        <div className="breadcrumb-nav">
-          <Link to="/dashboard">{t("admin.posts.breadcrumbs.overview")}</Link>
-          <span className="separator">/</span>
-          <Link to="/dashboard/tasks" className={!clanId ? "active" : ""}>{t("eventsTasks.admin.title")}</Link>
-          {clanId && (
-            <>
-              <span className="separator">/</span>
-              <span className="active">{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</span>
-            </>
-          )}
-        </div>
+        {isAdmin && (
+          <div className="breadcrumb-nav">
+            <Link to="/dashboard/tasks">{t("eventsTasks.admin.title")}</Link>
+            <span className="separator">/</span>
+            <span className="active">{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</span>
+          </div>
+        )}
         <h1>{isAdmin ? t("eventsTasks.admin.clanTasks", { clanName: clan?.clan_name || "" }) : t("eventsTasks.manager.title")}</h1>
       </header>
 
