@@ -305,27 +305,27 @@ def normalize_task_title_for_compare(task: dict[str, Any]) -> str:
     return normalize_vietnamese(str(task.get("title") or "")).strip()
 
 
-TASK_PURPOSE_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "notify": ("thong bao", "gui thong bao", "bao lich", "moi tham du", "thu moi", "thiep moi"),
-    "guest_list": ("danh sach tham du", "xac nhan so luong", "chot danh sach", "khach moi", "nguoi tham gia"),
-    "venue": ("dia diem", "don dep", "sap xep ban ghe", "kiem tra am thanh", "nha tho", "tu duong"),
-    "offering": ("mam cung", "le vat", "huong hoa", "trai cay", "do le"),
-    "food": ("mam com", "dat tiec", "nuoc uong", "thuc don", "do an"),
-    "finance": ("chi phi", "dong gop", "du toan", "quy", "thu chi", "kinh phi"),
-    "media": ("chup anh", "quay video", "luu niem", "tu lieu", "hinh anh"),
-    "coordination": ("phan cong", "dieu phoi", "nguoi phu trach", "don tiep"),
-    "summary": ("tong ket", "bao cao", "rut kinh nghiem", "cong khai"),
-}
+# TASK_PURPOSE_KEYWORDS: dict[str, tuple[str, ...]] = {
+#     "notify": ("thong bao", "gui thong bao", "bao lich", "moi tham du", "thu moi", "thiep moi"),
+#     "guest_list": ("danh sach tham du", "xac nhan so luong", "chot danh sach", "khach moi", "nguoi tham gia"),
+#     "venue": ("dia diem", "don dep", "sap xep ban ghe", "kiem tra am thanh", "nha tho", "tu duong"),
+#     "offering": ("mam cung", "le vat", "huong hoa", "trai cay", "do le"),
+#     "food": ("mam com", "dat tiec", "nuoc uong", "thuc don", "do an"),
+#     "finance": ("chi phi", "dong gop", "du toan", "quy", "thu chi", "kinh phi"),
+#     "media": ("chup anh", "quay video", "luu niem", "tu lieu", "hinh anh"),
+#     "coordination": ("phan cong", "dieu phoi", "nguoi phu trach", "don tiep"),
+#     "summary": ("tong ket", "bao cao", "rut kinh nghiem", "cong khai"),
+# }
 
 
-def task_purpose(task: dict[str, Any]) -> str | None:
-    text = normalize_vietnamese(
-        f"{task.get('title') or ''} {task.get('description') or ''}"
-    )
-    for purpose, keywords in TASK_PURPOSE_KEYWORDS.items():
-        if any(keyword in text for keyword in keywords):
-            return purpose
-    return None
+# def task_purpose(task: dict[str, Any]) -> str | None:
+#     text = normalize_vietnamese(
+#         f"{task.get('title') or ''} {task.get('description') or ''}"
+#     )
+#     for purpose, keywords in TASK_PURPOSE_KEYWORDS.items():
+#         if any(keyword in text for keyword in keywords):
+#             return purpose
+#     return None
 
 
 def task_duplicate_key(task: dict[str, Any]) -> str:
