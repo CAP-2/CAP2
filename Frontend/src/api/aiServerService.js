@@ -7,6 +7,14 @@ export const generateEventFormAI = async (payload) => {
   });
 };
 
+export const extractGenealogyAI = async (payload) => {
+  return apiRequest("/api/ai/genealogy/extract", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
 export default {
   generateEventFormAI,
+  extractGenealogyAI,
 };

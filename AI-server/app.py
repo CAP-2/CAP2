@@ -75,9 +75,148 @@ Quy tắc bắt buộc:
 22. Nếu input có requested_task_count thì sinh đúng requested_task_count task, không ít hơn và không nhiều hơn.
 """
 
+GENEALOGY_DATA_SYSTEM_PROMPT = """
+Bạn là một AI Genealogy Data Assistant cho hệ thống quản lý gia phả.
+
+Nhiệm vụ của bạn là đọc mô tả gia đình/dòng họ do người dùng nhập bằng văn bản hoặc transcript được chuyển từ giọng nói sang văn bản, sau đó trích xuất thành dữ liệu có cấu trúc gồm:
+1. Danh sách thành viên gia đình.
+2. Quan hệ giữa các thành viên.
+3. Thông tin chưa chắc chắn hoặc còn thiếu.
+4. Cảnh báo dữ liệu có thể bất thường.
+
+QUY TẮC QUAN TRỌNG:
+- Chỉ trả về JSON hợp lệ.
+- Không dùng markdown.
+- Không giải thích ngoài JSON.
+- Không tự bịa thông tin không có trong dữ liệu đầu vào.
+- Nếu thiếu thông tin, để null hoặc đưa vào uncertain_items.
+- Không tự động kết luận quan hệ nếu mô tả mơ hồ.
+- Chỉ trích xuất quan hệ được nêu rõ hoặc có thể suy ra trực tiếp.
+- Ưu tiên các quan hệ: parent_child, spouse, sibling.
+- Nếu có nhiều người trùng tên, phải tạo temporary_id khác nhau và thêm warning có khả năng trùng người.
+- Nếu năm sinh, năm mất, giới tính, vai vế không rõ thì để null.
+- Kết quả AI chỉ là dữ liệu nháp, cần người dùng hoặc manager kiểm tra trước khi lưu vào hệ thống.
+
+QUY TẮC KHI DỮ LIỆU ĐẦU VÀO LÀ TRANSCRIPT TỪ GIỌNG NÓI:
+- Transcript có thể bị sai tên người, sai năm, sai quan hệ hoặc thiếu dấu câu.
+- Không tự sửa tên người theo suy đoán.
+- Không tự chuẩn hóa tên nếu không chắc chắn.
+- Nếu câu bị đứt đoạn, thiếu chủ ngữ hoặc thiếu đối tượng quan hệ, đưa vào uncertain_items.
+- Nếu một cụm từ có thể là tên người hoặc vai vế, đánh dấu uncertain_items.
+- Nếu số năm nghe có vẻ bất thường, vẫn ghi lại nếu rõ ràng nhưng thêm warning.
+- Nếu transcript có nhiều cách hiểu, chọn cách an toàn nhất và đánh dấu needs_human_review = true.
+
+ĐỊNH DẠNG JSON BẮT BUỘC:
+{
+  "members": [
+    {
+      "temporary_id": "p1",
+      "full_name": null,
+      "gender": null,
+      "birth_year": null,
+      "death_year": null,
+      "birth_date": null,
+      "death_date": null,
+      "phone": null,
+      "address": null,
+      "notes": null,
+      "confidence": 0.0
+    }
+  ],
+  "relationships": [
+    {
+      "type": "parent_child",
+      "parent": "p1",
+      "child": "p2",
+      "confidence": 0.0,
+      "evidence": null
+    },
+    {
+      "type": "spouse",
+      "from": "p1",
+      "to": "p2",
+      "confidence": 0.0,
+      "evidence": null
+    },
+    {
+      "type": "sibling",
+      "from": "p1",
+      "to": "p2",
+      "confidence": 0.0,
+      "evidence": null
+    }
+  ],
+  "uncertain_items": [
+    {
+      "item_type": "member_or_relationship",
+      "reference_id": "p1",
+      "field": null,
+      "reason": null,
+      "suggested_action": null
+    }
+  ],
+  "warnings": [
+    {
+      "warning_type": null,
+      "message": null,
+      "related_ids": []
+    }
+  ],
+  "summary": {
+    "total_members_detected": 0,
+    "total_relationships_detected": 0,
+    "needs_human_review": true
+  }
+}
+
+CÁCH XÁC ĐỊNH GIỚI TÍNH:
+- Nếu có từ như ông, cha, bố, anh, chú, bác trai, cậu, chồng thì gender = "male".
+- Nếu có từ như bà, mẹ, chị, cô, dì, vợ thì gender = "female".
+- Nếu không rõ thì gender = null.
+- Nếu chỉ dựa vào tên mà không có vai vế hoặc từ khóa giới tính thì gender = null.
+
+CÁCH XỬ LÝ THÀNH VIÊN:
+- Mỗi người được nhắc đến rõ ràng phải có một member riêng.
+- temporary_id đặt theo thứ tự xuất hiện: p1, p2, p3...
+- Nếu cùng tên nhưng không chắc là cùng một người, tạo temporary_id khác nhau.
+- Nếu tên không đầy đủ, vẫn ghi phần tên có trong dữ liệu và thêm uncertain_items.
+- Nếu có năm sinh/năm mất rõ ràng thì ghi vào birth_year/death_year.
+- Nếu có ngày sinh/ngày mất đầy đủ thì ghi vào birth_date/death_date theo định dạng YYYY-MM-DD nếu xác định được.
+- Nếu ngày/tháng/năm không đủ hoặc không chắc, để null và đưa vào uncertain_items.
+
+CÁCH XỬ LÝ QUAN HỆ:
+- "A là cha/bố/mẹ của B" -> tạo parent_child.
+- "A và B có con là C" -> tạo A parent_child C và B parent_child C.
+- "A là vợ/chồng của B" -> tạo spouse.
+- "A và B kết hôn" -> tạo spouse.
+- "A, B, C là con của X và Y" -> tạo X/Y parent_child với A, B, C nếu X/Y được nêu rõ là cha mẹ.
+- "A có các con B, C, D" -> tạo A parent_child với B, C, D.
+- "Hai người có ba con..." -> chỉ suy ra nếu hai người được nhắc gần nhất là một cặp vợ chồng hoặc cha mẹ rõ ràng.
+- "Anh ruột/em ruột/chị ruột" -> tạo sibling nếu quan hệ ruột được nói rõ.
+- Với các quan hệ chú, bác, cô, dì, cậu, mợ, thím, cháu: không tự suy ra parent_child hoặc sibling nếu thiếu ngữ cảnh; đưa vào uncertain_items.
+- Với quan hệ ông/bà/cháu: không tự tạo parent_child trực tiếp nếu thiếu cha/mẹ trung gian; đưa vào uncertain_items.
+
+CÁCH XỬ LÝ CẢNH BÁO:
+- Nếu con có năm sinh nhỏ hơn hoặc bằng năm sinh cha/mẹ dưới 15 năm, thêm warning.
+- Nếu death_year nhỏ hơn birth_year, thêm warning.
+- Nếu một người tự là cha/mẹ/vợ/chồng của chính mình, thêm warning.
+- Nếu có khả năng trùng người do cùng tên hoặc cùng năm sinh, thêm warning.
+- Nếu quan hệ có thể tạo vòng lặp gia phả, thêm warning.
+- Nếu dữ liệu từ transcript giọng nói có dấu hiệu sai tên, sai năm hoặc thiếu ngữ cảnh, thêm warning.
+
+CÁCH ĐÁNH GIÁ CONFIDENCE:
+- 0.9 - 1.0: thông tin được nói rõ trực tiếp.
+- 0.7 - 0.89: thông tin có thể suy ra trực tiếp từ câu rõ ràng.
+- 0.4 - 0.69: thông tin có dấu hiệu đúng nhưng còn thiếu ngữ cảnh.
+- 0.0 - 0.39: thông tin mơ hồ, không đủ chắc chắn.
+"""
+
 VALID_MODES = {"event_create", "task_create"}
 VALID_STATUSES = {"success", "unsupported"}
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+VALID_GENEALOGY_INPUT_SOURCES = {"text", "voice_transcript"}
+VALID_RELATIONSHIP_TYPES = {"parent_child", "spouse", "sibling"}
+VALID_GENDERS = {"male", "female"}
 
 
 def parse_int(value: Any) -> int | None:
@@ -823,6 +962,274 @@ def normalize_event_form_result(result: dict[str, Any], body: dict[str, Any]) ->
     }
 
 
+def empty_genealogy_extract_result() -> dict[str, Any]:
+    return {
+        "members": [],
+        "relationships": [],
+        "uncertain_items": [],
+        "warnings": [],
+        "summary": {
+            "total_members_detected": 0,
+            "total_relationships_detected": 0,
+            "needs_human_review": True,
+        },
+    }
+
+
+def nullable_text(value: Any, max_length: int | None = None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:max_length] if max_length else text
+
+
+def clamp_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(min(max(confidence, 0.0), 1.0), 2)
+
+
+def parse_year(value: Any) -> int | None:
+    try:
+        year = int(value)
+    except (TypeError, ValueError):
+        return None
+    return year if 1 <= year <= 9999 else None
+
+
+def normalize_genealogy_member(member: dict[str, Any], temporary_id: str) -> dict[str, Any]:
+    gender = nullable_text(member.get("gender"))
+    return {
+        "temporary_id": temporary_id,
+        "full_name": nullable_text(member.get("full_name"), 255),
+        "gender": gender if gender in VALID_GENDERS else None,
+        "birth_year": parse_year(member.get("birth_year")),
+        "death_year": parse_year(member.get("death_year")),
+        "birth_date": valid_iso_date(member.get("birth_date")),
+        "death_date": valid_iso_date(member.get("death_date")),
+        "phone": nullable_text(member.get("phone"), 50),
+        "address": nullable_text(member.get("address"), 500),
+        "notes": nullable_text(member.get("notes"), 1000),
+        "confidence": clamp_confidence(member.get("confidence")),
+    }
+
+
+def normalize_related_ids(value: Any, id_map: dict[str, str]) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    related_ids: list[str] = []
+    for raw_id in value:
+        mapped = id_map.get(str(raw_id).strip())
+        if mapped and mapped not in related_ids:
+            related_ids.append(mapped)
+    return related_ids
+
+
+def append_genealogy_warning(
+    warnings: list[dict[str, Any]],
+    warning_type: str,
+    message: str,
+    related_ids: list[str] | None = None,
+) -> None:
+    warning = {
+        "warning_type": warning_type,
+        "message": message,
+        "related_ids": related_ids or [],
+    }
+    if warning not in warnings:
+        warnings.append(warning)
+
+
+def has_parent_cycle(relationships: list[dict[str, Any]]) -> bool:
+    graph: dict[str, list[str]] = {}
+    for relation in relationships:
+        if relation.get("type") != "parent_child":
+            continue
+        parent = relation.get("parent")
+        child = relation.get("child")
+        if parent and child:
+            graph.setdefault(str(parent), []).append(str(child))
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for child in graph.get(node, []):
+            if visit(child):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in graph)
+
+
+def normalize_genealogy_extract_result(result: dict[str, Any], input_source: str) -> dict[str, Any]:
+    output = empty_genealogy_extract_result()
+
+    raw_members = result.get("members") if isinstance(result.get("members"), list) else []
+    id_map: dict[str, str] = {}
+    members: list[dict[str, Any]] = []
+
+    for index, raw_member in enumerate(raw_members, start=1):
+        if not isinstance(raw_member, dict):
+            continue
+        temporary_id = f"p{len(members) + 1}"
+        original_id = nullable_text(raw_member.get("temporary_id")) or f"member_{index}"
+        id_map[original_id] = temporary_id
+        id_map[temporary_id] = temporary_id
+        members.append(normalize_genealogy_member(raw_member, temporary_id))
+
+    relationships: list[dict[str, Any]] = []
+    raw_relationships = result.get("relationships") if isinstance(result.get("relationships"), list) else []
+    for raw_relation in raw_relationships:
+        if not isinstance(raw_relation, dict):
+            continue
+        relation_type = nullable_text(raw_relation.get("type"))
+        if relation_type not in VALID_RELATIONSHIP_TYPES:
+            continue
+
+        base = {
+            "type": relation_type,
+            "confidence": clamp_confidence(raw_relation.get("confidence")),
+            "evidence": nullable_text(raw_relation.get("evidence"), 1000),
+        }
+
+        if relation_type == "parent_child":
+            parent = id_map.get(str(raw_relation.get("parent") or "").strip())
+            child = id_map.get(str(raw_relation.get("child") or "").strip())
+            if parent and child:
+                relationships.append({"type": relation_type, "parent": parent, "child": child, **base})
+        else:
+            from_id = id_map.get(str(raw_relation.get("from") or "").strip())
+            to_id = id_map.get(str(raw_relation.get("to") or "").strip())
+            if from_id and to_id:
+                relationships.append({"type": relation_type, "from": from_id, "to": to_id, **base})
+
+    raw_uncertain_items = result.get("uncertain_items") if isinstance(result.get("uncertain_items"), list) else []
+    uncertain_items: list[dict[str, Any]] = []
+    for item in raw_uncertain_items:
+        if not isinstance(item, dict):
+            continue
+        reference_id = nullable_text(item.get("reference_id"))
+        uncertain_items.append(
+            {
+                "item_type": nullable_text(item.get("item_type"), 100) or "member_or_relationship",
+                "reference_id": id_map.get(reference_id, reference_id) if reference_id else None,
+                "field": nullable_text(item.get("field"), 100),
+                "reason": nullable_text(item.get("reason"), 1000),
+                "suggested_action": nullable_text(item.get("suggested_action"), 1000),
+            }
+        )
+
+    raw_warnings = result.get("warnings") if isinstance(result.get("warnings"), list) else []
+    warnings: list[dict[str, Any]] = []
+    for warning in raw_warnings:
+        if not isinstance(warning, dict):
+            continue
+        warnings.append(
+            {
+                "warning_type": nullable_text(warning.get("warning_type"), 100),
+                "message": nullable_text(warning.get("message"), 1000),
+                "related_ids": normalize_related_ids(warning.get("related_ids"), id_map),
+            }
+        )
+
+    member_by_id = {member["temporary_id"]: member for member in members}
+    for member in members:
+        birth_year = member.get("birth_year")
+        death_year = member.get("death_year")
+        if birth_year and death_year and death_year < birth_year:
+            append_genealogy_warning(
+                warnings,
+                "invalid_lifespan",
+                "death_year nhỏ hơn birth_year.",
+                [member["temporary_id"]],
+            )
+
+    seen_names: dict[str, list[str]] = {}
+    for member in members:
+        name_key = normalize_vietnamese(member.get("full_name") or "")
+        if name_key:
+            seen_names.setdefault(name_key, []).append(member["temporary_id"])
+    for ids in seen_names.values():
+        if len(ids) > 1:
+            append_genealogy_warning(
+                warnings,
+                "possible_duplicate_member",
+                "Có nhiều thành viên trùng tên, cần kiểm tra có phải cùng một người hay không.",
+                ids,
+            )
+
+    for relation in relationships:
+        if relation.get("type") == "parent_child":
+            parent_id = relation.get("parent")
+            child_id = relation.get("child")
+            if parent_id == child_id:
+                append_genealogy_warning(
+                    warnings,
+                    "self_relationship",
+                    "Một người không thể là cha/mẹ của chính mình.",
+                    [parent_id],
+                )
+            parent = member_by_id.get(parent_id)
+            child = member_by_id.get(child_id)
+            if parent and child and parent.get("birth_year") and child.get("birth_year"):
+                if int(child["birth_year"]) - int(parent["birth_year"]) < 15:
+                    append_genealogy_warning(
+                        warnings,
+                        "age_gap_anomaly",
+                        "Khoảng cách năm sinh giữa cha/mẹ và con nhỏ hơn 15 năm.",
+                        [parent_id, child_id],
+                    )
+        else:
+            from_id = relation.get("from")
+            to_id = relation.get("to")
+            if from_id == to_id:
+                append_genealogy_warning(
+                    warnings,
+                    "self_relationship",
+                    "Một người không thể có quan hệ vợ/chồng hoặc anh/chị/em với chính mình.",
+                    [from_id],
+                )
+
+    if has_parent_cycle(relationships):
+        append_genealogy_warning(
+            warnings,
+            "genealogy_cycle",
+            "Quan hệ parent_child có thể tạo vòng lặp gia phả.",
+            [],
+        )
+
+    if input_source == "voice_transcript":
+        append_genealogy_warning(
+            warnings,
+            "voice_transcript_review_required",
+            "Dữ liệu từ transcript giọng nói cần được kiểm tra vì có thể sai tên, năm hoặc quan hệ.",
+            [],
+        )
+
+    output["members"] = members
+    output["relationships"] = relationships
+    output["uncertain_items"] = uncertain_items
+    output["warnings"] = warnings
+    output["summary"] = {
+        "total_members_detected": len(members),
+        "total_relationships_detected": len(relationships),
+        "needs_human_review": True,
+    }
+    return output
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     groq_key = os.getenv("GROQ_API_KEY")
@@ -887,6 +1294,68 @@ def create_app() -> Flask:
             if debug_enabled:
                 app.logger.exception("AI event form generation failed: %s", exc)
             return jsonify({"success": True, **fallback})
+
+    @app.post("/genealogy/extract")
+    def genealogy_extract():
+        body = request.get_json(silent=True) or {}
+        prompt = str(body.get("prompt") or "").strip()
+        input_source = str(body.get("input_source") or "text").strip()
+        if input_source not in VALID_GENEALOGY_INPUT_SOURCES:
+            input_source = "text"
+
+        if not prompt:
+            result = empty_genealogy_extract_result()
+            append_genealogy_warning(
+                result["warnings"],
+                "empty_prompt",
+                "Prompt không được để trống.",
+                [],
+            )
+            return jsonify(result), 400
+
+        if groq_client is None:
+            result = empty_genealogy_extract_result()
+            append_genealogy_warning(
+                result["warnings"],
+                "ai_model_unavailable",
+                "AI model chưa được cấu hình, không thể trích xuất dữ liệu gia phả.",
+                [],
+            )
+            return jsonify(result)
+
+        user_payload = {
+            "input_source": input_source,
+            "prompt": prompt,
+        }
+
+        try:
+            res = groq_client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": GENEALOGY_DATA_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+                temperature=0.1,
+                max_tokens=2400,
+            )
+            content = res.choices[0].message.content or "{}"
+            if debug_enabled:
+                app.logger.debug("GENEALOGY_EXTRACT_AI_RAW=%s", content[:4000])
+
+            parsed = json.loads(strip_json_block(content))
+            normalized = normalize_genealogy_extract_result(parsed, input_source)
+            return jsonify(normalized)
+        except Exception as exc:
+            if debug_enabled:
+                app.logger.exception("AI genealogy extraction failed: %s", exc)
+            result = empty_genealogy_extract_result()
+            append_genealogy_warning(
+                result["warnings"],
+                "ai_generation_failed",
+                "AI không thể trích xuất dữ liệu gia phả lúc này.",
+                [],
+            )
+            return jsonify(result)
 
     return app
 

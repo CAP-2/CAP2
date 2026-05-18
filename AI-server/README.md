@@ -1,8 +1,8 @@
 # AI-server
 
-AI-server la Flask service dung rieng cho tinh nang AI sinh form su kien va danh sach cong viec nhap cua Gia Pha Viet.
+AI-server la Flask service dung rieng cho cac tinh nang AI tao du lieu nhap cua Gia Pha Viet.
 
-Service nay khong truy van du lieu rieng, khong tao su kien/cong viec that, va khong expose luong hoi dap gia pha. Backend goi service qua endpoint event-form, sau do frontend/backend hien thi du lieu nhap de nguoi dung kiem tra.
+Service nay khong truy van du lieu rieng, khong tao su kien/cong viec/thanh vien that, va khong tu ghi database. Backend hoac frontend goi cac endpoint AI rieng theo tung man hinh, sau do hien thi du lieu nhap de nguoi dung hoac manager kiem tra.
 
 ## API
 
@@ -101,6 +101,50 @@ Backend can tro toi AI-server bang:
 
 ```text
 AI_SERVER_URL=http://localhost:8001
+```
+
+### `POST /genealogy/extract`
+
+Endpoint rieng cho AI trich xuat du lieu gia pha. Khong dung chung prompt va khong di qua `/event-form/generate`.
+
+Request text:
+
+```json
+{
+  "input_source": "text",
+  "prompt": "Ong Nguyen Van A co vo la ba Tran Thi B, hai nguoi co con la Nguyen Van C"
+}
+```
+
+Request voice transcript:
+
+```json
+{
+  "input_source": "voice_transcript",
+  "prompt": "Transcript da chuyen tu giong noi..."
+}
+```
+
+Response:
+
+```json
+{
+  "members": [],
+  "relationships": [],
+  "uncertain_items": [],
+  "warnings": [],
+  "summary": {
+    "total_members_detected": 0,
+    "total_relationships_detected": 0,
+    "needs_human_review": true
+  }
+}
+```
+
+Voice-to-text flow neu co:
+
+```text
+Voice Input -> /api/voice/... -> transcript -> /genealogy/extract
 ```
 
 ## Kiem Tra

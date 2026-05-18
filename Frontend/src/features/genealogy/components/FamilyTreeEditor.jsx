@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { createPortal } from "react-dom";
 import { createPersonAPI, deletePersonAPI, linkRelationsAPI, saveTreeLayoutBatchAPI, saveTreeLayoutAPI, updatePersonAPI } from "../../../api/managerService";
+import { extractGenealogyAI } from "../../../api/aiServerService";
 import { onSocketEvent } from "../../../services/socket";
 import { vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import TreeSearchPanel from "./TreeSearchPanel";
@@ -11,6 +12,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { useTreeSearch } from "../hooks/useTreeSearch";
 import { useTreeViewMode } from "../hooks/useTreeViewMode";
 import { useTreeRealtime } from "../hooks/useTreeRealtime";
+import VoiceRecorder from "../../voice/components/VoiceRecorder";
 import { validateTreeData } from "../utils/treeValidation";
 import { CANVAS_PADDING, CARD_WIDTH } from "../utils/tree-editor/treeConstants";
 import { asArray, extractCreatedPersonId, formatDisplayDate, fullName, normalizePerson, readCurrentAccount, snap, snapLine, clamp, toInt } from "../utils/tree-editor/treePersonUtils";
@@ -27,6 +29,112 @@ const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNo
 
 const LAYOUT_BATCH_SIZE = 5;
 const LAYOUT_FLUSH_DELAY_MS = 10000;
+const AI_RELATION_TYPES = ["parent_child", "spouse", "sibling"];
+
+const toAiDraftGender = (gender) => {
+  if (gender === "male" || Number(gender) === 1) return "male";
+  if (gender === "female" || Number(gender) === 2) return "female";
+  return "";
+};
+
+const aiGenderToPersonGender = (gender) => {
+  if (gender === "male") return 1;
+  if (gender === "female") return 2;
+  return null;
+};
+
+const aiGenderToParentRole = (gender) => {
+  if (gender === "female") return "mother";
+  return "father";
+};
+
+const normalizeAiYear = (value) => {
+  const year = Number(value);
+  return Number.isFinite(year) && year > 0 ? String(Math.round(year)) : "";
+};
+
+const normalizeAiDate = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim()) ? String(value).trim() : "");
+
+const normalizeAiNameKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const buildExistingPeopleByName = (people = [], t) => {
+  const map = new Map();
+  asArray(people).forEach((person) => {
+    const key = normalizeAiNameKey(fullName(person, t("tree.card.fallbackName")));
+    if (!key) return;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(person);
+  });
+  return map;
+};
+
+const existingPersonOptionLabel = (person, t) => {
+  const parts = [
+    fullName(person, t("tree.card.fallbackName")),
+    person?.generation ? t("tree.card.generation", { count: person.generation }) : null,
+    person?.birth_date ? person.birth_date : null,
+    person?.id ? `ID ${person.id}` : null,
+  ].filter(Boolean);
+  return parts.join(" - ");
+};
+
+const normalizeAiDraftMembers = (members = []) =>
+  asArray(members).map((member, index) => {
+    const temporaryId = String(member?.temporary_id || `p${index + 1}`).trim() || `p${index + 1}`;
+    return {
+      temporary_id: temporaryId,
+      full_name: String(member?.full_name || "").trim(),
+      gender: toAiDraftGender(member?.gender),
+      birth_year: normalizeAiYear(member?.birth_year),
+      death_year: normalizeAiYear(member?.death_year),
+      birth_date: normalizeAiDate(member?.birth_date),
+      death_date: normalizeAiDate(member?.death_date),
+      phone: String(member?.phone || "").trim(),
+      address: String(member?.address || "").trim(),
+      notes: String(member?.notes || "").trim(),
+      confidence: member?.confidence ?? "",
+      existing_person_id: "",
+    };
+  });
+
+const normalizeAiDraftRelationships = (relationships = [], members = []) => {
+  const memberIds = new Set(members.map((member) => member.temporary_id));
+  const memberById = new Map(members.map((member) => [member.temporary_id, member]));
+
+  return asArray(relationships).map((relation, index) => {
+    const type = AI_RELATION_TYPES.includes(relation?.type) ? relation.type : "parent_child";
+    const parent = String(relation?.parent || "").trim();
+    const child = String(relation?.child || "").trim();
+    const from = String(relation?.from || "").trim();
+    const to = String(relation?.to || "").trim();
+    const normalized = {
+      draft_id: `r${index + 1}`,
+      type,
+      parent: memberIds.has(parent) ? parent : "",
+      child: memberIds.has(child) ? child : "",
+      from: memberIds.has(from) ? from : "",
+      to: memberIds.has(to) ? to : "",
+      parent_role: aiGenderToParentRole(memberById.get(parent)?.gender),
+      evidence: String(relation?.evidence || "").trim(),
+      confidence: relation?.confidence ?? "",
+    };
+
+    if (type !== "parent_child") {
+      normalized.from = normalized.from || normalized.parent;
+      normalized.to = normalized.to || normalized.child;
+    }
+
+    return normalized;
+  });
+};
 
 export default function FamilyTreeEditor({
   clan,
@@ -64,6 +172,15 @@ export default function FamilyTreeEditor({
   const [quickCreateDialog, setQuickCreateDialog] = useState(null);
   const [treeRelationPicker, setTreeRelationPicker] = useState(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [genealogyAiOpen, setGenealogyAiOpen] = useState(false);
+  const [genealogyAiSource, setGenealogyAiSource] = useState("text");
+  const [genealogyAiPrompt, setGenealogyAiPrompt] = useState("");
+  const [genealogyAiResult, setGenealogyAiResult] = useState(null);
+  const [genealogyAiDraftMembers, setGenealogyAiDraftMembers] = useState([]);
+  const [genealogyAiDraftRelationships, setGenealogyAiDraftRelationships] = useState([]);
+  const [genealogyAiError, setGenealogyAiError] = useState("");
+  const [genealogyAiLoading, setGenealogyAiLoading] = useState(false);
+  const [genealogyAiSaving, setGenealogyAiSaving] = useState(false);
   const [dialogSaving, setDialogSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState(() => new Map());
   const [selfPersonId, setSelfPersonId] = useState(null);
@@ -329,6 +446,23 @@ export default function FamilyTreeEditor({
     () => findSpouse(selectedPerson, canonicalTree.families, people),
     [canonicalTree.families, people, selectedPerson],
   );
+  const existingPeopleByAiName = useMemo(() => buildExistingPeopleByName(people, t), [people, t]);
+  const genealogyAiExistingMatches = useMemo(() => {
+    const matches = new Map();
+    genealogyAiDraftMembers.forEach((member) => {
+      const selectedExistingId = Number(member.existing_person_id);
+      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) {
+        const selected = people.find((person) => Number(person.id) === selectedExistingId);
+        if (selected) matches.set(member.temporary_id, selected);
+        return;
+      }
+      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
+      if (rows.length === 1) {
+        matches.set(member.temporary_id, rows[0]);
+      }
+    });
+    return matches;
+  }, [existingPeopleByAiName, genealogyAiDraftMembers, people]);
   const dialogSourcePerson = useMemo(
   () =>
     people.find((person) => Number(person.id) === Number(dialog?.sourcePersonId)) ||
@@ -502,6 +636,251 @@ const quickCreateSourcePerson = useMemo(
     setValidationErrors(errors);
     setStatus(errors.size ? t("tree.messages.validationErrorCount", { count: errors.size }) : t("tree.messages.validationSuccess"));
   }, [canonicalTree.childRows, canonicalTree.families, people, t]);
+
+  const openGenealogyAiDialog = useCallback(() => {
+    if (!canEditAll) return;
+    setGenealogyAiOpen(true);
+    setGenealogyAiError("");
+  }, [canEditAll]);
+
+  const updateGenealogyAiDraftMember = useCallback((temporaryId, patch) => {
+    setGenealogyAiDraftMembers((current) =>
+      current.map((member) => (member.temporary_id === temporaryId ? { ...member, ...patch } : member)),
+    );
+  }, []);
+
+  const updateGenealogyAiDraftRelationship = useCallback((draftId, patch) => {
+    setGenealogyAiDraftRelationships((current) =>
+      current.map((relation) => (relation.draft_id === draftId ? { ...relation, ...patch } : relation)),
+    );
+  }, []);
+
+  const removeGenealogyAiDraftRelationship = useCallback((draftId) => {
+    setGenealogyAiDraftRelationships((current) => current.filter((relation) => relation.draft_id !== draftId));
+  }, []);
+
+  const appendGenealogyAiTranscript = useCallback((text) => {
+    const transcript = String(text || "").trim();
+    if (!transcript) {
+      setGenealogyAiError(t("tree.genealogyAi.errors.emptyTranscript"));
+      return;
+    }
+
+    setGenealogyAiSource("voice_transcript");
+    setGenealogyAiError("");
+    setGenealogyAiPrompt((current) => {
+      const prompt = String(current || "").trim();
+      if (!prompt) return transcript;
+      const separator = /[.!?…]$/.test(prompt) ? " " : ". ";
+      return `${prompt}${separator}${transcript}`;
+    });
+  }, [t]);
+
+  const submitGenealogyAiExtract = useCallback(async () => {
+    const prompt = genealogyAiPrompt.trim();
+    if (!prompt) {
+      setGenealogyAiError(t("tree.genealogyAi.errors.emptyPrompt"));
+      return;
+    }
+
+    setGenealogyAiLoading(true);
+    setGenealogyAiError("");
+    setGenealogyAiResult(null);
+    try {
+      const result = await extractGenealogyAI({
+        input_source: genealogyAiSource,
+        prompt,
+        clan_id: clan?.id || null,
+        context: {
+          screen: "family_tree_editor",
+        },
+      });
+      setGenealogyAiResult({
+        members: Array.isArray(result?.members) ? result.members : [],
+        relationships: Array.isArray(result?.relationships) ? result.relationships : [],
+        uncertain_items: Array.isArray(result?.uncertain_items) ? result.uncertain_items : [],
+        warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+        summary: result?.summary || {
+          total_members_detected: 0,
+          total_relationships_detected: 0,
+          needs_human_review: true,
+        },
+      });
+      const draftMembers = normalizeAiDraftMembers(result?.members || []);
+      setGenealogyAiDraftMembers(draftMembers);
+      setGenealogyAiDraftRelationships(normalizeAiDraftRelationships(result?.relationships || [], draftMembers));
+    } catch (error) {
+      setGenealogyAiError(error?.message || t("tree.genealogyAi.errors.extractFailed"));
+    } finally {
+      setGenealogyAiLoading(false);
+    }
+  }, [clan?.id, genealogyAiPrompt, genealogyAiSource, t]);
+
+  const saveGenealogyAiDraftToTree = useCallback(async () => {
+    if (!canEditAll || genealogyAiSaving) return;
+
+    const draftMembers = genealogyAiDraftMembers
+      .map((member) => ({ ...member, full_name: String(member.full_name || "").trim() }))
+      .filter((member) => member.full_name);
+
+    if (!draftMembers.length) {
+      setGenealogyAiError(t("tree.genealogyAi.errors.noMembersToSave"));
+      return;
+    }
+
+    const memberIds = new Set(draftMembers.map((member) => member.temporary_id));
+    const invalidRelation = genealogyAiDraftRelationships.find((relation) => {
+      if (relation.type === "sibling") return true;
+      if (relation.type === "parent_child") {
+        return !memberIds.has(relation.parent) || !memberIds.has(relation.child) || relation.parent === relation.child;
+      }
+      return !memberIds.has(relation.from) || !memberIds.has(relation.to) || relation.from === relation.to;
+    });
+
+    if (invalidRelation) {
+      setGenealogyAiError(
+        invalidRelation.type === "sibling"
+          ? t("tree.genealogyAi.errors.siblingNotSupported")
+          : t("tree.genealogyAi.errors.invalidRelationship"),
+      );
+      return;
+    }
+
+    const unresolvedDuplicateName = draftMembers.find((member) => {
+      const selectedExistingId = Number(member.existing_person_id);
+      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return false;
+      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
+      return rows.length > 1;
+    });
+
+    if (unresolvedDuplicateName) {
+      setGenealogyAiError(t("tree.genealogyAi.errors.selectExistingDuplicate", { name: unresolvedDuplicateName.full_name }));
+      return;
+    }
+
+    const existingCount = draftMembers.filter((member) => {
+      const selectedExistingId = Number(member.existing_person_id);
+      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return true;
+      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
+      return rows.length === 1;
+    }).length;
+    const createCount = draftMembers.length - existingCount;
+
+    const ok = window.confirm(t("tree.genealogyAi.confirmSave", { count: draftMembers.length, createCount, existingCount }));
+    if (!ok) return;
+
+    setGenealogyAiSaving(true);
+    setGenealogyAiError("");
+    setStatus("");
+
+    try {
+      const idMap = new Map();
+      const createdPeople = [];
+      const baseX = CANVAS_PADDING + Math.max(0, people.length % 8) * 40;
+      const baseY = CANVAS_PADDING + Math.floor(people.length / 8) * 40;
+
+      for (const [index, member] of draftMembers.entries()) {
+        const selectedExistingId = Number(member.existing_person_id);
+        if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) {
+          idMap.set(member.temporary_id, selectedExistingId);
+          continue;
+        }
+
+        const existingRows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
+        if (existingRows.length === 1) {
+          idMap.set(member.temporary_id, Number(existingRows[0].id));
+          continue;
+        }
+
+        const noteParts = [
+          member.notes,
+          member.birth_year && !member.birth_date ? `${t("tree.genealogyAi.birthYearNote")}: ${member.birth_year}` : null,
+          member.death_year && !member.death_date ? `${t("tree.genealogyAi.deathYearNote")}: ${member.death_year}` : null,
+          t("tree.genealogyAi.aiDraftNote"),
+        ].filter(Boolean);
+
+        const createdResponse = await createPersonAPI({
+          clan_id: clan?.id,
+          display_name: member.full_name,
+          gender: aiGenderToPersonGender(member.gender),
+          is_living: 0,
+          generation: 1,
+          birth_date: member.birth_date || null,
+          death_date: member.death_date || null,
+          phone: member.phone || null,
+          address: member.address || null,
+          note: noteParts.join("\n"),
+          tree_x: baseX + (index % 4) * (CARD_WIDTH + 70),
+          tree_y: baseY + Math.floor(index / 4) * 150,
+        });
+
+        const newPersonId = extractCreatedPersonId(createdResponse);
+        if (!newPersonId) throw new Error(t("tree.genealogyAi.errors.createdIdMissing"));
+        idMap.set(member.temporary_id, newPersonId);
+        createdPeople.push(normalizePerson({
+          id: newPersonId,
+          display_name: member.full_name,
+          gender: aiGenderToPersonGender(member.gender),
+          is_living: 0,
+          birth_date: member.birth_date || null,
+          death_date: member.death_date || null,
+          phone: member.phone || null,
+          address: member.address || null,
+          note: noteParts.join("\n"),
+          tree_x: baseX + (index % 4) * (CARD_WIDTH + 70),
+          tree_y: baseY + Math.floor(index / 4) * 150,
+          generation: 1,
+        }));
+      }
+
+      for (const relation of genealogyAiDraftRelationships) {
+        if (relation.type === "spouse") {
+          await linkRelationsAPI({
+            person_id: idMap.get(relation.from),
+            spouse_person_id: idMap.get(relation.to),
+          });
+        }
+      }
+
+      const parentAssignments = new Map();
+      for (const relation of genealogyAiDraftRelationships) {
+        if (relation.type !== "parent_child") continue;
+        const childId = idMap.get(relation.child);
+        const parentId = idMap.get(relation.parent);
+        const current = parentAssignments.get(childId) || { father_person_id: null, mother_person_id: null };
+        if (relation.parent_role === "mother") {
+          current.mother_person_id = parentId;
+        } else {
+          current.father_person_id = parentId;
+        }
+        parentAssignments.set(childId, current);
+      }
+
+      for (const [childId, parents] of parentAssignments.entries()) {
+        await linkRelationsAPI({
+          person_id: childId,
+          father_person_id: parents.father_person_id,
+          mother_person_id: parents.mother_person_id,
+        });
+      }
+
+      if (createdPeople.length) {
+        setPeople((current) => [...current, ...createdPeople.filter((person) => !current.some((item) => Number(item.id) === Number(person.id)))]);
+      }
+      setStatus(t("tree.genealogyAi.saveSuccess", { count: createdPeople.length, existingCount }));
+      setGenealogyAiOpen(false);
+      setGenealogyAiResult(null);
+      setGenealogyAiDraftMembers([]);
+      setGenealogyAiDraftRelationships([]);
+      await onReload?.();
+    } catch (error) {
+      if (!shouldSuppressInlineRelationError(error)) {
+        setGenealogyAiError(error?.message || t("tree.genealogyAi.errors.saveFailed"));
+      }
+    } finally {
+      setGenealogyAiSaving(false);
+    }
+  }, [canEditAll, clan?.id, existingPeopleByAiName, genealogyAiDraftMembers, genealogyAiDraftRelationships, genealogyAiSaving, onReload, people.length, t]);
 
   useEffect(() => {
     if (!validationErrors.size) return;
@@ -1289,6 +1668,17 @@ const submitCreateDialog = async () => {
                     <span className="material-symbols-outlined">inventory_2</span>
                   </button>
                 )}
+                {canEditAll && (
+                  <button
+                    type="button"
+                    onClick={openGenealogyAiDialog}
+                    disabled={loading || saving}
+                    title={t("tree.genealogyAi.open")}
+                    className="fte-iconButton fte-aiButton"
+                  >
+                    <span className="material-symbols-outlined">auto_awesome</span>
+                  </button>
+                )}
               </div>
               {canEditLimited ? (
                 <div className="fte-toolbarGroup fte-toolbarGroup--notice">
@@ -1511,6 +1901,349 @@ const submitCreateDialog = async () => {
           </>
         )}
       </TransformWrapper>
+
+      {genealogyAiOpen && (
+        <div className="fte-modalOverlay" role="presentation" onMouseDown={() => !genealogyAiLoading && !genealogyAiSaving && setGenealogyAiOpen(false)}>
+          <div className="fte-modal fte-aiModal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="fte-modalHeader">
+              <div>
+                <span>{t("tree.genealogyAi.eyebrow")}</span>
+                <h3>{t("tree.genealogyAi.title")}</h3>
+              </div>
+
+              <button
+                type="button"
+                className="fte-iconButton"
+                onClick={() => setGenealogyAiOpen(false)}
+                disabled={genealogyAiLoading || genealogyAiSaving}
+                title={t("common.close")}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="fte-aiComposer">
+              <div className="fte-aiSourceSwitch" role="group" aria-label={t("tree.genealogyAi.sourceLabel")}>
+                <button
+                  type="button"
+                  className={genealogyAiSource === "text" ? "is-active" : ""}
+                  onClick={() => setGenealogyAiSource("text")}
+                  disabled={genealogyAiLoading || genealogyAiSaving}
+                >
+                  <span className="material-symbols-outlined">article</span>
+                  {t("tree.genealogyAi.sourceText")}
+                </button>
+                <button
+                  type="button"
+                  className={genealogyAiSource === "voice_transcript" ? "is-active" : ""}
+                  onClick={() => setGenealogyAiSource("voice_transcript")}
+                  disabled={genealogyAiLoading || genealogyAiSaving}
+                >
+                  <span className="material-symbols-outlined">record_voice_over</span>
+                  {t("tree.genealogyAi.sourceVoice")}
+                </button>
+              </div>
+
+              <label className="fte-aiPromptField">
+                <span>{t("tree.genealogyAi.promptLabel")}</span>
+                <div className="fte-aiVoiceRow">
+                  <VoiceRecorder
+                    disabled={genealogyAiLoading || genealogyAiSaving}
+                    maxSeconds={180}
+                    onTranscript={appendGenealogyAiTranscript}
+                  />
+                  <small>{t("tree.genealogyAi.voiceHelp")}</small>
+                </div>
+                <textarea
+                  value={genealogyAiPrompt}
+                  onChange={(event) => setGenealogyAiPrompt(event.target.value)}
+                  placeholder={t("tree.genealogyAi.promptPlaceholder")}
+                  disabled={genealogyAiLoading || genealogyAiSaving}
+                  rows={6}
+                />
+              </label>
+
+              {genealogyAiError ? (
+                <div className="fte-aiError" role="alert">
+                  <span className="material-symbols-outlined">error</span>
+                  <span>{genealogyAiError}</span>
+                </div>
+              ) : null}
+
+              <div className="fte-aiActions">
+                <span>{t("tree.genealogyAi.draftNotice")}</span>
+                <button
+                  type="button"
+                  className="fte-primaryButton"
+                  onClick={submitGenealogyAiExtract}
+                  disabled={genealogyAiLoading || genealogyAiSaving}
+                >
+                  <span className="material-symbols-outlined">{genealogyAiLoading ? "progress_activity" : "auto_awesome"}</span>
+                  {genealogyAiLoading ? t("tree.genealogyAi.extracting") : t("tree.genealogyAi.extract")}
+                </button>
+              </div>
+            </div>
+
+            {genealogyAiResult ? (
+              <div className="fte-aiResult">
+                <div className="fte-aiSummary">
+                  <div>
+                    <strong>{genealogyAiResult.summary?.total_members_detected ?? genealogyAiResult.members.length}</strong>
+                    <span>{t("tree.genealogyAi.members")}</span>
+                  </div>
+                  <div>
+                    <strong>{genealogyAiResult.summary?.total_relationships_detected ?? genealogyAiResult.relationships.length}</strong>
+                    <span>{t("tree.genealogyAi.relationships")}</span>
+                  </div>
+                  <div>
+                    <strong>{genealogyAiResult.summary?.needs_human_review ? t("tree.genealogyAi.yes") : t("tree.genealogyAi.no")}</strong>
+                    <span>{t("tree.genealogyAi.needsReview")}</span>
+                  </div>
+                </div>
+
+                <div className="fte-aiResultGrid">
+                  <section className="fte-aiDraftSection">
+                    <h4>{t("tree.genealogyAi.members")}</h4>
+                    {genealogyAiResult.members.length ? (
+                      <div className="fte-aiDraftList">
+                        {genealogyAiResult.members.map((member) => (
+                          <div className="fte-aiDraftItem" key={member.temporary_id}>
+                            <strong>{member.full_name || t("tree.genealogyAi.unknownName")}</strong>
+                            <span>
+                              {member.temporary_id}
+                              {member.gender ? ` · ${member.gender}` : ""}
+                              {member.birth_year ? ` · ${member.birth_year}` : ""}
+                              {member.death_year ? ` - ${member.death_year}` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>{t("tree.genealogyAi.emptyMembers")}</p>
+                    )}
+                  </section>
+
+                  <section className="fte-aiDraftSection">
+                    <h4>{t("tree.genealogyAi.relationships")}</h4>
+                    {genealogyAiResult.relationships.length ? (
+                      <div className="fte-aiDraftList">
+                        {genealogyAiResult.relationships.map((relation, index) => (
+                          <div className="fte-aiDraftItem" key={`${relation.type}-${index}`}>
+                            <strong>{relation.type}</strong>
+                            <span>
+                              {relation.type === "parent_child"
+                                ? `${relation.parent || "?"} -> ${relation.child || "?"}`
+                                : `${relation.from || "?"} -> ${relation.to || "?"}`}
+                            </span>
+                            {relation.evidence ? <small>{relation.evidence}</small> : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>{t("tree.genealogyAi.emptyRelationships")}</p>
+                    )}
+                  </section>
+                </div>
+
+                <div className="fte-aiEditableGrid">
+                  <section className="fte-aiDraftSection">
+                    <h4>{t("tree.genealogyAi.editMembers")}</h4>
+                    {genealogyAiDraftMembers.length ? (
+                      <div className="fte-aiDraftList">
+                        {genealogyAiDraftMembers.map((member) => (
+                          <div className="fte-aiDraftItem" key={`edit-${member.temporary_id}`}>
+                            <div className="fte-aiDraftItemHead">
+                              <strong>{member.temporary_id}</strong>
+                              <span>
+                                {genealogyAiExistingMatches.has(member.temporary_id)
+                                  ? t("tree.genealogyAi.existingMatched")
+                                  : `${t("tree.genealogyAi.confidence")}: ${member.confidence || "?"}`}
+                              </span>
+                            </div>
+                            <label>
+                              {t("tree.genealogyAi.fullName")}
+                              <input value={member.full_name} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { full_name: event.target.value })} disabled={genealogyAiSaving} />
+                            </label>
+                            {(existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || []).length ? (
+                              <label>
+                                {t("tree.genealogyAi.existingPerson")}
+                                <select
+                                  value={member.existing_person_id}
+                                  onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { existing_person_id: event.target.value })}
+                                  disabled={genealogyAiSaving}
+                                >
+                                  <option value="">{t("tree.genealogyAi.createNewPerson")}</option>
+                                  {(existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || []).map((person) => (
+                                    <option key={person.id} value={person.id}>
+                                      {existingPersonOptionLabel(person, t)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {(existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || []).length > 1 && !member.existing_person_id ? (
+                                  <small>{t("tree.genealogyAi.selectExistingHint")}</small>
+                                ) : null}
+                              </label>
+                            ) : null}
+                            <div className="fte-aiDraftFields">
+                              <label>
+                                {t("tree.genealogyAi.gender")}
+                                <select value={member.gender} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { gender: event.target.value })} disabled={genealogyAiSaving}>
+                                  <option value="">{t("tree.genealogyAi.unknown")}</option>
+                                  <option value="male">{t("tree.genealogyAi.male")}</option>
+                                  <option value="female">{t("tree.genealogyAi.female")}</option>
+                                </select>
+                              </label>
+                              <label>
+                                {t("tree.genealogyAi.birthYear")}
+                                <input value={member.birth_year} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { birth_year: event.target.value.replace(/[^\d]/g, "").slice(0, 4) })} disabled={genealogyAiSaving} />
+                              </label>
+                              <label>
+                                {t("tree.genealogyAi.deathYear")}
+                                <input value={member.death_year} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { death_year: event.target.value.replace(/[^\d]/g, "").slice(0, 4) })} disabled={genealogyAiSaving} />
+                              </label>
+                            </div>
+                            <div className="fte-aiDraftFields">
+                              <label>
+                                {t("tree.genealogyAi.birthDate")}
+                                <input type="date" value={member.birth_date} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { birth_date: event.target.value })} disabled={genealogyAiSaving} />
+                              </label>
+                              <label>
+                                {t("tree.genealogyAi.deathDate")}
+                                <input type="date" value={member.death_date} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { death_date: event.target.value })} disabled={genealogyAiSaving} />
+                              </label>
+                            </div>
+                            <label>
+                              {t("tree.genealogyAi.notes")}
+                              <textarea value={member.notes} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { notes: event.target.value })} disabled={genealogyAiSaving} rows={2} />
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>{t("tree.genealogyAi.emptyMembers")}</p>
+                    )}
+                  </section>
+
+                  <section className="fte-aiDraftSection">
+                    <h4>{t("tree.genealogyAi.editRelationships")}</h4>
+                    {genealogyAiDraftRelationships.length ? (
+                      <div className="fte-aiDraftList">
+                        {genealogyAiDraftRelationships.map((relation) => (
+                          <div className="fte-aiDraftItem" key={`edit-${relation.draft_id}`}>
+                            <div className="fte-aiDraftItemHead">
+                              <strong>{relation.draft_id}</strong>
+                              <button type="button" className="fte-aiSmallDanger" onClick={() => removeGenealogyAiDraftRelationship(relation.draft_id)} disabled={genealogyAiSaving} title={t("common.delete")}>
+                                <span className="material-symbols-outlined">delete</span>
+                              </button>
+                            </div>
+                            <label>
+                              {t("tree.genealogyAi.relationshipType")}
+                              <select value={relation.type} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { type: event.target.value })} disabled={genealogyAiSaving}>
+                                <option value="parent_child">parent_child</option>
+                                <option value="spouse">spouse</option>
+                                <option value="sibling">sibling</option>
+                              </select>
+                            </label>
+                            {relation.type === "parent_child" ? (
+                              <>
+                                <div className="fte-aiDraftFields">
+                                  <label>
+                                    {t("tree.genealogyAi.parent")}
+                                    <select value={relation.parent} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { parent: event.target.value })} disabled={genealogyAiSaving}>
+                                      <option value="">?</option>
+                                      {genealogyAiDraftMembers.map((member) => <option key={member.temporary_id} value={member.temporary_id}>{member.temporary_id} - {member.full_name || t("tree.genealogyAi.unknownName")}</option>)}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    {t("tree.genealogyAi.child")}
+                                    <select value={relation.child} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { child: event.target.value })} disabled={genealogyAiSaving}>
+                                      <option value="">?</option>
+                                      {genealogyAiDraftMembers.map((member) => <option key={member.temporary_id} value={member.temporary_id}>{member.temporary_id} - {member.full_name || t("tree.genealogyAi.unknownName")}</option>)}
+                                    </select>
+                                  </label>
+                                </div>
+                                <label>
+                                  {t("tree.genealogyAi.parentRole")}
+                                  <select value={relation.parent_role} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { parent_role: event.target.value })} disabled={genealogyAiSaving}>
+                                    <option value="father">{t("tree.genealogyAi.father")}</option>
+                                    <option value="mother">{t("tree.genealogyAi.mother")}</option>
+                                  </select>
+                                </label>
+                              </>
+                            ) : (
+                              <div className="fte-aiDraftFields">
+                                <label>
+                                  {t("tree.genealogyAi.from")}
+                                  <select value={relation.from} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { from: event.target.value })} disabled={genealogyAiSaving}>
+                                    <option value="">?</option>
+                                    {genealogyAiDraftMembers.map((member) => <option key={member.temporary_id} value={member.temporary_id}>{member.temporary_id} - {member.full_name || t("tree.genealogyAi.unknownName")}</option>)}
+                                  </select>
+                                </label>
+                                <label>
+                                  {t("tree.genealogyAi.to")}
+                                  <select value={relation.to} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { to: event.target.value })} disabled={genealogyAiSaving}>
+                                    <option value="">?</option>
+                                    {genealogyAiDraftMembers.map((member) => <option key={member.temporary_id} value={member.temporary_id}>{member.temporary_id} - {member.full_name || t("tree.genealogyAi.unknownName")}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>{t("tree.genealogyAi.emptyRelationships")}</p>
+                    )}
+                  </section>
+                </div>
+
+                {genealogyAiResult.uncertain_items.length || genealogyAiResult.warnings.length ? (
+                  <div className="fte-aiReviewGrid">
+                    <section className="fte-aiDraftSection">
+                      <h4>{t("tree.genealogyAi.uncertain")}</h4>
+                      {genealogyAiResult.uncertain_items.length ? (
+                        <div className="fte-aiDraftList">
+                          {genealogyAiResult.uncertain_items.map((item, index) => (
+                            <div className="fte-aiDraftItem" key={`uncertain-${index}`}>
+                              <strong>{item.reference_id || item.item_type || t("tree.genealogyAi.uncertain")}</strong>
+                              <span>{item.reason || item.field || t("tree.genealogyAi.needsReview")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>{t("tree.genealogyAi.emptyUncertain")}</p>
+                      )}
+                    </section>
+
+                    <section className="fte-aiDraftSection">
+                      <h4>{t("tree.genealogyAi.warnings")}</h4>
+                      {genealogyAiResult.warnings.length ? (
+                        <div className="fte-aiDraftList">
+                          {genealogyAiResult.warnings.map((warning, index) => (
+                            <div className="fte-aiDraftItem is-warning" key={`warning-${index}`}>
+                              <strong>{warning.warning_type || t("tree.genealogyAi.warning")}</strong>
+                              <span>{warning.message || t("tree.genealogyAi.needsReview")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>{t("tree.genealogyAi.emptyWarnings")}</p>
+                      )}
+                    </section>
+                  </div>
+                ) : null}
+                <div className="fte-aiSaveBar">
+                  <span>{t("tree.genealogyAi.saveNotice")}</span>
+                  <button type="button" className="fte-primaryButton" onClick={saveGenealogyAiDraftToTree} disabled={genealogyAiSaving || genealogyAiLoading}>
+                    <span className="material-symbols-outlined">{genealogyAiSaving ? "progress_activity" : "save"}</span>
+                    {genealogyAiSaving ? t("tree.genealogyAi.saving") : t("tree.genealogyAi.saveToTree")}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       <PersonInspector
         person={selectedPerson}

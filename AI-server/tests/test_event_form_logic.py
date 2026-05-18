@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import pathlib
 import sys
@@ -172,6 +173,88 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(len(result["manager_tasks"]), 4)
 
 
+class GenealogyExtractTests(unittest.TestCase):
+    def test_genealogy_normalization_contract(self):
+        result = ai_app.normalize_genealogy_extract_result(
+            {
+                "members": [
+                    {
+                        "temporary_id": "x1",
+                        "full_name": "Nguyen Van A",
+                        "gender": "male",
+                        "birth_year": 1950,
+                        "confidence": 1.2,
+                        "extra": "ignored",
+                    },
+                    {
+                        "temporary_id": "x2",
+                        "full_name": "Tran Thi B",
+                        "gender": "female",
+                        "death_year": 1940,
+                        "birth_year": 1955,
+                        "confidence": "0.9",
+                    },
+                    {
+                        "temporary_id": "x3",
+                        "full_name": "Nguyen Van C",
+                        "birth_year": 1960,
+                        "confidence": 0.8,
+                    },
+                ],
+                "relationships": [
+                    {
+                        "type": "spouse",
+                        "from": "x1",
+                        "to": "x2",
+                        "confidence": 0.95,
+                        "evidence": "A co vo la B",
+                    },
+                    {
+                        "type": "parent_child",
+                        "parent": "x1",
+                        "child": "x3",
+                        "confidence": 0.95,
+                    },
+                    {"type": "uncle", "from": "x1", "to": "x3"},
+                ],
+                "uncertain_items": [
+                    {
+                        "item_type": "member",
+                        "reference_id": "x3",
+                        "field": "birth_year",
+                        "reason": "Nam sinh can kiem tra",
+                    }
+                ],
+                "warnings": [{"warning_type": "source_warning", "message": "Can kiem tra", "related_ids": ["x1"]}],
+                "summary": {"total_members_detected": 99, "total_relationships_detected": 99},
+            },
+            "text",
+        )
+
+        self.assertEqual(set(result.keys()), {"members", "relationships", "uncertain_items", "warnings", "summary"})
+        self.assertEqual([member["temporary_id"] for member in result["members"]], ["p1", "p2", "p3"])
+        self.assertEqual(result["members"][0]["confidence"], 1.0)
+        self.assertEqual(len(result["relationships"]), 2)
+        self.assertEqual(result["relationships"][0]["from"], "p1")
+        self.assertEqual(result["relationships"][0]["to"], "p2")
+        self.assertEqual(result["relationships"][1]["parent"], "p1")
+        self.assertEqual(result["relationships"][1]["child"], "p3")
+        self.assertEqual(result["uncertain_items"][0]["reference_id"], "p3")
+        self.assertEqual(result["summary"], {
+            "total_members_detected": 3,
+            "total_relationships_detected": 2,
+            "needs_human_review": True,
+        })
+        warning_types = {warning["warning_type"] for warning in result["warnings"]}
+        self.assertIn("invalid_lifespan", warning_types)
+        self.assertIn("age_gap_anomaly", warning_types)
+
+    def test_voice_transcript_adds_review_warning(self):
+        result = ai_app.normalize_genealogy_extract_result({"members": [], "relationships": []}, "voice_transcript")
+        self.assertEqual(result["summary"]["needs_human_review"], True)
+        self.assertIn("voice_transcript_review_required", {warning["warning_type"] for warning in result["warnings"]})
+
+
 class EndpointTests(unittest.TestCase):
     def setUp(self):
         self.client = ai_app.app.test_client()
@@ -222,6 +305,86 @@ class EndpointTests(unittest.TestCase):
         response = self.client.post("/event-form/generate", json={"prompt": ""})
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.get_json()["success"])
+
+    def test_genealogy_extract_endpoint_returns_schema_when_groq_disabled(self):
+        response = self.client.post(
+            "/genealogy/extract",
+            json={"input_source": "text", "prompt": "Ong Nguyen Van A co vo la ba Tran Thi B"},
+        )
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(data.keys()), {"members", "relationships", "uncertain_items", "warnings", "summary"})
+        self.assertEqual(data["members"], [])
+        self.assertEqual(data["relationships"], [])
+        self.assertEqual(data["summary"]["needs_human_review"], True)
+        self.assertIn("ai_model_unavailable", {warning["warning_type"] for warning in data["warnings"]})
+
+    def test_genealogy_extract_empty_prompt_returns_schema_400(self):
+        response = self.client.post("/genealogy/extract", json={"prompt": ""})
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(data.keys()), {"members", "relationships", "uncertain_items", "warnings", "summary"})
+        self.assertIn("empty_prompt", {warning["warning_type"] for warning in data["warnings"]})
+
+    def test_genealogy_extract_endpoint_with_groq_result(self):
+        class FakeGroq:
+            def __init__(self, *args, **kwargs):
+                self.chat = self
+                self.completions = self
+
+            def create(self, *args, **kwargs):
+                class Message:
+                    content = json.dumps(
+                        {
+                            "members": [
+                                {"temporary_id": "p1", "full_name": "Nguyen Van A", "gender": "male", "confidence": 0.95},
+                                {"temporary_id": "p2", "full_name": "Tran Thi B", "gender": "female", "confidence": 0.95},
+                            ],
+                            "relationships": [
+                                {
+                                    "type": "spouse",
+                                    "from": "p1",
+                                    "to": "p2",
+                                    "confidence": 0.95,
+                                    "evidence": "A co vo la B",
+                                }
+                            ],
+                            "uncertain_items": [],
+                            "warnings": [],
+                            "summary": {
+                                "total_members_detected": 2,
+                                "total_relationships_detected": 1,
+                                "needs_human_review": True,
+                            },
+                        }
+                    )
+
+                class Choice:
+                    message = Message()
+
+                class Response:
+                    choices = [Choice()]
+
+                return Response()
+
+        with patch.dict(os.environ, {"AI_DISABLE_GROQ": "false", "GROQ_API_KEY": "test-key"}):
+            with patch.object(ai_app, "Groq", FakeGroq):
+                app = ai_app.create_app()
+
+        response = app.test_client().post(
+            "/genealogy/extract",
+            json={"input_source": "text", "prompt": "Ong Nguyen Van A co vo la ba Tran Thi B"},
+        )
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(data["members"]), 2)
+        self.assertEqual(len(data["relationships"]), 1)
+        self.assertEqual(data["relationships"][0]["type"], "spouse")
+        self.assertEqual(data["summary"]["total_members_detected"], 2)
+        self.assertNotIn("success", data)
 
     def test_groq_error_falls_back(self):
         class BrokenGroq:

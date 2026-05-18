@@ -11,4 +11,11 @@ router.post(
     aiController.generateEventFormAI
 );
 
+router.post(
+    '/genealogy/extract',
+    verifyToken,
+    checkRole(['admin', 'manager', 'member']),
+    aiController.extractGenealogyAI
+);
+
 module.exports = router;

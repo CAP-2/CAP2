@@ -82,6 +82,16 @@
     padding: 0;
 }
 
+.fte-aiButton {
+    background: linear-gradient(180deg, #fff8df, #fff);
+    border-color: #d6a329;
+    color: #6d3d08;
+}
+
+.fte-aiButton .material-symbols-outlined {
+    color: #b87905;
+}
+
 .fte-readOnlyBadge {
     display: inline-flex;
     align-items: center;
@@ -545,6 +555,318 @@
 
 .fte-formGrid--modal {
     margin-top: 14px;
+}
+
+.fte-aiModal {
+    width: min(980px, 100%);
+}
+
+.fte-aiComposer {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.fte-aiSourceSwitch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.fte-aiSourceSwitch button {
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid #d6bf84;
+    background: #fff;
+    color: #594023;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.fte-aiSourceSwitch button.is-active {
+    background: #fff3c4;
+    border-color: #c78c12;
+    color: #6b3e0f;
+}
+
+.fte-aiPromptField {
+    display: grid;
+    gap: 6px;
+    color: #5f4730;
+    font-weight: 900;
+}
+
+.fte-aiPromptField textarea {
+    width: 100%;
+    min-height: 150px;
+    border: 1px solid #d6bf84;
+    border-radius: 8px;
+    background: #fff;
+    color: #1f2933;
+    padding: 12px;
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.45;
+    resize: vertical;
+}
+
+.fte-aiVoiceRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid rgba(214, 191, 132, 0.65);
+    border-radius: 8px;
+    background: #fffaf0;
+}
+
+.fte-aiVoiceRow .voice-recorder {
+    min-width: 0;
+}
+
+.fte-aiVoiceRow .voice-recorder-button {
+    border-color: #d6a329;
+    background: #fff;
+    color: #8a5308;
+}
+
+.fte-aiVoiceRow .voice-recorder-button.is-recording {
+    border-color: #d7263d;
+    background: #fff1f3;
+    color: #b71d31;
+}
+
+.fte-aiVoiceRow small {
+    color: #755017;
+    font-weight: 750;
+    line-height: 1.3;
+}
+
+.fte-aiActions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: #755017;
+    font-weight: 800;
+}
+
+.fte-aiActions .fte-primaryButton {
+    min-width: 160px;
+}
+
+.fte-aiActions .material-symbols-outlined {
+    font-size: 22px;
+}
+
+.fte-aiActions .material-symbols-outlined:first-child {
+    animation: none;
+}
+
+.fte-aiActions button:disabled .material-symbols-outlined {
+    animation: fte-spin 1s linear infinite;
+}
+
+.fte-aiError {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #f2b8b5;
+    border-radius: 8px;
+    background: #fff1f0;
+    color: #a32014;
+    padding: 10px 12px;
+    font-weight: 800;
+}
+
+.fte-aiResult {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.fte-aiSummary,
+.fte-aiResultGrid,
+.fte-aiReviewGrid,
+.fte-aiEditableGrid {
+    display: grid;
+    gap: 10px;
+}
+
+.fte-aiSummary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fte-aiSummary div,
+.fte-aiDraftSection {
+    border: 1px solid #ead9a6;
+    border-radius: 8px;
+    background: #fffaf0;
+}
+
+.fte-aiSummary div {
+    display: grid;
+    gap: 2px;
+    padding: 12px;
+}
+
+.fte-aiSummary strong {
+    color: #311b08;
+    font-size: 1.25rem;
+}
+
+.fte-aiSummary span {
+    color: #73512c;
+    font-weight: 800;
+}
+
+.fte-aiResultGrid,
+.fte-aiReviewGrid,
+.fte-aiEditableGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fte-aiDraftSection {
+    padding: 12px;
+    min-width: 0;
+}
+
+.fte-aiDraftSection h4 {
+    margin: 0 0 10px;
+    color: #311b08;
+    font-size: 1rem;
+}
+
+.fte-aiDraftSection p {
+    margin: 0;
+    color: #755017;
+    font-weight: 700;
+}
+
+.fte-aiDraftList {
+    display: grid;
+    gap: 8px;
+}
+
+.fte-aiDraftItem {
+    display: grid;
+    gap: 3px;
+    border: 1px solid rgba(214, 191, 132, 0.75);
+    border-radius: 8px;
+    background: #fff;
+    padding: 9px 10px;
+    min-width: 0;
+}
+
+.fte-aiDraftItemHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fte-aiDraftFields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fte-aiDraftFields:has(label:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fte-aiDraftItem label {
+    display: grid;
+    gap: 4px;
+    color: #5f4730;
+    font-size: 0.86rem;
+    font-weight: 900;
+}
+
+.fte-aiDraftItem input,
+.fte-aiDraftItem select,
+.fte-aiDraftItem textarea {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid #d6bf84;
+    border-radius: 8px;
+    background: #fff;
+    color: #1f2933;
+    padding: 8px 10px;
+    font: inherit;
+    font-weight: 650;
+}
+
+.fte-aiDraftItem textarea {
+    resize: vertical;
+    line-height: 1.35;
+}
+
+.fte-aiSmallDanger {
+    width: 34px;
+    min-height: 34px;
+    border: 1px solid #f0b4b4;
+    border-radius: 8px;
+    background: #fff5f5;
+    color: #b42318;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.fte-aiSmallDanger .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.fte-aiDraftItem strong,
+.fte-aiDraftItem span,
+.fte-aiDraftItem small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fte-aiDraftItem strong {
+    color: #311b08;
+}
+
+.fte-aiDraftItem span,
+.fte-aiDraftItem small {
+    color: #5f4730;
+    font-weight: 700;
+}
+
+.fte-aiDraftItem.is-warning {
+    border-color: #f0b46a;
+    background: #fff8ec;
+}
+
+.fte-aiSaveBar {
+    position: sticky;
+    bottom: -18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-top: 1px solid #ead9a6;
+    background: #fffdfa;
+    padding: 12px 0 0;
+    color: #755017;
+    font-weight: 850;
+}
+
+@keyframes fte-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .fte-relationModal {
@@ -1890,6 +2212,14 @@ body.fte-bodyFullscreen {
     }
     .fte-shell.is-fullscreen .fte-toolbar {
         border-radius: 14px;
+    }
+    .fte-aiSummary,
+    .fte-aiResultGrid,
+    .fte-aiReviewGrid,
+    .fte-aiEditableGrid,
+    .fte-aiDraftFields,
+    .fte-aiDraftFields:has(label:nth-child(3)) {
+        grid-template-columns: 1fr;
     }
 }
 
