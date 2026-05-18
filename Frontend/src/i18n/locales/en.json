@@ -1918,6 +1918,10 @@
       "accountCreateHint": "Living people will get a login account when saved to the tree.",
       "notes": "Notes",
       "relationshipType": "Relationship type",
+      "relationshipOptions": {
+        "parentChild": "Cha/mẹ - Con / Parent - Child (parent_child)",
+        "spouse": "Vợ/chồng / Spouse (spouse)"
+      },
       "parent": "Parent",
       "child": "Child",
       "parentRole": "Save as",
@@ -1949,7 +1953,6 @@
         "invalidRelationship": "A relationship is missing people or links a person to themselves. Edit it before saving.",
         "selectExistingDuplicate": "The tree has multiple people named \"{{name}}\". Select the correct existing person in that row or make the draft name clearer before saving.",
         "missingLivingAccount": "Living person \"{{name}}\" needs an email and a password of at least 6 characters to create an account.",
-        "siblingNotSupported": "Sibling relationships cannot be saved directly yet. Delete it or change it to parent_child/spouse before saving.",
         "createdIdMissing": "The created person ID was not returned.",
         "saveFailed": "Unable to save AI data to the tree."
       }

@@ -29,7 +29,16 @@ const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNo
 
 const LAYOUT_BATCH_SIZE = 5;
 const LAYOUT_FLUSH_DELAY_MS = 10000;
-const AI_RELATION_TYPES = ["parent_child", "spouse", "sibling"];
+const AI_RELATION_TYPES = ["parent_child", "spouse"];
+const AI_RELATION_TYPE_OPTIONS = [
+  { value: "parent_child", labelKey: "tree.genealogyAi.relationshipOptions.parentChild" },
+  { value: "spouse", labelKey: "tree.genealogyAi.relationshipOptions.spouse" },
+];
+
+const aiRelationshipTypeLabel = (type, t) => {
+  const option = AI_RELATION_TYPE_OPTIONS.find((item) => item.value === type);
+  return option ? t(option.labelKey) : type;
+};
 
 const toAiDraftGender = (gender) => {
   if (gender === "male" || Number(gender) === 1) return "male";
@@ -835,7 +844,6 @@ const quickCreateSourcePerson = useMemo(
 
     const memberIds = new Set(draftMembers.map((member) => member.temporary_id));
     const invalidRelation = genealogyAiDraftRelationships.find((relation) => {
-      if (relation.type === "sibling") return true;
       if (relation.type === "parent_child") {
         return !memberIds.has(relation.parent) || !memberIds.has(relation.child) || relation.parent === relation.child;
       }
@@ -843,11 +851,7 @@ const quickCreateSourcePerson = useMemo(
     });
 
     if (invalidRelation) {
-      setGenealogyAiError(
-        invalidRelation.type === "sibling"
-          ? t("tree.genealogyAi.errors.siblingNotSupported")
-          : t("tree.genealogyAi.errors.invalidRelationship"),
-      );
+      setGenealogyAiError(t("tree.genealogyAi.errors.invalidRelationship"));
       return;
     }
 
@@ -2172,7 +2176,7 @@ const submitCreateDialog = async () => {
                       <div className="fte-aiDraftList">
                         {genealogyAiResult.relationships.map((relation, index) => (
                           <div className="fte-aiDraftItem" key={`${relation.type}-${index}`}>
-                            <strong>{relation.type}</strong>
+                            <strong>{aiRelationshipTypeLabel(relation.type, t)}</strong>
                             <span>
                               {relation.type === "parent_child"
                                 ? `${relation.parent || "?"} -> ${relation.child || "?"}`
@@ -2315,9 +2319,11 @@ const submitCreateDialog = async () => {
                             <label>
                               {t("tree.genealogyAi.relationshipType")}
                               <select value={relation.type} onChange={(event) => updateGenealogyAiDraftRelationship(relation.draft_id, { type: event.target.value })} disabled={genealogyAiSaving}>
-                                <option value="parent_child">parent_child</option>
-                                <option value="spouse">spouse</option>
-                                <option value="sibling">sibling</option>
+                                {AI_RELATION_TYPE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {t(option.labelKey)}
+                                  </option>
+                                ))}
                               </select>
                             </label>
                             {relation.type === "parent_child" ? (

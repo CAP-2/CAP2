@@ -348,6 +348,62 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(data["members"][1]["gender"], "female")
         self.assertEqual(data["relationships"][0]["type"], "spouse")
 
+    def test_genealogy_extract_rule_based_multiple_children_when_groq_disabled(self):
+        response = self.client.post(
+            "/genealogy/extract",
+            json={
+                "input_source": "text",
+                "prompt": "Thêm 2 người con cho Hà Văn Hòa, gồm Hà Văn Thái và Hà Văn Bảo.",
+            },
+        )
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([member["full_name"] for member in data["members"]], ["Hà Văn Hòa", "Hà Văn Thái", "Hà Văn Bảo"])
+        self.assertEqual(
+            [(relation["type"], relation["parent"], relation["child"]) for relation in data["relationships"]],
+            [("parent_child", "p1", "p2"), ("parent_child", "p1", "p3")],
+        )
+        self.assertEqual(data["summary"]["total_members_detected"], 3)
+        self.assertEqual(data["summary"]["total_relationships_detected"], 2)
+
+    def test_genealogy_extract_rule_based_parent_has_three_children_when_groq_disabled(self):
+        response = self.client.post(
+            "/genealogy/extract",
+            json={
+                "input_source": "text",
+                "prompt": "Hà Văn Hòa có ba người con là Trần Thiên Ân, Trần Thiên Bình và Trần Thiên Cường.",
+            },
+        )
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [member["full_name"] for member in data["members"]],
+            ["Hà Văn Hòa", "Trần Thiên Ân", "Trần Thiên Bình", "Trần Thiên Cường"],
+        )
+        self.assertEqual(len(data["relationships"]), 3)
+        self.assertEqual({relation["child"] for relation in data["relationships"]}, {"p2", "p3", "p4"})
+
+    def test_genealogy_extract_rule_based_multiple_actions_when_groq_disabled(self):
+        response = self.client.post(
+            "/genealogy/extract",
+            json={
+                "input_source": "text",
+                "prompt": "Thêm con cho Hà Văn Hòa tên là Trần Thiên Ân. Thêm vợ cho Hà Văn Hòa tên là Trần Thiên Lý.",
+            },
+        )
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([member["full_name"] for member in data["members"]], ["Hà Văn Hòa", "Trần Thiên Ân", "Trần Thiên Lý"])
+        self.assertEqual(data["relationships"][0]["type"], "parent_child")
+        self.assertEqual(data["relationships"][0]["parent"], "p1")
+        self.assertEqual(data["relationships"][0]["child"], "p2")
+        self.assertEqual(data["relationships"][1]["type"], "spouse")
+        self.assertEqual(data["relationships"][1]["from"], "p1")
+        self.assertEqual(data["relationships"][1]["to"], "p3")
+
     def test_genealogy_extract_empty_prompt_returns_schema_400(self):
         response = self.client.post("/genealogy/extract", json={"prompt": ""})
         data = response.get_json()

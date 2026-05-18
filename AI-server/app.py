@@ -20,6 +20,8 @@ EVENT_FORM_SYSTEM_PROMPT = """
 Bạn là AI chuyên sinh JSON cho form tạo sự kiện và công việc chuẩn bị của Gia Phả Việt.
 
 Bạn không trả lời hội thoại tự do.
+chỉ xử lý dữ liệu do input hiện tại cung cấp.
+Không tự lấy, suy đoán hoặc nhắc tới dữ liệu ngoài input.
 Không giải thích.
 Không markdown.
 Không dùng ```json.
@@ -92,10 +94,13 @@ QUY TẮC QUAN TRỌNG:
 - Nếu thiếu thông tin, để null hoặc đưa vào uncertain_items.
 - Không tự động kết luận quan hệ nếu mô tả mơ hồ.
 - Chỉ trích xuất quan hệ được nêu rõ hoặc có thể suy ra trực tiếp.
-- Ưu tiên các quan hệ: parent_child, spouse, sibling.
+- Ưu tiên các quan hệ: parent_child, spouse.
+- Luôn trả về quan hệ spouse trước quan hệ parent_child nếu cùng một người vừa có quan hệ vợ/chồng vừa có quan hệ con trong cùng input.
 - Nếu có nhiều người trùng tên, phải tạo temporary_id khác nhau và thêm warning có khả năng trùng người.
 - Nếu năm sinh, năm mất, giới tính, vai vế không rõ thì để null.
 - Kết quả AI chỉ là dữ liệu nháp, cần người dùng hoặc manager kiểm tra trước khi lưu vào hệ thống.
+- Nếu cùng một người xuất hiện nhiều lần trong cùng input và rõ ràng là cùng một người, chỉ tạo một member duy nhất và dùng lại temporary_id đó trong các quan hệ.
+- Không được tạo trùng member cho cùng một người chỉ vì người đó xuất hiện ở nhiều câu.
 
 QUY TẮC KHI DỮ LIỆU ĐẦU VÀO LÀ TRANSCRIPT TỪ GIỌNG NÓI:
 - Transcript có thể bị sai tên người, sai năm, sai quan hệ hoặc thiếu dấu câu.
@@ -137,13 +142,6 @@ QUY TẮC KHI DỮ LIỆU ĐẦU VÀO LÀ TRANSCRIPT TỪ GIỌNG NÓI:
       "to": "p2",
       "confidence": 0.0,
       "evidence": null
-    },
-    {
-      "type": "sibling",
-      "from": "p1",
-      "to": "p2",
-      "confidence": 0.0,
-      "evidence": null
     }
   ],
   "uncertain_items": [
@@ -179,10 +177,24 @@ CÁCH XỬ LÝ THÀNH VIÊN:
 - Mỗi người được nhắc đến rõ ràng phải có một member riêng.
 - temporary_id đặt theo thứ tự xuất hiện: p1, p2, p3...
 - Nếu cùng tên nhưng không chắc là cùng một người, tạo temporary_id khác nhau.
+- Nếu cùng tên và cùng ngữ cảnh rõ ràng là một người, dùng lại cùng temporary_id.
 - Nếu tên không đầy đủ, vẫn ghi phần tên có trong dữ liệu và thêm uncertain_items.
 - Nếu có năm sinh/năm mất rõ ràng thì ghi vào birth_year/death_year.
 - Nếu có ngày sinh/ngày mất đầy đủ thì ghi vào birth_date/death_date theo định dạng YYYY-MM-DD nếu xác định được.
 - Nếu ngày/tháng/năm không đủ hoặc không chắc, để null và đưa vào uncertain_items.
+- Các từ nối như “gồm”, “bao gồm”, “lần lượt”, “tên là”, “có tên là”, “là”, “và”, “rồi”, “sau đó”, “đồng thời” không được đưa vào full_name.
+- Số lượng như “một”, “hai”, “ba”, “2”, “3” không phải tên người, không được đưa vào full_name.
+
+QUY TẮC TIỀN XỬ LÝ VÀ HIỂU INPUT:
+- Luôn giữ nguyên tên người theo dữ liệu đầu vào.
+- Không tự bỏ dấu tên người.
+- Không tự sửa tên người.
+- Không tự chuẩn hóa tên theo suy đoán.
+- Có thể hiểu dấu chấm, dấu phẩy, dấu chấm phẩy, xuống dòng hoặc cụm từ “và”, “rồi”, “sau đó”, “đồng thời” là dấu hiệu tách nhiều ý trong cùng một prompt.
+- Nếu input có nhiều câu hoặc nhiều hành động, phải xử lý tất cả các hành động.
+- Không được chỉ xử lý hành động đầu tiên.
+- Mỗi hành động như “thêm con”, “thêm vợ”, “thêm chồng”, “có con”, “có vợ”, “có chồng”, “là con của”, “là vợ của”, “là chồng của” phải được xem là một quan hệ riêng.
+- Nếu cùng một người xuất hiện ở nhiều câu, phải dùng cùng một temporary_id cho người đó nếu rõ ràng là cùng người.
 
 CÁCH XỬ LÝ QUAN HỆ:
 - "A là cha/bố/mẹ của B" -> tạo parent_child.
@@ -190,11 +202,74 @@ CÁCH XỬ LÝ QUAN HỆ:
 - "A là vợ/chồng của B" -> tạo spouse.
 - "A và B kết hôn" -> tạo spouse.
 - "A, B, C là con của X và Y" -> tạo X/Y parent_child với A, B, C nếu X/Y được nêu rõ là cha mẹ.
-- "A có các con B, C, D" -> tạo A parent_child với B, C, D.
+- "A có các con B, C, D" -> tạo từng quan hệ parent_child riêng: A parent_child B, A parent_child C, A parent_child D.
+- "A có hai người con là B và C" -> tạo A parent_child B và A parent_child C.
+- "Thêm 2 người con cho A gồm B và C" -> tạo A parent_child B và A parent_child C.
+- "Thêm hai người con cho A lần lượt tên là B và C" -> tạo A parent_child B và A parent_child C.
 - "Hai người có ba con..." -> chỉ suy ra nếu hai người được nhắc gần nhất là một cặp vợ chồng hoặc cha mẹ rõ ràng.
-- "Anh ruột/em ruột/chị ruột" -> tạo sibling nếu quan hệ ruột được nói rõ.
-- Với các quan hệ chú, bác, cô, dì, cậu, mợ, thím, cháu: không tự suy ra parent_child hoặc sibling nếu thiếu ngữ cảnh; đưa vào uncertain_items.
+- Không tạo quan hệ anh/chị/em ruột trực tiếp; nếu người dùng nói anh/chị/em ruột, đưa vào uncertain_items.
+- Với các quan hệ chú, bác, cô, dì, cậu, mợ, thím, cháu: không tự suy ra parent_child nếu thiếu ngữ cảnh; đưa vào uncertain_items.
 - Với quan hệ ông/bà/cháu: không tự tạo parent_child trực tiếp nếu thiếu cha/mẹ trung gian; đưa vào uncertain_items.
+
+QUY TẮC XỬ LÝ NHIỀU NGƯỜI CON:
+- Nếu câu có dạng “A có con là B” thì tạo A parent_child B.
+- Nếu câu có dạng “Thêm con cho A tên là B” thì tạo A parent_child B.
+- Nếu câu có dạng “A có hai người con là B và C” thì phải tạo:
+  A parent_child B
+  A parent_child C
+- Nếu câu có dạng “Thêm 2 người con cho A, gồm B và C” thì phải tạo:
+  A parent_child B
+  A parent_child C
+- Nếu câu có dạng “Thêm hai người con cho A, gồm B và C” thì phải tạo:
+  A parent_child B
+  A parent_child C
+- Nếu câu có dạng “Thêm ba người con cho A, gồm B, C và D” thì phải tạo:
+  A parent_child B
+  A parent_child C
+  A parent_child D
+- Nếu sau các cụm “có con là”, “các con là”, “gồm”, “bao gồm”, “tên là”, “lần lượt là”, “lần lượt tên là” có nhiều tên được nối bằng dấu phẩy, dấu chấm phẩy hoặc từ “và”, phải tách mỗi tên thành một member riêng.
+- Không được gộp “B và C” thành một full_name.
+- Không được tạo một member có full_name dạng “B và C”.
+- Nếu người dùng nhập số lượng, ví dụ “thêm 2 người con”, “thêm hai người con”, “thêm ba người con”, thì hiểu rằng cần tạo nhiều member con và nhiều relationship parent_child tương ứng với số người con được liệt kê.
+- Nếu số lượng được nói ra không khớp với số tên được liệt kê, vẫn trích xuất các tên đã thấy, nhưng thêm warning để người dùng kiểm tra.
+- Ví dụ: “Thêm 3 người con cho A gồm B và C” thì tạo 2 người con B, C và thêm warning rằng số lượng nói là 3 nhưng chỉ phát hiện 2 tên.
+- Ví dụ: “Thêm 2 người con cho A gồm B, C và D” thì tạo 3 người con B, C, D và thêm warning rằng số lượng nói là 2 nhưng phát hiện 3 tên.
+- Nếu không liệt kê đủ tên theo số lượng, không tự bịa tên còn thiếu; đưa phần thiếu vào uncertain_items.
+
+QUY TẮC XỬ LÝ NHIỀU QUAN HỆ TRONG MỘT PROMPT:
+- Nếu input là “Thêm con cho A tên là B. Thêm vợ cho A tên là C” thì phải tạo:
+  p1 = A
+  p2 = B
+  p3 = C
+  p1 parent_child p2
+  p1 spouse p3
+- Nếu input là “A có con là B và C. A có vợ là D” thì phải tạo:
+  p1 = A
+  p2 = B
+  p3 = C
+  p4 = D
+  p1 parent_child p2
+  p1 parent_child p3
+  p1 spouse p4
+- Không được bỏ qua quan hệ sau nếu prompt có nhiều câu.
+- Không được chỉ trả về quan hệ đầu tiên nếu còn quan hệ khác trong input.
+- Nếu một người vừa có quan hệ con, vừa có quan hệ vợ/chồng trong cùng input, phải gom vào cùng một member thay vì tạo trùng.
+
+QUY TẮC XỬ LÝ SỐ LƯỢNG:
+- Hiểu các số dạng chữ và dạng số:
+  “một” = 1
+  “hai” = 2
+  “ba” = 3
+  “bốn” = 4
+  “năm” = 5
+  “1” = 1
+  “2” = 2
+  “3” = 3
+  “4” = 4
+  “5” = 5
+- Nếu người dùng nói “thêm hai người con”, “thêm 2 người con”, “có hai con”, “có 2 con”, thì đây là tín hiệu phải tạo nhiều member con và nhiều relationship parent_child.
+- Số lượng không phải là tên người, không được đưa vào full_name.
+- Nếu không liệt kê đủ tên theo số lượng, không tự bịa tên còn thiếu; đưa phần thiếu vào uncertain_items.
 
 CÁCH XỬ LÝ CẢNH BÁO:
 - Nếu con có năm sinh nhỏ hơn hoặc bằng năm sinh cha/mẹ dưới 15 năm, thêm warning.
@@ -203,19 +278,78 @@ CÁCH XỬ LÝ CẢNH BÁO:
 - Nếu có khả năng trùng người do cùng tên hoặc cùng năm sinh, thêm warning.
 - Nếu quan hệ có thể tạo vòng lặp gia phả, thêm warning.
 - Nếu dữ liệu từ transcript giọng nói có dấu hiệu sai tên, sai năm hoặc thiếu ngữ cảnh, thêm warning.
+- Nếu số lượng người được nói ra không khớp với số tên được phát hiện, thêm warning với warning_type = "count_mismatch".
+- Nếu một full_name có chứa cụm “và” ở giữa hai tên người, thêm warning vì có thể AI đã gộp nhiều người thành một.
 
 CÁCH ĐÁNH GIÁ CONFIDENCE:
 - 0.9 - 1.0: thông tin được nói rõ trực tiếp.
 - 0.7 - 0.89: thông tin có thể suy ra trực tiếp từ câu rõ ràng.
 - 0.4 - 0.69: thông tin có dấu hiệu đúng nhưng còn thiếu ngữ cảnh.
 - 0.0 - 0.39: thông tin mơ hồ, không đủ chắc chắn.
+
+VÍ DỤ BẮT BUỘC:
+
+Input:
+"Thêm 2 người con cho Hà Văn Hòa, gồm Hà Văn Thái và Hà Văn Bảo."
+
+Output đúng phải có:
+- 3 members:
+  p1 = Hà Văn Hòa
+  p2 = Hà Văn Thái
+  p3 = Hà Văn Bảo
+- 2 relationships:
+  p1 parent_child p2
+  p1 parent_child p3
+
+Input:
+"Thêm hai người con cho Hà Văn Hòa lần lượt tên là Hà Văn Thái và Hà Văn Bảo."
+
+Output đúng phải có:
+- 3 members:
+  p1 = Hà Văn Hòa
+  p2 = Hà Văn Thái
+  p3 = Hà Văn Bảo
+- 2 relationships:
+  p1 parent_child p2
+  p1 parent_child p3
+
+Input:
+"Thêm con cho Hà Văn Hòa tên là Trần Thiên Ân. Thêm vợ cho Hà Văn Hòa tên là Trần Thiên Lý."
+
+Output đúng phải có:
+- 3 members:
+  p1 = Hà Văn Hòa
+  p2 = Trần Thiên Ân
+  p3 = Trần Thiên Lý
+- 2 relationships:
+  p1 parent_child p2
+  p1 spouse p3
+
+Input:
+"Hà Văn Hòa có ba người con là Trần Thiên Ân, Trần Thiên Bình và Trần Thiên Cường."
+
+Output đúng phải có:
+- 4 members:
+  p1 = Hà Văn Hòa
+  p2 = Trần Thiên Ân
+  p3 = Trần Thiên Bình
+  p4 = Trần Thiên Cường
+- 3 relationships:
+  p1 parent_child p2
+  p1 parent_child p3
+  p1 parent_child p4
+
+EXTRA RULES FOR COMPOUND ACTIONS:
+- If spouse and child relations appear in the same prompt, identify the spouse relation first, then create parent_child relations.
+- "them vo/chong cho A ten la B va co con ten la C" means A and B are spouses, and C is child of both A and B.
+- Never include action connectors such as "va co con" in full_name.
 """
 
 VALID_MODES = {"event_create", "task_create"}
 VALID_STATUSES = {"success", "unsupported"}
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VALID_GENEALOGY_INPUT_SOURCES = {"text", "voice_transcript"}
-VALID_RELATIONSHIP_TYPES = {"parent_child", "spouse", "sibling"}
+VALID_RELATIONSHIP_TYPES = {"parent_child", "spouse"}
 VALID_GENDERS = {"male", "female"}
 
 
@@ -237,6 +371,40 @@ def strip_accents(text: str) -> str:
 def normalize_vietnamese(text: str) -> str:
     normalized = strip_accents(text).lower().strip()
     return re.sub(r"\s+", " ", normalized)
+
+
+def prepare_genealogy_prompt(prompt: str) -> str:
+    text = re.sub(r"\s+", " ", str(prompt or "").strip()).replace(";", ".")
+    normalized, index_map = normalized_text_with_index_map(text)
+    split_patterns = [
+        r"(?:\s|,)+va\s+(?=(?:them|tao|bo sung)\b)",
+        r"(?:\s|,)+roi\s+(?=them\b)",
+        r"(?:\s|,)+sau\s+do\s+(?=them\b)",
+        r"(?:\s|,)+dong\s+thoi\s+(?=them\b)",
+        r"(?:\s|,)+va\s+(?=co\s+con\b)",
+    ]
+    spans: list[tuple[int, int]] = []
+    for pattern in split_patterns:
+        for match in re.finditer(pattern, normalized):
+            if not index_map:
+                continue
+            start = index_map[min(match.start(), len(index_map) - 1)]
+            end = index_map[min(match.end() - 1, len(index_map) - 1)] + 1
+            spans.append((start, end))
+
+    if not spans:
+        return text
+
+    prepared_parts: list[str] = []
+    last_end = 0
+    for start, end in sorted(spans):
+        if start < last_end:
+            continue
+        prepared_parts.append(text[last_end:start].rstrip())
+        prepared_parts.append(". ")
+        last_end = end
+    prepared_parts.append(text[last_end:].lstrip())
+    return re.sub(r"\s+", " ", "".join(prepared_parts)).strip()
 
 
 def strip_json_block(text: str) -> str:
@@ -443,29 +611,6 @@ def requested_task_count_from_body(body: dict[str, Any]) -> int | None:
 
 def normalize_task_title_for_compare(task: dict[str, Any]) -> str:
     return normalize_vietnamese(str(task.get("title") or "")).strip()
-
-
-# TASK_PURPOSE_KEYWORDS: dict[str, tuple[str, ...]] = {
-#     "notify": ("thong bao", "gui thong bao", "bao lich", "moi tham du", "thu moi", "thiep moi"),
-#     "guest_list": ("danh sach tham du", "xac nhan so luong", "chot danh sach", "khach moi", "nguoi tham gia"),
-#     "venue": ("dia diem", "don dep", "sap xep ban ghe", "kiem tra am thanh", "nha tho", "tu duong"),
-#     "offering": ("mam cung", "le vat", "huong hoa", "trai cay", "do le"),
-#     "food": ("mam com", "dat tiec", "nuoc uong", "thuc don", "do an"),
-#     "finance": ("chi phi", "dong gop", "du toan", "quy", "thu chi", "kinh phi"),
-#     "media": ("chup anh", "quay video", "luu niem", "tu lieu", "hinh anh"),
-#     "coordination": ("phan cong", "dieu phoi", "nguoi phu trach", "don tiep"),
-#     "summary": ("tong ket", "bao cao", "rut kinh nghiem", "cong khai"),
-# }
-
-
-# def task_purpose(task: dict[str, Any]) -> str | None:
-#     text = normalize_vietnamese(
-#         f"{task.get('title') or ''} {task.get('description') or ''}"
-#     )
-#     for purpose, keywords in TASK_PURPOSE_KEYWORDS.items():
-#         if any(keyword in text for keyword in keywords):
-#             return purpose
-#     return None
 
 
 def task_duplicate_key(task: dict[str, Any]) -> str:
@@ -1024,12 +1169,66 @@ GENEALOGY_NAME_STOP_MARKERS = [
     " so dien thoai",
     " sdt",
     " email",
+    " voi ten",
+    " voi co ten",
+    " ten la",
+    " ten",
+    " co ten",
 ]
+
+GENEALOGY_BAD_NAME_MARKERS = [
+    "them con cho",
+    "them vo cho",
+    "them chong cho",
+    "them con",
+    "them vo",
+    "them chong",
+    "tao con cho",
+    "tao vo cho",
+    "tao chong cho",
+    "tao con",
+    "tao vo",
+    "tao chong",
+    "bo sung con cho",
+    "bo sung vo cho",
+    "bo sung chong cho",
+    "bo sung con",
+    "bo sung vo",
+    "bo sung chong",
+    "va them",
+    "roi them",
+    "sau do them",
+    "dong thoi them",
+    "va co con",
+    "co con ten la",
+    "co con la",
+]
+
+
+def has_bad_genealogy_name(value: Any) -> bool:
+    normalized = normalize_vietnamese(str(value or ""))
+    if not normalized:
+        return False
+    if any(marker in normalized for marker in GENEALOGY_BAD_NAME_MARKERS):
+        return True
+    return normalized.startswith("gom ") or " ten la " in f" {normalized} "
+
+
+def genealogy_result_has_bad_member_name(result: dict[str, Any]) -> bool:
+    members = result.get("members") if isinstance(result.get("members"), list) else []
+    return any(has_bad_genealogy_name(member.get("full_name")) for member in members if isinstance(member, dict))
 
 
 def cleanup_genealogy_name(value: str) -> str:
     text = re.split(r"[,.;!?()\[\]\n\r]+", str(value or "").strip(), maxsplit=1)[0]
     text = text.strip(" \t\"'`:-")
+    normalized_text = normalize_vietnamese(text)
+    for marker in GENEALOGY_BAD_NAME_MARKERS:
+        marker_index = normalized_text.find(marker)
+        if marker_index > 0:
+            text = text[:marker_index].strip()
+            normalized_text = normalize_vietnamese(text)
+            break
     for marker in GENEALOGY_NAME_STOP_MARKERS:
         normalized = normalize_vietnamese(text)
         marker_index = normalized.find(marker)
@@ -1049,120 +1248,306 @@ def named_group_original_text(
     match: re.Match[str],
     group_name: str,
 ) -> str:
+    return cleanup_genealogy_name(named_group_original_raw_text(source_text, index_map, match, group_name))
+
+
+def named_group_original_raw_text(
+    source_text: str,
+    index_map: list[int],
+    match: re.Match[str],
+    group_name: str,
+) -> str:
     try:
         start = match.start(group_name)
         end = match.end(group_name)
     except IndexError:
         return ""
-    return cleanup_genealogy_name(original_slice_from_normalized_span(source_text, index_map, start, end))
+    return original_slice_from_normalized_span(source_text, index_map, start, end).strip()
 
 
-def build_rule_based_genealogy_result(
-    relation_type: str,
-    first_name: str,
-    second_name: str,
-    evidence: str,
-    spouse_gender: str | None = None,
-    parent_first: bool = True,
-) -> dict[str, Any]:
-    first_name = cleanup_genealogy_name(first_name)
-    second_name = cleanup_genealogy_name(second_name)
-    if not first_name or not second_name or normalize_vietnamese(first_name) == normalize_vietnamese(second_name):
-        return empty_genealogy_extract_result()
-
-    first_member = {
-        "temporary_id": "p1",
-        "full_name": first_name,
-        "gender": None,
-        "confidence": 0.92,
-    }
-    second_member = {
-        "temporary_id": "p2",
-        "full_name": second_name,
-        "gender": spouse_gender,
-        "confidence": 0.92,
-    }
-
-    if relation_type == "parent_child":
-        relationship = {
-            "type": "parent_child",
-            "parent": "p1" if parent_first else "p2",
-            "child": "p2" if parent_first else "p1",
-            "confidence": 0.92,
-            "evidence": evidence,
-        }
-    else:
-        relationship = {
-            "type": "spouse",
-            "from": "p1",
-            "to": "p2",
-            "confidence": 0.92,
-            "evidence": evidence,
-        }
-
-    return {
-        "members": [first_member, second_member],
-        "relationships": [relationship],
-        "uncertain_items": [],
-        "warnings": [],
-    }
+VIETNAMESE_COUNT_WORDS = {
+    "mot": 1,
+    "hai": 2,
+    "ba": 3,
+    "bon": 4,
+    "bốn": 4,
+    "nam": 5,
+    "năm": 5,
+}
 
 
-def fallback_genealogy_extract(prompt: str, input_source: str) -> dict[str, Any]:
-    source_text = str(prompt or "").strip()
-    normalized, index_map = normalized_text_with_index_map(source_text)
+def parse_genealogy_count(value: str | None) -> int | None:
+    text = normalize_vietnamese(value or "")
+    if not text:
+        return None
+    if text.isdigit():
+        parsed = int(text)
+        return parsed if parsed > 0 else None
+    return VIETNAMESE_COUNT_WORDS.get(text)
 
-    child_patterns = [
-        (
-            r"(?:^|\b)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:cho|cua)\s+"
-            r"(?P<parent>.+?)\s+(?:voi\s+)?(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<child>.+)$",
-            True,
-        ),
-        (
-            r"(?P<parent>.+?)\s+co\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:ten\s+(?:la\s+)?|la\s+)?(?P<child>.+)$",
-            True,
-        ),
-        (
-            r"(?P<child>.+?)\s+la\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:cua|cho)\s+(?P<parent>.+)$",
-            False,
-        ),
-    ]
-    for pattern, parent_first in child_patterns:
-        match = re.search(pattern, normalized)
-        if not match:
+
+def split_genealogy_names(value: str) -> list[str]:
+    text = re.split(r"[.!?]\s*", str(value or "").strip(), maxsplit=1)[0]
+    text = re.sub(
+        r"^\s*(?:gom|gồm|bao gom|bao gồm|lan luot(?:\s+ten)?\s+la|lần lượt(?:\s+tên)?\s+là|ten\s+(?:la\s+)?|tên\s+(?:là\s+)?|la|là)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    parts = re.split(r"\s*(?:,|;|\n|\r|\s+(?:và|va)\s+)\s*", text, flags=re.IGNORECASE)
+    names: list[str] = []
+    for part in parts:
+        name = cleanup_genealogy_name(part)
+        normalized_name = normalize_vietnamese(name)
+
+        if not name:
             continue
-        parent = named_group_original_text(source_text, index_map, match, "parent")
-        child = named_group_original_text(source_text, index_map, match, "child")
-        raw_result = build_rule_based_genealogy_result("parent_child", parent, child, source_text, parent_first=parent_first)
-        normalized_result = normalize_genealogy_extract_result(raw_result, input_source)
-        if normalized_result.get("members"):
-            return normalized_result
+
+        if normalized_name in {"mot", "hai", "ba", "bon", "nam", "1", "2", "3", "4", "5"}:
+            continue
+
+        if has_bad_genealogy_name(name):
+            continue
+
+        names.append(name)
+
+    return names
+
+
+def make_genealogy_member(temporary_id: str, full_name: str, gender: str | None = None) -> dict[str, Any]:
+    return {
+        "temporary_id": temporary_id,
+        "full_name": full_name,
+        "gender": gender,
+        "confidence": 0.92,
+    }
+
+
+def build_rule_based_multi_genealogy_result(
+    actions: list[dict[str, Any]],
+    input_source: str,
+) -> dict[str, Any]:
+    members: list[dict[str, Any]] = []
+    member_id_by_name: dict[str, str] = {}
+    relationships: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    uncertain_items: list[dict[str, Any]] = []
+
+    def get_member_id(full_name: str, gender: str | None = None) -> str | None:
+        name = cleanup_genealogy_name(full_name)
+        if not name or has_bad_genealogy_name(name):
+            return None
+        key = normalize_vietnamese(name)
+        if key in member_id_by_name:
+            member_id = member_id_by_name[key]
+            if gender:
+                for member in members:
+                    if member["temporary_id"] == member_id and not member.get("gender"):
+                        member["gender"] = gender
+                        break
+            return member_id
+        member_id = f"p{len(members) + 1}"
+        member_id_by_name[key] = member_id
+        members.append(make_genealogy_member(member_id, name, gender))
+        return member_id
+
+    for action in actions:
+        relation_type = action.get("type")
+        evidence = action.get("evidence")
+        if relation_type == "parent_child":
+            parent_names = action.get("parents") or [action.get("parent")]
+            parent_ids = [
+                parent_id
+                for parent_id in (
+                    get_member_id(parent_name or "", action.get("parent_gender")) for parent_name in parent_names
+                )
+                if parent_id
+            ]
+            child_names = action.get("children") or []
+            expected_count = action.get("expected_count")
+            if expected_count and expected_count != len(child_names):
+                append_genealogy_warning(
+                    warnings,
+                    "count_mismatch",
+                    f"Số lượng người con được nói là {expected_count} nhưng phát hiện {len(child_names)} tên.",
+                    parent_ids,
+                )
+            if expected_count and len(child_names) < expected_count:
+                uncertain_items.append(
+                    {
+                        "item_type": "member_or_relationship",
+                        "reference_id": parent_ids[0] if parent_ids else None,
+                        "field": "children",
+                        "reason": "Số lượng người con được nói ra lớn hơn số tên phát hiện.",
+                        "suggested_action": "Bổ sung tên người con còn thiếu hoặc chỉnh lại số lượng.",
+                    }
+                )
+            for child_name in child_names:
+                child_id = get_member_id(child_name, action.get("child_gender"))
+                if parent_ids and child_id:
+                    for parent_id in parent_ids:
+                        relationships.append(
+                            {
+                                "type": "parent_child",
+                                "parent": parent_id,
+                                "child": child_id,
+                                "confidence": 0.92,
+                                "evidence": evidence,
+                            }
+                        )
+        elif relation_type == "spouse":
+            person_id = get_member_id(action.get("person") or "", action.get("person_gender"))
+            spouse_id = get_member_id(action.get("spouse") or "", action.get("spouse_gender"))
+            if person_id and spouse_id:
+                relationships.append(
+                    {
+                        "type": "spouse",
+                        "from": person_id,
+                        "to": spouse_id,
+                        "confidence": 0.92,
+                        "evidence": evidence,
+                    }
+                )
+
+    raw_result = {
+        "members": members,
+        "relationships": relationships,
+        "uncertain_items": uncertain_items,
+        "warnings": warnings,
+    }
+    return normalize_genealogy_extract_result(raw_result, input_source)
+
+
+def fallback_genealogy_extract(prompt_original: str, input_source: str) -> dict[str, Any]:
+    original_prompt = str(prompt_original or "").strip()
+    normalized_prompt, original_index_map = normalized_text_with_index_map(original_prompt)
+    actions: list[dict[str, Any]] = []
+    spouse_pairs: list[dict[str, Any]] = []
+    child_count = r"(?P<count>mot|hai|ba|bon|nam|\d+)?"
 
     spouse_patterns = [
         (
-            r"(?:^|\b)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?(?P<relation>vo|chong)\s+(?:cho|cua)\s+"
-            r"(?P<person>.+?)\s+(?:voi\s+)?(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+)$",
+            r"(?:^|[.;!?]\s*)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?(?P<relation>vo|chong)\s+(?:cho|cua)\s+"
+            r"(?P<person>.+?)\s+(?:voi\s+)?(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+?)(?=$|[.;!?])",
             False,
         ),
         (
-            r"(?P<person>.+?)\s+co\s+(?P<relation>vo|chong)\s+(?:ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+)$",
+            r"(?:^|[.;!?]\s*)(?P<person>.+?)\s+co\s+(?P<relation>vo|chong)\s+(?:ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+?)(?=$|[.;!?])",
             False,
         ),
         (
-            r"(?P<spouse>.+?)\s+la\s+(?P<relation>vo|chong)\s+cua\s+(?P<person>.+)$",
+            r"(?:^|[.;!?]\s*)(?P<spouse>.+?)\s+la\s+(?P<relation>vo|chong)\s+cua\s+(?P<person>.+?)(?=$|[.;!?])",
             True,
         ),
     ]
     for pattern, _spouse_first in spouse_patterns:
-        match = re.search(pattern, normalized)
-        if not match:
-            continue
-        person = named_group_original_text(source_text, index_map, match, "person")
-        spouse = named_group_original_text(source_text, index_map, match, "spouse")
+        for match in re.finditer(pattern, normalized_prompt):
+            person = named_group_original_text(original_prompt, original_index_map, match, "person")
+            spouse = named_group_original_text(original_prompt, original_index_map, match, "spouse")
+            relation = match.group("relation")
+            spouse_gender = "female" if relation == "vo" else "male"
+            if person and spouse:
+                action = {
+                    "type": "spouse",
+                    "person": person,
+                    "spouse": spouse,
+                    "spouse_gender": spouse_gender,
+                    "evidence": original_prompt,
+                    "_start": match.start(),
+                }
+                actions.append(action)
+                spouse_pairs.append(action)
+
+    child_patterns = [
+        (
+            rf"(?:^|[.;!?]\s*)(?:tao|them|bo sung|them moi)\s+{child_count}\s*(?:nguoi\s+)?con\s+(?:cho|cua)\s+"
+            r"(?P<parent>.+?)\s+(?:voi\s+)?(?:gom|bao gom|lan luot(?:\s+ten)?\s+la|ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la)\s+(?P<children>.+?)(?=$|[.;!?])",
+            True,
+        ),
+        (
+            rf"(?:^|[.;!?]\s*)(?P<parent>.+?)\s+co\s+{child_count}\s*(?:nguoi\s+)?(?:con|cac\s+con)\s+(?:ten\s+(?:la\s+)?|la\s+)?(?P<children>.+?)(?=$|[.;!?])",
+            True,
+        ),
+        (
+            r"(?:^|[.;!?]\s*)(?P<children>.+?)\s+la\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:cua|cho)\s+(?P<parent>.+?)(?=$|[.;!?])",
+            False,
+        ),
+    ]
+    for pattern, parent_first in child_patterns:
+        for match in re.finditer(pattern, normalized_prompt):
+            parent = named_group_original_text(original_prompt, original_index_map, match, "parent")
+            children_raw = named_group_original_raw_text(original_prompt, original_index_map, match, "children")
+            child_names = split_genealogy_names(children_raw)
+            if not parent_first and child_names:
+                parent, child_names = child_names[0], [parent]
+            if parent and child_names:
+                actions.append(
+                    {
+                        "type": "parent_child",
+                        "parent": parent,
+                        "children": child_names,
+                        "expected_count": parse_genealogy_count(match.groupdict().get("count")),
+                        "evidence": original_prompt,
+                        "_start": match.start(),
+                    }
+                )
+
+    parentless_spouse_pattern = (
+        r"(?:^|[.;!?]\s*)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?(?P<relation>vo|chong)\s+"
+        r"(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+?)(?=$|[.;!?])"
+    )
+    for match in re.finditer(parentless_spouse_pattern, normalized_prompt):
+        recent_person = None
+        for action in actions:
+            if action.get("_start", 0) >= match.start():
+                continue
+            if action.get("type") == "parent_child":
+                recent_person = (action.get("parents") or [action.get("parent")])[0]
+            elif action.get("type") == "spouse":
+                recent_person = action.get("person")
+        spouse = named_group_original_text(original_prompt, original_index_map, match, "spouse")
         relation = match.group("relation")
         spouse_gender = "female" if relation == "vo" else "male"
-        raw_result = build_rule_based_genealogy_result("spouse", person, spouse, source_text, spouse_gender)
-        normalized_result = normalize_genealogy_extract_result(raw_result, input_source)
+        if recent_person and spouse:
+            action = {
+                "type": "spouse",
+                "person": recent_person,
+                "spouse": spouse,
+                "spouse_gender": spouse_gender,
+                "evidence": original_prompt,
+                "_start": match.start(),
+            }
+            actions.append(action)
+            spouse_pairs.append(action)
+
+    parentless_child_pattern = (
+        rf"(?:^|[.;!?]\s*)(?:hai\s+nguoi\s+)?co\s+{child_count}\s*(?:nguoi\s+)?(?:con|cac\s+con)\s+"
+        r"(?:ten\s+(?:la\s+)?|la\s+)?(?P<children>.+?)(?=$|[.;!?])"
+    )
+    for match in re.finditer(parentless_child_pattern, normalized_prompt):
+        child_names = split_genealogy_names(named_group_original_raw_text(original_prompt, original_index_map, match, "children"))
+        recent_spouse = None
+        for spouse_pair in spouse_pairs:
+            if spouse_pair["_start"] < match.start():
+                recent_spouse = spouse_pair
+        if recent_spouse and child_names:
+            actions.append(
+                {
+                    "type": "parent_child",
+                    "parents": [recent_spouse["person"], recent_spouse["spouse"]],
+                    "children": child_names,
+                    "expected_count": parse_genealogy_count(match.groupdict().get("count")),
+                    "evidence": original_prompt,
+                    "_start": match.start(),
+                }
+            )
+
+    actions.sort(key=lambda action: (action.get("_start", 0), 0 if action.get("type") == "spouse" else 1))
+    for action in actions:
+        action.pop("_start", None)
+
+    if actions:
+        normalized_result = build_rule_based_multi_genealogy_result(actions, input_source)
         if normalized_result.get("members"):
             return normalized_result
 
@@ -1391,7 +1776,7 @@ def normalize_genealogy_extract_result(result: dict[str, Any], input_source: str
                 append_genealogy_warning(
                     warnings,
                     "self_relationship",
-                    "Một người không thể có quan hệ vợ/chồng hoặc anh/chị/em với chính mình.",
+                    "Một người không thể có quan hệ vợ/chồng với chính mình.",
                     [from_id],
                 )
 
@@ -1491,12 +1876,12 @@ def create_app() -> Flask:
     @app.post("/genealogy/extract")
     def genealogy_extract():
         body = request.get_json(silent=True) or {}
-        prompt = str(body.get("prompt") or "").strip()
+        original_prompt = str(body.get("prompt") or "").strip()
         input_source = str(body.get("input_source") or "text").strip()
         if input_source not in VALID_GENEALOGY_INPUT_SOURCES:
             input_source = "text"
 
-        if not prompt:
+        if not original_prompt:
             result = empty_genealogy_extract_result()
             append_genealogy_warning(
                 result["warnings"],
@@ -1506,7 +1891,8 @@ def create_app() -> Flask:
             )
             return jsonify(result), 400
 
-        fallback = fallback_genealogy_extract(prompt, input_source)
+        prepared_prompt = prepare_genealogy_prompt(original_prompt)
+        fallback = fallback_genealogy_extract(prepared_prompt, input_source)
 
         if groq_client is None:
             if fallback.get("members") or fallback.get("relationships"):
@@ -1522,7 +1908,8 @@ def create_app() -> Flask:
 
         user_payload = {
             "input_source": input_source,
-            "prompt": prompt,
+            "prompt": prepared_prompt,
+            "prompt_original": original_prompt,
         }
 
         try:
@@ -1541,6 +1928,10 @@ def create_app() -> Flask:
 
             parsed = json.loads(strip_json_block(content))
             normalized = normalize_genealogy_extract_result(parsed, input_source)
+            if genealogy_result_has_bad_member_name(normalized) and (
+                fallback.get("members") or fallback.get("relationships")
+            ):
+                return jsonify(fallback)
             if not normalized.get("members") and (fallback.get("members") or fallback.get("relationships")):
                 return jsonify(fallback)
             return jsonify(normalized)

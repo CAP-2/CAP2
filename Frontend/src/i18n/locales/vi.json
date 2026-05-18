@@ -1911,6 +1911,10 @@
       "accountCreateHint": "Người còn sống sẽ được tạo tài khoản đăng nhập khi lưu vào cây.",
       "notes": "Ghi chú",
       "relationshipType": "Loại quan hệ",
+      "relationshipOptions": {
+        "parentChild": "Cha/mẹ - Con / Parent - Child (parent_child)",
+        "spouse": "Vợ/chồng / Spouse (spouse)"
+      },
       "parent": "Cha/mẹ",
       "child": "Con",
       "parentRole": "Lưu là",
@@ -1942,7 +1946,6 @@
         "invalidRelationship": "Có quan hệ thiếu người hoặc tự liên kết chính mình. Vui lòng chỉnh sửa trước khi lưu.",
         "selectExistingDuplicate": "Trong cây đang có nhiều người cùng tên \"{{name}}\". Vui lòng chọn đúng người đã tồn tại trong dòng đó hoặc đổi tên nháp rõ hơn trước khi lưu.",
         "missingLivingAccount": "Người còn sống \"{{name}}\" cần email và mật khẩu tối thiểu 6 ký tự để tạo tài khoản.",
-        "siblingNotSupported": "Quan hệ sibling chưa hỗ trợ lưu trực tiếp. Hãy xóa hoặc đổi sang parent_child/spouse trước khi lưu.",
         "createdIdMissing": "Không nhận được ID người vừa tạo.",
         "saveFailed": "Không thể lưu dữ liệu AI vào cây."
       }
