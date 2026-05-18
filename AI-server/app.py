@@ -230,6 +230,7 @@ def parse_int(value: Any) -> int | None:
 def strip_accents(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text or "")
     without_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    without_marks = without_marks.replace("đ", "d").replace("Đ", "D")
     return without_marks.replace("đ", "d").replace("Đ", "D")
 
 
@@ -976,6 +977,198 @@ def empty_genealogy_extract_result() -> dict[str, Any]:
     }
 
 
+def normalized_text_with_index_map(text: str) -> tuple[str, list[int]]:
+    normalized_chars: list[str] = []
+    index_map: list[int] = []
+    for index, char in enumerate(str(text or "")):
+        normalized = strip_accents(char).lower()
+        for normalized_char in normalized:
+            normalized_chars.append(normalized_char)
+            index_map.append(index)
+    return "".join(normalized_chars), index_map
+
+
+def original_slice_from_normalized_span(text: str, index_map: list[int], start: int, end: int) -> str:
+    if start < 0 or end <= start or not index_map:
+        return ""
+    start = min(start, len(index_map) - 1)
+    end = min(end, len(index_map))
+    original_start = index_map[start]
+    original_end = index_map[end - 1] + 1
+    return str(text or "")[original_start:original_end]
+
+
+GENEALOGY_NAME_PREFIXES = {
+    "ong",
+    "ba",
+    "anh",
+    "chi",
+    "em",
+    "bo",
+    "cha",
+    "me",
+    "vo",
+    "chong",
+    "con",
+    "nguoi",
+}
+
+GENEALOGY_NAME_STOP_MARKERS = [
+    " sinh ",
+    " ngay sinh",
+    " nam sinh",
+    " mat ",
+    " ngay mat",
+    " nam mat",
+    " dia chi",
+    " so dien thoai",
+    " sdt",
+    " email",
+]
+
+
+def cleanup_genealogy_name(value: str) -> str:
+    text = re.split(r"[,.;!?()\[\]\n\r]+", str(value or "").strip(), maxsplit=1)[0]
+    text = text.strip(" \t\"'`:-")
+    for marker in GENEALOGY_NAME_STOP_MARKERS:
+        normalized = normalize_vietnamese(text)
+        marker_index = normalized.find(marker)
+        if marker_index > 0:
+            text = text[:marker_index].strip()
+            break
+
+    words = text.split()
+    while words and normalize_vietnamese(words[0].strip(" \t\"'`:-")) in GENEALOGY_NAME_PREFIXES:
+        words.pop(0)
+    return " ".join(words).strip(" \t\"'`:-")
+
+
+def named_group_original_text(
+    source_text: str,
+    index_map: list[int],
+    match: re.Match[str],
+    group_name: str,
+) -> str:
+    try:
+        start = match.start(group_name)
+        end = match.end(group_name)
+    except IndexError:
+        return ""
+    return cleanup_genealogy_name(original_slice_from_normalized_span(source_text, index_map, start, end))
+
+
+def build_rule_based_genealogy_result(
+    relation_type: str,
+    first_name: str,
+    second_name: str,
+    evidence: str,
+    spouse_gender: str | None = None,
+    parent_first: bool = True,
+) -> dict[str, Any]:
+    first_name = cleanup_genealogy_name(first_name)
+    second_name = cleanup_genealogy_name(second_name)
+    if not first_name or not second_name or normalize_vietnamese(first_name) == normalize_vietnamese(second_name):
+        return empty_genealogy_extract_result()
+
+    first_member = {
+        "temporary_id": "p1",
+        "full_name": first_name,
+        "gender": None,
+        "confidence": 0.92,
+    }
+    second_member = {
+        "temporary_id": "p2",
+        "full_name": second_name,
+        "gender": spouse_gender,
+        "confidence": 0.92,
+    }
+
+    if relation_type == "parent_child":
+        relationship = {
+            "type": "parent_child",
+            "parent": "p1" if parent_first else "p2",
+            "child": "p2" if parent_first else "p1",
+            "confidence": 0.92,
+            "evidence": evidence,
+        }
+    else:
+        relationship = {
+            "type": "spouse",
+            "from": "p1",
+            "to": "p2",
+            "confidence": 0.92,
+            "evidence": evidence,
+        }
+
+    return {
+        "members": [first_member, second_member],
+        "relationships": [relationship],
+        "uncertain_items": [],
+        "warnings": [],
+    }
+
+
+def fallback_genealogy_extract(prompt: str, input_source: str) -> dict[str, Any]:
+    source_text = str(prompt or "").strip()
+    normalized, index_map = normalized_text_with_index_map(source_text)
+
+    child_patterns = [
+        (
+            r"(?:^|\b)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:cho|cua)\s+"
+            r"(?P<parent>.+?)\s+(?:voi\s+)?(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<child>.+)$",
+            True,
+        ),
+        (
+            r"(?P<parent>.+?)\s+co\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:ten\s+(?:la\s+)?|la\s+)?(?P<child>.+)$",
+            True,
+        ),
+        (
+            r"(?P<child>.+?)\s+la\s+(?:mot\s+)?(?:nguoi\s+)?con\s+(?:cua|cho)\s+(?P<parent>.+)$",
+            False,
+        ),
+    ]
+    for pattern, parent_first in child_patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        parent = named_group_original_text(source_text, index_map, match, "parent")
+        child = named_group_original_text(source_text, index_map, match, "child")
+        raw_result = build_rule_based_genealogy_result("parent_child", parent, child, source_text, parent_first=parent_first)
+        normalized_result = normalize_genealogy_extract_result(raw_result, input_source)
+        if normalized_result.get("members"):
+            return normalized_result
+
+    spouse_patterns = [
+        (
+            r"(?:^|\b)(?:tao|them|bo sung|them moi)\s+(?:mot\s+)?(?:nguoi\s+)?(?P<relation>vo|chong)\s+(?:cho|cua)\s+"
+            r"(?P<person>.+?)\s+(?:voi\s+)?(?:ten\s+(?:la\s+)?|co\s+ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+)$",
+            False,
+        ),
+        (
+            r"(?P<person>.+?)\s+co\s+(?P<relation>vo|chong)\s+(?:ten\s+(?:la\s+)?|la\s+)(?P<spouse>.+)$",
+            False,
+        ),
+        (
+            r"(?P<spouse>.+?)\s+la\s+(?P<relation>vo|chong)\s+cua\s+(?P<person>.+)$",
+            True,
+        ),
+    ]
+    for pattern, _spouse_first in spouse_patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        person = named_group_original_text(source_text, index_map, match, "person")
+        spouse = named_group_original_text(source_text, index_map, match, "spouse")
+        relation = match.group("relation")
+        spouse_gender = "female" if relation == "vo" else "male"
+        raw_result = build_rule_based_genealogy_result("spouse", person, spouse, source_text, spouse_gender)
+        normalized_result = normalize_genealogy_extract_result(raw_result, input_source)
+        if normalized_result.get("members"):
+            return normalized_result
+
+    return empty_genealogy_extract_result()
+
+
 def nullable_text(value: Any, max_length: int | None = None) -> str | None:
     if value is None:
         return None
@@ -1313,7 +1506,11 @@ def create_app() -> Flask:
             )
             return jsonify(result), 400
 
+        fallback = fallback_genealogy_extract(prompt, input_source)
+
         if groq_client is None:
+            if fallback.get("members") or fallback.get("relationships"):
+                return jsonify(fallback)
             result = empty_genealogy_extract_result()
             append_genealogy_warning(
                 result["warnings"],
@@ -1344,10 +1541,14 @@ def create_app() -> Flask:
 
             parsed = json.loads(strip_json_block(content))
             normalized = normalize_genealogy_extract_result(parsed, input_source)
+            if not normalized.get("members") and (fallback.get("members") or fallback.get("relationships")):
+                return jsonify(fallback)
             return jsonify(normalized)
         except Exception as exc:
             if debug_enabled:
                 app.logger.exception("AI genealogy extraction failed: %s", exc)
+            if fallback.get("members") or fallback.get("relationships"):
+                return jsonify(fallback)
             result = empty_genealogy_extract_result()
             append_genealogy_warning(
                 result["warnings"],

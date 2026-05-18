@@ -18,7 +18,7 @@ import { CANVAS_PADDING, CARD_WIDTH } from "../utils/tree-editor/treeConstants";
 import { asArray, extractCreatedPersonId, formatDisplayDate, fullName, normalizePerson, readCurrentAccount, snap, snapLine, clamp, toInt } from "../utils/tree-editor/treePersonUtils";
 import { getCardSize, loadCardSizes, loadLineRoutes, normalizeCardSize, normalizeLayoutObject, normalizeLayoutSettings, saveCardSizes, saveLineRoutes } from "../utils/tree-editor/treeStorage";
 import { dedupePeopleByAccount, remapChildrenByPeople, remapFamiliesByPeople } from "../utils/tree-editor/treeNormalize";
-import { autoLayoutPeople, findFounderIds, mergeManualAndAutoLayout } from "../utils/tree-editor/treeLayout";
+import { autoLayoutPeople, findFounderIds, generationY, mergeManualAndAutoLayout } from "../utils/tree-editor/treeLayout";
 import { buildTreeLines } from "../utils/tree-editor/treeLines";
 import { blankCreateForm, buildChildRelationPayload, findParentFamilyForChild, findSpouse, findSpouseFamily, getChildrenForFamily, getFamiliesForPerson, relationCandidates, relationLinkedIds } from "../utils/tree-editor/treeRelations";
 import { downloadBlob, exportFileName, renderFamilyTreePngBlob } from "../utils/tree-editor/treeExport";
@@ -55,6 +55,20 @@ const normalizeAiYear = (value) => {
 
 const normalizeAiDate = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim()) ? String(value).trim() : "");
 
+const normalizeAiLivingStatus = (member = {}) => {
+  const raw = member?.is_living ?? member?.living_status ?? member?.life_status ?? member?.status;
+  const text = String(raw ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (["1", "true", "living", "alive", "con song", "song"].includes(text)) return "1";
+  if (["0", "false", "deceased", "dead", "da mat", "mat", "passed", "passed away"].includes(text)) return "0";
+
+  return "0";
+};
+
 const normalizeAiNameKey = (value) =>
   String(value || "")
     .normalize("NFD")
@@ -86,19 +100,104 @@ const existingPersonOptionLabel = (person, t) => {
   return parts.join(" - ");
 };
 
+const normalizeAiGeneration = (value) => {
+  const generation = Number(value);
+  return Number.isFinite(generation) && generation > 0 ? Math.max(1, Math.round(generation)) : null;
+};
+
+const resolveAiExistingPerson = (member, existingPeopleByAiName, people = []) => {
+  const selectedExistingId = Number(member?.existing_person_id);
+  if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) {
+    return asArray(people).find((person) => Number(person.id) === selectedExistingId) || null;
+  }
+
+  const rows = existingPeopleByAiName.get(normalizeAiNameKey(member?.full_name)) || [];
+  return rows.length === 1 ? rows[0] : null;
+};
+
+const computeAiDraftGenerationMap = (members = [], relationships = [], existingPeopleByAiName, people = []) => {
+  const memberIds = new Set(members.map((member) => member.temporary_id));
+  const generations = new Map();
+  const locked = new Set();
+
+  members.forEach((member) => {
+    const existing = resolveAiExistingPerson(member, existingPeopleByAiName, people);
+    const generation = normalizeAiGeneration(existing?.generation);
+    if (!generation) return;
+    generations.set(member.temporary_id, generation);
+    locked.add(member.temporary_id);
+  });
+
+  const setGeneration = (temporaryId, nextGeneration) => {
+    if (!memberIds.has(temporaryId) || locked.has(temporaryId)) return false;
+    const generation = normalizeAiGeneration(nextGeneration);
+    if (!generation || generations.get(temporaryId) === generation) return false;
+    generations.set(temporaryId, generation);
+    return true;
+  };
+
+  for (let pass = 0; pass < Math.max(4, members.length + relationships.length); pass += 1) {
+    let changed = false;
+
+    for (const relation of relationships) {
+      if (relation.type === "spouse") {
+        const left = relation.from;
+        const right = relation.to;
+        if (!memberIds.has(left) || !memberIds.has(right)) continue;
+
+        const leftGeneration = generations.get(left);
+        const rightGeneration = generations.get(right);
+        if (leftGeneration) changed = setGeneration(right, leftGeneration) || changed;
+        else if (rightGeneration) changed = setGeneration(left, rightGeneration) || changed;
+        else {
+          changed = setGeneration(left, 1) || changed;
+          changed = setGeneration(right, 1) || changed;
+        }
+      }
+
+      if (relation.type === "parent_child") {
+        const parent = relation.parent;
+        const child = relation.child;
+        if (!memberIds.has(parent) || !memberIds.has(child)) continue;
+
+        const parentGeneration = generations.get(parent);
+        const childGeneration = generations.get(child);
+        if (parentGeneration) changed = setGeneration(child, parentGeneration + 1) || changed;
+        else if (childGeneration) changed = setGeneration(parent, Math.max(1, childGeneration - 1)) || changed;
+        else {
+          changed = setGeneration(parent, 1) || changed;
+          changed = setGeneration(child, 2) || changed;
+        }
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  members.forEach((member) => {
+    if (!generations.has(member.temporary_id)) generations.set(member.temporary_id, 1);
+  });
+
+  return generations;
+};
+
 const normalizeAiDraftMembers = (members = []) =>
   asArray(members).map((member, index) => {
     const temporaryId = String(member?.temporary_id || `p${index + 1}`).trim() || `p${index + 1}`;
+    const isLiving = normalizeAiLivingStatus(member);
     return {
       temporary_id: temporaryId,
       full_name: String(member?.full_name || "").trim(),
       gender: toAiDraftGender(member?.gender),
       birth_year: normalizeAiYear(member?.birth_year),
-      death_year: normalizeAiYear(member?.death_year),
+      death_year: isLiving === "1" ? "" : normalizeAiYear(member?.death_year),
       birth_date: normalizeAiDate(member?.birth_date),
-      death_date: normalizeAiDate(member?.death_date),
+      death_date: isLiving === "1" ? "" : normalizeAiDate(member?.death_date),
+      is_living: isLiving,
       phone: String(member?.phone || "").trim(),
       address: String(member?.address || "").trim(),
+      account_email: String(member?.account_email || member?.email || "").trim(),
+      account_password: "",
       notes: String(member?.notes || "").trim(),
       confidence: member?.confidence ?? "",
       existing_person_id: "",
@@ -720,7 +819,13 @@ const quickCreateSourcePerson = useMemo(
     if (!canEditAll || genealogyAiSaving) return;
 
     const draftMembers = genealogyAiDraftMembers
-      .map((member) => ({ ...member, full_name: String(member.full_name || "").trim() }))
+      .map((member) => ({
+        ...member,
+        full_name: String(member.full_name || "").trim(),
+        is_living: member.is_living === "1" ? "1" : "0",
+        account_email: String(member.account_email || "").trim(),
+        account_password: String(member.account_password || ""),
+      }))
       .filter((member) => member.full_name);
 
     if (!draftMembers.length) {
@@ -758,6 +863,20 @@ const quickCreateSourcePerson = useMemo(
       return;
     }
 
+    const livingMissingAccount = draftMembers.find((member) => {
+      if (member.is_living !== "1") return false;
+      const selectedExistingId = Number(member.existing_person_id);
+      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return false;
+      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
+      if (rows.length === 1) return false;
+      return !member.account_email || member.account_password.length < 6;
+    });
+
+    if (livingMissingAccount) {
+      setGenealogyAiError(t("tree.genealogyAi.errors.missingLivingAccount", { name: livingMissingAccount.full_name }));
+      return;
+    }
+
     const existingCount = draftMembers.filter((member) => {
       const selectedExistingId = Number(member.existing_person_id);
       if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return true;
@@ -765,6 +884,12 @@ const quickCreateSourcePerson = useMemo(
       return rows.length === 1;
     }).length;
     const createCount = draftMembers.length - existingCount;
+    const generationByTemporaryId = computeAiDraftGenerationMap(
+      draftMembers,
+      genealogyAiDraftRelationships,
+      existingPeopleByAiName,
+      people,
+    );
 
     const ok = window.confirm(t("tree.genealogyAi.confirmSave", { count: draftMembers.length, createCount, existingCount }));
     if (!ok) return;
@@ -777,7 +902,6 @@ const quickCreateSourcePerson = useMemo(
       const idMap = new Map();
       const createdPeople = [];
       const baseX = CANVAS_PADDING + Math.max(0, people.length % 8) * 40;
-      const baseY = CANVAS_PADDING + Math.floor(people.length / 8) * 40;
 
       for (const [index, member] of draftMembers.entries()) {
         const selectedExistingId = Number(member.existing_person_id);
@@ -792,10 +916,14 @@ const quickCreateSourcePerson = useMemo(
           continue;
         }
 
+        const isLiving = member.is_living === "1";
+        const memberGeneration = generationByTemporaryId.get(member.temporary_id) || 1;
+        const memberX = baseX + (index % 4) * (CARD_WIDTH + 70);
+        const memberY = generationY(memberGeneration);
         const noteParts = [
           member.notes,
           member.birth_year && !member.birth_date ? `${t("tree.genealogyAi.birthYearNote")}: ${member.birth_year}` : null,
-          member.death_year && !member.death_date ? `${t("tree.genealogyAi.deathYearNote")}: ${member.death_year}` : null,
+          !isLiving && member.death_year && !member.death_date ? `${t("tree.genealogyAi.deathYearNote")}: ${member.death_year}` : null,
           t("tree.genealogyAi.aiDraftNote"),
         ].filter(Boolean);
 
@@ -803,33 +931,48 @@ const quickCreateSourcePerson = useMemo(
           clan_id: clan?.id,
           display_name: member.full_name,
           gender: aiGenderToPersonGender(member.gender),
-          is_living: 0,
-          generation: 1,
+          is_living: isLiving ? 1 : 0,
+          generation: memberGeneration,
           birth_date: member.birth_date || null,
-          death_date: member.death_date || null,
+          death_date: isLiving ? null : member.death_date || null,
           phone: member.phone || null,
+          email: isLiving ? member.account_email : null,
+          account_email: isLiving ? member.account_email : null,
+          account_password: isLiving ? member.account_password : null,
           address: member.address || null,
           note: noteParts.join("\n"),
-          tree_x: baseX + (index % 4) * (CARD_WIDTH + 70),
-          tree_y: baseY + Math.floor(index / 4) * 150,
+          tree_x: memberX,
+          tree_y: memberY,
         });
 
         const newPersonId = extractCreatedPersonId(createdResponse);
         if (!newPersonId) throw new Error(t("tree.genealogyAi.errors.createdIdMissing"));
+        const newAccountId = Number(
+          createdResponse?.account_id ||
+            createdResponse?.data?.account_id ||
+            createdResponse?.account?.id ||
+            createdResponse?.data?.account?.id ||
+            0,
+        );
         idMap.set(member.temporary_id, newPersonId);
         createdPeople.push(normalizePerson({
           id: newPersonId,
+          account_id: Number.isFinite(newAccountId) && newAccountId > 0 ? newAccountId : null,
+          account_email: isLiving ? member.account_email : null,
+          account_status: isLiving ? "active" : null,
+          role_id: isLiving ? 3 : null,
           display_name: member.full_name,
           gender: aiGenderToPersonGender(member.gender),
-          is_living: 0,
+          is_living: isLiving ? 1 : 0,
           birth_date: member.birth_date || null,
-          death_date: member.death_date || null,
+          death_date: isLiving ? null : member.death_date || null,
           phone: member.phone || null,
+          email: isLiving ? member.account_email : null,
           address: member.address || null,
           note: noteParts.join("\n"),
-          tree_x: baseX + (index % 4) * (CARD_WIDTH + 70),
-          tree_y: baseY + Math.floor(index / 4) * 150,
-          generation: 1,
+          tree_x: memberX,
+          tree_y: memberY,
+          generation: memberGeneration,
         }));
       }
 
@@ -2094,12 +2237,21 @@ const submitCreateDialog = async () => {
                                 </select>
                               </label>
                               <label>
-                                {t("tree.genealogyAi.birthYear")}
-                                <input value={member.birth_year} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { birth_year: event.target.value.replace(/[^\d]/g, "").slice(0, 4) })} disabled={genealogyAiSaving} />
-                              </label>
-                              <label>
-                                {t("tree.genealogyAi.deathYear")}
-                                <input value={member.death_year} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { death_year: event.target.value.replace(/[^\d]/g, "").slice(0, 4) })} disabled={genealogyAiSaving} />
+                                {t("tree.genealogyAi.status")}
+                                <select
+                                  value={member.is_living || "0"}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    updateGenealogyAiDraftMember(member.temporary_id, {
+                                      is_living: value,
+                                      ...(value === "1" ? { death_year: "", death_date: "" } : { account_email: "", account_password: "" }),
+                                    });
+                                  }}
+                                  disabled={genealogyAiSaving || genealogyAiExistingMatches.has(member.temporary_id)}
+                                >
+                                  <option value="1">{t("tree.inspector.fields.statusOptions.living")}</option>
+                                  <option value="0">{t("tree.inspector.fields.statusOptions.deceased")}</option>
+                                </select>
                               </label>
                             </div>
                             <div className="fte-aiDraftFields">
@@ -2109,9 +2261,33 @@ const submitCreateDialog = async () => {
                               </label>
                               <label>
                                 {t("tree.genealogyAi.deathDate")}
-                                <input type="date" value={member.death_date} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { death_date: event.target.value })} disabled={genealogyAiSaving} />
+                                <input type="date" value={member.death_date} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { death_date: event.target.value })} disabled={genealogyAiSaving || member.is_living === "1"} />
                               </label>
                             </div>
+                            {member.is_living === "1" && !genealogyAiExistingMatches.has(member.temporary_id) ? (
+                              <div className="fte-aiAccountFields">
+                                <label>
+                                  {t("tree.genealogyAi.accountEmail")}
+                                  <input
+                                    type="email"
+                                    value={member.account_email || ""}
+                                    onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { account_email: event.target.value })}
+                                    disabled={genealogyAiSaving}
+                                  />
+                                </label>
+                                <label>
+                                  {t("tree.genealogyAi.accountPassword")}
+                                  <input
+                                    type="password"
+                                    value={member.account_password || ""}
+                                    onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { account_password: event.target.value })}
+                                    disabled={genealogyAiSaving}
+                                    minLength={6}
+                                  />
+                                </label>
+                                <small>{t("tree.genealogyAi.accountCreateHint")}</small>
+                              </div>
+                            ) : null}
                             <label>
                               {t("tree.genealogyAi.notes")}
                               <textarea value={member.notes} onChange={(event) => updateGenealogyAiDraftMember(member.temporary_id, { notes: event.target.value })} disabled={genealogyAiSaving} rows={2} />

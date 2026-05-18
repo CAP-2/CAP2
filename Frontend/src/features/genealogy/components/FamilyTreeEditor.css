@@ -782,6 +782,20 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.fte-aiAccountFields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 9px;
+    border: 1px dashed #d6bf84;
+    border-radius: 8px;
+    background: #fffaf0;
+}
+
+.fte-aiAccountFields small {
+    grid-column: 1 / -1;
+}
+
 .fte-aiDraftItem label {
     display: grid;
     gap: 4px;
@@ -2217,6 +2231,7 @@ body.fte-bodyFullscreen {
     .fte-aiResultGrid,
     .fte-aiReviewGrid,
     .fte-aiEditableGrid,
+    .fte-aiAccountFields,
     .fte-aiDraftFields,
     .fte-aiDraftFields:has(label:nth-child(3)) {
         grid-template-columns: 1fr;
