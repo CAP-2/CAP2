@@ -30,8 +30,15 @@ async function runMigration() {
   } catch (error) {
     console.error("Posts migration failed:", error);
   } finally {
-    process.exit(0);
+    await db.end?.();
   }
 }
 
-runMigration();
+runMigration()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error("Posts migration failed:", error);
+    db.end?.()
+      .catch(() => {})
+      .finally(() => process.exit(1));
+  });

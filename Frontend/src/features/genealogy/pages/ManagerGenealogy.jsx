@@ -64,6 +64,17 @@ export default function GenealogySection() {
     }
   }, []);
 
+  const scheduleReloadTree = useCallback(() => {
+    if (treeReloadTimerRef.current) {
+      window.clearTimeout(treeReloadTimerRef.current);
+    }
+
+    treeReloadTimerRef.current = window.setTimeout(() => {
+      treeReloadTimerRef.current = null;
+      loadTree();
+    }, 500);
+  }, [loadTree]);
+
   useEffect(() => {
     loadTree();
   }, [loadTree]);
@@ -85,24 +96,22 @@ export default function GenealogySection() {
         return;
       }
 
-      if (treeReloadTimerRef.current) {
-        window.clearTimeout(treeReloadTimerRef.current);
-      }
-
-      treeReloadTimerRef.current = window.setTimeout(() => {
-        loadTree();
-      }, 500);
+      scheduleReloadTree();
     });
 
     return () => {
       offTreeUpdated();
+    };
+  }, [scheduleReloadTree, clan?.id, clan?.clan_id]);
 
+  useEffect(() => {
+    return () => {
       if (treeReloadTimerRef.current) {
         window.clearTimeout(treeReloadTimerRef.current);
         treeReloadTimerRef.current = null;
       }
     };
-  }, [loadTree, clan?.id, clan?.clan_id]);
+  }, []);
 
   useEffect(() => {
     setClanForm({
@@ -332,7 +341,7 @@ export default function GenealogySection() {
       families={families}
       children={children}
       loading={loading}
-      onReload={loadTree}
+      onReload={scheduleReloadTree}
       layoutSettings={layoutSettings}
     />
   );

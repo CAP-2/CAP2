@@ -50,6 +50,17 @@ export default function FamilyTreePage() {
     }
   }, []);
 
+  const scheduleReloadTree = useCallback(() => {
+    if (treeReloadTimerRef.current) {
+      window.clearTimeout(treeReloadTimerRef.current);
+    }
+
+    treeReloadTimerRef.current = window.setTimeout(() => {
+      treeReloadTimerRef.current = null;
+      loadTree();
+    }, 500);
+  }, [loadTree]);
+
   useEffect(() => {
     loadTree();
   }, [loadTree]);
@@ -74,24 +85,22 @@ export default function FamilyTreePage() {
         return;
       }
 
-      if (treeReloadTimerRef.current) {
-        window.clearTimeout(treeReloadTimerRef.current);
-      }
-
-      treeReloadTimerRef.current = window.setTimeout(() => {
-        loadTree();
-      }, 500);
+      scheduleReloadTree();
     });
 
     return () => {
       offTreeUpdated();
+    };
+  }, [scheduleReloadTree, dashboard?.clan?.id, dashboard?.clan?.clan_id]);
 
+  useEffect(() => {
+    return () => {
       if (treeReloadTimerRef.current) {
         window.clearTimeout(treeReloadTimerRef.current);
         treeReloadTimerRef.current = null;
       }
     };
-  }, [loadTree, dashboard?.clan?.id, dashboard?.clan?.clan_id]);
+  }, []);
 
   const resetTemporaryPermission = useCallback((message = "") => {
     clearTreeEditSession();
@@ -306,7 +315,7 @@ export default function FamilyTreePage() {
                 loading={loading}
                 readOnly={!permission.canEdit}
                 editPermission={permission}
-                onReload={loadTree}
+                onReload={scheduleReloadTree}
               />
             </div>
           )}

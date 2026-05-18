@@ -30,6 +30,8 @@ function normalizeRealtimeNotification(notification, t) {
   };
 }
 
+const NOTIFICATION_POLL_INTERVAL_MS = 30000;
+
 export default function NotificationBell({ role = "member", buttonClassName = "" }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -57,9 +59,25 @@ export default function NotificationBell({ role = "member", buttonClassName = ""
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    const timer = window.setInterval(loadNotifications, 15000);
-    return () => window.clearInterval(timer);
+    const loadWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      loadNotifications();
+    };
+
+    loadWhenVisible();
+    const timer = window.setInterval(loadWhenVisible, NOTIFICATION_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadNotifications();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [loadNotifications]);
 
   useEffect(() => {

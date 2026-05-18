@@ -261,13 +261,12 @@ export default function FamilyTreeEditor({
       }
 
       await flushLayoutChanges();
-      await onReload?.();
     });
 
     return () => {
       offTreeUpdated();
     };
-  }, [applyRemoteLayoutUpdate, enableRealtime, clan?.id, flushLayoutChanges, onReload]);
+  }, [applyRemoteLayoutUpdate, enableRealtime, clan?.id, flushLayoutChanges]);
 
   useEffect(() => {
     const flushPendingLayout = () => {
@@ -967,6 +966,14 @@ const submitCreateDialog = async () => {
     });
 
     const newPersonId = extractCreatedPersonId(createdResponse);
+    if (createdResponse?.person?.id) {
+      const createdPerson = normalizePerson(createdResponse.person);
+      setPeople((current) =>
+        current.some((person) => Number(person.id) === Number(createdPerson.id))
+          ? current.map((person) => (Number(person.id) === Number(createdPerson.id) ? { ...person, ...createdPerson } : person))
+          : [...current, createdPerson],
+      );
+    }
 
     if (sourcePersonId && relation !== "person") {
       if (!newPersonId) {

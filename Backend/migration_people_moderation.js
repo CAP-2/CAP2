@@ -16,8 +16,15 @@ async function runMigration() {
             console.error("Lỗi khi chạy Migration:", e);
         }
     } finally {
-        process.exit(0);
+        await db.end?.();
     }
 }
 
-runMigration();
+runMigration()
+    .then(() => process.exit(0))
+    .catch((error) => {
+        console.error("Migration failed:", error);
+        db.end?.()
+            .catch(() => {})
+            .finally(() => process.exit(1));
+    });

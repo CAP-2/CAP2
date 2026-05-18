@@ -66,6 +66,41 @@ async function getClanBillingStatus(clanId) {
   };
 }
 
+async function ensureFreeSubscriptionForClan(clanId, connection = db) {
+  const normalizedClanId = Number(clanId);
+  if (!Number.isFinite(normalizedClanId) || normalizedClanId <= 0) {
+    const error = new Error('clan_id khong hop le');
+    error.status = 400;
+    throw error;
+  }
+
+  const [plans] = await connection.query(
+    `
+    SELECT id
+    FROM plans
+    WHERE UPPER(code) = 'FREE'
+      AND is_active = 1
+    LIMIT 1
+    `
+  );
+
+  if (!plans.length) {
+    const error = new Error('Khong tim thay goi Free dang hoat dong');
+    error.status = 500;
+    throw error;
+  }
+
+  await connection.query(
+    `
+    INSERT IGNORE INTO subscriptions (clan_id, plan_id, status, started_at, expires_at, cancelled_at)
+    VALUES (?, ?, 'free', NOW(), NULL, NULL)
+    `,
+    [normalizedClanId, plans[0].id]
+  );
+
+  return { clan_id: normalizedClanId, plan_id: plans[0].id, status: 'free' };
+}
+
 async function ensureCanAddPerson(clanId) {
   const billing = await getClanBillingStatus(clanId);
 
@@ -155,6 +190,7 @@ async function ensureCanAddAccount(clanId) {
 module.exports = {
   getClanUsage,
   getClanBillingStatus,
+  ensureFreeSubscriptionForClan,
   ensureCanAddPerson,
   ensureCanAddAccount,
 };

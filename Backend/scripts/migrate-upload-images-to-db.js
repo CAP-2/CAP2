@@ -81,11 +81,16 @@ async function main() {
   const avatars = await migratePeopleAvatars();
   const posts = await migratePostImages();
   console.log(`Done. Migrated avatars: ${avatars}, post images: ${posts}`);
-  await db.end?.();
-  process.exit(0);
 }
 
-main().catch((error) => {
-  console.error('Migration failed:', error);
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    await db.end?.();
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('Migration failed:', error);
+    db.end?.()
+      .catch(() => {})
+      .finally(() => process.exit(1));
+  });

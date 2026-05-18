@@ -129,8 +129,8 @@ async function loadClanRelationRows(clanId) {
   const [childRows] = await db.query(
     `
       SELECT c.family_id, c.person_id, c.sort_order
-      FROM children c
-      INNER JOIN families f ON c.family_id = f.id
+      FROM families f
+      STRAIGHT_JOIN children c ON c.family_id = f.id
       WHERE f.clan_id = ?
       ORDER BY c.family_id, c.sort_order, c.id
     `,

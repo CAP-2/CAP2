@@ -2,6 +2,7 @@ const db = require("../../config/db");
 const bcrypt = require("bcryptjs");
 const { deletePersonCompletely } = require("../../shared/utils/personDeletion");
 const memberController = require("../member/member.controller");
+const { ensureFreeSubscriptionForClan } = require("../billing/billing.service");
 
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   const s = surname == null ? "" : String(surname).trim();
@@ -323,6 +324,7 @@ exports.createClan = async (req, res) => {
       [clanName, history || null, hallAddress || null]
     );
     const clanId = result.insertId;
+    await ensureFreeSubscriptionForClan(clanId, connection);
 
     let manager = null;
     if (managerPayloadPresent(req.body)) {

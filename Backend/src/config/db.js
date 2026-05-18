@@ -8,6 +8,7 @@ const dbPort = Number(process.env.DB_PORT || 3306);
 const usePublicDns = String(process.env.DB_USE_PUBLIC_DNS || '').toLowerCase() === 'true';
 const useSsl = String(process.env.DB_SSL || '').toLowerCase() === 'true';
 const rejectUnauthorized = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || 'false').toLowerCase() !== 'false';
+const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
 
 const resolver = new dns.Resolver();
 resolver.setServers(
@@ -44,7 +45,7 @@ const poolConfig = {
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit,
     queueLimit: 0
 };
 

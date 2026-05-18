@@ -1,5 +1,6 @@
 const db = require("../../config/db");
 const bcrypt = require("bcryptjs");
+const { ensureFreeSubscriptionForClan } = require("../billing/billing.service");
 
 // Đăng ký dòng họ mới + chỉ định trưởng họ
 // Nếu tài khoản trưởng họ hiện chưa thuộc clan (people.clan_id IS NULL) thì tự nâng role_id = 2 và gán clan_id.
@@ -30,6 +31,7 @@ exports.registerClan = async(req, res) => {
             String(clan_name).trim(),
         ]);
         const clanId = clanResult.insertId;
+        await ensureFreeSubscriptionForClan(clanId, connection);
 
         const [accounts] = await connection.query("SELECT id, person_id FROM accounts WHERE id = ?", [
             normalizedChiefId,
@@ -125,6 +127,7 @@ exports.registerClanWithManager = async(req, res) => {
             String(clan_name).trim(),
         ]);
         const clanId = clanResult.insertId;
+        await ensureFreeSubscriptionForClan(clanId, connection);
 
         const hashedPassword = await bcrypt.hash(password, 10);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
     createAdminClan,
@@ -8,6 +8,7 @@ import {
     updateAdminClan,
 } from "../../../api/adminService";
 import FamilyTreeEditor from "../../genealogy/components/FamilyTreeEditor.jsx";
+import { onSocketEvent } from "../../../services/socket";
 import "./GenealogyManagement.css";
 
 const emptyClanForm = {
@@ -34,6 +35,7 @@ export default function GenealogyManagement() {
     const [clanForm, setClanForm] = useState(emptyClanForm);
     const [formError, setFormError] = useState("");
     const [saving, setSaving] = useState(false);
+    const treeReloadTimerRef = useRef(null);
 
     const fetchClans = useCallback(async (preferredClanId = null) => {
         setLoading(true);
@@ -84,6 +86,48 @@ export default function GenealogyManagement() {
     useEffect(() => {
         fetchTree();
     }, [fetchTree]);
+
+    const scheduleReloadTree = useCallback(() => {
+        if (treeReloadTimerRef.current) {
+            window.clearTimeout(treeReloadTimerRef.current);
+        }
+
+        treeReloadTimerRef.current = window.setTimeout(() => {
+            treeReloadTimerRef.current = null;
+            fetchTree();
+        }, 500);
+    }, [fetchTree]);
+
+    useEffect(() => {
+        const offTreeUpdated = onSocketEvent("tree_updated", (payload) => {
+            if (
+                payload?.clan_id &&
+                selectedClanId &&
+                Number(payload.clan_id) !== Number(selectedClanId)
+            ) {
+                return;
+            }
+
+            if (payload?.action === "tree_layout_updated") {
+                return;
+            }
+
+            scheduleReloadTree();
+        });
+
+        return () => {
+            offTreeUpdated();
+        };
+    }, [scheduleReloadTree, selectedClanId]);
+
+    useEffect(() => {
+        return () => {
+            if (treeReloadTimerRef.current) {
+                window.clearTimeout(treeReloadTimerRef.current);
+                treeReloadTimerRef.current = null;
+            }
+        };
+    }, []);
 
     const filteredClans = useMemo(() => {
         const keyword = searchTerm.trim().toLowerCase();
@@ -238,7 +282,7 @@ export default function GenealogyManagement() {
                             children={treeData.children}
                             layoutSettings={treeData.layoutSettings}
                             loading={treeLoading}
-                            onReload={fetchTree}
+                            onReload={scheduleReloadTree}
                         />
                     ) : (
                         <div className="empty-tree-state">{t("admin.genealogy.main.empty")}</div>

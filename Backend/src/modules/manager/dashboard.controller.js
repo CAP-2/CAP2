@@ -7,7 +7,6 @@ const {
     getTreeLayoutSettings,
 } = require('./common.service');
 const {
-    buildManagedFamilyTree,
     ensureFamilyRelationshipColumns,
     ensurePeopleTreeLayoutColumns,
 } = require('../genealogy/familyRelation.service');
@@ -149,8 +148,8 @@ const getFamilyTree = async(req, res) => {
         const [childRows] = await db.query(
             `
             SELECT c.family_id, c.person_id, c.sort_order
-            FROM children c
-            INNER JOIN families f ON c.family_id = f.id
+            FROM families f
+            STRAIGHT_JOIN children c ON c.family_id = f.id
             WHERE f.clan_id = ?
             ORDER BY c.family_id, c.sort_order, c.id
             `, [clanId]
@@ -172,7 +171,6 @@ const getFamilyTree = async(req, res) => {
             })),
             children: childRows,
             layoutSettings,
-            familyTree: buildManagedFamilyTree(peopleRows, familyRows, childRows),
         });
     } catch (error) {
         console.error('getFamilyTree error:', error);

@@ -34,6 +34,8 @@ function buildDisplayName(profile, t) {
   );
 }
 
+const DASHBOARD_POLL_INTERVAL_MS = 60000;
+
 export default function MemberDashboard() {
   const { t } = useTranslation();
   const [dashboard, setDashboard] = useState(null);
@@ -147,8 +149,24 @@ export default function MemberDashboard() {
 }, [loadDashboard]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => loadDashboard(true), 30000);
-    return () => window.clearInterval(timer);
+    const loadWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      loadDashboard(true);
+    };
+
+    const timer = window.setInterval(loadWhenVisible, DASHBOARD_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadDashboard(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [loadDashboard]);
 
   useEffect(() => {
