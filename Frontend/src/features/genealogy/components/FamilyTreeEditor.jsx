@@ -281,7 +281,6 @@ export default function FamilyTreeEditor({
   const [treeRelationPicker, setTreeRelationPicker] = useState(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [genealogyAiOpen, setGenealogyAiOpen] = useState(false);
-  const [genealogyAiSource, setGenealogyAiSource] = useState("text");
   const [genealogyAiPrompt, setGenealogyAiPrompt] = useState("");
   const [genealogyAiResult, setGenealogyAiResult] = useState(null);
   const [genealogyAiDraftMembers, setGenealogyAiDraftMembers] = useState([]);
@@ -774,7 +773,6 @@ const quickCreateSourcePerson = useMemo(
       return;
     }
 
-    setGenealogyAiSource("voice_transcript");
     setGenealogyAiError("");
     setGenealogyAiPrompt((current) => {
       const prompt = String(current || "").trim();
@@ -796,7 +794,7 @@ const quickCreateSourcePerson = useMemo(
     setGenealogyAiResult(null);
     try {
       const result = await extractGenealogyAI({
-        input_source: genealogyAiSource,
+        input_source: "text",
         prompt,
         clan_id: clan?.id || null,
         context: {
@@ -822,7 +820,7 @@ const quickCreateSourcePerson = useMemo(
     } finally {
       setGenealogyAiLoading(false);
     }
-  }, [clan?.id, genealogyAiPrompt, genealogyAiSource, t]);
+  }, [clan?.id, genealogyAiPrompt, t]);
 
   const saveGenealogyAiDraftToTree = useCallback(async () => {
     if (!canEditAll || genealogyAiSaving) return;
@@ -2070,27 +2068,6 @@ const submitCreateDialog = async () => {
             </div>
 
             <div className="fte-aiComposer">
-              <div className="fte-aiSourceSwitch" role="group" aria-label={t("tree.genealogyAi.sourceLabel")}>
-                <button
-                  type="button"
-                  className={genealogyAiSource === "text" ? "is-active" : ""}
-                  onClick={() => setGenealogyAiSource("text")}
-                  disabled={genealogyAiLoading || genealogyAiSaving}
-                >
-                  <span className="material-symbols-outlined">article</span>
-                  {t("tree.genealogyAi.sourceText")}
-                </button>
-                <button
-                  type="button"
-                  className={genealogyAiSource === "voice_transcript" ? "is-active" : ""}
-                  onClick={() => setGenealogyAiSource("voice_transcript")}
-                  disabled={genealogyAiLoading || genealogyAiSaving}
-                >
-                  <span className="material-symbols-outlined">record_voice_over</span>
-                  {t("tree.genealogyAi.sourceVoice")}
-                </button>
-              </div>
-
               <label className="fte-aiPromptField">
                 <span>{t("tree.genealogyAi.promptLabel")}</span>
                 <div className="fte-aiVoiceRow">
