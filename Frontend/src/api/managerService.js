@@ -671,6 +671,26 @@ export const completeTaskAPI = (assignmentId) =>
     "Cập nhật trạng thái công việc thất bại"
   );
 
+export const updateAssignedTaskAPI = (taskId, data) =>
+  request(
+    `/tasks/${taskId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+    "Cập nhật công việc thất bại"
+  );
+
+export const deleteAssignedTaskAPI = (taskId, data = {}) =>
+  request(
+    `/tasks/${taskId}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    },
+    "Xóa công việc thất bại"
+  );
+
 export const getPendingProfileUpdates = () =>
   request("/pending-profiles", {}, "Không thể lấy danh sách cập nhật hồ sơ");
 

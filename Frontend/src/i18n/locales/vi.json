@@ -98,10 +98,7 @@
     "systemAdmin": "Quản trị viên hệ thống",
     "familyMember": "Thành viên dòng họ",
     "collapseMenu": "Thu gọn menu",
-    "openMenu": "Mở menu",
-    "editAccount": "Sửa tài khoản",
     "leaveSystem": "Rời hệ thống",
-    "memberNavigation": "Điều hướng thành viên",
     "managerNavigation": "Điều hướng quản lý",
     "adminNavigation": "Điều hướng hệ thống",
     "manager": "Quản lý",
@@ -419,10 +416,28 @@
       "lunar": "Ngày lễ"
     },
     "labels": {
-      "weekdays": ["CN", "T2", "T3", "T4", "T5", "T6", "T7"],
+      "weekdays": [
+        "CN",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6",
+        "T7"
+      ],
       "months": [
-        "Tháng Một", "Tháng Hai", "Tháng Ba", "Tháng Tư", "Tháng Năm", "Tháng Sáu",
-        "Tháng Bảy", "Tháng Tám", "Tháng Chín", "Tháng Mười", "Tháng Mười Một", "Tháng Mười Hai"
+        "Tháng Một",
+        "Tháng Hai",
+        "Tháng Ba",
+        "Tháng Tư",
+        "Tháng Năm",
+        "Tháng Sáu",
+        "Tháng Bảy",
+        "Tháng Tám",
+        "Tháng Chín",
+        "Tháng Mười",
+        "Tháng Mười Một",
+        "Tháng Mười Hai"
       ]
     },
     "messages": {
@@ -744,7 +759,7 @@
       "archive": "Lưu trữ",
       "aiGenerate": "AI gợi ý công việc",
       "aiGenerating": "AI đang tạo...",
-      "aiFillForm": "AI tự động điền form",
+      "aiFillForm": "Tạo Sự kiện",
       "aiCreateTitle": "Tạo sự kiện bằng AI",
       "viewEvent": "Xem sự kiện",
       "closeAdd": "Đóng thêm mới",
@@ -754,7 +769,8 @@
       "deleteAiTask": "Xóa gợi ý này",
       "sendThisTask": "Giao việc này",
       "eventList": "Danh sách sự kiện",
-      "manageEvent": "Quản lý sự kiện"
+      "manageEvent": "Quản lý sự kiện",
+      "taskActions": "Thao tác công việc"
     },
     "form": {
       "eventName": "Tên sự kiện",
@@ -796,7 +812,11 @@
       "enterDescription": "Vui lòng nhập mô tả.",
       "enterDeadline": "Vui lòng nhập hạn hoàn thành.",
       "confirmDeleteEventTitle": "Xóa sự kiện?",
-      "confirmDeleteEventSubtitle": "Hành động này không thể hoàn tác. Tất cả công việc liên quan sẽ bị ảnh hưởng."
+      "confirmDeleteEventSubtitle": "Hành động này không thể hoàn tác. Tất cả công việc liên quan sẽ bị ảnh hưởng.",
+      "invalidTask": "Công việc không hợp lệ.",
+      "taskUpdated": "Đã cập nhật công việc và gửi thông báo cho người được giao.",
+      "taskDeleted": "Đã xóa công việc và gửi thông báo cho người được giao.",
+      "confirmDeleteTask": "Xóa công việc \"{{title}}\"? Người được giao sẽ nhận thông báo."
     },
     "errors": {
       "loadFailed": "Không tải được dữ liệu công việc.",
@@ -812,7 +832,9 @@
       "speechUnsupported": "Trình duyệt không hỗ trợ nhận diện giọng nói.",
       "micBlocked": "Không thể truy cập micro. Vui lòng kiểm tra quyền trình duyệt.",
       "noSpeechDetected": "Chưa nhận diện được giọng nói.",
-      "speechConversionFailed": "Không thể chuyển giọng nói thành văn bản."
+      "speechConversionFailed": "Không thể chuyển giọng nói thành văn bản.",
+      "updateTaskFailed": "Không thể cập nhật công việc.",
+      "deleteTaskFailed": "Không thể xóa công việc."
     },
     "placeholders": {
       "searchEvents": "Tìm sự kiện...",
@@ -2210,27 +2232,72 @@
       "subtitle": "Từng bước khám phá và quản lý gia phả Việt",
       "stepsTitle": "6 Bước Dễ Dàng Để Bắt Đầu",
       "steps": {
-        "step1": { "title": "Tạo Dòng Họ", "desc": "Bước đầu tiên là tạo tài khoản và thiết lập tên dòng họ. Hệ thống sẽ tạo không gian riêng cho gia tộc của bạn." },
-        "step2": { "title": "Thêm Thành Viên", "desc": "Nhập thông tin các thành viên gia tộc: tên, ngày sinh, mối quan hệ. Bạn có thể thêm từng người hoặc nhập danh sách từ file Excel." },
-        "step3": { "title": "Kết Nối Quan Hệ", "desc": "Định nghĩa mối quan hệ giữa các thành viên: cha mẹ, vợ chồng, anh chị em. Hệ thống tự động vẽ sơ đồ phả hệ." },
-        "step4": { "title": "Lưu Trữ Tư Liệu", "desc": "Tải lên hình ảnh, tài liệu, video của gia phả cổ. Mọi file được mã hóa và lưu trữ an toàn trên đám mây." },
-        "step5": { "title": "Mời Thành Viên", "desc": "Gửi lời mời cho các thành viên gia tộc để họ tham gia và cập nhật thông tin cá nhân của mình." },
-        "step6": { "title": "Quản Lý Sự Kiện", "desc": "Thiết lập các ngày giỗ, lễ hội, sự kiện dòng họ. Nhận thông báo tự động vào những dịp quan trọng." }
+        "step1": {
+          "title": "Tạo Dòng Họ",
+          "desc": "Bước đầu tiên là tạo tài khoản và thiết lập tên dòng họ. Hệ thống sẽ tạo không gian riêng cho gia tộc của bạn."
+        },
+        "step2": {
+          "title": "Thêm Thành Viên",
+          "desc": "Nhập thông tin các thành viên gia tộc: tên, ngày sinh, mối quan hệ. Bạn có thể thêm từng người hoặc nhập danh sách từ file Excel."
+        },
+        "step3": {
+          "title": "Kết Nối Quan Hệ",
+          "desc": "Định nghĩa mối quan hệ giữa các thành viên: cha mẹ, vợ chồng, anh chị em. Hệ thống tự động vẽ sơ đồ phả hệ."
+        },
+        "step4": {
+          "title": "Lưu Trữ Tư Liệu",
+          "desc": "Tải lên hình ảnh, tài liệu, video của gia phả cổ. Mọi file được mã hóa và lưu trữ an toàn trên đám mây."
+        },
+        "step5": {
+          "title": "Mời Thành Viên",
+          "desc": "Gửi lời mời cho các thành viên gia tộc để họ tham gia và cập nhật thông tin cá nhân của mình."
+        },
+        "step6": {
+          "title": "Quản Lý Sự Kiện",
+          "desc": "Thiết lập các ngày giỗ, lễ hội, sự kiện dòng họ. Nhận thông báo tự động vào những dịp quan trọng."
+        }
       },
       "videoTitle": "Xem Video Hướng Dẫn",
       "videos": {
-        "v1": { "title": "Cách tạo dòng họ trong 2 phút", "desc": "Hướng dẫn nhanh gọn cho người mới" },
-        "v2": { "title": "Nhập dữ liệu từ file Excel", "desc": "Thêm hàng trăm thành viên cùng lúc" },
-        "v3": { "title": "Quản lý quyền truy cập", "desc": "Kiểm soát ai được xem hoặc chỉnh sửa" }
+        "v1": {
+          "title": "Cách tạo dòng họ trong 2 phút",
+          "desc": "Hướng dẫn nhanh gọn cho người mới"
+        },
+        "v2": {
+          "title": "Nhập dữ liệu từ file Excel",
+          "desc": "Thêm hàng trăm thành viên cùng lúc"
+        },
+        "v3": {
+          "title": "Quản lý quyền truy cập",
+          "desc": "Kiểm soát ai được xem hoặc chỉnh sửa"
+        }
       },
       "faqTitle": "Câu Hỏi Thường Gặp",
       "faqs": [
-        { "q": "Tôi có thể bắt đầu từ đâu nếu chưa biết toàn bộ thành viên gia tộc?", "a": "Bạn hoàn toàn có thể bắt đầu với những thành viên gần nhất như bố mẹ, anh chị em. Sau đó, dần dần thêm những người khác khi có thông tin." },
-        { "q": "Dữ liệu của tôi có được bảo vệ?", "a": "Tất cả dữ liệu gia phả được mã hóa theo chuẩn quốc tế (AES-256). Chỉ những người được phép mới có thể truy cập." },
-        { "q": "Có thể nhập dữ liệu từ gia phả cũ có sẵn không?", "a": "Có, bạn có thể tải lên file Excel hoặc hình ảnh gia phả cũ. Hệ thống có thể giúp bạn chuyển đổi sang định dạng số hóa." },
-        { "q": "Thành viên khác cần làm gì để tham gia?", "a": "Họ chỉ cần nhận email mời, đăng ký tài khoản và đăng nhập. Không cần kỹ năng kỹ thuật gì đặc biệt." },
-        { "q": "Tôi có thể xóa hoặc chỉnh sửa thông tin không?", "a": "Có thể, nhưng mọi chỉnh sửa sẽ được ghi lại để bảo toàn tính lịch sử. Quản trị viên gia tộc có thể quản lý quyền hạn." },
-        { "q": "Giá cước là bao nhiêu?", "a": "Hiện tại, Gia Phả Việt đang ở giai đoạn beta miễn phí. Bạn có thể sử dụng đầy đủ tính năng mà không tốn chi phí." }
+        {
+          "q": "Tôi có thể bắt đầu từ đâu nếu chưa biết toàn bộ thành viên gia tộc?",
+          "a": "Bạn hoàn toàn có thể bắt đầu với những thành viên gần nhất như bố mẹ, anh chị em. Sau đó, dần dần thêm những người khác khi có thông tin."
+        },
+        {
+          "q": "Dữ liệu của tôi có được bảo vệ?",
+          "a": "Tất cả dữ liệu gia phả được mã hóa theo chuẩn quốc tế (AES-256). Chỉ những người được phép mới có thể truy cập."
+        },
+        {
+          "q": "Có thể nhập dữ liệu từ gia phả cũ có sẵn không?",
+          "a": "Có, bạn có thể tải lên file Excel hoặc hình ảnh gia phả cũ. Hệ thống có thể giúp bạn chuyển đổi sang định dạng số hóa."
+        },
+        {
+          "q": "Thành viên khác cần làm gì để tham gia?",
+          "a": "Họ chỉ cần nhận email mời, đăng ký tài khoản và đăng nhập. Không cần kỹ năng kỹ thuật gì đặc biệt."
+        },
+        {
+          "q": "Tôi có thể xóa hoặc chỉnh sửa thông tin không?",
+          "a": "Có thể, nhưng mọi chỉnh sửa sẽ được ghi lại để bảo toàn tính lịch sử. Quản trị viên gia tộc có thể quản lý quyền hạn."
+        },
+        {
+          "q": "Giá cước là bao nhiêu?",
+          "a": "Hiện tại, Gia Phả Việt đang ở giai đoạn beta miễn phí. Bạn có thể sử dụng đầy đủ tính năng mà không tốn chi phí."
+        }
       ],
       "support": {
         "title": "Cần Giúp Đỡ ?",

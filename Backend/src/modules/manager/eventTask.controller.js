@@ -912,6 +912,7 @@ const getAssignedTasks = async (req, res) => {
                 m.id AS manager_id,
                 COALESCE(mp.display_name, m.email) AS manager_name,
                 member.id AS member_id,
+                a.member_account_id,
                 member.display_name AS member_name,
                 member.surname,
                 member.first_name
@@ -950,6 +951,208 @@ const getAssignedTasks = async (req, res) => {
     } catch (error) {
         console.error('getAssignedTasks error:', error);
         res.status(500).json({ success: false, message: "Lỗi lấy danh sách công việc" });
+    }
+};
+
+
+const updateAssignedTask = async (req, res) => {
+    const conn = await db.getConnection();
+    try {
+        await ensureTaskTables();
+        const taskId = parseOptionalPositiveInt(req.params.id);
+        if (!taskId) return res.status(400).json({ success: false, message: 'ID công việc không hợp lệ' });
+
+        const title = String(req.body.title || '').trim();
+        const description = req.body.description == null ? '' : String(req.body.description).trim();
+        const dueDate = req.body.due_date == null || String(req.body.due_date).trim() === '' ? null : String(req.body.due_date).slice(0, 10);
+        const clanIdFromBody = parseOptionalPositiveInt(req.body.clan_id || req.query.clan_id);
+
+        if (!title) return res.status(400).json({ success: false, message: 'Tên công việc không được để trống' });
+
+        let sql = `
+            SELECT
+                t.id,
+                t.manager_account_id,
+                t.clan_id,
+                t.event_id,
+                t.title AS old_title,
+                e.title AS event_title
+            FROM manager_tasks t
+            LEFT JOIN events e ON e.id = t.event_id
+            WHERE t.id = ?
+        `;
+        const params = [taskId];
+        if (Number(req.user.role_id) === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            sql += ' AND t.clan_id = ?';
+            params.push(managerClanId);
+        } else if (clanIdFromBody != null) {
+            sql += ' AND t.clan_id = ?';
+            params.push(clanIdFromBody);
+        }
+
+        const [tasks] = await conn.query(sql, params);
+        const task = tasks[0];
+        if (!task) return res.status(404).json({ success: false, message: 'Không tìm thấy công việc trong phạm vi quản lý' });
+
+        const [assignees] = await conn.query(
+            `
+            SELECT a.member_account_id, a.member_person_id
+            FROM manager_task_assignments a
+            WHERE a.task_id = ?
+            `,
+            [taskId]
+        );
+
+        await conn.beginTransaction();
+        await conn.query(
+            `UPDATE manager_tasks SET title = ?, description = ?, due_date = ? WHERE id = ?`,
+            [title, description || null, dueDate, taskId]
+        );
+
+        for (const assignee of assignees) {
+            await createNotification({
+                accountId: assignee.member_account_id,
+                type: 'task_updated',
+                title: 'Công việc được cập nhật',
+                message: `Công việc "${title}" đã được chỉnh sửa.`,
+                data: {
+                    task_id: taskId,
+                    event_id: task.event_id,
+                    link_url: `/user/tasks?taskId=${taskId}`,
+                },
+                connection: conn,
+            });
+        }
+
+        await conn.commit();
+
+        const io = req.app?.locals?.io;
+        if (io) {
+            for (const assignee of assignees) {
+                const payload = {
+                    id: `task-updated-${taskId}-${assignee.member_account_id}-${Date.now()}`,
+                    type: 'task_updated',
+                    title: 'Công việc được cập nhật',
+                    message: `Công việc "${title}" đã được chỉnh sửa.`,
+                    link_url: `/user/tasks?taskId=${taskId}`,
+                    is_read: 0,
+                    created_at: new Date().toISOString(),
+                    task_id: taskId,
+                    event_id: task.event_id,
+                };
+                io.to(`account_${assignee.member_account_id}`).emit('new_notification', payload);
+                io.to(`account_${assignee.member_account_id}`).emit('task_assigned', {
+                    task_id: taskId,
+                    event_id: task.event_id,
+                    title,
+                    description,
+                    due_date: dueDate,
+                    status: 'assigned',
+                    action: 'updated',
+                });
+            }
+        }
+
+        return res.json({ success: true, message: 'Đã cập nhật công việc', notified_count: assignees.length });
+    } catch (error) {
+        try { await conn.rollback(); } catch (_) {}
+        console.error('updateAssignedTask error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi cập nhật công việc' });
+    } finally {
+        conn.release();
+    }
+};
+
+const deleteAssignedTask = async (req, res) => {
+    const conn = await db.getConnection();
+    try {
+        await ensureTaskTables();
+        const taskId = parseOptionalPositiveInt(req.params.id);
+        if (!taskId) return res.status(400).json({ success: false, message: 'ID công việc không hợp lệ' });
+
+        const clanIdFromBody = parseOptionalPositiveInt(req.body?.clan_id || req.query.clan_id);
+        let sql = `
+            SELECT
+                t.id,
+                t.clan_id,
+                t.event_id,
+                t.title,
+                e.title AS event_title
+            FROM manager_tasks t
+            LEFT JOIN events e ON e.id = t.event_id
+            WHERE t.id = ?
+        `;
+        const params = [taskId];
+        if (Number(req.user.role_id) === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            sql += ' AND t.clan_id = ?';
+            params.push(managerClanId);
+        } else if (clanIdFromBody != null) {
+            sql += ' AND t.clan_id = ?';
+            params.push(clanIdFromBody);
+        }
+
+        const [tasks] = await conn.query(sql, params);
+        const task = tasks[0];
+        if (!task) return res.status(404).json({ success: false, message: 'Không tìm thấy công việc trong phạm vi quản lý' });
+
+        const [assignees] = await conn.query(
+            `SELECT member_account_id, member_person_id FROM manager_task_assignments WHERE task_id = ?`,
+            [taskId]
+        );
+
+        await conn.beginTransaction();
+        for (const assignee of assignees) {
+            await createNotification({
+                accountId: assignee.member_account_id,
+                type: 'task_deleted',
+                title: 'Công việc đã bị xóa',
+                message: `Công việc "${task.title}" đã được xóa khỏi danh sách được giao.`,
+                data: {
+                    task_id: taskId,
+                    event_id: task.event_id,
+                    link_url: '/user/tasks',
+                },
+                connection: conn,
+            });
+        }
+        await conn.query('DELETE FROM manager_tasks WHERE id = ?', [taskId]);
+        await conn.commit();
+
+        const io = req.app?.locals?.io;
+        if (io) {
+            for (const assignee of assignees) {
+                const payload = {
+                    id: `task-deleted-${taskId}-${assignee.member_account_id}-${Date.now()}`,
+                    type: 'task_deleted',
+                    title: 'Công việc đã bị xóa',
+                    message: `Công việc "${task.title}" đã được xóa khỏi danh sách được giao.`,
+                    link_url: '/user/tasks',
+                    is_read: 0,
+                    created_at: new Date().toISOString(),
+                    task_id: taskId,
+                    event_id: task.event_id,
+                };
+                io.to(`account_${assignee.member_account_id}`).emit('new_notification', payload);
+                io.to(`account_${assignee.member_account_id}`).emit('task_assigned', {
+                    task_id: taskId,
+                    event_id: task.event_id,
+                    title: task.title,
+                    action: 'deleted',
+                });
+            }
+        }
+
+        return res.json({ success: true, message: 'Đã xóa công việc', notified_count: assignees.length });
+    } catch (error) {
+        try { await conn.rollback(); } catch (_) {}
+        console.error('deleteAssignedTask error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi xóa công việc' });
+    } finally {
+        conn.release();
     }
 };
 
@@ -995,5 +1198,7 @@ module.exports = {
     assignTask,
     bulkAssignTasks,
     getAssignedTasks,
+    updateAssignedTask,
+    deleteAssignedTask,
     completeTask,
 };

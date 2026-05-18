@@ -138,7 +138,8 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
   };
 
   const busy = ["recording", "uploading", "transcribing"].includes(state);
-  const label = state === "recording" ? `${seconds}s` : state === "transcribing" ? "..." : t("voice.recorder.idle");
+  const icon = state === "recording" ? "stop" : state === "uploading" || state === "transcribing" ? "sync" : "mic";
+  const compactLabel = state === "recording" ? `${seconds}s` : state === "transcribing" ? "..." : "";
 
   return (
     <div className="voice-recorder">
@@ -150,7 +151,8 @@ const VoiceRecorder = ({ disabled = false, maxSeconds = 180, onTranscript }) => 
         title={state === "recording" ? t("voice.recorder.title.stop") : t("voice.recorder.title.start")}
         aria-label={state === "recording" ? t("voice.recorder.title.stop") : t("voice.recorder.title.start")}
       >
-        {label}
+        <span className="material-symbols-outlined">{icon}</span>
+        {compactLabel && <span className="voice-recorder-time">{compactLabel}</span>}
       </button>
       {message && <span className={`voice-recorder-status is-${state}`}>{message}</span>}
     </div>

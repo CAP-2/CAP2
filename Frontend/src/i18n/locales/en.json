@@ -420,10 +420,28 @@
       "lunar": "Lunar Holiday"
     },
     "labels": {
-      "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      "weekdays": [
+        "Sun",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat"
+      ],
       "months": [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December"
       ]
     },
     "messages": {
@@ -745,7 +763,7 @@
       "archive": "Archive",
       "aiGenerate": "AI Suggestions",
       "aiGenerating": "AI Generating...",
-      "aiFillForm": "AI Auto-Fill",
+      "aiFillForm": "Create Event",
       "aiCreateTitle": "Create Event with AI",
       "viewEvent": "View Event",
       "closeAdd": "Close Add",
@@ -755,7 +773,8 @@
       "deleteAiTask": "Delete Suggestion",
       "sendThisTask": "Assign This Task",
       "eventList": "Event List",
-      "manageEvent": "Manage Event"
+      "manageEvent": "Manage Event",
+      "taskActions": "Task actions"
     },
     "form": {
       "eventName": "Event Name",
@@ -797,7 +816,11 @@
       "enterDescription": "Please enter a description.",
       "enterDeadline": "Please enter a deadline.",
       "confirmDeleteEventTitle": "Delete event?",
-      "confirmDeleteEventSubtitle": "This action cannot be undone. Related tasks may be affected."
+      "confirmDeleteEventSubtitle": "This action cannot be undone. Related tasks may be affected.",
+      "invalidTask": "Invalid task.",
+      "taskUpdated": "Task updated and assignees notified.",
+      "taskDeleted": "Task deleted and assignees notified.",
+      "confirmDeleteTask": "Delete task \"{{title}}\"? Assignees will be notified."
     },
     "errors": {
       "loadFailed": "Unable to load task data.",
@@ -813,7 +836,9 @@
       "speechUnsupported": "Speech recognition is not supported by this browser.",
       "micBlocked": "Cannot access the microphone. Please check browser permissions.",
       "noSpeechDetected": "No speech was detected.",
-      "speechConversionFailed": "Unable to convert speech to text."
+      "speechConversionFailed": "Unable to convert speech to text.",
+      "updateTaskFailed": "Unable to update task.",
+      "deleteTaskFailed": "Unable to delete task."
     },
     "placeholders": {
       "searchEvents": "Search events...",
@@ -2214,27 +2239,72 @@
       "subtitle": "Step by step exploring and managing Vietnamese genealogy",
       "stepsTitle": "6 Easy Steps To Start",
       "steps": {
-        "step1": { "title": "Create Clan", "desc": "The first step is to create an account and set the clan name. The system will create a private space for your clan." },
-        "step2": { "title": "Add Members", "desc": "Enter clan member information: name, birth date, relationship. You can add each person or import a list from an Excel file." },
-        "step3": { "title": "Link Relationships", "desc": "Define relationships between members: parents, spouses, siblings. The system automatically draws the genealogy diagram." },
-        "step4": { "title": "Store Documents", "desc": "Upload images, documents, videos of ancient genealogy. All files are encrypted and stored securely on the cloud." },
-        "step5": { "title": "Invite Members", "desc": "Send invitations to clan members so they can join and update their personal information." },
-        "step6": { "title": "Manage Events", "desc": "Set death anniversaries, festivals, clan events. Receive automatic notifications on important occasions." }
+        "step1": {
+          "title": "Create Clan",
+          "desc": "The first step is to create an account and set the clan name. The system will create a private space for your clan."
+        },
+        "step2": {
+          "title": "Add Members",
+          "desc": "Enter clan member information: name, birth date, relationship. You can add each person or import a list from an Excel file."
+        },
+        "step3": {
+          "title": "Link Relationships",
+          "desc": "Define relationships between members: parents, spouses, siblings. The system automatically draws the genealogy diagram."
+        },
+        "step4": {
+          "title": "Store Documents",
+          "desc": "Upload images, documents, videos of ancient genealogy. All files are encrypted and stored securely on the cloud."
+        },
+        "step5": {
+          "title": "Invite Members",
+          "desc": "Send invitations to clan members so they can join and update their personal information."
+        },
+        "step6": {
+          "title": "Manage Events",
+          "desc": "Set death anniversaries, festivals, clan events. Receive automatic notifications on important occasions."
+        }
       },
       "videoTitle": "Watch Video Tutorials",
       "videos": {
-        "v1": { "title": "How to create a clan in 2 minutes", "desc": "Quick guide for newcomers" },
-        "v2": { "title": "Import data from Excel file", "desc": "Add hundreds of members at once" },
-        "v3": { "title": "Manage access permissions", "desc": "Control who can view or edit" }
+        "v1": {
+          "title": "How to create a clan in 2 minutes",
+          "desc": "Quick guide for newcomers"
+        },
+        "v2": {
+          "title": "Import data from Excel file",
+          "desc": "Add hundreds of members at once"
+        },
+        "v3": {
+          "title": "Manage access permissions",
+          "desc": "Control who can view or edit"
+        }
       },
       "faqTitle": "Frequently Asked Questions",
       "faqs": [
-        { "q": "Where can I start if I don't know all the family members?", "a": "You can absolutely start with the closest members like parents, siblings. Then, gradually add others as you have information." },
-        { "q": "Is my data protected?", "a": "All genealogy data is encrypted according to international standards (AES-256). Only authorized people can access it." },
-        { "q": "Can I import data from existing old genealogy?", "a": "Yes, you can upload Excel files or images of old genealogy. The system can help you convert to a digital format." },
-        { "q": "What do other members need to do to join?", "a": "They just need to receive the invitation email, register an account and log in. No special technical skills are required." },
-        { "q": "Can I delete or edit information?", "a": "Yes, but every edit will be recorded to preserve historical integrity. Clan administrators can manage permissions." },
-        { "q": "How much is the fee?", "a": "Currently, Gia Pha Viet is in a free beta phase. You can use all features at no cost." }
+        {
+          "q": "Where can I start if I don't know all the family members?",
+          "a": "You can absolutely start with the closest members like parents, siblings. Then, gradually add others as you have information."
+        },
+        {
+          "q": "Is my data protected?",
+          "a": "All genealogy data is encrypted according to international standards (AES-256). Only authorized people can access it."
+        },
+        {
+          "q": "Can I import data from existing old genealogy?",
+          "a": "Yes, you can upload Excel files or images of old genealogy. The system can help you convert to a digital format."
+        },
+        {
+          "q": "What do other members need to do to join?",
+          "a": "They just need to receive the invitation email, register an account and log in. No special technical skills are required."
+        },
+        {
+          "q": "Can I delete or edit information?",
+          "a": "Yes, but every edit will be recorded to preserve historical integrity. Clan administrators can manage permissions."
+        },
+        {
+          "q": "How much is the fee?",
+          "a": "Currently, Gia Pha Viet is in a free beta phase. You can use all features at no cost."
+        }
       ],
       "support": {
         "title": "Need Help?",
