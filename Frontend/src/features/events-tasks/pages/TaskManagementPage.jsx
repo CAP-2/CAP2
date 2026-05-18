@@ -19,7 +19,6 @@ import { generateEventFormAI } from "../../../api/aiServerService";
 import { getSocket } from "../../../services/socket";
 import DateInput from "../../../shared/components/DateInput";
 import { useLanguage } from "../../../i18n/LanguageContext";
-import VoiceRecorder from "../../voice/components/VoiceRecorder";
 import { formatDateTimeVN, formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import "./TaskManagementPage.css";
 
@@ -1328,7 +1327,6 @@ const openEvent = (eventId) => {
                 <span className="material-symbols-outlined">auto_awesome</span>
                 {t("common.createMore")}
               </button>
-              <VoiceRecorder disabled={aiLoading} maxSeconds={60} onTranscript={appendAiPromptText} />
             </div>
 
             {aiTaskSuggestions.length ? (
@@ -1704,7 +1702,6 @@ const openEvent = (eventId) => {
                 </button>
               </div>
               {voiceListening && <small className="ai-voice-status">{t("eventsTasks.placeholders.listening")}</small>}
-              <VoiceRecorder disabled={aiLoading} maxSeconds={60} onTranscript={appendAiPromptText} />
             </label>
             <label className="ai-count-control ai-count-control-wide">
               <span>{t("eventsTasks.placeholders.aiTaskCountLabel")}</span>

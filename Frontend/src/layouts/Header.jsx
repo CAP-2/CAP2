@@ -53,7 +53,7 @@ export default function Header({
         </div>
 
         <div className="main-nav-auth">
-          <LanguageToggle className="nav-language-toggle" />
+          <LanguageToggle className="nav-language-toggle" showIcon={false} />
           {isLoggedIn ? (
             <>
               <Link to={getDashboardPath()} className="nav-dashboard-link">

@@ -12,7 +12,6 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { useTreeSearch } from "../hooks/useTreeSearch";
 import { useTreeViewMode } from "../hooks/useTreeViewMode";
 import { useTreeRealtime } from "../hooks/useTreeRealtime";
-import VoiceRecorder from "../../voice/components/VoiceRecorder";
 import { validateTreeData } from "../utils/treeValidation";
 import { CANVAS_PADDING, CARD_WIDTH } from "../utils/tree-editor/treeConstants";
 import { asArray, extractCreatedPersonId, formatDisplayDate, fullName, normalizePerson, readCurrentAccount, snap, snapLine, clamp, toInt } from "../utils/tree-editor/treePersonUtils";
@@ -2159,11 +2158,6 @@ const submitCreateDialog = async () => {
                     >
                       <span className="material-symbols-outlined">{genealogyVoiceListening ? "mic_off" : "mic"}</span>
                     </button>
-                    <VoiceRecorder
-                      disabled={genealogyAiLoading || genealogyAiSaving}
-                      maxSeconds={180}
-                      onTranscript={appendGenealogyAiTranscript}
-                    />
                   </div>
                   <small>{t("tree.genealogyAi.voiceHelp")}</small>
                 </div>

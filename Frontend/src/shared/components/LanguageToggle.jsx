@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useLanguage } from "../../i18n/LanguageContext";
 import "./LanguageToggle.css";
 
-export default function LanguageToggle({ className = "" }) {
+export default function LanguageToggle({ className = "", showIcon = true }) {
   const { language, setLanguage, toggleLanguage } = useLanguage();
   const { i18n, t } = useTranslation();
   const currentLanguage = i18n.resolvedLanguage || language;
@@ -27,7 +27,7 @@ export default function LanguageToggle({ className = "" }) {
       aria-label={t("language.switchTo", { language: nextLabel })}
       data-no-translate="true"
     >
-      <span className="material-symbols-outlined">translate</span>
+      {showIcon && <span className="material-symbols-outlined">translate</span>}
       <strong>{currentLanguage === "vi" ? "VI" : "EN"}</strong>
     </button>
   );

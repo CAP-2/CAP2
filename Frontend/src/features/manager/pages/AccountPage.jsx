@@ -527,7 +527,10 @@ export default function AccountPage() {
           <button
             className="member-pro-btn member-pro-btn-gold"
             type="button"
-            onClick={() => setCreateOpen((value) => !value)}
+            onClick={() => {
+              setRelationOpen(false);
+              setCreateOpen(true);
+            }}
           >
             <span className="material-symbols-outlined">person_add</span>
             {t("manager.accounts.actions.addMember")}
@@ -580,9 +583,9 @@ export default function AccountPage() {
         </div>
       </div>
 
-      {(createOpen || relationOpen) && (
+      {relationOpen && (
         <div className="member-pro-tools-grid">
-          {createOpen && (
+          {false && createOpen && (
             <div className="member-pro-panel">
               <div className="member-pro-panel-head">
                 <div>
@@ -877,6 +880,141 @@ export default function AccountPage() {
               </form>
             </div>
           )}
+        </div>
+      )}
+
+      {createOpen && (
+        <div
+          className="mgr-modalOverlay"
+          role="presentation"
+          onClick={() => !saving && setCreateOpen(false)}
+        >
+          <form
+            className="mgr-modal member-pro-modal member-pro-create-modal"
+            role="dialog"
+            aria-modal="true"
+            onSubmit={submitCreate}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              className="mgr-modalClose"
+              type="button"
+              onClick={() => setCreateOpen(false)}
+              disabled={saving}
+            >
+              &times;
+            </button>
+
+            <h2 className="mgr-modalTitle">{t("manager.accounts.form.createTitle")}</h2>
+            <p className="mgr-modalMeta">{t("manager.accounts.form.createDescription")}</p>
+
+            <div className="member-pro-form-grid">
+              <input
+                className="mgr-field"
+                name="email"
+                type="email"
+                value={createForm.email}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderEmail")}
+                required
+              />
+
+              <input
+                className="mgr-field"
+                name="password"
+                type="password"
+                value={createForm.password}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderPassword")}
+                required
+              />
+
+              <input
+                className="mgr-field"
+                name="surname"
+                value={createForm.surname}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderSurname")}
+              />
+
+              <input
+                className="mgr-field"
+                name="middle_name"
+                value={createForm.middle_name}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderMiddleName")}
+              />
+
+              <input
+                className="mgr-field"
+                name="first_name"
+                value={createForm.first_name}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderFirstName")}
+                required
+              />
+
+              <select
+                className="mgr-field"
+                name="gender"
+                value={createForm.gender}
+                onChange={updateCreateField}
+              >
+                <option value="1">{t("manager.accounts.form.genderMale")}</option>
+                <option value="2">{t("manager.accounts.form.genderFemale")}</option>
+                <option value="">{t("manager.accounts.form.genderUnknown")}</option>
+              </select>
+
+              <input
+                className="mgr-field"
+                name="generation"
+                type="number"
+                min="1"
+                value={createForm.generation}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderGeneration")}
+              />
+
+              <div className="mgr-dateField">
+                <DateInput
+                  className="mgr-field"
+                  name="birth_date"
+                  value={createForm.birth_date}
+                  onChange={updateCreateField}
+                />
+                <LunarDateHint value={createForm.birth_date} label={t("manager.accounts.form.placeholderBirthDate") + " (L)"} />
+              </div>
+
+              <input
+                className="mgr-field member-pro-full"
+                name="hometown"
+                value={createForm.hometown}
+                onChange={updateCreateField}
+                placeholder={t("manager.accounts.form.placeholderHometown")}
+              />
+
+              {isAdmin && (
+                <input
+                  className="mgr-field"
+                  name="clan_id"
+                  type="number"
+                  value={createForm.clan_id}
+                  onChange={updateCreateField}
+                  placeholder="clan_id"
+                />
+              )}
+            </div>
+
+            <div className="mgr-modalActions">
+              <button className="mgr-btnPrimary" type="submit" disabled={saving}>
+                {saving ? t("manager.accounts.actions.saving") : t("manager.accounts.actions.addMember")}
+              </button>
+
+              <button className="mgr-btnGhost" type="button" onClick={() => setCreateOpen(false)} disabled={saving}>
+                {t("common.close")}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
