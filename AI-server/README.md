@@ -1,12 +1,78 @@
 # AI-server
 
-AI-server la Flask service dung rieng cho cac tinh nang AI tao du lieu nhap cua Gia Pha Viet.
+AI-server là Flask service phục vụ các tính năng AI của Gia Phả Việt. Service này nhận prompt từ Backend, sinh JSON theo schema cố định và trả về dữ liệu nháp để người dùng kiểm tra.
 
-Service nay khong truy van du lieu rieng, khong tao su kien/cong viec/thanh vien that, va khong tu ghi database. Backend hoac frontend goi cac endpoint AI rieng theo tung man hinh, sau do hien thi du lieu nhap de nguoi dung hoac manager kiem tra.
+AI-server không truy vấn dữ liệu riêng, không tự tạo sự kiện/công việc/thành viên thật và không ghi database.
 
-## API
+## Công nghệ
+
+- Flask
+- Groq SDK
+- python-dotenv
+- Rule-based fallback cho một số luồng quan trọng
+
+## Cấu trúc
+
+```text
+AI-server/
+├── app.py              # Flask app, prompt, normalize, fallback
+├── requirements.txt
+├── .env.example
+├── tests/              # Unit tests cho event/genealogy logic
+└── README.md
+```
+
+## Biến môi trường
+
+Tạo `.env` từ `.env.example`:
+
+```powershell
+cd D:\cap2\AI-server
+copy .env.example .env
+```
+
+Các biến chính:
+
+```text
+HOST=0.0.0.0
+PORT=8001
+DEBUG=false
+
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_TIMEOUT_SECONDS=8
+AI_DISABLE_GROQ=false
+```
+
+Nếu `GROQ_API_KEY` không có hoặc `AI_DISABLE_GROQ=true`, service vẫn chạy. Một số request hợp lệ sẽ được xử lý bằng fallback rule-based.
+
+## Cài đặt
+
+```powershell
+cd D:\cap2\AI-server
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python app.py
+```
+
+Mặc định service chạy tại:
+
+```text
+http://localhost:8001
+```
+
+Backend cần trỏ tới service này bằng:
+
+```text
+AI_SERVER_URL=http://localhost:8001
+```
+
+## Endpoint
 
 ### `GET /health`
+
+Kiểm tra service và trạng thái cấu hình Groq.
 
 Response:
 
@@ -20,19 +86,40 @@ Response:
 
 ### `POST /event-form/generate`
 
-Request:
+Sinh dữ liệu nháp cho form tạo sự kiện hoặc gợi ý công việc cho một sự kiện đã có.
+
+Request tạo sự kiện:
 
 ```json
 {
   "mode": "event_create",
-  "prompt": "Tao su kien gio to thang 8 tai nha tho ho, khoang 50 nguoi tham du",
-  "today": "2026-05-17",
+  "prompt": "Tạo sự kiện giỗ tổ tháng 8 tại nhà thờ họ, khoảng 50 người tham dự",
+  "today": "2026-05-19",
   "clan_id": 1,
   "requested_task_count": 6
 }
 ```
 
-Response:
+Request tạo thêm công việc:
+
+```json
+{
+  "mode": "task_create",
+  "prompt": "Gợi ý thêm việc hậu cần",
+  "today": "2026-05-19",
+  "requested_task_count": 5,
+  "current_event": {
+    "id": 10,
+    "title": "Giỗ tổ",
+    "event_date": "2026-08-01",
+    "description": "Giỗ tổ tại nhà thờ họ",
+    "clan_id": 1
+  },
+  "existing_tasks": []
+}
+```
+
+Response chuẩn:
 
 ```json
 {
@@ -40,17 +127,17 @@ Response:
   "status": "success",
   "mode": "event_create",
   "event": {
-    "title": "Gio to",
+    "title": "Giỗ tổ",
     "event_date": "2026-08-01",
-    "description": "Tao su kien gio to thang 8 tai nha tho ho, khoang 50 nguoi tham du",
+    "description": "Tạo sự kiện giỗ tổ tháng 8 tại nhà thờ họ, khoảng 50 người tham dự",
     "clan_id": 1
   },
   "manager_tasks": [
     {
       "event_id": null,
       "member_id": null,
-      "title": "Lap danh sach con chau tham du",
-      "description": "Tong hop so luong thanh vien tham du de chuan bi le va tiep don.",
+      "title": "Lập danh sách con cháu tham dự",
+      "description": "Tổng hợp số lượng thành viên tham dự để chuẩn bị lễ và tiếp đón.",
       "due_date": "2026-07-25",
       "status": "assigned"
     }
@@ -58,70 +145,42 @@ Response:
 }
 ```
 
-## Cai Dat
+Nếu prompt không thuộc phạm vi sự kiện/dòng họ:
 
-```powershell
-cd AI-server
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
-python app.py
-```
-
-Bien moi truong chinh:
-
-```text
-GROQ_API_KEY=...
-GROQ_MODEL=llama-3.3-70b-versatile
-GROQ_TIMEOUT_SECONDS=8
-AI_DISABLE_GROQ=false
-HOST=0.0.0.0
-PORT=8001
-DEBUG=false
-```
-
-Neu khong co `GROQ_API_KEY`, server van tra fallback JSON voi `success: true` cho prompt hop le.
-
-## Chay
-
-```powershell
-cd AI-server
-.venv\Scripts\Activate.ps1
-python app.py
-```
-
-Mac dinh server chay tai:
-
-```text
-http://localhost:8001
-```
-
-Backend can tro toi AI-server bang:
-
-```text
-AI_SERVER_URL=http://localhost:8001
+```json
+{
+  "success": true,
+  "status": "unsupported",
+  "mode": "event_create",
+  "event": {
+    "title": "",
+    "event_date": null,
+    "description": "",
+    "clan_id": null
+  },
+  "manager_tasks": []
+}
 ```
 
 ### `POST /genealogy/extract`
 
-Endpoint rieng cho AI trich xuat du lieu gia pha. Khong dung chung prompt va khong di qua `/event-form/generate`.
+Trích xuất dữ liệu gia phả từ mô tả văn bản hoặc transcript giọng nói.
 
-Request text:
+Request:
 
 ```json
 {
   "input_source": "text",
-  "prompt": "Ong Nguyen Van A co vo la ba Tran Thi B, hai nguoi co con la Nguyen Van C"
+  "prompt": "Ông Nguyễn Văn A có vợ là bà Trần Thị B, hai người có con là Nguyễn Văn C"
 }
 ```
 
-Request voice transcript:
+Request từ transcript:
 
 ```json
 {
   "input_source": "voice_transcript",
-  "prompt": "Transcript da chuyen tu giong noi..."
+  "prompt": "Transcript đã chuyển từ giọng nói..."
 }
 ```
 
@@ -129,27 +188,60 @@ Response:
 
 ```json
 {
-  "members": [],
+  "members": [
+    {
+      "temporary_id": "p1",
+      "full_name": "Nguyễn Văn A",
+      "gender": "male",
+      "birth_year": null,
+      "death_year": null,
+      "birth_date": null,
+      "death_date": null,
+      "phone": null,
+      "address": null,
+      "notes": null,
+      "confidence": 0.92
+    }
+  ],
   "relationships": [],
   "uncertain_items": [],
   "warnings": [],
   "summary": {
-    "total_members_detected": 0,
+    "total_members_detected": 1,
     "total_relationships_detected": 0,
     "needs_human_review": true
   }
 }
 ```
 
-Voice-to-text flow neu co:
+## Fallback và normalize
 
-```text
-Voice Input -> /api/voice/... -> transcript -> /genealogy/extract
-```
+`app.py` có hai lớp bảo vệ:
 
-## Kiem Tra
+- Rule-based fallback cho event/genealogy khi Groq không có hoặc kết quả AI rỗng/sai.
+- Normalize output để giữ schema ổn định, giới hạn field, chuẩn hóa ngày, loại bỏ quan hệ/task không hợp lệ.
+
+Với genealogy, service còn xử lý một số pattern nhiều quan hệ trong cùng prompt, tách nhiều người con, cảnh báo mismatch số lượng và đánh dấu dữ liệu từ transcript cần kiểm tra.
+
+## Kiểm tra
 
 ```powershell
-cd AI-server
+cd D:\cap2\AI-server
+.\.venv\Scripts\Activate.ps1
 python -m unittest discover tests
 ```
+
+Compile check:
+
+```powershell
+cd D:\cap2
+python -m py_compile AI-server\app.py
+```
+
+## Ghi chú phát triển
+
+- Endpoint phải trả JSON hợp lệ, không markdown.
+- Không thêm field ngoài schema nếu frontend/backend không dùng.
+- Không ghi database trong AI-server.
+- Khi sửa prompt/schema, cập nhật test trong `AI-server/tests`.
+- Nếu thêm endpoint AI mới, backend nên proxy qua `Backend/src/modules/ai`.
