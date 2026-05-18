@@ -833,6 +833,8 @@
       "micBlocked": "Không thể truy cập micro. Vui lòng kiểm tra quyền trình duyệt.",
       "noSpeechDetected": "Chưa nhận diện được giọng nói.",
       "speechConversionFailed": "Không thể chuyển giọng nói thành văn bản.",
+      "speechSecureContextRequired": "Nhận diện giọng nói của trình duyệt cần chạy bằng HTTPS hoặc localhost.",
+      "speechNetworkFailed": "Dịch vụ nhận diện giọng nói của trình duyệt không kết nối được. Vui lòng kiểm tra mạng hoặc thử chạy bằng HTTPS/localhost.",
       "updateTaskFailed": "Không thể cập nhật công việc.",
       "deleteTaskFailed": "Không thể xóa công việc."
     },

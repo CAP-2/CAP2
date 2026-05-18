@@ -837,6 +837,8 @@
       "micBlocked": "Cannot access the microphone. Please check browser permissions.",
       "noSpeechDetected": "No speech was detected.",
       "speechConversionFailed": "Unable to convert speech to text.",
+      "speechSecureContextRequired": "Browser speech recognition requires HTTPS or localhost.",
+      "speechNetworkFailed": "The browser speech recognition service could not connect. Check the network or try HTTPS/localhost.",
       "updateTaskFailed": "Unable to update task.",
       "deleteTaskFailed": "Unable to delete task."
     },

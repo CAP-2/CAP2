@@ -600,17 +600,60 @@
     background: #fffaf0;
 }
 
-.fte-aiVoiceRow .voice-recorder {
+.fte-aiVoiceControls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.fte-browserVoiceButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 1px solid #d6a329;
+    border-radius: 999px;
+    border-color: #d6a329;
+    background: #fff;
+    color: #8a5308;
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.fte-browserVoiceButton:hover:not(:disabled) {
+    background: #fff4d6;
+    transform: translateY(-1px);
+}
+
+.fte-browserVoiceButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.fte-browserVoiceButton.is-listening {
+    border-color: #d7263d;
+    background: #fff1f3;
+    color: #b71d31;
+}
+
+.fte-browserVoiceButton .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.fte-aiVoiceControls .voice-recorder {
     min-width: 0;
 }
 
-.fte-aiVoiceRow .voice-recorder-button {
+.fte-aiVoiceControls .voice-recorder-button {
     border-color: #d6a329;
     background: #fff;
     color: #8a5308;
 }
 
-.fte-aiVoiceRow .voice-recorder-button.is-recording {
+.fte-aiVoiceControls .voice-recorder-button.is-recording {
     border-color: #d7263d;
     background: #fff1f3;
     color: #b71d31;

@@ -343,16 +343,27 @@ export default function TaskManagementPage({ role = "member" }) {
       appendAiPromptText(transcript);
     };
 
-    recognition.onerror = (event) => {
-      const errorName = event?.error || "";
-      if (errorName === "not-allowed" || errorName === "service-not-allowed") {
-        setError(t("eventsTasks.errors.micBlocked"));
-      } else if (errorName === "no-speech") {
-        setError(t("eventsTasks.errors.noSpeechDetected"));
-      } else {
-        setError(t("eventsTasks.errors.speechConversionFailed"));
-      }
-    };
+recognition.onerror = (event) => {
+  const errorName = event?.error || "";
+
+  console.error("Speech recognition error:", errorName, event);
+
+  if (errorName === "not-allowed" || errorName === "service-not-allowed") {
+    setError(t("eventsTasks.errors.micBlocked"));
+  } else if (errorName === "no-speech") {
+    setError(t("eventsTasks.errors.noSpeechDetected"));
+  } else if (errorName === "audio-capture") {
+    setError("Không truy cập được micro. Kiểm tra thiết bị micro hoặc quyền micro của Chrome.");
+  } else if (errorName === "network") {
+    setError("Chrome không kết nối được dịch vụ nhận diện giọng nói. Hãy thử localhost, mạng khác, tắt VPN/proxy.");
+  } else if (errorName === "aborted") {
+    setError("Quá trình nhận diện giọng nói đã bị dừng.");
+  } else {
+    setError(`Không thể chuyển giọng nói thành văn bản. Lỗi: ${errorName || "unknown"}`);
+  }
+
+  setAiVoiceListening(false);
+};
 
     recognition.onend = () => {
       setVoiceListening(false);

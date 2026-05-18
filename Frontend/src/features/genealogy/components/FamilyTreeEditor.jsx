@@ -257,10 +257,11 @@ export default function FamilyTreeEditor({
   readOnly = false,
   enableRealtime = true,
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const treeRef = useRef(null);
   const viewportRef = useRef(null);
   const transformApiRef = useRef(null);
+  const genealogyRecognitionRef = useRef(null);
   const scaleRef = useRef(0.85);
   const [currentScale, setCurrentScale] = useState(0.85);
   const lastDragRef = useRef(null);
@@ -288,6 +289,7 @@ export default function FamilyTreeEditor({
   const [genealogyAiError, setGenealogyAiError] = useState("");
   const [genealogyAiLoading, setGenealogyAiLoading] = useState(false);
   const [genealogyAiSaving, setGenealogyAiSaving] = useState(false);
+  const [genealogyVoiceListening, setGenealogyVoiceListening] = useState(false);
   const [dialogSaving, setDialogSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState(() => new Map());
   const [selfPersonId, setSelfPersonId] = useState(null);
@@ -781,6 +783,81 @@ const quickCreateSourcePerson = useMemo(
       return `${prompt}${separator}${transcript}`;
     });
   }, [t]);
+
+  const toggleGenealogyAiVoiceInput = useCallback(() => {
+    if (genealogyVoiceListening) {
+      genealogyRecognitionRef.current?.stop?.();
+      setGenealogyVoiceListening(false);
+      return;
+    }
+
+    const SpeechRecognition =
+      typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SpeechRecognition) {
+      setGenealogyAiError(t("common.speechUnsupported"));
+      return;
+    }
+
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    if (!window.isSecureContext && !isLocalhost) {
+      setGenealogyAiError(t("eventsTasks.errors.speechSecureContextRequired"));
+      return;
+    }
+
+    genealogyRecognitionRef.current?.abort?.();
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === "en" ? "en-US" : "vi-VN";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results || [])
+        .map((result) => result?.[0]?.transcript || "")
+        .join(" ");
+      appendGenealogyAiTranscript(transcript);
+    };
+
+    recognition.onerror = (event) => {
+      const errorName = event?.error || "";
+      if (errorName === "not-allowed") {
+        setGenealogyAiError(t("eventsTasks.errors.micBlocked"));
+      } else if (errorName === "service-not-allowed") {
+        setGenealogyAiError(t("eventsTasks.errors.speechSecureContextRequired"));
+      } else if (errorName === "network") {
+        setGenealogyAiError(t("eventsTasks.errors.speechNetworkFailed"));
+      } else if (errorName === "no-speech") {
+        setGenealogyAiError(t("eventsTasks.errors.noSpeechDetected"));
+      } else {
+        setGenealogyAiError(t("eventsTasks.errors.speechConversionFailed"));
+      }
+    };
+
+    recognition.onend = () => {
+      setGenealogyVoiceListening(false);
+      genealogyRecognitionRef.current = null;
+    };
+
+    genealogyRecognitionRef.current = recognition;
+    setGenealogyAiError("");
+    setGenealogyVoiceListening(true);
+    try {
+      recognition.start();
+    } catch {
+      genealogyRecognitionRef.current = null;
+      setGenealogyVoiceListening(false);
+      setGenealogyAiError(t("eventsTasks.errors.speechConversionFailed"));
+    }
+  }, [appendGenealogyAiTranscript, genealogyVoiceListening, language, t]);
+
+  useEffect(() => {
+    return () => {
+      genealogyRecognitionRef.current?.abort?.();
+      genealogyRecognitionRef.current = null;
+    };
+  }, []);
 
   const submitGenealogyAiExtract = useCallback(async () => {
     const prompt = genealogyAiPrompt.trim();
@@ -2071,11 +2148,23 @@ const submitCreateDialog = async () => {
               <label className="fte-aiPromptField">
                 <span>{t("tree.genealogyAi.promptLabel")}</span>
                 <div className="fte-aiVoiceRow">
-                  <VoiceRecorder
-                    disabled={genealogyAiLoading || genealogyAiSaving}
-                    maxSeconds={180}
-                    onTranscript={appendGenealogyAiTranscript}
-                  />
+                  <div className="fte-aiVoiceControls">
+                    <button
+                      type="button"
+                      className={`fte-browserVoiceButton ${genealogyVoiceListening ? "is-listening" : ""}`}
+                      onClick={toggleGenealogyAiVoiceInput}
+                      disabled={genealogyAiLoading || genealogyAiSaving}
+                      title={genealogyVoiceListening ? t("common.stopVoice") : t("common.startVoice")}
+                      aria-label={genealogyVoiceListening ? t("common.stopVoice") : t("common.startVoice")}
+                    >
+                      <span className="material-symbols-outlined">{genealogyVoiceListening ? "mic_off" : "mic"}</span>
+                    </button>
+                    <VoiceRecorder
+                      disabled={genealogyAiLoading || genealogyAiSaving}
+                      maxSeconds={180}
+                      onTranscript={appendGenealogyAiTranscript}
+                    />
+                  </div>
                   <small>{t("tree.genealogyAi.voiceHelp")}</small>
                 </div>
                 <textarea
