@@ -42,12 +42,34 @@ function getReaderKey(reader) {
   return `${reader.account_id || ""}:${reader.person_id || ""}`;
 }
 
-function MemoryMedia({ memory, t }) {
+function MemoryMedia({ memory, t, showCarouselControls = false, onPrevious, onNext }) {
   const url = memory.media_url || (memory.media_id ? `/api/media/${memory.media_id}` : "");
   if (!url) return null;
   const kind = getMediaKind(memory);
-  if (kind === "image") return <img className="memory-media" src={url} alt={memory.title || t("timeCapsule.defaultMemoryTitle")} />;
-  if (kind === "video") return <video className="memory-media" src={url} controls preload="metadata" />;
+  const mediaAlt = memory.title || t("timeCapsule.defaultMemoryTitle");
+
+  if (kind === "image" || kind === "video") {
+    return (
+      <div className="memory-media-frame">
+        {kind === "image" ? (
+          <img className="memory-media" src={url} alt={mediaAlt} />
+        ) : (
+          <video className="memory-media" src={url} controls preload="metadata" />
+        )}
+        {showCarouselControls ? (
+          <>
+            <button type="button" className="memory-carousel-arrow is-left" onClick={onPrevious} aria-label="Xem mục trước">
+              <span className="material-symbols-outlined">chevron_left</span>
+            </button>
+            <button type="button" className="memory-carousel-arrow is-right" onClick={onNext} aria-label="Xem mục tiếp theo">
+              <span className="material-symbols-outlined">chevron_right</span>
+            </button>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   if (kind === "audio") return <audio className="memory-audio" src={url} controls />;
   return (
     <a className="memory-file-link" href={url} target="_blank" rel="noreferrer">
@@ -57,7 +79,7 @@ function MemoryMedia({ memory, t }) {
   );
 }
 
-function MemoryCard({ memory, isManagerView = false, t }) {
+function MemoryCard({ memory, isManagerView = false, t, showCarouselControls = false, onPrevious, onNext }) {
   return (
     <article className={`memory-card is-${memory.status || "approved"}`}>
       <div className="memory-card-head">
@@ -73,7 +95,7 @@ function MemoryCard({ memory, isManagerView = false, t }) {
         <span className={`memory-status is-${memory.status || "approved"}`}>{getStatusLabel(memory.status, t)}</span>
       </div>
       {memory.content && <p className="memory-content">{memory.content}</p>}
-      <MemoryMedia memory={memory} t={t} />
+      <MemoryMedia memory={memory} t={t} showCarouselControls={showCarouselControls} onPrevious={onPrevious} onNext={onNext} />
       <div className="memory-access-meta">
         <span className="material-symbols-outlined">visibility</span>
         <span>{getVisibilityLabel(memory.visibility, t)}</span>
@@ -103,6 +125,8 @@ export default function TimeCapsulePage({ role = "member" }) {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [albumCategory, setAlbumCategory] = useState("image");
+  const [carouselIndex, setCarouselIndex] = useState(0);
   const [captureMode, setCaptureMode] = useState("none");
   const [cameraStream, setCameraStream] = useState(null);
   const [recorderState, setRecorderState] = useState("idle");
@@ -173,10 +197,39 @@ export default function TimeCapsulePage({ role = "member" }) {
     return { approved, pending, media };
   }, [memories]);
 
-  const visibleMemories = useMemo(() => {
+  const albumTabs = useMemo(() => ([
+    { value: "image", label: "Ảnh", icon: "photo_library" },
+    { value: "video", label: "Video", icon: "video_library" },
+    { value: "audio", label: "Ghi âm", icon: "graphic_eq" },
+  ]), []);
+
+  const statusFilteredMemories = useMemo(() => {
     if (filter === "all") return memories;
     return memories.filter((item) => item.status === filter);
   }, [filter, memories]);
+
+  const albumCounts = useMemo(() => statusFilteredMemories.reduce((acc, item) => {
+    const kind = getMediaKind(item);
+    if (kind === "image" || kind === "video" || kind === "audio") acc[kind] += 1;
+    return acc;
+  }, { image: 0, video: 0, audio: 0 }), [statusFilteredMemories]);
+
+  const visibleMemories = useMemo(() => (
+    statusFilteredMemories.filter((item) => getMediaKind(item) === albumCategory)
+  ), [albumCategory, statusFilteredMemories]);
+
+  useEffect(() => {
+    setCarouselIndex(0);
+  }, [albumCategory, filter]);
+
+  useEffect(() => {
+    if (carouselIndex >= visibleMemories.length) setCarouselIndex(0);
+  }, [carouselIndex, visibleMemories.length]);
+
+  const showCarousel = albumCategory === "image" || albumCategory === "video";
+  const currentCarouselMemory = showCarousel && visibleMemories.length ? visibleMemories[carouselIndex] : null;
+  const goToPreviousMemory = () => setCarouselIndex((index) => (visibleMemories.length ? (index - 1 + visibleMemories.length) % visibleMemories.length : 0));
+  const goToNextMemory = () => setCarouselIndex((index) => (visibleMemories.length ? (index + 1) % visibleMemories.length : 0));
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -600,17 +653,47 @@ export default function TimeCapsulePage({ role = "member" }) {
             <h3>{t("timeCapsule.list.title")}</h3>
             <span>{t("timeCapsule.list.description")}</span>
           </div>
-          <div className="memory-filter-group">
-            <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t("common.all")}</button>
-            <button className={filter === "approved" ? "active" : ""} onClick={() => setFilter("approved")}>{t("common.approved")}</button>
-            <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>{t("common.pending")}</button>
+          <div className="memory-filter-panel">
+            <div className="memory-album-tabs" aria-label="Danh mục album kỉ niệm">
+              {albumTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  className={albumCategory === tab.value ? "active" : ""}
+                  onClick={() => setAlbumCategory(tab.value)}
+                >
+                  <span className="material-symbols-outlined">{tab.icon}</span>
+                  <strong>{tab.label}</strong>
+                  <small>{albumCounts[tab.value] || 0}</small>
+                </button>
+              ))}
+            </div>
+            <div className="memory-filter-group">
+              <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t("common.all")}</button>
+              <button className={filter === "approved" ? "active" : ""} onClick={() => setFilter("approved")}>{t("common.approved")}</button>
+              <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>{t("common.pending")}</button>
+            </div>
           </div>
         </div>
 
         {loading ? (
           <div className="time-capsule-empty">{t("timeCapsule.list.loading")}</div>
         ) : visibleMemories.length === 0 ? (
-          <div className="time-capsule-empty">{t("timeCapsule.list.empty")}</div>
+          <div className="time-capsule-empty">Chưa có nội dung trong danh mục {albumTabs.find((tab) => tab.value === albumCategory)?.label || "này"}.</div>
+        ) : showCarousel && currentCarouselMemory ? (
+          <div className="memory-carousel-stage">
+            <MemoryCard
+              key={currentCarouselMemory.id}
+              memory={currentCarouselMemory}
+              t={t}
+              showCarouselControls={visibleMemories.length > 1}
+              onPrevious={goToPreviousMemory}
+              onNext={goToNextMemory}
+            />
+            <div className="memory-carousel-counter">
+              {carouselIndex + 1} / {visibleMemories.length}
+            </div>
+          </div>
         ) : (
           <div className="memory-feed">
             {visibleMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} t={t} />)}

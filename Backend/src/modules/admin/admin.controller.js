@@ -3,12 +3,82 @@ const bcrypt = require("bcryptjs");
 const { deletePersonCompletely } = require("../../shared/utils/personDeletion");
 const memberController = require("../member/member.controller");
 const { ensureFreeSubscriptionForClan } = require("../billing/billing.service");
+const { ensureArchivedMembersTable } = require("../manager/archive.service");
+
+
+
+const NO_TABLE_OR_COLUMN_ADMIN = new Set(['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR']);
+const queryMaybeAdmin = async(connection, sql, params = []) => {
+  try {
+    return await connection.query(sql, params);
+  } catch (error) {
+    if (NO_TABLE_OR_COLUMN_ADMIN.has(error.code)) {
+      return [{ affectedRows: 0 }, []];
+    }
+    throw error;
+  }
+};
 
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
   const s = surname == null ? "" : String(surname).trim();
   const m = middleName == null ? "" : String(middleName).trim();
   const f = firstName == null ? "" : String(firstName).trim();
   return [s, m, f].filter(Boolean).join(" ").trim();
+};
+
+
+const archivePersonOrAccountForAdmin = async ({ personId = null, accountId = null, archivedByAccountId, reason, connection = db }) => {
+  await ensureArchivedMembersTable();
+
+  let person = null;
+  let account = null;
+
+  if (personId) {
+    const [personRows] = await connection.query("SELECT * FROM people WHERE id = ? LIMIT 1", [personId]);
+    person = personRows[0] || null;
+  }
+
+  if (accountId) {
+    const [accountRows] = await connection.query("SELECT * FROM accounts WHERE id = ? LIMIT 1", [accountId]);
+    account = accountRows[0] || null;
+    if (!person && account?.person_id) {
+      const [personRows] = await connection.query("SELECT * FROM people WHERE id = ? LIMIT 1", [account.person_id]);
+      person = personRows[0] || null;
+    }
+  } else if (person?.id) {
+    const [accountRows] = await connection.query("SELECT * FROM accounts WHERE person_id = ? LIMIT 1", [person.id]);
+    account = accountRows[0] || null;
+  }
+
+  if (!person && !account) {
+    return { ok: false, status: 404, message: "Không tìm thấy dữ liệu cần lưu trữ" };
+  }
+
+  const archiveAccountId = account?.id ? Number(account.id) : -Number(person.id);
+  const clanId = person?.clan_id || null;
+
+  await connection.query(
+    `INSERT INTO archived_members
+     (account_id, archived_by_account_id, clan_id, archived_reason, account_json, person_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+        archived_by_account_id = VALUES(archived_by_account_id),
+        clan_id = VALUES(clan_id),
+        archived_reason = VALUES(archived_reason),
+        account_json = VALUES(account_json),
+        person_json = VALUES(person_json),
+        archived_at = CURRENT_TIMESTAMP`,
+    [
+      archiveAccountId,
+      archivedByAccountId,
+      clanId,
+      reason,
+      JSON.stringify(account || {}),
+      person ? JSON.stringify(person) : null,
+    ]
+  );
+
+  return { ok: true, account_id: archiveAccountId, person_id: person?.id || null, clan_id: clanId };
 };
 
 let hasEnsuredTaskTables = false;
@@ -403,12 +473,36 @@ exports.deleteClan = async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy dòng họ" });
     }
 
-    // Xóa dòng họ sẽ xóa toàn bộ phả hệ liên quan nhờ các khóa ngoại ON DELETE CASCADE.
-    // Account có person_id thuộc dòng họ bị xóa sẽ tự set NULL theo ràng buộc FK_Account_Person.
-    await connection.query("DELETE FROM manager_tasks WHERE clan_id = ?", [clanId]);
+    const [accountRows] = await connection.query(
+      `
+      SELECT DISTINCT a.id
+      FROM accounts a
+      LEFT JOIN people p ON p.id = a.person_id
+      LEFT JOIN account_clans ac ON ac.account_id = a.id
+      WHERE p.clan_id = ? OR ac.clan_id = ?
+      `,
+      [clanId, clanId]
+    );
+    const accountIds = accountRows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0);
+
+    if (accountIds.length) {
+      const placeholders = accountIds.map(() => '?').join(',');
+      await queryMaybeAdmin(connection, `DELETE FROM account_clans WHERE account_id IN (${placeholders})`, accountIds);
+      await queryMaybeAdmin(connection, `DELETE FROM accounts WHERE id IN (${placeholders})`, accountIds);
+    }
+
+    // Xóa dòng họ là xóa cứng: không đưa vào kho lưu trữ, đồng thời dọn cả bản ghi lưu trữ cũ của dòng họ.
+    await queryMaybeAdmin(connection, "DELETE FROM archived_members WHERE clan_id = ?", [clanId]);
+    await queryMaybeAdmin(connection, "DELETE FROM manager_tasks WHERE clan_id = ?", [clanId]);
     await connection.query("DELETE FROM clans WHERE id = ?", [clanId]);
+
     await connection.commit();
-    return res.json({ success: true, message: "Đã xóa dòng họ và phả hệ liên quan" });
+    return res.json({
+      success: true,
+      message: "Đã xóa vĩnh viễn dòng họ, tài khoản và phả hệ liên quan khỏi database",
+      deleted_account_count: accountIds.length,
+      clan_id: clanId,
+    });
   } catch (e) {
     try { await connection.rollback(); } catch (_) {}
     console.error("deleteClan:", e);
@@ -571,11 +665,25 @@ exports.updateMember = async (req, res) => {
 exports.deleteMember = async (req, res) => {
   const personId = Number(req.params.id);
   try {
-    await deletePersonCompletely(personId, { deleteAccounts: true });
-    return res.json({ success: true, message: "Đã xóa thành viên và toàn bộ liên kết gia phả liên quan" });
+    if (!Number.isFinite(personId)) {
+      return res.status(400).json({ success: false, message: "person_id không hợp lệ" });
+    }
+    const archived = await archivePersonOrAccountForAdmin({
+      personId,
+      archivedByAccountId: req.user.id,
+      reason: "Admin chuyển thành viên vào kho lưu trữ từ màn hình quản lý phả hệ",
+    });
+    if (!archived.ok) return res.status(archived.status).json({ success: false, message: archived.message });
+    return res.json({
+      success: true,
+      archived: true,
+      message: "Đã chuyển thành viên vào Kho lưu trữ. Có thể phục hồi sau này.",
+      person_id: archived.person_id,
+      account_id: archived.account_id,
+    });
   } catch (e) {
     console.error("deleteMember:", e);
-    return res.status(500).json({ success: false, message: "Lỗi xóa thành viên" });
+    return res.status(500).json({ success: false, message: "Lỗi lưu trữ thành viên" });
   }
 };
 
@@ -920,6 +1028,7 @@ async function ensurePersonForAccount(connection, account, data) {
 
 exports.listAccounts = async (req, res) => {
   try {
+    await ensureArchivedMembersTable();
     const [rows] = await db.query(`
       SELECT
         a.id AS account_id,
@@ -946,6 +1055,7 @@ exports.listAccounts = async (req, res) => {
         WHERE status = 'active'
         GROUP BY account_id
       ) ac_primary ON ac_primary.account_id = a.id
+      LEFT JOIN archived_members am ON am.account_id = a.id
       LEFT JOIN (
         SELECT ac.account_id,
                GROUP_CONCAT(DISTINCT ac.clan_id ORDER BY ac.clan_id SEPARATOR ',') AS clan_ids,
@@ -955,6 +1065,7 @@ exports.listAccounts = async (req, res) => {
         WHERE ac.status = 'active'
         GROUP BY ac.account_id
       ) ac_names ON ac_names.account_id = a.id
+      WHERE am.id IS NULL
       ORDER BY
         CASE WHEN a.role_id = 1 THEN 0 ELSE 1 END,
         COALESCE(c_person.clan_name, ac_names.clan_names, 'zzz'),
@@ -1117,17 +1228,31 @@ exports.deleteAccount = async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ success: false, message: "Không xóa tài khoản Admin qua màn hình này" });
     }
-    const personId = rows[0].person_id ? Number(rows[0].person_id) : null;
-    if (personId) {
-      await deletePersonCompletely(personId, { connection, deleteAccounts: false });
+
+    const archived = await archivePersonOrAccountForAdmin({
+      accountId: targetId,
+      personId: rows[0].person_id ? Number(rows[0].person_id) : null,
+      archivedByAccountId: req.user.id,
+      reason: "Admin chuyển tài khoản/người trên cây vào kho lưu trữ",
+      connection,
+    });
+    if (!archived.ok) {
+      await connection.rollback();
+      return res.status(archived.status).json({ success: false, message: archived.message });
     }
-    await connection.query("DELETE FROM accounts WHERE id = ?", [targetId]);
+
     await connection.commit();
-    return res.json({ success: true, message: "Đã xóa tài khoản và dữ liệu gia phả liên quan" });
+    return res.json({
+      success: true,
+      archived: true,
+      message: "Đã chuyển tài khoản và hồ sơ gia phả vào Kho lưu trữ. Có thể phục hồi sau này.",
+      account_id: archived.account_id,
+      person_id: archived.person_id,
+    });
   } catch (e) {
     try { await connection.rollback(); } catch (_) {}
     console.error("deleteAccount:", e);
-    return res.status(500).json({ success: false, message: "Lỗi xóa tài khoản" });
+    return res.status(500).json({ success: false, message: "Lỗi lưu trữ tài khoản" });
   } finally {
     connection.release();
   }

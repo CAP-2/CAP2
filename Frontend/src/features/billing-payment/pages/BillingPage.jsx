@@ -6,6 +6,8 @@ import {
   getClanBilling,
   getClanPayments,
   manualUpgradeClan,
+  createBillingPlan,
+  updateBillingPlan,
 } from "../../../api/billingService";
 import { getStats, getManagerTree } from "../../../api/managerService";
 import { getAdminClans } from "../../../api/adminService";
@@ -156,6 +158,32 @@ function formatMoney(value) {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
 }
 
+function getEmptyPlanForm() {
+  return {
+    code: "",
+    name: "",
+    description: "",
+    price_vnd: 0,
+    billing_cycle: "monthly",
+    person_limit: 0,
+    account_limit: 0,
+    is_active: true,
+  };
+}
+
+function toPlanForm(plan) {
+  return {
+    code: plan?.code || "",
+    name: plan?.name || "",
+    description: plan?.description || "",
+    price_vnd: Number(plan?.price_vnd || 0),
+    billing_cycle: plan?.billing_cycle || "monthly",
+    person_limit: Number(plan?.person_limit || 0),
+    account_limit: Number(plan?.account_limit || 0),
+    is_active: plan?.is_active !== 0 && plan?.is_active !== false,
+  };
+}
+
 export default function BillingPage() {
   const { t } = useTranslation();
   const [clanId, setClanId] = useState(null);
@@ -170,6 +198,10 @@ export default function BillingPage() {
   const [paymentChecking, setPaymentChecking] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [paymentActionLoading, setPaymentActionLoading] = useState(false);
+  const [planEditorOpen, setPlanEditorOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [planForm, setPlanForm] = useState(getEmptyPlanForm());
+  const [planSaving, setPlanSaving] = useState(false);
 
   const currentRole = getCurrentUserRole();
   const isAdmin = currentRole === "admin";
@@ -347,6 +379,64 @@ const getStatusText = (status) =>
     setSelectedPayment(null);
 
     await loadBillingForClan(nextClanId);
+  };
+
+
+  const openCreatePlanEditor = () => {
+    setEditingPlan(null);
+    setPlanForm(getEmptyPlanForm());
+    setPlanEditorOpen(true);
+    setMessage("");
+  };
+
+  const openEditPlanEditor = (plan) => {
+    setEditingPlan(plan);
+    setPlanForm(toPlanForm(plan));
+    setPlanEditorOpen(true);
+    setMessage("");
+  };
+
+  const closePlanEditor = () => {
+    setPlanEditorOpen(false);
+    setEditingPlan(null);
+    setPlanForm(getEmptyPlanForm());
+  };
+
+  const updatePlanFormField = (field, value) => {
+    setPlanForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSavePlan = async (event) => {
+    event.preventDefault();
+    try {
+      setPlanSaving(true);
+      setMessage("");
+
+      const payload = {
+        ...planForm,
+        price_vnd: Number(planForm.price_vnd || 0),
+        person_limit: Number(planForm.person_limit || 0),
+        account_limit: Number(planForm.account_limit || 0),
+        is_active: Boolean(planForm.is_active),
+      };
+
+      if (editingPlan?.id) {
+        await updateBillingPlan(editingPlan.id, payload);
+        setMessage("Đã cập nhật gói sử dụng thành công.");
+      } else {
+        await createBillingPlan(payload);
+        setMessage("Đã thêm gói sử dụng thành công.");
+      }
+
+      const plansResult = await getBillingPlans();
+      setPlans(plansResult?.plans || []);
+      if (clanId) await loadBillingForClan(clanId);
+      closePlanEditor();
+    } catch (error) {
+      setMessage(error.message || "Không thể lưu gói sử dụng.");
+    } finally {
+      setPlanSaving(false);
+    }
   };
 
   const handleCreateSepayPayment = async (plan) => {
@@ -864,6 +954,112 @@ const handlePaySelectedPayment = (payment) => {
         </section>
       )}
 
+      {isAdmin && (
+        <section className="billing-card billing-admin-plan-manager">
+          <div className="billing-card-head">
+            <div>
+              <span className="billing-kicker">Quản trị gói sử dụng</span>
+              <h2>Thêm và sửa gói</h2>
+            </div>
+            <button type="button" className="billing-primary-btn" onClick={openCreatePlanEditor}>
+              <span className="material-symbols-outlined">add</span>
+              Thêm gói
+            </button>
+          </div>
+
+          {planEditorOpen && (
+            <form className="billing-plan-form" onSubmit={handleSavePlan}>
+              <div className="billing-plan-form-grid">
+                <label>
+                  Mã gói
+                  <input
+                    value={planForm.code}
+                    onChange={(event) => updatePlanFormField("code", event.target.value)}
+                    placeholder="VD: BASIC"
+                    required
+                  />
+                </label>
+                <label>
+                  Tên gói
+                  <input
+                    value={planForm.name}
+                    onChange={(event) => updatePlanFormField("name", event.target.value)}
+                    placeholder="VD: Basic"
+                    required
+                  />
+                </label>
+                <label>
+                  Giá VND
+                  <input
+                    type="number"
+                    min="0"
+                    value={planForm.price_vnd}
+                    onChange={(event) => updatePlanFormField("price_vnd", event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Chu kỳ
+                  <select
+                    value={planForm.billing_cycle}
+                    onChange={(event) => updatePlanFormField("billing_cycle", event.target.value)}
+                  >
+                    <option value="free">Miễn phí</option>
+                    <option value="monthly">Theo tháng</option>
+                    <option value="yearly">Theo năm</option>
+                  </select>
+                </label>
+                <label>
+                  Giới hạn hồ sơ
+                  <input
+                    type="number"
+                    min="0"
+                    value={planForm.person_limit}
+                    onChange={(event) => updatePlanFormField("person_limit", event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Giới hạn tài khoản
+                  <input
+                    type="number"
+                    min="0"
+                    value={planForm.account_limit}
+                    onChange={(event) => updatePlanFormField("account_limit", event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="billing-plan-form-wide">
+                  Mô tả
+                  <textarea
+                    rows={3}
+                    value={planForm.description}
+                    onChange={(event) => updatePlanFormField("description", event.target.value)}
+                    placeholder="Mô tả ngắn về gói"
+                  />
+                </label>
+                <label className="billing-plan-active-check">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(planForm.is_active)}
+                    onChange={(event) => updatePlanFormField("is_active", event.target.checked)}
+                  />
+                  Đang kích hoạt
+                </label>
+              </div>
+              <div className="billing-actions-row">
+                <button type="submit" className="billing-primary-btn" disabled={planSaving}>
+                  {planSaving ? "Đang lưu..." : editingPlan ? "Lưu thay đổi" : "Thêm gói"}
+                </button>
+                <button type="button" className="billing-secondary-btn" onClick={closePlanEditor} disabled={planSaving}>
+                  Hủy
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
+
       <section className="billing-plans-section">
   <div className="billing-section-title">
     <span className="billing-kicker">{t("billingPayment.plans.title")}</span>
@@ -889,7 +1085,18 @@ const handlePaySelectedPayment = (payment) => {
                 <ul>
                   <li><span className="material-symbols-outlined">account_tree</span>{plan.person_limit} {t("billingPayment.plans.recordsUnit")}</li>
                   <li><span className="material-symbols-outlined">group</span>{plan.account_limit} {t("billingPayment.plans.accountsUnit")}</li>
+                  {isAdmin && <li><span className="material-symbols-outlined">toggle_on</span>{plan.is_active === 0 ? "Tạm ẩn" : "Đang kích hoạt"}</li>}
                 </ul>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="billing-secondary-btn billing-edit-plan-btn"
+                    onClick={() => openEditPlanEditor(plan)}
+                  >
+                    Sửa gói
+                  </button>
+                )}
 
                 {isCurrent ? (
                   <button type="button" className="billing-disabled-btn" disabled>{t("billingPayment.plans.current")}</button>

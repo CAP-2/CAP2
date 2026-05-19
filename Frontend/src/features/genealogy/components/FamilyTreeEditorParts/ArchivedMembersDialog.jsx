@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useLanguage } from "../../../../i18n/LanguageContext";
-import { getArchivedMembersAPI, restoreArchivedMemberAPI, deleteArchivedMemberAPI, archiveMemberAPI } from "../../../../api/managerService";
+import { getArchivedMembersAPI, restoreArchivedMemberAPI, deleteArchivedMemberAPI, deleteAllArchivedMembersAPI, archiveMemberAPI } from "../../../../api/managerService";
 import { fullName } from "../../utils/tree-editor/treePersonUtils";
 
 export default function ArchivedMembersDialog({ people, onClose, onReload }) {
@@ -95,6 +95,27 @@ export default function ArchivedMembersDialog({ people, onClose, onReload }) {
     }
   };
 
+  const handleDeleteAllPermanently = async () => {
+    if (!filteredArchived.length) return;
+
+    const ok = window.confirm(
+      `CẢNH BÁO: Hành động này sẽ xóa vĩnh viễn ${filteredArchived.length} bản ghi trong kho lưu trữ khỏi database. Không thể phục hồi. Bạn có chắc muốn tiếp tục?`
+    );
+    if (!ok) return;
+
+    setActionLoading(true);
+    setError("");
+    try {
+      await deleteAllArchivedMembersAPI();
+      await onReload?.();
+      await fetchArchived();
+    } catch (err) {
+      setError(err?.message || "Không thể xóa tất cả bản ghi lưu trữ");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleArchiveSubmit = async (e) => {
     e.preventDefault();
     if (!selectedAccountId) {
@@ -167,6 +188,18 @@ export default function ArchivedMembersDialog({ people, onClose, onReload }) {
 
         {activeTab === "list" ? (
           <div className="fte-archiveContent">
+            <div className="fte-archiveBulkActions">
+              <button
+                type="button"
+                className="fte-deleteAllPermanentlyBtn"
+                disabled={actionLoading || archivedList.length === 0}
+                onClick={handleDeleteAllPermanently}
+                title="Xóa vĩnh viễn tất cả bản ghi trong kho lưu trữ"
+              >
+                <span className="material-symbols-outlined">delete_sweep</span>
+                Xóa tất cả
+              </button>
+            </div>
             <div className="fte-archiveSearch">
               <span className="material-symbols-outlined search-icon">search</span>
               <input 

@@ -24,6 +24,21 @@ router.get(
   billingController.getClanPayments
 );
 
+
+router.post(
+  '/admin/plans',
+  verifyToken,
+  checkRole(['admin']),
+  billingController.createPlan
+);
+
+router.put(
+  '/admin/plans/:planId',
+  verifyToken,
+  checkRole(['admin']),
+  billingController.updatePlan
+);
+
 router.patch(
   '/admin/clans/:clanId/manual-upgrade',
   verifyToken,

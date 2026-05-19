@@ -107,6 +107,13 @@ export default function DashboardHome() {
             note: t("admin.dashboard.stats.totalMembersNote"),
         },
         {
+            icon: "manage_accounts",
+            label: t("admin.dashboard.stats.totalAccounts"),
+            value: stats.total_accounts || 0,
+            color: "linear-gradient(135deg, #7c2d12, #c2410c)",
+            note: t("admin.dashboard.stats.totalAccountsNote"),
+        },
+        {
             icon: "event_available",
             label: t("admin.dashboard.stats.totalEvents"),
             value: stats.total_events || 0,

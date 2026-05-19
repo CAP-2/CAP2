@@ -178,43 +178,152 @@ const getFamilyTree = async(req, res) => {
     }
 };
 
+const checkTableExists = async(tableName) => {
+    const [rows] = await db.query(
+        `
+        SELECT COUNT(*) AS total
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+        `,
+        [tableName]
+    );
+    return Number(rows[0]?.total || 0) > 0;
+};
+
+const getManagerBillingUsage = async(clanId, totalMembers, totalAccounts) => {
+    const [hasPlans, hasSubscriptions] = await Promise.all([
+        checkTableExists('plans'),
+        checkTableExists('subscriptions'),
+    ]);
+
+    if (!hasPlans || !hasSubscriptions) {
+        return null;
+    }
+
+    const [rows] = await db.query(
+        `
+        SELECT
+            s.id AS subscription_id,
+            s.status,
+            s.started_at,
+            s.expires_at,
+            p.id AS plan_id,
+            p.code AS plan_code,
+            p.name AS plan_name,
+            p.person_limit,
+            p.account_limit
+        FROM subscriptions s
+        INNER JOIN plans p ON p.id = s.plan_id
+        WHERE s.clan_id = ?
+        ORDER BY
+            CASE WHEN s.status IN ('active', 'free') THEN 0 ELSE 1 END,
+            s.id DESC
+        LIMIT 1
+        `,
+        [clanId]
+    );
+
+    if (!rows.length) {
+        return null;
+    }
+
+    const billing = rows[0];
+    const personLimit = Number(billing.person_limit || 0);
+    const accountLimit = Number(billing.account_limit || 0);
+    const peopleUsagePercent = personLimit > 0 ? Math.round((Number(totalMembers || 0) / personLimit) * 100) : 0;
+    const accountUsagePercent = accountLimit > 0 ? Math.round((Number(totalAccounts || 0) / accountLimit) * 100) : 0;
+
+    return {
+        subscription_id: billing.subscription_id,
+        status: billing.status,
+        started_at: billing.started_at,
+        expires_at: billing.expires_at,
+        plan_id: billing.plan_id,
+        plan_code: billing.plan_code,
+        plan_name: billing.plan_name,
+        person_limit: personLimit,
+        account_limit: accountLimit,
+        current_people: Number(totalMembers || 0),
+        current_accounts: Number(totalAccounts || 0),
+        people_usage_percent: peopleUsagePercent,
+        account_usage_percent: accountUsagePercent,
+        is_people_near_limit: personLimit > 0 && peopleUsagePercent >= 80,
+        is_account_near_limit: accountLimit > 0 && accountUsagePercent >= 80,
+    };
+};
+
 const getStats = async(req, res) => {
     try {
-        let totalMembersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id IN (2,3) AND a.status = 'active'";
-        let totalManagersSql = "SELECT COUNT(*) AS cnt FROM accounts WHERE role_id = 2 AND status = 'active'";
-        let totalPendingSql = "SELECT COUNT(*) AS cnt FROM accounts WHERE status = 'pending'";
-        let params = [];
-
         if (req.user.role_id === 2) {
             const clanId = await getManagerClanId(req.user.id);
             if (clanId === null) {
                 return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
             }
-            totalMembersSql += " AND p.clan_id = ?";
-            totalManagersSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.role_id = 2 AND a.status = 'active' AND p.clan_id = ?";
-            totalPendingSql = "SELECT COUNT(*) AS cnt FROM accounts a JOIN people p ON a.person_id = p.id WHERE a.status = 'pending' AND p.clan_id = ?";
-            params = [clanId, clanId, clanId];
-        }
 
-        if (req.user.role_id === 1) {
-            const [rowsMembers] = await db.query(totalMembersSql);
-            const [rowsManagers] = await db.query(totalManagersSql);
-            const [rowsPending] = await db.query(totalPendingSql);
+            const [[membersCount]] = await db.query(
+                'SELECT COUNT(*) AS cnt FROM people WHERE clan_id = ?',
+                [clanId]
+            );
+            const [[accountCount]] = await db.query(
+                `
+                SELECT COUNT(DISTINCT a.id) AS cnt
+                FROM accounts a
+                INNER JOIN people p ON p.id = a.person_id
+                WHERE p.clan_id = ?
+                  AND a.status = 'active'
+                `,
+                [clanId]
+            );
+            const [[managerCount]] = await db.query(
+                `
+                SELECT COUNT(DISTINCT a.id) AS cnt
+                FROM accounts a
+                INNER JOIN people p ON p.id = a.person_id
+                WHERE p.clan_id = ?
+                  AND a.role_id = 2
+                  AND a.status = 'active'
+                `,
+                [clanId]
+            );
+            const [[pendingCount]] = await db.query(
+                `
+                SELECT COUNT(DISTINCT a.id) AS cnt
+                FROM accounts a
+                INNER JOIN people p ON p.id = a.person_id
+                WHERE p.clan_id = ?
+                  AND a.status = 'pending'
+                `,
+                [clanId]
+            );
+
+            const totalMembers = Number(membersCount?.cnt || 0);
+            const totalAccounts = Number(accountCount?.cnt || 0);
+            const billing_usage = await getManagerBillingUsage(clanId, totalMembers, totalAccounts).catch((error) => {
+                console.warn('getManagerBillingUsage warning:', error?.message || error);
+                return null;
+            });
+
             return res.json({
-                total_members: rowsMembers[0].cnt,
-                total_managers: rowsManagers[0].cnt,
-                total_pending: rowsPending[0].cnt,
+                total_members: totalMembers,
+                total_accounts: totalAccounts,
+                total_managers: Number(managerCount?.cnt || 0),
+                total_pending: Number(pendingCount?.cnt || 0),
+                billing_usage,
             });
         }
 
-        const [membersCount] = await db.query(totalMembersSql, [params[0]]);
-        const [managerCount] = await db.query(totalManagersSql, [params[1]]);
-        const [pendingCount] = await db.query(totalPendingSql, [params[2]]);
+        const [[membersCount]] = await db.query('SELECT COUNT(*) AS cnt FROM people');
+        const [[accountCount]] = await db.query("SELECT COUNT(*) AS cnt FROM accounts WHERE status = 'active'");
+        const [[managerCount]] = await db.query("SELECT COUNT(*) AS cnt FROM accounts WHERE role_id = 2 AND status = 'active'");
+        const [[pendingCount]] = await db.query("SELECT COUNT(*) AS cnt FROM accounts WHERE status = 'pending'");
 
-        res.json({
-            total_members: membersCount[0].cnt,
-            total_managers: managerCount[0].cnt,
-            total_pending: pendingCount[0].cnt,
+        return res.json({
+            total_members: Number(membersCount?.cnt || 0),
+            total_accounts: Number(accountCount?.cnt || 0),
+            total_managers: Number(managerCount?.cnt || 0),
+            total_pending: Number(pendingCount?.cnt || 0),
+            billing_usage: null,
         });
     } catch (error) {
         console.error('getStats error:', error);

@@ -24,6 +24,7 @@
     router.post('/members/:id/archive', verifyToken, checkRole(['admin', 'manager']), managerController.archiveMember);
     router.get('/members-archive', verifyToken, checkRole(['admin', 'manager']), managerController.getArchivedMembers);
     router.post('/members-archive/:id/restore', verifyToken, checkRole(['admin', 'manager']), managerController.restoreArchivedMember);
+    router.delete('/members-archive', verifyToken, checkRole(['admin', 'manager']), managerController.deleteAllArchivedMembersPermanently);
     router.delete('/members-archive/:id', verifyToken, checkRole(['admin', 'manager']), managerController.deleteArchivedMemberPermanently);
     router.get('/pending', verifyToken, checkRole(['admin', 'manager']), managerController.getPendingUsers);
 

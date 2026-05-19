@@ -169,6 +169,7 @@ export default function AccountPage() {
     if (status === "active") return t("common.status.active") || "Active";
     if (status === "pending") return t("common.status.pending") || "Pending";
     if (status === "rejected") return t("common.status.rejected") || "Rejected";
+    if (status === "no_account" || !status) return "Chưa có tài khoản";
     return status || t("manager.accounts.form.genderUnknown");
   };
 
@@ -248,21 +249,26 @@ export default function AccountPage() {
     return { total, male, female, living, pending };
   }, [members]);
 
-  const memberOptions = useMemo(
+  const personOptions = useMemo(
     () =>
       members
         .filter((member) => member.person_id != null)
         .map((member) => ({
-          accountId: String(member.account_id),
+          accountId: member.account_id == null ? "" : String(member.account_id),
           personId: String(member.person_id),
-          label: `${fullName(member)}${member.generation ? ` (${t("manager.accounts.form.placeholderGeneration")} ${member.generation})` : ""}`,
+          label: `${fullName(member)}${member.generation ? ` (${t("manager.accounts.form.placeholderGeneration")} ${member.generation})` : ""}${member.account_id ? "" : " - chưa có tài khoản"}`,
         })),
     [members]
   );
 
+  const memberOptions = useMemo(
+    () => personOptions.filter((member) => member.accountId),
+    [personOptions]
+  );
+
   const selectedRelationMember = useMemo(
     () =>
-      members.find((member) => String(member.account_id) === String(relationAccountId)) ||
+      members.find((member) => member.account_id && String(member.account_id) === String(relationAccountId)) ||
       null,
     [members, relationAccountId]
   );
@@ -273,8 +279,8 @@ export default function AccountPage() {
         ? ""
         : String(selectedRelationMember.person_id);
 
-    return memberOptions.filter((member) => member.personId !== selectedPersonId);
-  }, [memberOptions, selectedRelationMember]);
+    return personOptions.filter((member) => member.personId !== selectedPersonId);
+  }, [personOptions, selectedRelationMember]);
 
   const updateCreateField = (event) => {
     const { name, value } = event.target;
@@ -1076,6 +1082,7 @@ export default function AccountPage() {
             <option value="active">{t("common.status.active")}</option>
             <option value="pending">{t("common.status.pending")}</option>
             <option value="rejected">{t("common.status.rejected")}</option>
+            <option value="no_account">Chưa có tài khoản</option>
           </select>
 
           <select
@@ -1106,7 +1113,7 @@ export default function AccountPage() {
               <div className="mgr-empty">{t("common.loading")}</div>
             ) : filteredMembers.length ? (
               filteredMembers.map((member) => (
-                <div className="member-pro-row" key={member.account_id}>
+                <div className="member-pro-row" key={member.account_id || `person-${member.person_id}`}>
                   <div className="member-pro-person">
                     <div className="member-pro-avatar">
                       {fullName(member).charAt(0).toUpperCase() || "T"}
@@ -1114,7 +1121,7 @@ export default function AccountPage() {
 
                     <div>
                       <strong>{fullName(member)}</strong>
-                      <span>{member.email || t("manager.accounts.form.noInfo")}</span>
+                      <span>{member.email || "Chưa có tài khoản"}</span>
                       <small>ID: {member.person_id || member.account_id}</small>
                     </div>
                   </div>
@@ -1138,13 +1145,17 @@ export default function AccountPage() {
                   </div>
 
                   <div className="member-pro-actions">
-                    <button
-                      className="mgr-btnGhost"
-                      type="button"
-                      onClick={() => openEdit(member.account_id)}
-                    >
-                      {t("common.edit")}
-                    </button>
+                    {member.account_id ? (
+                      <button
+                        className="mgr-btnGhost"
+                        type="button"
+                        onClick={() => openEdit(member.account_id)}
+                      >
+                        {t("common.edit")}
+                      </button>
+                    ) : (
+                      <span className="member-pro-no-account">Chỉ có hồ sơ</span>
+                    )}
                   </div>
                 </div>
               ))

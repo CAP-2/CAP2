@@ -27,6 +27,61 @@ const {
     validatePersonGenderWithFamilyRole,
     validatePersonGenerationWithRelations,
 } = require('../genealogy/familyValidation.service');
+
+
+const NO_TABLE_OR_COLUMN_PURGE = new Set(['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR']);
+
+const queryMaybePurge = async(connection, sql, params = []) => {
+    try {
+        return await connection.query(sql, params);
+    } catch (error) {
+        if (NO_TABLE_OR_COLUMN_PURGE.has(error.code)) {
+            return [{ affectedRows: 0 }, []];
+        }
+        throw error;
+    }
+};
+
+const extractArchivedPersonId = (archived) => {
+    if (archived?.person_id) return Number(archived.person_id);
+    try {
+        const obj = typeof archived?.person_json === 'string' ? JSON.parse(archived.person_json || 'null') : archived?.person_json;
+        return obj?.id ? Number(obj.id) : null;
+    } catch (_) {
+        return null;
+    }
+};
+
+const purgeArchivedMemberRows = async({ rows, connection }) => {
+    let deletedArchives = 0;
+    const deletedAccountIds = [];
+    const deletedPersonIds = [];
+
+    for (const row of rows) {
+        const archiveId = Number(row.id);
+        const accountId = Number(row.account_id);
+        const personId = extractArchivedPersonId(row);
+
+        if (Number.isFinite(personId) && personId > 0) {
+            const [exists] = await connection.query('SELECT id FROM people WHERE id = ? LIMIT 1', [personId]);
+            if (exists.length) {
+                await deletePersonCompletely(personId, { deleteAccounts: true, connection });
+                deletedPersonIds.push(personId);
+            }
+        }
+
+        if (Number.isFinite(accountId) && accountId > 0) {
+            await queryMaybePurge(connection, 'DELETE FROM account_clans WHERE account_id = ?', [accountId]);
+            const [accDelete] = await queryMaybePurge(connection, 'DELETE FROM accounts WHERE id = ?', [accountId]);
+            if ((accDelete?.affectedRows || 0) > 0) deletedAccountIds.push(accountId);
+        }
+
+        const [archiveDelete] = await connection.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
+        deletedArchives += archiveDelete?.affectedRows || 0;
+    }
+
+    return { deletedArchives, deletedAccountIds, deletedPersonIds };
+};
 const {
     assertCanManageAccount,
     getManagedMemberFullContext,
@@ -168,15 +223,21 @@ const getAllMembers = async(req, res) => {
     try {
         await ensureArchivedMembersTable();
         let sql = `
-            SELECT a.id AS account_id, a.email, a.role_id, a.status,
+            SELECT
+                   a.id AS account_id,
+                   COALESCE(a.email, p.email) AS email,
+                   a.role_id,
+                   COALESCE(a.status, 'no_account') AS status,
                    p.id AS person_id, p.display_name, p.first_name, p.middle_name, p.surname,
                    p.birth_date, p.death_date, p.is_living, p.clan_id, p.gender,
-                   p.generation, p.branch, p.hometown, p.address, p.phone, p.avatar_url, p.bio
-            FROM accounts a
-            JOIN people p ON a.person_id = p.id
-            LEFT JOIN archived_members am ON am.account_id = a.id
-            WHERE a.role_id IN (2,3) AND a.status = 'active'
-              AND am.id IS NULL
+                   p.generation, p.branch, p.hometown, p.address, p.phone, p.email AS people_email,
+                   p.avatar_url, p.bio, p.note
+            FROM people p
+            LEFT JOIN accounts a ON a.person_id = p.id AND a.role_id IN (2,3)
+            LEFT JOIN archived_members am ON
+                 (a.id IS NOT NULL AND am.account_id = a.id)
+                 OR (CAST(JSON_UNQUOTE(JSON_EXTRACT(am.person_json, '$.id')) AS UNSIGNED) = p.id)
+            WHERE am.id IS NULL
         `;
 
         const params = [];
@@ -190,7 +251,7 @@ const getAllMembers = async(req, res) => {
             params.push(clanId);
         }
 
-        sql += ' ORDER BY p.surname, p.first_name';
+        sql += ' ORDER BY p.generation, p.surname, p.middle_name, p.first_name, p.id';
 
         const [results] = await db.query(sql, params);
         res.json(
@@ -380,48 +441,90 @@ const archiveMember = async(req, res) => {
 };
 
 const deleteArchivedMemberPermanently = async(req, res) => {
+    const connection = await db.getConnection();
     try {
         await ensureArchivedMembersTable();
         const archiveId = Number(req.params.id);
         if (!Number.isFinite(archiveId)) {
             return res.status(400).json({ success: false, message: 'archive_id không hợp lệ' });
         }
+
+        await connection.beginTransaction();
+
+        const [archivedRows] = await connection.query('SELECT * FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
+        if (!archivedRows.length) {
+            await connection.rollback();
+            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
+        }
+
+        if (req.user.role_id === 2) {
+            const managerClanId = await getManagerClanId(req.user.id);
+            if (managerClanId == null) {
+                await connection.rollback();
+                return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
+            }
+            if (Number(archivedRows[0].clan_id) !== Number(managerClanId)) {
+                await connection.rollback();
+                return res.status(403).json({ success: false, message: 'Chỉ được xóa dữ liệu lưu trữ của cùng dòng họ' });
+            }
+        }
+
+        const result = await purgeArchivedMemberRows({ rows: archivedRows, connection });
+        await connection.commit();
+
+        return res.json({
+            success: true,
+            message: 'Đã xóa vĩnh viễn khỏi kho lưu trữ và database.',
+            deleted: result,
+        });
+    } catch (error) {
+        try { await connection.rollback(); } catch (_) {}
+        console.error('deleteArchivedMemberPermanently error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi xóa vĩnh viễn bản ghi lưu trữ' });
+    } finally {
+        connection.release();
+    }
+};
+
+
+const deleteAllArchivedMembersPermanently = async(req, res) => {
+    const connection = await db.getConnection();
+    try {
+        await ensureArchivedMembersTable();
+
+        let sql = 'SELECT * FROM archived_members';
+        const params = [];
+
         if (req.user.role_id === 2) {
             const managerClanId = await getManagerClanId(req.user.id);
             if (managerClanId == null) {
                 return res.status(404).json({ success: false, message: 'Không xác định được clan của manager' });
             }
-            const [rows] = await db.query('SELECT clan_id FROM archived_members WHERE id = ? LIMIT 1', [archiveId]);
-            if (!rows.length || Number(rows[0].clan_id) !== Number(managerClanId)) {
-                return res.status(403).json({ success: false, message: 'Chỉ được xóa dữ liệu lưu trữ của cùng dòng họ' });
-            }
+            sql += ' WHERE clan_id = ?';
+            params.push(managerClanId);
         }
-        const [archivedRows] = await db.query(
-            `SELECT account_id, CAST(JSON_UNQUOTE(JSON_EXTRACT(person_json, '$.id')) AS UNSIGNED) AS person_id 
-             FROM archived_members WHERE id = ? LIMIT 1`,
-            [archiveId]
-        );
-        if (!archivedRows.length) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
-        }
-        const accountId = Number(archivedRows[0].account_id);
-        const personId = archivedRows[0].person_id ? Number(archivedRows[0].person_id) : null;
 
-        if (personId) {
-            await deletePersonCompletely(personId, { deleteAccounts: false });
+        await connection.beginTransaction();
+        const [rows] = await connection.query(sql, params);
+        if (!rows.length) {
+            await connection.commit();
+            return res.json({ success: true, message: 'Kho lưu trữ đã trống.', deleted: { deletedArchives: 0, deletedAccountIds: [], deletedPersonIds: [] } });
         }
-        if (accountId > 0) {
-            await db.query('DELETE FROM accounts WHERE id = ?', [accountId]);
-        }
-        const [result] = await db.query('DELETE FROM archived_members WHERE id = ?', [archiveId]);
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi lưu trữ' });
-        }
-        return res.json({ success: true, message: 'Đã xóa vĩnh viễn khỏi kho lưu trữ.' });
+        const result = await purgeArchivedMemberRows({ rows, connection });
+        await connection.commit();
+
+        return res.json({
+            success: true,
+            message: `Đã xóa vĩnh viễn ${result.deletedArchives} bản ghi khỏi kho lưu trữ và database.`,
+            deleted: result,
+        });
     } catch (error) {
-        console.error('deleteArchivedMemberPermanently error:', error);
-        return res.status(500).json({ success: false, message: 'Lỗi xóa vĩnh viễn bản ghi lưu trữ' });
+        try { await connection.rollback(); } catch (_) {}
+        console.error('deleteAllArchivedMembersPermanently error:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi xóa tất cả bản ghi lưu trữ' });
+    } finally {
+        connection.release();
     }
 };
 
@@ -827,6 +930,7 @@ module.exports = {
     getArchivedMembers,
     archiveMember,
     deleteArchivedMemberPermanently,
+    deleteAllArchivedMembersPermanently,
     restoreArchivedMember,
     createMember,
     getMemberDetail,

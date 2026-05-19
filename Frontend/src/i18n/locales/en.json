@@ -232,7 +232,8 @@
         "members": "Clan Members",
         "pending": "Pending Review",
         "fund": "Total Fund Balance",
-        "tasks": "Active Tasks"
+        "tasks": "Active Tasks",
+        "accounts": "Clan Accounts"
       },
       "messages": {
         "loadError": "Could not load dashboard data"
@@ -277,6 +278,16 @@
           "cancelled": "Cancelled",
           "unknown": "Unknown"
         }
+      },
+      "usage": {
+        "title": "Plan Limit Monitor",
+        "plan": "Current plan: {{name}}",
+        "noPlan": "No usage plan information yet",
+        "profiles": "Member profiles",
+        "accounts": "Login accounts",
+        "nearLimit": "Near limit",
+        "normal": "Within limit",
+        "unlimited": "Unlimited"
       }
     },
     "accounts": {
@@ -1475,7 +1486,9 @@
         "totalEvents": "Total Events",
         "totalEventsNote": "Clan events created",
         "totalMedia": "Total Media Uploaded",
-        "totalMediaNote": "Photos, videos and media files"
+        "totalMediaNote": "Photos, videos and media files",
+        "totalAccounts": "Total Accounts",
+        "totalAccountsNote": "Login accounts in the system"
       },
       "plans": {
         "title": "Usage Plans",
@@ -2134,7 +2147,8 @@
       "noPermissionAction": "You do not have permission to perform this action.",
       "genericError": "Operation failed.",
       "multipleFamiliesError": "Please select a specific family/marriage to add a child.",
-      "noFamilyError": "A family must be created before adding a child."
+      "noFamilyError": "A family must be created before adding a child.",
+      "validationRequiresKey": "Please enter the temporary edit key provided by the Manager to use tree validation."
     },
     "relations": {
       "spouse": "spouse",

@@ -64,3 +64,25 @@ export const manualUpgradeClan = (clanId, payload) => {
     "Không thể nâng cấp thử nghiệm"
   );
 };
+
+export const createBillingPlan = (payload) => {
+  return request(
+    `/admin/plans`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Không thể thêm gói sử dụng"
+  );
+};
+
+export const updateBillingPlan = (planId, payload) => {
+  return request(
+    `/admin/plans/${planId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+    "Không thể cập nhật gói sử dụng"
+  );
+};

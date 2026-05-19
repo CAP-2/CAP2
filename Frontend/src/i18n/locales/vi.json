@@ -228,7 +228,8 @@
         "members": "Thành viên dòng họ",
         "pending": "Đang chờ duyệt",
         "fund": "Tổng tiền trong quỹ",
-        "tasks": "Nhiệm vụ active"
+        "tasks": "Nhiệm vụ active",
+        "accounts": "Tài khoản dòng họ"
       },
       "messages": {
         "loadError": "Không thể tải dữ liệu tổng quan"
@@ -273,6 +274,16 @@
           "cancelled": "Đã hủy",
           "unknown": "Không rõ"
         }
+      },
+      "usage": {
+        "title": "Theo dõi giới hạn gói",
+        "plan": "Gói hiện tại: {{name}}",
+        "noPlan": "Chưa có thông tin gói sử dụng",
+        "profiles": "Hồ sơ thành viên",
+        "accounts": "Tài khoản đăng nhập",
+        "nearLimit": "Sắp đạt giới hạn",
+        "normal": "Trong giới hạn",
+        "unlimited": "Không giới hạn"
       }
     },
     "accounts": {
@@ -1468,7 +1479,9 @@
         "totalEvents": "Tổng số sự kiện",
         "totalEventsNote": "Sự kiện dòng họ đã tạo",
         "totalMedia": "Tổng media đã tải",
-        "totalMediaNote": "Ảnh, video và tệp media"
+        "totalMediaNote": "Ảnh, video và tệp media",
+        "totalAccounts": "Tổng số tài khoản",
+        "totalAccountsNote": "Tài khoản đăng nhập trong hệ thống"
       },
       "plans": {
         "title": "Gói sử dụng",
@@ -2127,7 +2140,8 @@
       "noPermissionAction": "Bạn không có quyền thực hiện hành động này.",
       "genericError": "Thao tác thất bại.",
       "multipleFamiliesError": "Vui lòng chọn family/cuộc hôn nhân cụ thể để thêm con.",
-      "noFamilyError": "Cần tạo family trước khi thêm con."
+      "noFamilyError": "Cần tạo family trước khi thêm con.",
+      "validationRequiresKey": "Vui lòng nhập temporary edit key do Manager cung cấp để sử dụng kiểm tra cây."
     },
     "relations": {
       "spouse": "vợ/chồng",

@@ -9,6 +9,7 @@ const { createNotification, ensureNotificationSchema } = require("../../shared/u
 const { getTreeLayoutSettings } = require("../../shared/utils/treeLayoutSettings");
 const { normalizeMediaId, extractMediaIdFromUrl } = require("../../shared/utils/media");
 const { ensureFamilyRelationshipColumns } = require("../genealogy/familyRelation.service");
+const { ensureArchivedMembersTable } = require("../manager/archive.service");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -489,6 +490,7 @@ exports.loadClanTreeForAdmin = async (clanId) => {
   if (!crows.length) return { error: "not_found" };
   const clan = crows[0];
   await ensureFamilyRelationshipColumns();
+  await ensureArchivedMembersTable();
 
   const [peopleRows] = await db.query(
     `
@@ -504,7 +506,11 @@ exports.loadClanTreeForAdmin = async (clanId) => {
            a.role_id
     FROM people p
     LEFT JOIN accounts a ON a.person_id = p.id
+    LEFT JOIN archived_members am ON
+         (a.id IS NOT NULL AND am.account_id = a.id)
+         OR (CAST(JSON_UNQUOTE(JSON_EXTRACT(am.person_json, '$.id')) AS UNSIGNED) = p.id)
     WHERE p.clan_id = ?
+      AND am.id IS NULL
     ORDER BY p.generation, p.display_order, p.surname, p.first_name
   `,
     [cid]

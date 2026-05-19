@@ -540,3 +540,77 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+.billing-admin-plan-manager {
+  margin-bottom: 1rem;
+}
+
+.billing-admin-plan-manager .billing-primary-btn,
+.billing-edit-plan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.billing-plan-form {
+  border-top: 1px solid rgba(211, 168, 82, 0.32);
+  padding-top: 1rem;
+}
+
+.billing-plan-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.billing-plan-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #5b2a19;
+  font-weight: 900;
+}
+
+.billing-plan-form input,
+.billing-plan-form select,
+.billing-plan-form textarea {
+  width: 100%;
+  border: 1px solid rgba(211, 168, 82, 0.55);
+  border-radius: 12px;
+  padding: 0.78rem 0.85rem;
+  background: #fffdf7;
+  color: #4a2117;
+  font: inherit;
+  font-weight: 800;
+}
+
+.billing-plan-form textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.billing-plan-form-wide {
+  grid-column: 1 / -1;
+}
+
+.billing-plan-active-check {
+  display: flex !important;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem !important;
+}
+
+.billing-plan-active-check input {
+  width: auto;
+}
+
+.billing-edit-plan-btn {
+  width: 100%;
+  margin-bottom: 0.7rem;
+}
+
+@media (max-width: 720px) {
+  .billing-plan-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -22,6 +22,7 @@ function getSepayQrUrl({ amount, orderCode }) {
 
 async function getPlans(req, res) {
   try {
+    const isAdmin = Number(req.user?.role_id) === 1;
     const [plans] = await db.query(
       `
       SELECT 
@@ -32,10 +33,11 @@ async function getPlans(req, res) {
         price_vnd,
         billing_cycle,
         person_limit,
-        account_limit
+        account_limit,
+        is_active
       FROM plans
-      WHERE is_active = 1
-      ORDER BY price_vnd ASC, id ASC
+      ${isAdmin ? '' : 'WHERE is_active = 1'}
+      ORDER BY is_active DESC, price_vnd ASC, id ASC
       `
     );
 
@@ -371,8 +373,171 @@ async function manualUpgradeClan(req, res) {
   }
 }
 
+
+function normalizePlanPayload(body = {}, { partial = false } = {}) {
+  const rawCode = body.code ?? body.plan_code ?? body.planCode;
+  const rawName = body.name;
+  const rawDescription = body.description;
+  const rawPrice = body.price_vnd ?? body.priceVnd ?? body.price;
+  const rawCycle = body.billing_cycle ?? body.billingCycle;
+  const rawPersonLimit = body.person_limit ?? body.personLimit;
+  const rawAccountLimit = body.account_limit ?? body.accountLimit;
+  const rawActive = body.is_active ?? body.isActive;
+
+  const payload = {};
+
+  if (!partial || rawCode !== undefined) {
+    const code = String(rawCode || '').trim().toUpperCase().replace(/\s+/g, '_');
+    if (!code) {
+      const error = new Error('Vui lòng nhập mã gói.');
+      error.status = 400;
+      throw error;
+    }
+    payload.code = code;
+  }
+
+  if (!partial || rawName !== undefined) {
+    const name = String(rawName || '').trim();
+    if (!name) {
+      const error = new Error('Vui lòng nhập tên gói.');
+      error.status = 400;
+      throw error;
+    }
+    payload.name = name;
+  }
+
+  if (!partial || rawDescription !== undefined) {
+    payload.description = rawDescription == null ? null : String(rawDescription).trim();
+  }
+
+  if (!partial || rawPrice !== undefined) {
+    const price = Number(rawPrice || 0);
+    if (!Number.isFinite(price) || price < 0) {
+      const error = new Error('Giá gói không hợp lệ.');
+      error.status = 400;
+      throw error;
+    }
+    payload.price_vnd = Math.round(price);
+  }
+
+  if (!partial || rawCycle !== undefined) {
+    const cycle = String(rawCycle || 'monthly').trim().toLowerCase();
+    if (!['free', 'monthly', 'yearly'].includes(cycle)) {
+      const error = new Error('Chu kỳ gói không hợp lệ. Chỉ hỗ trợ free, monthly hoặc yearly.');
+      error.status = 400;
+      throw error;
+    }
+    payload.billing_cycle = cycle;
+  }
+
+  if (!partial || rawPersonLimit !== undefined) {
+    const limit = Number(rawPersonLimit);
+    if (!Number.isInteger(limit) || limit < 0) {
+      const error = new Error('Giới hạn hồ sơ không hợp lệ.');
+      error.status = 400;
+      throw error;
+    }
+    payload.person_limit = limit;
+  }
+
+  if (!partial || rawAccountLimit !== undefined) {
+    const limit = Number(rawAccountLimit);
+    if (!Number.isInteger(limit) || limit < 0) {
+      const error = new Error('Giới hạn tài khoản không hợp lệ.');
+      error.status = 400;
+      throw error;
+    }
+    payload.account_limit = limit;
+  }
+
+  if (!partial || rawActive !== undefined) {
+    payload.is_active = rawActive === false || rawActive === 0 || rawActive === '0' || String(rawActive).toLowerCase() === 'false' ? 0 : 1;
+  }
+
+  return payload;
+}
+
+async function createPlan(req, res) {
+  try {
+    const payload = normalizePlanPayload(req.body || {});
+
+    const [result] = await db.query(
+      `
+      INSERT INTO plans
+        (code, name, description, price_vnd, billing_cycle, person_limit, account_limit, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        payload.code,
+        payload.name,
+        payload.description,
+        payload.price_vnd,
+        payload.billing_cycle,
+        payload.person_limit,
+        payload.account_limit,
+        payload.is_active,
+      ]
+    );
+
+    const [rows] = await db.query('SELECT * FROM plans WHERE id = ? LIMIT 1', [result.insertId]);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Đã thêm gói sử dụng.',
+      plan: rows[0] || { id: result.insertId, ...payload },
+    });
+  } catch (error) {
+    console.error('createPlan error:', error);
+    const status = error.status || (error.code === 'ER_DUP_ENTRY' ? 409 : 500);
+    return res.status(status).json({
+      success: false,
+      message: error.code === 'ER_DUP_ENTRY' ? 'Mã gói đã tồn tại.' : (error.message || 'Không thêm được gói sử dụng.'),
+      error: error.message,
+    });
+  }
+}
+
+async function updatePlan(req, res) {
+  try {
+    const planId = Number(req.params.planId);
+    if (!Number.isInteger(planId) || planId <= 0) {
+      return res.status(400).json({ success: false, message: 'planId không hợp lệ.' });
+    }
+
+    const payload = normalizePlanPayload(req.body || {}, { partial: true });
+    const keys = Object.keys(payload);
+    if (!keys.length) {
+      return res.status(400).json({ success: false, message: 'Không có dữ liệu để cập nhật.' });
+    }
+
+    const assignments = keys.map((key) => `${key} = ?`).join(', ');
+    await db.query(`UPDATE plans SET ${assignments} WHERE id = ?`, [...keys.map((key) => payload[key]), planId]);
+
+    const [rows] = await db.query('SELECT * FROM plans WHERE id = ? LIMIT 1', [planId]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy gói sử dụng.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Đã cập nhật gói sử dụng.',
+      plan: rows[0],
+    });
+  } catch (error) {
+    console.error('updatePlan error:', error);
+    const status = error.status || (error.code === 'ER_DUP_ENTRY' ? 409 : 500);
+    return res.status(status).json({
+      success: false,
+      message: error.code === 'ER_DUP_ENTRY' ? 'Mã gói đã tồn tại.' : (error.message || 'Không cập nhật được gói sử dụng.'),
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   getPlans,
+  createPlan,
+  updatePlan,
   getClanBilling,
   getClanPayments,
   manualUpgradeClan,

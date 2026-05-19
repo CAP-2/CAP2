@@ -420,6 +420,16 @@ export const deleteArchivedMemberAPI = (archiveId) =>
     "Không thể xóa vĩnh viễn bản ghi lưu trữ"
   );
 
+
+export const deleteAllArchivedMembersAPI = () =>
+  request(
+    `/members-archive`,
+    {
+      method: "DELETE",
+    },
+    "Không thể xóa tất cả bản ghi lưu trữ"
+  );
+
 export const restoreArchivedMemberAPI = (archiveId) =>
   request(
     `/members-archive/${archiveId}/restore`,
