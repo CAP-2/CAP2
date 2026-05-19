@@ -738,8 +738,8 @@
       "endedEvents": "{{count}} sự kiện đã kết thúc"
     },
     "member": {
-      "title": "Bảng điều khiển thành viên",
-      "description": "Quản lý và thực hiện các công việc dòng họ được giao."
+      "title": "Sự kiện dòng họ",
+      "description": "Theo dõi các sự kiện dòng họ và công việc được giao."
     },
     "status": {
       "assigned": "Đã giao",

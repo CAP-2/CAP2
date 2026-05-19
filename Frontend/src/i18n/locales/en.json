@@ -742,8 +742,8 @@
       "endedEvents": "{{count}} ended events"
     },
     "member": {
-      "title": "Member Dashboard",
-      "description": "Manage and perform assigned clan tasks."
+      "title": "Family events",
+      "description": "Track family events and assigned tasks."
     },
     "status": {
       "assigned": "Assigned",
