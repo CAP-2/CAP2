@@ -18,6 +18,7 @@ import { getMemberTasks, getMemberEvents, updateMemberTaskStatus } from "../../.
 import { generateEventFormAI } from "../../../api/aiServerService";
 import { getSocket } from "../../../services/socket";
 import DateInput from "../../../shared/components/DateInput";
+import VoiceRecorder from "../../voice/components/VoiceRecorder";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { formatDateTimeVN, formatDateVN, isoToVietnamDate, vietnamDateToIso } from "../../../shared/utils/dateFormat";
 import "./TaskManagementPage.css";
@@ -361,7 +362,7 @@ recognition.onerror = (event) => {
     setError(`Không thể chuyển giọng nói thành văn bản. Lỗi: ${errorName || "unknown"}`);
   }
 
-  setAiVoiceListening(false);
+  setVoiceListening(false);
 };
 
     recognition.onend = () => {
@@ -1327,6 +1328,7 @@ const openEvent = (eventId) => {
                 <span className="material-symbols-outlined">auto_awesome</span>
                 {t("common.createMore")}
               </button>
+              <VoiceRecorder disabled={aiLoading} onTranscript={appendAiPromptText} />
             </div>
 
             {aiTaskSuggestions.length ? (
@@ -1701,6 +1703,7 @@ const openEvent = (eventId) => {
                   <span className="material-symbols-outlined">{voiceListening ? "mic_off" : "mic"}</span>
                 </button>
               </div>
+              <VoiceRecorder disabled={aiLoading} onTranscript={appendAiPromptText} />
               {voiceListening && <small className="ai-voice-status">{t("eventsTasks.placeholders.listening")}</small>}
             </label>
             <label className="ai-count-control ai-count-control-wide">

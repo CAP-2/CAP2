@@ -12,6 +12,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { useTreeSearch } from "../hooks/useTreeSearch";
 import { useTreeViewMode } from "../hooks/useTreeViewMode";
 import { useTreeRealtime } from "../hooks/useTreeRealtime";
+import VoiceRecorder from "../../voice/components/VoiceRecorder";
 import { validateTreeData } from "../utils/treeValidation";
 import { CANVAS_PADDING, CARD_WIDTH } from "../utils/tree-editor/treeConstants";
 import { asArray, extractCreatedPersonId, formatDisplayDate, fullName, normalizePerson, readCurrentAccount, snap, snapLine, clamp, toInt } from "../utils/tree-editor/treePersonUtils";
@@ -33,46 +34,6 @@ const AI_RELATION_TYPE_OPTIONS = [
   { value: "parent_child", labelKey: "tree.genealogyAi.relationshipOptions.parentChild" },
   { value: "spouse", labelKey: "tree.genealogyAi.relationshipOptions.spouse" },
 ];
-
-
-const TREE_TITLE_STORAGE_PREFIX = "family-tree-title-label:";
-const DEFAULT_TREE_TITLE_LABEL = { x: 60, y: 42, scale: 1, text: "" };
-
-const getTreeTitleStorageKey = (clanId) => `${TREE_TITLE_STORAGE_PREFIX}${clanId || "default"}`;
-
-const normalizeTreeTitleLabel = (value, fallbackText = "") => {
-  const source = value && typeof value === "object" ? value : {};
-  const x = Number(source.x);
-  const y = Number(source.y);
-  const scale = Number(source.scale);
-  const text = String(source.text || "").trim();
-  return {
-    x: Number.isFinite(x) ? clamp(x, -2000, 20000) : DEFAULT_TREE_TITLE_LABEL.x,
-    y: Number.isFinite(y) ? clamp(y, -2000, 20000) : DEFAULT_TREE_TITLE_LABEL.y,
-    scale: Number.isFinite(scale) ? clamp(scale, 0.45, 2.6) : DEFAULT_TREE_TITLE_LABEL.scale,
-    text: text || fallbackText,
-  };
-};
-
-const loadTreeTitleLabel = (clanId, fallbackText = "") => {
-  if (typeof window === "undefined") return normalizeTreeTitleLabel(null, fallbackText);
-  try {
-    const raw = window.localStorage.getItem(getTreeTitleStorageKey(clanId));
-    return normalizeTreeTitleLabel(raw ? JSON.parse(raw) : null, fallbackText);
-  } catch (error) {
-    console.warn("Cannot read saved tree title label", error);
-    return normalizeTreeTitleLabel(null, fallbackText);
-  }
-};
-
-const saveTreeTitleLabel = (clanId, value) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(getTreeTitleStorageKey(clanId), JSON.stringify(value));
-  } catch (error) {
-    console.warn("Cannot save tree title label", error);
-  }
-};
 
 const aiRelationshipTypeLabel = (type, t) => {
   const option = AI_RELATION_TYPE_OPTIONS.find((item) => item.value === type);
@@ -302,13 +263,9 @@ export default function FamilyTreeEditor({
   const transformApiRef = useRef(null);
   const genealogyRecognitionRef = useRef(null);
   const scaleRef = useRef(0.85);
-  const defaultTreeTitleText = String(clan?.clan_name || t("tree.card.fallbackName")).toUpperCase();
   const [currentScale, setCurrentScale] = useState(0.85);
   const lastDragRef = useRef(null);
   const lineDragRef = useRef(null);
-  const titleDragRef = useRef(null);
-  const [treeTitleLabel, setTreeTitleLabel] = useState(() => loadTreeTitleLabel(clan?.id, defaultTreeTitleText));
-  const [draggingTitleLabel, setDraggingTitleLabel] = useState(false);
   const [people, setPeople] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -511,15 +468,6 @@ export default function FamilyTreeEditor({
     setCardSizes({ ...loadCardSizes(clan?.id), ...normalizedSettings.card_sizes });
   }, [clan?.id, layoutSettings]);
 
-
-  useEffect(() => {
-    setTreeTitleLabel(loadTreeTitleLabel(clan?.id, defaultTreeTitleText));
-  }, [clan?.id, defaultTreeTitleText]);
-
-  useEffect(() => {
-    saveTreeTitleLabel(clan?.id, treeTitleLabel);
-  }, [clan?.id, treeTitleLabel]);
-
   useEffect(() => {
     if (!enableRealtime) return undefined;
 
@@ -581,7 +529,6 @@ export default function FamilyTreeEditor({
   }, [editPermission, permission, readOnly]);
   const canEditAll = resolvedPermission.canEdit && resolvedPermission.editScope === "all";
   const canEditLimited = resolvedPermission.canEdit && resolvedPermission.editScope === "limited";
-  const canValidateTree = canEditAll || canEditLimited;
   const allowedNodeSet = useMemo(() => new Set(resolvedPermission.allowedNodeIds.map((id) => Number(id))), [resolvedPermission.allowedNodeIds]);
 
   const canonicalTree = useMemo(() => {
@@ -794,21 +741,10 @@ const quickCreateSourcePerson = useMemo(
   }, [currentAccount, focusPerson, people, treeViewMode, visiblePeople]);
 
   const handleValidateTree = useCallback(() => {
-    if (!canValidateTree) {
-      setValidationErrors(new Map());
-      setStatus(t("tree.messages.validationRequiresKey"));
-      return;
-    }
     const errors = validateTreeData(people, canonicalTree.families, canonicalTree.childRows);
     setValidationErrors(errors);
     setStatus(errors.size ? t("tree.messages.validationErrorCount", { count: errors.size }) : t("tree.messages.validationSuccess"));
-  }, [canValidateTree, canonicalTree.childRows, canonicalTree.families, people, t]);
-
-  useEffect(() => {
-    if (!canValidateTree && validationErrors.size) {
-      setValidationErrors(new Map());
-    }
-  }, [canValidateTree, validationErrors.size]);
+  }, [canonicalTree.childRows, canonicalTree.families, people, t]);
 
   const openGenealogyAiDialog = useCallback(() => {
     if (!canEditAll) return;
@@ -1899,64 +1835,6 @@ const submitCreateDialog = async () => {
     };
   }, [treeFullscreen]);
 
-
-  const updateTreeTitleLabel = useCallback((patch) => {
-    setTreeTitleLabel((current) => normalizeTreeTitleLabel({ ...current, ...patch }, defaultTreeTitleText));
-  }, [defaultTreeTitleText]);
-
-  const editTreeTitleLabel = useCallback(() => {
-    if (!canEditAll) return;
-    const nextText = window.prompt("Nhập nội dung tiêu đề gia phả", treeTitleLabel.text || defaultTreeTitleText);
-    if (nextText === null) return;
-    updateTreeTitleLabel({ text: nextText.trim() || defaultTreeTitleText });
-  }, [canEditAll, defaultTreeTitleText, treeTitleLabel.text, updateTreeTitleLabel]);
-
-  const resizeTreeTitleLabel = useCallback((delta) => {
-    if (!canEditAll) return;
-    updateTreeTitleLabel({ scale: snapLine((Number(treeTitleLabel.scale) || 1) + delta) });
-  }, [canEditAll, treeTitleLabel.scale, updateTreeTitleLabel]);
-
-  const resetTreeTitleLabel = useCallback(() => {
-    if (!canEditAll) return;
-    updateTreeTitleLabel({ x: DEFAULT_TREE_TITLE_LABEL.x, y: DEFAULT_TREE_TITLE_LABEL.y, scale: 1, text: defaultTreeTitleText });
-  }, [canEditAll, defaultTreeTitleText, updateTreeTitleLabel]);
-
-  const beginTreeTitleDrag = useCallback((event) => {
-    if (!canEditAll || event.button !== 0) return;
-    if (event.target?.closest?.("button")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    titleDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: Number(treeTitleLabel.x) || 0,
-      originY: Number(treeTitleLabel.y) || 0,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setDraggingTitleLabel(true);
-  }, [canEditAll, treeTitleLabel.x, treeTitleLabel.y]);
-
-  const moveTreeTitleDrag = useCallback((event) => {
-    const drag = titleDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const scale = scaleRef.current || 1;
-    const nextX = drag.originX + (event.clientX - drag.startX) / scale;
-    const nextY = drag.originY + (event.clientY - drag.startY) / scale;
-    setTreeTitleLabel((current) => normalizeTreeTitleLabel({ ...current, x: snap(nextX), y: snap(nextY) }, defaultTreeTitleText));
-  }, [defaultTreeTitleText]);
-
-  const endTreeTitleDrag = useCallback((event) => {
-    const drag = titleDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    titleDragRef.current = null;
-    setDraggingTitleLabel(false);
-  }, []);
-
   const treeEditorShell = (
     <section className={`fte-shell ${treeFullscreen ? "is-fullscreen" : ""}`}>
       <TransformWrapper
@@ -1965,7 +1843,7 @@ const submitCreateDialog = async () => {
         maxScale={2.6}
         centerOnInit={true}
         limitToBounds={false}
-        panning={{ disabled: draggingId !== null || draggingLineId !== null || draggingTitleLabel, velocityDisabled: false }}
+        panning={{ disabled: draggingId !== null || draggingLineId !== null, velocityDisabled: false }}
         doubleClick={{ disabled: true }}
 
         pinch={{ step: 5 }}
@@ -2073,17 +1951,15 @@ const submitCreateDialog = async () => {
                 >
                   <span className="material-symbols-outlined">download</span>
                 </button>
-                {canValidateTree ? (
-                  <button
-                    type="button"
-                    onClick={handleValidateTree}
-                    disabled={loading || saving}
-                    title={t("tree.toolbar.validate")}
-                    className="fte-iconButton"
-                  >
-                    <span className="material-symbols-outlined">rule</span>
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={handleValidateTree}
+                  disabled={loading || saving}
+                  title={t("tree.toolbar.validate")}
+                  className="fte-iconButton"
+                >
+                  <span className="material-symbols-outlined">rule</span>
+                </button>
               </div>
               <div className="fte-toolbarGroup fte-toolbarGroup--icons">
                 <button type="button" onClick={() => zoomIn(0.16, 180)} title={t("tree.toolbar.zoomIn")}>
@@ -2135,7 +2011,7 @@ const submitCreateDialog = async () => {
             ) : null}
 
             {status ? <div className="fte-status" role="status" aria-live="polite">{status}</div> : null}
-            {canValidateTree && validationIssueRows.length ? (
+            {validationIssueRows.length ? (
               <div className="fte-validationPanel" role="status" aria-live="polite">
                 <div className="fte-validationPanelHead">
                   <strong>{t("tree.messages.validationTitle")}</strong>
@@ -2181,42 +2057,9 @@ const submitCreateDialog = async () => {
                       className={`fte-canvas ${treeRelationPicker ? "is-relation-picking" : ""}`}
                       style={{ width: canvasSize.width, height: canvasSize.height }}
                     >
-                      <div
-                        className={`fte-canvasTitle ${canEditAll ? "is-editable" : ""} ${draggingTitleLabel ? "is-dragging" : ""}`}
-                        style={{
-                          left: treeTitleLabel.x,
-                          top: treeTitleLabel.y,
-                          transform: `scale(${treeTitleLabel.scale})`,
-                        }}
-                        title={canEditAll ? "Kéo để di chuyển, nhấp đôi để sửa nội dung" : undefined}
-                        onPointerDown={beginTreeTitleDrag}
-                        onPointerMove={moveTreeTitleDrag}
-                        onPointerUp={endTreeTitleDrag}
-                        onPointerCancel={endTreeTitleDrag}
-                        onDoubleClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          editTreeTitleLabel();
-                        }}
-                      >
+                      <div className="fte-canvasTitle">
                         <span>{t("tree.title")}</span>
-                        <strong>{treeTitleLabel.text || defaultTreeTitleText}</strong>
-                        {canEditAll ? (
-                          <div className="fte-canvasTitleTools" onPointerDown={(event) => event.stopPropagation()}>
-                            <button type="button" onClick={editTreeTitleLabel} title="Sửa nội dung tiêu đề">
-                              <span className="material-symbols-outlined">edit</span>
-                            </button>
-                            <button type="button" onClick={() => resizeTreeTitleLabel(-0.12)} title="Thu nhỏ tiêu đề">
-                              <span className="material-symbols-outlined">remove</span>
-                            </button>
-                            <button type="button" onClick={() => resizeTreeTitleLabel(0.12)} title="Phóng to tiêu đề">
-                              <span className="material-symbols-outlined">add</span>
-                            </button>
-                            <button type="button" onClick={resetTreeTitleLabel} title="Đặt lại tiêu đề">
-                              <span className="material-symbols-outlined">restart_alt</span>
-                            </button>
-                          </div>
-                        ) : null}
+                        <strong>{String(clan?.clan_name || t("tree.card.fallbackName")).toUpperCase()}</strong>
                       </div>
                       <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden={false}>
                         {lines.filter((line) => line.type !== "route-control").map((line, index) => (
@@ -2316,6 +2159,11 @@ const submitCreateDialog = async () => {
                     >
                       <span className="material-symbols-outlined">{genealogyVoiceListening ? "mic_off" : "mic"}</span>
                     </button>
+                    <VoiceRecorder
+                      disabled={genealogyAiLoading || genealogyAiSaving}
+                      maxSeconds={180}
+                      onTranscript={appendGenealogyAiTranscript}
+                    />
                   </div>
                   <small>{t("tree.genealogyAi.voiceHelp")}</small>
                 </div>
