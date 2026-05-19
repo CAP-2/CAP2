@@ -177,8 +177,7 @@ const resolveAiExistingPerson = (member, existingPeopleByAiName, people = []) =>
     return asArray(people).find((person) => Number(person.id) === selectedExistingId) || null;
   }
 
-  const rows = existingPeopleByAiName.get(normalizeAiNameKey(member?.full_name)) || [];
-  return rows.length === 1 ? rows[0] : null;
+  return null;
 };
 
 const computeAiDraftGenerationMap = (members = [], relationships = [], existingPeopleByAiName, people = []) => {
@@ -632,11 +631,6 @@ export default function FamilyTreeEditor({
       if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) {
         const selected = people.find((person) => Number(person.id) === selectedExistingId);
         if (selected) matches.set(member.temporary_id, selected);
-        return;
-      }
-      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
-      if (rows.length === 1) {
-        matches.set(member.temporary_id, rows[0]);
       }
     });
     return matches;
@@ -999,24 +993,10 @@ const quickCreateSourcePerson = useMemo(
       return;
     }
 
-    const unresolvedDuplicateName = draftMembers.find((member) => {
-      const selectedExistingId = Number(member.existing_person_id);
-      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return false;
-      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
-      return rows.length > 1;
-    });
-
-    if (unresolvedDuplicateName) {
-      setGenealogyAiError(t("tree.genealogyAi.errors.selectExistingDuplicate", { name: unresolvedDuplicateName.full_name }));
-      return;
-    }
-
     const livingMissingAccount = draftMembers.find((member) => {
       if (member.is_living !== "1") return false;
       const selectedExistingId = Number(member.existing_person_id);
       if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return false;
-      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
-      if (rows.length === 1) return false;
       return !member.account_email || member.account_password.length < 6;
     });
 
@@ -1027,9 +1007,7 @@ const quickCreateSourcePerson = useMemo(
 
     const existingCount = draftMembers.filter((member) => {
       const selectedExistingId = Number(member.existing_person_id);
-      if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) return true;
-      const rows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
-      return rows.length === 1;
+      return Number.isFinite(selectedExistingId) && selectedExistingId > 0;
     }).length;
     const createCount = draftMembers.length - existingCount;
     const generationByTemporaryId = computeAiDraftGenerationMap(
@@ -1055,12 +1033,6 @@ const quickCreateSourcePerson = useMemo(
         const selectedExistingId = Number(member.existing_person_id);
         if (Number.isFinite(selectedExistingId) && selectedExistingId > 0) {
           idMap.set(member.temporary_id, selectedExistingId);
-          continue;
-        }
-
-        const existingRows = existingPeopleByAiName.get(normalizeAiNameKey(member.full_name)) || [];
-        if (existingRows.length === 1) {
-          idMap.set(member.temporary_id, Number(existingRows[0].id));
           continue;
         }
 
