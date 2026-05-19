@@ -1802,13 +1802,20 @@
   backdrop-filter: blur(4px);
 }
 
-.breadcrumb-nav a {
+.breadcrumb-nav a,
+.breadcrumb-nav .breadcrumb-link {
   text-decoration: none;
   color: #7d5b43;
   transition: color 0.2s, transform 0.2s;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
-.breadcrumb-nav a:hover {
+.breadcrumb-nav a:hover,
+.breadcrumb-nav .breadcrumb-link:hover {
   color: #9f2f23;
   transform: translateX(-1px);
 }

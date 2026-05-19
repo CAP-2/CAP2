@@ -397,6 +397,19 @@ recognition.onerror = (event) => {
     () => events.find((item) => String(item.id) === String(selectedEventId)) || null,
     [events, selectedEventId]
   );
+  const adminClanTasksPath = useMemo(() => {
+    const targetClanId = clanId || selectedEvent?.clan_id || clan?.id || clan?.clan_id;
+    return targetClanId ? `/dashboard/tasks/clan/${targetClanId}` : "/dashboard/tasks";
+  }, [clan?.clan_id, clan?.id, clanId, selectedEvent?.clan_id]);
+  const eventListPath = isAdmin ? adminClanTasksPath : "/manager/tasks";
+  const eventListLabel = isAdmin ? t("eventsTasks.admin.title") : t("eventsTasks.manager.title");
+  const returnToEventList = useCallback(() => {
+    setSelectedEventId("");
+    setAiTaskSuggestions([]);
+    setMessage("");
+    setError("");
+    navigate(eventListPath);
+  }, [eventListPath, navigate]);
 
   useEffect(() => {
     return () => {
@@ -1230,11 +1243,9 @@ const openEvent = (eventId) => {
       <div className="task-page-admin">
         <header className="page-header">
             <div className="breadcrumb-nav">
-                {clanId ? (
-                    <Link to={`/dashboard/tasks/clan/${clanId}`}>{clan?.clan_name || t("eventsTasks.placeholders.clanDetail")}</Link>
-                ) : (
-                    <Link to="/dashboard/tasks">{t("eventsTasks.admin.title")}</Link>
-                )}
+                <button type="button" className="breadcrumb-link" onClick={returnToEventList}>
+                  {eventListLabel}
+                </button>
                 <span className="separator">/</span>
                 <span className="active">{selectedEvent.title}</span>
             </div>
