@@ -648,6 +648,20 @@ async function applyMarriageRelationsForPersonV2(context, body) {
         if (!kinshipValidation.ok) return kinshipValidation;
     }
 
+    if (hasChildrenField && childrenIds.length > 0) {
+        for (const childId of childrenIds) {
+            const childValidation = await validateChildAgainstParents({
+                connection,
+                clanId: context.clan_id,
+                childId,
+                fatherId: familyFatherId,
+                motherId: familyMotherId,
+                forceSaveHistoricalRelation,
+            });
+            if (!childValidation.ok) return childValidation;
+        }
+    }
+
     const needsFamilyRow =
         hasSpouseField ||
         hasMarriageDateField ||

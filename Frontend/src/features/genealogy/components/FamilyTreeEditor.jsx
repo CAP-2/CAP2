@@ -27,6 +27,59 @@ import "./FamilyTreeEditor.css";
 
 const shouldSuppressInlineRelationError = (error) => Boolean(error?.__centeredNoticeShown);
 
+const todayIsoDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isBirthDateInFuture = (birthDate) => {
+  const birthIso = vietnamDateToIso(birthDate);
+  return Boolean(birthIso && birthIso > todayIsoDate());
+};
+
+
+
+const isoDateOnlyValue = (value) => {
+  const converted = vietnamDateToIso(value);
+  if (converted) return converted;
+  const text = String(value || "").trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+};
+
+const addYearsToIsoDate = (value, years) => {
+  const iso = isoDateOnlyValue(value);
+  if (!iso) return "";
+  const [year, month, day] = iso.split("-").map(Number);
+  const target = new Date(Date.UTC(year + years, month - 1, day));
+  return Number.isNaN(target.getTime()) ? "" : target.toISOString().slice(0, 10);
+};
+
+const parentChildAgeConstraintMessage = (childBirthDate, parentBirthDate) => {
+  const childBirth = isoDateOnlyValue(childBirthDate);
+  const parentBirth = isoDateOnlyValue(parentBirthDate);
+  if (!childBirth || !parentBirth) return "";
+
+  if (childBirth === parentBirth) {
+    return "Cha/mẹ và con không được có cùng ngày tháng năm sinh.";
+  }
+
+  if (childBirth < parentBirth) {
+    return "Ngày sinh của con phải nhỏ hơn của cha mẹ.";
+  }
+
+  const minChildBirth = addYearsToIsoDate(parentBirth, 16);
+  if (minChildBirth && childBirth < minChildBirth) {
+    return "Cha/mẹ phải lớn hơn con ít nhất 16 tuổi.";
+  }
+
+  return "";
+};
+
+const personBirthValue = (person) => person?.birth_date || person?.birthDate || person?.birth || "";
+
 const LAYOUT_BATCH_SIZE = 5;
 const LAYOUT_FLUSH_DELAY_MS = 10000;
 const AI_RELATION_TYPES = ["parent_child", "spouse"];
@@ -993,6 +1046,32 @@ const quickCreateSourcePerson = useMemo(
       return;
     }
 
+    const draftMemberByTemporaryId = new Map(draftMembers.map((member) => [member.temporary_id, member]));
+    const getDraftOrExistingPerson = (temporaryId) => {
+      const member = draftMemberByTemporaryId.get(temporaryId);
+      if (!member) return null;
+      const existingId = Number(member.existing_person_id);
+      if (Number.isFinite(existingId) && existingId > 0) {
+        return people.find((person) => Number(person.id) === existingId) || member;
+      }
+      return member;
+    };
+    const invalidAgeRelation = genealogyAiDraftRelationships.find((relation) => {
+      if (relation.type !== "parent_child") return false;
+      const parent = getDraftOrExistingPerson(relation.parent);
+      const child = getDraftOrExistingPerson(relation.child);
+      return parentChildAgeConstraintMessage(personBirthValue(child), personBirthValue(parent));
+    });
+
+    if (invalidAgeRelation) {
+      const parent = getDraftOrExistingPerson(invalidAgeRelation.parent);
+      const child = getDraftOrExistingPerson(invalidAgeRelation.child);
+      const message = parentChildAgeConstraintMessage(personBirthValue(child), personBirthValue(parent));
+      setGenealogyAiError(message);
+      setConstraintNotice(message);
+      return;
+    }
+
     const livingMissingAccount = draftMembers.find((member) => {
       if (member.is_living !== "1") return false;
       const selectedExistingId = Number(member.existing_person_id);
@@ -1421,17 +1500,24 @@ const quickCreateSourcePerson = useMemo(
       setStatus(t("tree.messages.noPermissionAction"));
       return;
     }
+    if (isBirthDateInFuture(form.birth_date)) {
+      setConstraintNotice("Ngày sinh không được lớn hơn ngày hiện tại.");
+      return;
+    }
+
     setSaving(true);
     setStatus("");
     try {
+      const birthDateIso = vietnamDateToIso(form.birth_date) || null;
+      const deathDateIso = form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null;
       const payload = {
         ...form,
         gender: form.gender === "" ? null : Number(form.gender),
         is_living: form.is_living === "1" ? 1 : 0,
         generation: Number(form.generation) || 1,
         branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
-        birth_date: vietnamDateToIso(form.birth_date) || null,
-        death_date: form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null,
+        birth_date: birthDateIso,
+        death_date: deathDateIso,
       };
 
       // Người đã mất/người được thêm thủ công có thể chưa có tài khoản.
@@ -1588,10 +1674,51 @@ const submitCreateDialog = async () => {
     }
   }
 
+  if (isBirthDateInFuture(form.birth_date)) {
+    setConstraintNotice("Ngày sinh không được lớn hơn ngày hiện tại.");
+    return;
+  }
+
+  if (sourcePersonId && relation !== "person") {
+    const sourcePerson = people.find((person) => Number(person.id) === Number(sourcePersonId));
+    let ageConstraintMessage = "";
+
+    if (relation === "father" || relation === "mother") {
+      ageConstraintMessage = parentChildAgeConstraintMessage(personBirthValue(sourcePerson), form.birth_date);
+    }
+
+    if (relation === "child") {
+      ageConstraintMessage = parentChildAgeConstraintMessage(form.birth_date, personBirthValue(sourcePerson));
+      const childPayload = buildChildRelationPayload(
+        sourcePersonId,
+        -1,
+        canonicalTree.families,
+        canonicalTree.childRows,
+        people,
+      );
+      const otherParentId = childPayload?.data?.father_person_id && Number(childPayload.data.father_person_id) !== Number(sourcePersonId)
+        ? childPayload.data.father_person_id
+        : childPayload?.data?.mother_person_id && Number(childPayload.data.mother_person_id) !== Number(sourcePersonId)
+          ? childPayload.data.mother_person_id
+          : null;
+      if (!ageConstraintMessage && otherParentId) {
+        const otherParent = people.find((person) => Number(person.id) === Number(otherParentId));
+        ageConstraintMessage = parentChildAgeConstraintMessage(form.birth_date, personBirthValue(otherParent));
+      }
+    }
+
+    if (ageConstraintMessage) {
+      setConstraintNotice(ageConstraintMessage);
+      return;
+    }
+  }
+
   setDialogSaving(true);
   setStatus("");
 
   try {
+    const birthDateIso = vietnamDateToIso(form.birth_date) || null;
+    const deathDateIso = form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null;
     const createdResponse = await createPersonAPI({
       ...form,
       clan_id: clan?.id,
@@ -1599,8 +1726,8 @@ const submitCreateDialog = async () => {
       is_living: form.is_living === "1" ? 1 : 0,
       generation: Number(form.generation) || 1,
       branch: String(form.branch || "").trim() === "" ? null : Number(form.branch),
-      birth_date: vietnamDateToIso(form.birth_date) || null,
-      death_date: form.is_living === "1" ? null : vietnamDateToIso(form.death_date) || null,
+      birth_date: birthDateIso,
+      death_date: deathDateIso,
       tree_x: Number(form.tree_x) || 0,
       tree_y: Number(form.tree_y) || 0,
       account_email: form.is_living === "1" ? String(form.account_email || "").trim() : null,
@@ -1704,6 +1831,18 @@ const submitCreateDialog = async () => {
     if (!canEditAll || !relationDialog || !selectedPerson || !relationDialog.personId) return;
     const relation = relationDialog.relation;
     const targetId = Number(relationDialog.personId);
+    const targetPerson = people.find((person) => Number(person.id) === Number(targetId));
+
+    let ageConstraintMessage = "";
+    if (relation === "father" || relation === "mother") {
+      ageConstraintMessage = parentChildAgeConstraintMessage(personBirthValue(selectedPerson), personBirthValue(targetPerson));
+    } else if (relation === "child") {
+      ageConstraintMessage = parentChildAgeConstraintMessage(personBirthValue(targetPerson), personBirthValue(selectedPerson));
+    }
+    if (ageConstraintMessage) {
+      setConstraintNotice(ageConstraintMessage);
+      return;
+    }
 
     setDialogSaving(true);
     setStatus("");

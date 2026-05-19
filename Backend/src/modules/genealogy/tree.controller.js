@@ -27,6 +27,8 @@ const {
     validateChildAgainstParents,
     validateFamilyParents,
     validatePersonBirthDateWithRelations,
+    validateProposedChildBirthAgainstParents,
+    validateProposedParentBirthAgainstChildren,
     validatePersonLifeDates,
     validatePersonGenderWithFamilyRole,
     validatePersonGenerationWithRelations,
@@ -63,6 +65,19 @@ const relationErrorFromResult = (result) => {
 const normalizeFamilyRelationshipStatus = (value) => {
     const status = String(value || 'active').trim().toLowerCase();
     return ['active', 'divorced', 'widowed'].includes(status) ? status : 'active';
+};
+
+
+const parseRelationIdList = (value) => {
+    if (Array.isArray(value)) {
+        return value.map(parseNullableId).filter(Boolean);
+    }
+    if (value === undefined || value === null || value === '') return [];
+    if (typeof value === 'string') {
+        return value.split(',').map(parseNullableId).filter(Boolean);
+    }
+    const single = parseNullableId(value);
+    return single ? [single] : [];
 };
 
 const nullableText = (value) => {
@@ -239,6 +254,20 @@ const createPerson = async (req, res) => {
                     ? getMediaUrl(req, avatarMediaIdValue)
                     : null;
 
+        const fatherId = parseNullableId(parent_father_id ?? father_person_id);
+        const motherId = parseNullableId(parent_mother_id ?? mother_person_id);
+        if (fatherId || motherId) {
+            const proposedBirthValidation = await validateProposedChildBirthAgainstParents({
+                clanId,
+                childBirthDate: normalizedBirthDate,
+                fatherId,
+                motherId,
+            });
+            if (!proposedBirthValidation.ok) {
+                return res.status(relationHttpStatus(proposedBirthValidation)).json(relationPayload(proposedBirthValidation));
+            }
+        }
+
         connection = await db.getConnection();
         await connection.beginTransaction();
 
@@ -331,9 +360,6 @@ const createPerson = async (req, res) => {
                 [accountId, clanId, personId]
             );
         }
-
-        const fatherId = parseNullableId(parent_father_id ?? father_person_id);
-        const motherId = parseNullableId(parent_mother_id ?? mother_person_id);
 
         if (fatherId || motherId) {
             const relation = await applyBloodlineForPerson(
@@ -491,6 +517,8 @@ const updateTreePerson = async (req, res) => {
         const current = rows[0];
         const body = req.body || {};
         const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+        let pendingRoleAccountId = null;
+        let pendingRoleId = null;
 
         const strOrKeep = (key, currentValue) => {
             if (!has(key)) return currentValue ?? '';
@@ -591,7 +619,8 @@ const updateTreePerson = async (req, res) => {
                 }
 
                 if (rid !== Number(targetAccount.role_id)) {
-                    await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [rid, targetAccount.id]);
+                    pendingRoleAccountId = targetAccount.id;
+                    pendingRoleId = rid;
                 }
             }
         }
@@ -631,7 +660,47 @@ const updateTreePerson = async (req, res) => {
 
         const birthValidation = await validatePersonBirthDateWithRelations(db, personId, nextBirth, nextLiving, nextDeath);
         if (!birthValidation.ok) {
-            return res.status(400).json({ success: false, message: birthValidation.message });
+            return res.status(400).json(relationPayload(birthValidation));
+        }
+
+        const hasBloodline = has('parent_father_id') || has('parent_mother_id') || has('father_person_id') || has('mother_person_id');
+        const pendingFatherId = hasBloodline ? parseNullableId(body.parent_father_id ?? body.father_person_id) : null;
+        const pendingMotherId = hasBloodline ? parseNullableId(body.parent_mother_id ?? body.mother_person_id) : null;
+        if (permission.scope === 'limited' && hasBloodline) {
+            return res.status(403).json({
+                success: false,
+                message: 'Temporary edit key khong cho phep sua quan he cha me.',
+            });
+        }
+        if (hasBloodline && (pendingFatherId || pendingMotherId)) {
+            const proposedBirthValidation = await validateProposedChildBirthAgainstParents({
+                clanId: nextClanId,
+                childBirthDate: nextBirth,
+                fatherId: pendingFatherId,
+                motherId: pendingMotherId,
+            });
+            if (!proposedBirthValidation.ok) {
+                return res.status(relationHttpStatus(proposedBirthValidation)).json(relationPayload(proposedBirthValidation));
+            }
+        }
+
+        const hasMarriage = has('family_id') || has('spouse_id') || has('spouse_person_id') || has('children_ids') || has('children_person_ids');
+        if (permission.scope === 'limited' && hasMarriage) {
+            return res.status(403).json({
+                success: false,
+                message: 'Temporary edit key khong cho phep sua quan he hon nhan va con cai.',
+            });
+        }
+        if (hasMarriage && (has('children_ids') || has('children_person_ids'))) {
+            const childIds = parseRelationIdList(body.children_ids ?? body.children_person_ids);
+            const proposedParentValidation = await validateProposedParentBirthAgainstChildren({
+                clanId: nextClanId,
+                parentBirthDate: nextBirth,
+                childIds,
+            });
+            if (!proposedParentValidation.ok) {
+                return res.status(relationHttpStatus(proposedParentValidation)).json(relationPayload(proposedParentValidation));
+            }
         }
 
         await db.query(
@@ -670,31 +739,15 @@ const updateTreePerson = async (req, res) => {
             ]
         );
 
-        const hasBloodline = has('parent_father_id') || has('parent_mother_id') || has('father_person_id') || has('mother_person_id');
-        if (permission.scope === 'limited' && hasBloodline) {
-            return res.status(403).json({
-                success: false,
-                message: 'Temporary edit key khong cho phep sua quan he cha me.',
-            });
-        }
         if (hasBloodline) {
-            const fatherId = parseNullableId(body.parent_father_id ?? body.father_person_id);
-            const motherId = parseNullableId(body.parent_mother_id ?? body.mother_person_id);
-            if (fatherId || motherId) {
-                const relation = await applyBloodlineForPerson(personId, nextClanId, fatherId, motherId, db, { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation });
+            if (pendingFatherId || pendingMotherId) {
+                const relation = await applyBloodlineForPerson(personId, nextClanId, pendingFatherId, pendingMotherId, db, { forceSaveHistoricalRelation: body.forceSaveHistoricalRelation });
                 if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
             } else {
                 await db.query('DELETE FROM children WHERE person_id = ?', [personId]);
             }
         }
 
-        const hasMarriage = has('family_id') || has('spouse_id') || has('spouse_person_id') || has('children_ids') || has('children_person_ids');
-        if (permission.scope === 'limited' && hasMarriage) {
-            return res.status(403).json({
-                success: false,
-                message: 'Temporary edit key khong cho phep sua quan he hon nhan va con cai.',
-            });
-        }
         if (hasMarriage) {
             const relationBody = {};
             if (has('family_id')) relationBody.family_id = body.family_id;
@@ -709,6 +762,10 @@ const updateTreePerson = async (req, res) => {
                 { ...relationBody, forceSaveHistoricalRelation: body.forceSaveHistoricalRelation }
             );
             if (!relation.ok) return res.status(relationHttpStatus(relation)).json(relationPayload(relation));
+        }
+
+        if (pendingRoleAccountId && pendingRoleId) {
+            await db.query('UPDATE accounts SET role_id = ? WHERE id = ?', [pendingRoleId, pendingRoleAccountId]);
         }
 
         const [updatedRows] = await db.query(

@@ -28,9 +28,17 @@ const okResult = () => ({ ok: true, level: 'ok' });
 const normalizeForceFlag = (value) =>
   value === true || value === 1 || value === '1' || String(value || '').toLowerCase() === 'true';
 
+const todayDateOnlyTime = () => {
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+};
+
 const validateBirthDeathDates = (birthDate, deathDate) => {
   const birthTime = dateOnlyTime(birthDate);
   const deathTime = dateOnlyTime(deathDate);
+  if (birthTime !== null && birthTime > todayDateOnlyTime()) {
+    return errorResult('Ngày sinh không được lớn hơn ngày hiện tại.', 'BIRTH_DATE_IN_FUTURE');
+  }
   if (birthTime !== null && deathTime !== null && deathTime < birthTime) {
     return errorResult('Ngày mất không được trước ngày sinh.', 'INVALID_LIFE_DATES');
   }

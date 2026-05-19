@@ -119,14 +119,6 @@ const addYearsToIsoDate = (value, years) => {
     return Number.isNaN(target.getTime()) ? null : target.toISOString().slice(0, 10);
 };
 
-const parentIsLivingForAgeRule = (parent) => {
-    if (!parent) return true;
-    if (parent.is_living === undefined || parent.is_living === null || parent.is_living === '') {
-        return !parent.death_date;
-    }
-    return Number(parent.is_living) === 1 && !parent.death_date;
-};
-
 const validateParentChildAgeGap = (childBirthDate, parents) => {
     const childBirth = isoDateOnly(childBirthDate);
     if (!childBirth) return { ok: true };
@@ -135,21 +127,50 @@ const validateParentChildAgeGap = (childBirthDate, parents) => {
         const parentBirth = isoDateOnly(parent?.birth_date);
         if (!parentBirth) continue;
 
-        const requiredYears = parentIsLivingForAgeRule(parent) ? 18 : 15;
-        const minChildBirth = addYearsToIsoDate(parentBirth, requiredYears);
+        if (childBirth === parentBirth) {
+            return {
+                ok: false,
+                code: 'PARENT_CHILD_SAME_BIRTH_DATE',
+                message: 'Cha/mẹ và con không được có cùng ngày tháng năm sinh.',
+            };
+        }
+
+        if (childBirth < parentBirth) {
+            return {
+                ok: false,
+                code: 'PARENT_BORN_AFTER_CHILD',
+                message: 'Ngày sinh của con phải nhỏ hơn của cha mẹ.',
+            };
+        }
+
+        const minChildBirth = addYearsToIsoDate(parentBirth, 16);
         if (!minChildBirth) continue;
 
         if (childBirth < minChildBirth) {
             return {
                 ok: false,
-                message: requiredYears === 18 ?
-                    'Con phải nhỏ hơn cha/mẹ ít nhất 18 tuổi nếu cha/mẹ còn sống.' :
-                    'Con phải nhỏ hơn cha/mẹ ít nhất 15 tuổi nếu cha/mẹ đã mất.',
+                code: 'PARENT_CHILD_MIN_AGE_GAP',
+                message: 'Cha/mẹ phải lớn hơn con ít nhất 16 tuổi.',
             };
         }
     }
 
     return { ok: true };
+};
+
+
+const validateProposedChildBirthAgainstParents = async({ connection = db, clanId, childBirthDate, fatherId, motherId }) => {
+    const parentIds = uniquePositiveIds([fatherId, motherId]);
+    if (!parentIds.length) return { ok: true };
+
+    const familyValidation = await validateFamilyParents({ connection, clanId, fatherId, motherId });
+    if (!familyValidation.ok && familyValidation.code !== 'DUPLICATE_SPOUSE_FAMILY') {
+        return familyValidation;
+    }
+
+    const parentsById = familyValidation.parentsById || await loadPeopleByIds(connection, parentIds);
+    const parents = parentIds.map((parentId) => parentsById.get(parentId)).filter(Boolean);
+    return validateParentChildAgeGap(childBirthDate, parents);
 };
 
 const validateChildAgainstParents = async({ connection = db, clanId, childId, fatherId, motherId, forceSaveHistoricalRelation = false }) => {
@@ -195,8 +216,11 @@ const validateChildAgainstParents = async({ connection = db, clanId, childId, fa
     const childBirthTime = dateOnlyTime(child.birth_date);
     for (const parent of parents) {
         const parentBirthTime = dateOnlyTime(parent?.birth_date);
+        if (parentBirthTime !== null && childBirthTime !== null && childBirthTime === parentBirthTime) {
+            return { ok: false, code: 'PARENT_CHILD_SAME_BIRTH_DATE', message: 'Cha/mẹ và con không được có cùng ngày tháng năm sinh.' };
+        }
         if (parentBirthTime !== null && childBirthTime !== null && childBirthTime < parentBirthTime) {
-            return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
+            return { ok: false, code: 'PARENT_BORN_AFTER_CHILD', message: 'Ngày sinh của con phải nhỏ hơn của cha mẹ.' };
         }
     }
 
@@ -227,6 +251,24 @@ const validateChildAgainstParents = async({ connection = db, clanId, childId, fa
         ok: true,
         childGeneration,
     };
+};
+
+
+const validateProposedParentBirthAgainstChildren = async({ connection = db, clanId, parentBirthDate, childIds }) => {
+    const ids = uniquePositiveIds(childIds || []);
+    if (!ids.length) return { ok: true };
+
+    const childrenById = await loadPeopleByIds(connection, ids);
+    for (const childId of ids) {
+        const child = childrenById.get(childId);
+        if (!child || Number(child.clan_id) !== Number(clanId)) {
+            return { ok: false, message: 'Danh sach con phai la nguoi cung dong ho.' };
+        }
+        const validation = validateParentChildAgeGap(child.birth_date, [{ birth_date: parentBirthDate }]);
+        if (!validation.ok) return validation;
+    }
+
+    return { ok: true };
 };
 
 const validatePersonGenerationWithRelations = async(connection, personId, nextGeneration) => {
@@ -303,9 +345,16 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
     );
     if (parentRows.some((row) => {
         const parentBirthTime = dateOnlyTime(row.birth_date);
+        return parentBirthTime !== null && birthTime === parentBirthTime;
+    })) {
+        return { ok: false, code: 'PARENT_CHILD_SAME_BIRTH_DATE', message: 'Cha/mẹ và con không được có cùng ngày tháng năm sinh.' };
+    }
+
+    if (parentRows.some((row) => {
+        const parentBirthTime = dateOnlyTime(row.birth_date);
         return parentBirthTime !== null && birthTime < parentBirthTime;
     })) {
-        return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
+        return { ok: false, code: 'PARENT_BORN_AFTER_CHILD', message: 'Ngày sinh của con phải nhỏ hơn của cha mẹ.' };
     }
 
     const parentAgeGapValidation = validateParentChildAgeGap(nextBirthDate, parentRows);
@@ -332,9 +381,16 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
     );
     if (childRows.some((row) => {
         const childBirthTime = dateOnlyTime(row.birth_date);
+        return childBirthTime !== null && childBirthTime === birthTime;
+    })) {
+        return { ok: false, code: 'PARENT_CHILD_SAME_BIRTH_DATE', message: 'Cha/mẹ và con không được có cùng ngày tháng năm sinh.' };
+    }
+
+    if (childRows.some((row) => {
+        const childBirthTime = dateOnlyTime(row.birth_date);
         return childBirthTime !== null && childBirthTime < birthTime;
     })) {
-        return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
+        return { ok: false, code: 'PARENT_BORN_AFTER_CHILD', message: 'Ngày sinh của con phải nhỏ hơn của cha mẹ.' };
     }
 
     for (const child of childRows) {
@@ -373,6 +429,8 @@ module.exports = {
     validateFamilyParents,
     getParentGeneration,
     validateChildAgainstParents,
+    validateProposedChildBirthAgainstParents,
+    validateProposedParentBirthAgainstChildren,
     validatePersonGenerationWithRelations,
     validatePersonGenderWithFamilyRole,
     validatePersonBirthDateWithRelations,

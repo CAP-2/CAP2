@@ -5,13 +5,6 @@ const toId = (value) => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const birthTime = (person) => {
-  const text = String(person?.birth_date || "");
-  if (!text) return null;
-  const time = Date.parse(text);
-  return Number.isFinite(time) ? time : null;
-};
-
 const isoDateOnly = (value) => {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
@@ -27,12 +20,18 @@ const addYearsToIsoDate = (value, years) => {
   return Number.isNaN(target.getTime()) ? null : target.toISOString().slice(0, 10);
 };
 
-const parentIsLivingForAgeRule = (parent) => {
-  if (!parent) return true;
-  if (parent.is_living === undefined || parent.is_living === null || parent.is_living === "") {
-    return !parent.death_date;
-  }
-  return Number(parent.is_living) === 1 && !parent.death_date;
+const todayIsoDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const birthDateFutureMessage = (person) => {
+  const birth = isoDateOnly(person?.birth_date);
+  if (!birth) return null;
+  return birth > todayIsoDate() ? "Ngày sinh không được lớn hơn ngày hiện tại." : null;
 };
 
 const parentChildAgeGapMessage = (child, parent) => {
@@ -40,13 +39,18 @@ const parentChildAgeGapMessage = (child, parent) => {
   const parentBirth = isoDateOnly(parent?.birth_date);
   if (!childBirth || !parentBirth) return null;
 
-  const requiredYears = parentIsLivingForAgeRule(parent) ? 18 : 15;
-  const minChildBirth = addYearsToIsoDate(parentBirth, requiredYears);
+  if (childBirth === parentBirth) {
+    return "Cha/mẹ và con không được có cùng ngày tháng năm sinh.";
+  }
+
+  if (childBirth < parentBirth) {
+    return "Ngày sinh của con phải nhỏ hơn của cha mẹ.";
+  }
+
+  const minChildBirth = addYearsToIsoDate(parentBirth, 16);
   if (!minChildBirth || childBirth >= minChildBirth) return null;
 
-  return requiredYears === 18
-    ? "Con phải nhỏ hơn cha/mẹ ít nhất 18 tuổi nếu cha/mẹ còn sống."
-    : "Con phải nhỏ hơn cha/mẹ ít nhất 15 tuổi nếu cha/mẹ đã mất.";
+  return "Cha/mẹ phải lớn hơn con ít nhất 16 tuổi.";
 };
 
 function add(errors, personId, message) {
@@ -66,6 +70,8 @@ export function validateTreeData(people = [], families = [], childRows = []) {
     if (!String(name || "").trim()) add(errors, person.id, "Thiếu tên");
     if (![1, 2].includes(Number(person.gender))) add(errors, person.id, "Thiếu hoặc sai giới tính");
     if (Number(person.is_living) !== 0 && !toId(person.account_id)) add(errors, person.id, "Chưa liên kết tài khoản");
+    const futureBirth = birthDateFutureMessage(person);
+    if (futureBirth) add(errors, person.id, futureBirth);
   });
 
   const childParentPairs = new Set();
@@ -85,13 +91,8 @@ export function validateTreeData(people = [], families = [], childRows = []) {
       const key = `${Number(parentId)}:${Number(child.id)}`;
       if (childParentPairs.has(key)) add(errors, child.id, "Trùng quan hệ cha/mẹ - con");
       childParentPairs.add(key);
-      const childBirth = birthTime(child);
-      const parentBirth = birthTime(parent);
       const ageGapMessage = parentChildAgeGapMessage(child, parent);
       if (ageGapMessage) add(errors, child.id, ageGapMessage);
-      if (childBirth != null && parentBirth != null && childBirth < parentBirth) {
-        add(errors, child.id, "Con sinh trước cha/mẹ");
-      }
     });
   });
 
