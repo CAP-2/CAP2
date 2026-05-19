@@ -4,6 +4,9 @@ const {
 const {
     db,
     fmtSqlDate,
+    ACTIVE_TREE_MEMBER_WHERE_SQL,
+    ARCHIVED_MEMBER_JOIN_SQL,
+    filterTreeRelationsForVisiblePeople,
     getTreeLayoutSettings,
 } = require('./common.service');
 const {
@@ -129,9 +132,9 @@ const getFamilyTree = async(req, res) => {
                 a.status AS account_status
             FROM people p
             LEFT JOIN accounts a ON a.person_id = p.id
-            LEFT JOIN archived_members am ON (a.id IS NOT NULL AND am.account_id = a.id) OR (am.person_json->>'$.id' = p.id)
+            ${ARCHIVED_MEMBER_JOIN_SQL}
             WHERE p.clan_id = ?
-              AND am.id IS NULL
+              ${ACTIVE_TREE_MEMBER_WHERE_SQL}
             ORDER BY p.generation, p.display_order, p.surname, p.middle_name, p.first_name, p.id
             `, [clanId]
 
@@ -154,6 +157,7 @@ const getFamilyTree = async(req, res) => {
             ORDER BY c.family_id, c.sort_order, c.id
             `, [clanId]
         );
+        const visibleTree = filterTreeRelationsForVisiblePeople(familyRows, childRows, peopleRows);
         const layoutSettings = await getTreeLayoutSettings(clanId);
 
         return res.json({
@@ -164,12 +168,12 @@ const getFamilyTree = async(req, res) => {
                 birth_date: fmtSqlDate(p.birth_date),
                 death_date: fmtSqlDate(p.death_date),
             })),
-            families: familyRows.map((f) => ({
+            families: visibleTree.familyRows.map((f) => ({
                 ...f,
                 marriage_date: fmtSqlDate(f.marriage_date),
                 ended_at: fmtSqlDate(f.ended_at),
             })),
-            children: childRows,
+            children: visibleTree.childRows,
             layoutSettings,
         });
     } catch (error) {

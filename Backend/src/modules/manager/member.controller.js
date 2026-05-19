@@ -853,7 +853,7 @@ const updateMemberByManager = async(req, res) => {
             return res.status(400).json({ success: false, message: generationValidation.message });
         }
 
-        const birthValidation = await validatePersonBirthDateWithRelations(db, full.person_id, nextBirth);
+        const birthValidation = await validatePersonBirthDateWithRelations(db, full.person_id, nextBirth, nextLiving, nextDeath);
         if (!birthValidation.ok) {
             return res.status(400).json({ success: false, message: birthValidation.message });
         }

@@ -10,6 +10,11 @@ const { getTreeLayoutSettings } = require("../../shared/utils/treeLayoutSettings
 const { normalizeMediaId, extractMediaIdFromUrl } = require("../../shared/utils/media");
 const { ensureFamilyRelationshipColumns } = require("../genealogy/familyRelation.service");
 const { ensureArchivedMembersTable } = require("../manager/archive.service");
+const {
+  ACTIVE_TREE_MEMBER_WHERE_SQL,
+  ARCHIVED_MEMBER_JOIN_SQL,
+  filterTreeRelationsForVisiblePeople,
+} = require("../manager/common.service");
 
 /** Ghép họ + tên đệm + tên → display_name (khoảng trắng gọn) */
 const buildDisplayNameFromParts = (surname, middleName, firstName) => {
@@ -506,11 +511,9 @@ exports.loadClanTreeForAdmin = async (clanId) => {
            a.role_id
     FROM people p
     LEFT JOIN accounts a ON a.person_id = p.id
-    LEFT JOIN archived_members am ON
-         (a.id IS NOT NULL AND am.account_id = a.id)
-         OR (CAST(JSON_UNQUOTE(JSON_EXTRACT(am.person_json, '$.id')) AS UNSIGNED) = p.id)
+    ${ARCHIVED_MEMBER_JOIN_SQL}
     WHERE p.clan_id = ?
-      AND am.id IS NULL
+      ${ACTIVE_TREE_MEMBER_WHERE_SQL}
     ORDER BY p.generation, p.display_order, p.surname, p.first_name
   `,
     [cid]
@@ -533,8 +536,9 @@ exports.loadClanTreeForAdmin = async (clanId) => {
     [cid]
   );
 
+  const visibleTree = filterTreeRelationsForVisiblePeople(familyRows, childRows, peopleRows);
   const layoutSettings = await getTreeLayoutSettings(cid);
-  const familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
+  const familyTree = buildFamilyTree(peopleRows, visibleTree.familyRows, visibleTree.childRows);
   return { 
     clan, 
     treeMembers: peopleRows.map(p => ({
@@ -542,12 +546,12 @@ exports.loadClanTreeForAdmin = async (clanId) => {
       birth_date: fmtSqlDate(p.birth_date),
       death_date: fmtSqlDate(p.death_date),
     })), 
-    families: familyRows.map(f => ({
+    families: visibleTree.familyRows.map(f => ({
       ...f,
       marriage_date: f.marriage_date ? String(f.marriage_date).slice(0, 10) : null,
       ended_at: f.ended_at ? String(f.ended_at).slice(0, 10) : null,
     })),
-    children: childRows,
+    children: visibleTree.childRows,
     layoutSettings,
     familyTree 
   };
@@ -574,6 +578,7 @@ exports.getDashboard = async (req, res) => {
 
     if (clanId) {
       await ensureFamilyRelationshipColumns();
+      await ensureArchivedMembersTable();
       const [peopleRows] = await db.query(
         `
           SELECT p.id, p.display_name, p.first_name, p.middle_name, p.surname, p.generation, p.branch,
@@ -588,7 +593,9 @@ exports.getDashboard = async (req, res) => {
                  a.role_id
           FROM people p
           LEFT JOIN accounts a ON a.person_id = p.id
+          ${ARCHIVED_MEMBER_JOIN_SQL}
           WHERE p.clan_id = ?
+            ${ACTIVE_TREE_MEMBER_WHERE_SQL}
           ORDER BY p.generation, p.display_order, p.surname, p.middle_name, p.first_name, p.id
         `,
         [clanId]
@@ -615,14 +622,15 @@ exports.getDashboard = async (req, res) => {
         `,
         [clanId]
       );
-      families = familyRows.map((family) => ({
+      const visibleTree = filterTreeRelationsForVisiblePeople(familyRows, childRows, peopleRows);
+      families = visibleTree.familyRows.map((family) => ({
         ...family,
         marriage_date: family.marriage_date ? String(family.marriage_date).slice(0, 10) : null,
         ended_at: family.ended_at ? String(family.ended_at).slice(0, 10) : null,
       }));
-      children = childRows;
+      children = visibleTree.childRows;
       layoutSettings = await getTreeLayoutSettings(clanId);
-      familyTree = buildFamilyTree(peopleRows, familyRows, childRows);
+      familyTree = buildFamilyTree(peopleRows, visibleTree.familyRows, visibleTree.childRows);
 
       const [eventRows] = await db.query(
         `

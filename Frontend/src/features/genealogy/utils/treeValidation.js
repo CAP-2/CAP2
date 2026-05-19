@@ -12,6 +12,43 @@ const birthTime = (person) => {
   return Number.isFinite(time) ? time : null;
 };
 
+const isoDateOnly = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const text = String(value).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+};
+
+const addYearsToIsoDate = (value, years) => {
+  const text = isoDateOnly(value);
+  if (!text) return null;
+  const [year, month, day] = text.split("-").map(Number);
+  const target = new Date(Date.UTC(year + years, month - 1, day));
+  return Number.isNaN(target.getTime()) ? null : target.toISOString().slice(0, 10);
+};
+
+const parentIsLivingForAgeRule = (parent) => {
+  if (!parent) return true;
+  if (parent.is_living === undefined || parent.is_living === null || parent.is_living === "") {
+    return !parent.death_date;
+  }
+  return Number(parent.is_living) === 1 && !parent.death_date;
+};
+
+const parentChildAgeGapMessage = (child, parent) => {
+  const childBirth = isoDateOnly(child?.birth_date);
+  const parentBirth = isoDateOnly(parent?.birth_date);
+  if (!childBirth || !parentBirth) return null;
+
+  const requiredYears = parentIsLivingForAgeRule(parent) ? 18 : 15;
+  const minChildBirth = addYearsToIsoDate(parentBirth, requiredYears);
+  if (!minChildBirth || childBirth >= minChildBirth) return null;
+
+  return requiredYears === 18
+    ? "Con phải nhỏ hơn cha/mẹ ít nhất 18 tuổi nếu cha/mẹ còn sống."
+    : "Con phải nhỏ hơn cha/mẹ ít nhất 15 tuổi nếu cha/mẹ đã mất.";
+};
+
 function add(errors, personId, message) {
   const id = toId(personId);
   if (!id) return;
@@ -50,6 +87,8 @@ export function validateTreeData(people = [], families = [], childRows = []) {
       childParentPairs.add(key);
       const childBirth = birthTime(child);
       const parentBirth = birthTime(parent);
+      const ageGapMessage = parentChildAgeGapMessage(child, parent);
+      if (ageGapMessage) add(errors, child.id, ageGapMessage);
       if (childBirth != null && parentBirth != null && childBirth < parentBirth) {
         add(errors, child.id, "Con sinh trước cha/mẹ");
       }

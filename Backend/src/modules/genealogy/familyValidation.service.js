@@ -104,6 +104,54 @@ const getParentGeneration = (parents) => {
     return { ok: true, generation: unique[0] };
 };
 
+const isoDateOnly = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    const text = String(value).trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+};
+
+const addYearsToIsoDate = (value, years) => {
+    const text = isoDateOnly(value);
+    if (!text) return null;
+    const [year, month, day] = text.split('-').map(Number);
+    const target = new Date(Date.UTC(year + years, month - 1, day));
+    return Number.isNaN(target.getTime()) ? null : target.toISOString().slice(0, 10);
+};
+
+const parentIsLivingForAgeRule = (parent) => {
+    if (!parent) return true;
+    if (parent.is_living === undefined || parent.is_living === null || parent.is_living === '') {
+        return !parent.death_date;
+    }
+    return Number(parent.is_living) === 1 && !parent.death_date;
+};
+
+const validateParentChildAgeGap = (childBirthDate, parents) => {
+    const childBirth = isoDateOnly(childBirthDate);
+    if (!childBirth) return { ok: true };
+
+    for (const parent of parents || []) {
+        const parentBirth = isoDateOnly(parent?.birth_date);
+        if (!parentBirth) continue;
+
+        const requiredYears = parentIsLivingForAgeRule(parent) ? 18 : 15;
+        const minChildBirth = addYearsToIsoDate(parentBirth, requiredYears);
+        if (!minChildBirth) continue;
+
+        if (childBirth < minChildBirth) {
+            return {
+                ok: false,
+                message: requiredYears === 18 ?
+                    'Con phải nhỏ hơn cha/mẹ ít nhất 18 tuổi nếu cha/mẹ còn sống.' :
+                    'Con phải nhỏ hơn cha/mẹ ít nhất 15 tuổi nếu cha/mẹ đã mất.',
+            };
+        }
+    }
+
+    return { ok: true };
+};
+
 const validateChildAgainstParents = async({ connection = db, clanId, childId, fatherId, motherId, forceSaveHistoricalRelation = false }) => {
     const nextChildId = toPositiveId(childId);
     const parentIds = uniquePositiveIds([fatherId, motherId]);
@@ -151,6 +199,9 @@ const validateChildAgainstParents = async({ connection = db, clanId, childId, fa
             return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
         }
     }
+
+    const ageGapValidation = validateParentChildAgeGap(child.birth_date, parents);
+    if (!ageGapValidation.ok) return ageGapValidation;
 
     const parentGeneration = getParentGeneration(parents);
     if (!parentGeneration.ok) return parentGeneration;
@@ -236,13 +287,13 @@ const validatePersonGenderWithFamilyRole = async(connection, personId, nextGende
     return { ok: true };
 };
 
-const validatePersonBirthDateWithRelations = async(connection, personId, nextBirthDate) => {
+const validatePersonBirthDateWithRelations = async(connection, personId, nextBirthDate, nextIsLiving = undefined, nextDeathDate = undefined) => {
     const birthTime = dateOnlyTime(nextBirthDate);
     if (birthTime === null) return { ok: true };
 
     const [parentRows] = await connection.query(
         `
-        SELECT p.birth_date
+        SELECT p.birth_date, p.death_date, p.is_living
         FROM children c
         INNER JOIN families f ON f.id = c.family_id
         INNER JOIN people p ON p.id IN (f.father_id, f.mother_id)
@@ -256,6 +307,18 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
     })) {
         return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
     }
+
+    const parentAgeGapValidation = validateParentChildAgeGap(nextBirthDate, parentRows);
+    if (!parentAgeGapValidation.ok) return parentAgeGapValidation;
+
+    const [currentParentRows] = await connection.query(
+        'SELECT birth_date, death_date, is_living FROM people WHERE id = ? LIMIT 1',
+        [personId]
+    );
+    const currentParent = currentParentRows[0] || {};
+    currentParent.birth_date = nextBirthDate;
+    if (nextIsLiving !== undefined) currentParent.is_living = nextIsLiving;
+    if (nextDeathDate !== undefined) currentParent.death_date = nextDeathDate;
 
     const [childRows] = await connection.query(
         `
@@ -272,6 +335,11 @@ const validatePersonBirthDateWithRelations = async(connection, personId, nextBir
         return childBirthTime !== null && childBirthTime < birthTime;
     })) {
         return { ok: false, message: 'Con không thể có ngày sinh trước cha hoặc mẹ.' };
+    }
+
+    for (const child of childRows) {
+        const childAgeGapValidation = validateParentChildAgeGap(child.birth_date, [currentParent]);
+        if (!childAgeGapValidation.ok) return childAgeGapValidation;
     }
 
     return { ok: true };

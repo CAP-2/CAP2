@@ -629,7 +629,7 @@ const updateTreePerson = async (req, res) => {
             return res.status(400).json({ success: false, message: generationValidation.message });
         }
 
-        const birthValidation = await validatePersonBirthDateWithRelations(db, personId, nextBirth);
+        const birthValidation = await validatePersonBirthDateWithRelations(db, personId, nextBirth, nextLiving, nextDeath);
         if (!birthValidation.ok) {
             return res.status(400).json({ success: false, message: birthValidation.message });
         }
@@ -1158,6 +1158,23 @@ const updateFamily = async (req, res) => {
         });
         if (!familyValidation.ok) {
             return res.status(relationHttpStatus(familyValidation)).json(relationPayload(familyValidation));
+        }
+
+        const [existingChildren] = await db.query(
+            'SELECT person_id FROM children WHERE family_id = ? ORDER BY sort_order, id',
+            [familyId]
+        );
+        for (const child of existingChildren) {
+            const childValidation = await validateChildAgainstParents({
+                clanId: current.clan_id,
+                childId: child.person_id,
+                fatherId,
+                motherId,
+                forceSaveHistoricalRelation: req.body?.forceSaveHistoricalRelation,
+            });
+            if (!childValidation.ok) {
+                return res.status(relationHttpStatus(childValidation)).json(relationPayload(childValidation));
+            }
         }
 
         if (fatherId && motherId && relationshipStatus === 'active') {

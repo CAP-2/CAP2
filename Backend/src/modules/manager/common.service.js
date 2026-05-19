@@ -101,11 +101,52 @@ const hasDuplicateIds = (value) => {
     return ids.length !== new Set(ids).size;
 };
 
+const ARCHIVED_MEMBER_JOIN_SQL = `
+    LEFT JOIN archived_members am ON
+         (a.id IS NOT NULL AND am.account_id = a.id)
+         OR (CAST(JSON_UNQUOTE(JSON_EXTRACT(am.person_json, '$.id')) AS UNSIGNED) = p.id)
+`;
+
+const ACTIVE_TREE_MEMBER_WHERE_SQL = `
+      AND am.id IS NULL
+      AND (a.id IS NULL OR a.status = 'active')
+`;
+
+const filterTreeRelationsForVisiblePeople = (familyRows = [], childRows = [], peopleRows = []) => {
+    const visiblePersonIds = new Set(
+        (peopleRows || [])
+            .map((person) => Number(person.id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+    );
+
+    const visibleFamilies = (familyRows || []).filter((family) => {
+        const fatherId = toPositiveId(family.father_id);
+        const motherId = toPositiveId(family.mother_id);
+        return (!fatherId || visiblePersonIds.has(fatherId)) && (!motherId || visiblePersonIds.has(motherId));
+    });
+    const visibleFamilyIds = new Set(
+        visibleFamilies
+            .map((family) => Number(family.id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+    );
+
+    const visibleChildren = (childRows || []).filter((child) => {
+        const familyId = Number(child.family_id);
+        const personId = Number(child.person_id);
+        return visibleFamilyIds.has(familyId) && visiblePersonIds.has(personId);
+    });
+
+    return {
+        familyRows: visibleFamilies,
+        childRows: visibleChildren,
+    };
+};
+
 const loadPeopleByIds = async(connection, ids) => {
     const cleanIds = uniquePositiveIds(ids);
     if (!cleanIds.length) return new Map();
     const [rows] = await connection.query(
-        `SELECT id, clan_id, gender, generation, birth_date FROM people WHERE id IN (${cleanIds.map(() => '?').join(',')})`,
+        `SELECT id, clan_id, gender, generation, birth_date, death_date, is_living FROM people WHERE id IN (${cleanIds.map(() => '?').join(',')})`,
         cleanIds
     );
     return new Map(rows.map((row) => [Number(row.id), row]));
@@ -178,6 +219,9 @@ module.exports = {
     uniquePositiveIds,
     dateOnlyTime,
     hasDuplicateIds,
+    ARCHIVED_MEMBER_JOIN_SQL,
+    ACTIVE_TREE_MEMBER_WHERE_SQL,
+    filterTreeRelationsForVisiblePeople,
     loadPeopleByIds,
     normalizeTreeEditKeyMemberIds,
     buildTreeEditMemberName,
