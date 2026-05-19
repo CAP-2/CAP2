@@ -3003,3 +3003,47 @@ body.fte-bodyFullscreen {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Editable family-tree title: draggable, resizable, color-customizable and saved in localStorage. */
+.fte-canvasTitle {
+    left: 60px;
+    top: 42px;
+    color: var(--tree-title-color, #7d1f13);
+}
+
+.fte-canvasTitle strong {
+    font-size: var(--tree-title-size, 2.65rem);
+}
+
+.fte-canvasTitleColor {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    position: relative;
+    border: 1px solid #d7a449;
+    border-radius: 9px;
+    background: rgba(255, 252, 242, 0.96);
+    color: #7d1f13;
+    cursor: pointer;
+    box-shadow: 0 6px 14px rgba(120, 53, 15, 0.12);
+    overflow: hidden;
+}
+
+.fte-canvasTitleColor:hover {
+    background: #fff2c7;
+    border-color: #b87519;
+}
+
+.fte-canvasTitleColor input[type="color"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.fte-canvasTitleColor .material-symbols-outlined {
+    font-size: 18px;
+}

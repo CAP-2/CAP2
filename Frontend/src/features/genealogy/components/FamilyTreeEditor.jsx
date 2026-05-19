@@ -35,6 +35,63 @@ const AI_RELATION_TYPE_OPTIONS = [
   { value: "spouse", labelKey: "tree.genealogyAi.relationshipOptions.spouse" },
 ];
 
+const TREE_TITLE_STORAGE_PREFIX = "family-tree-title-label:";
+const DEFAULT_TREE_TITLE_LABEL = {
+  x: 60,
+  y: 42,
+  color: "#7d1f13",
+  fontSize: 42,
+};
+
+// Giữ tiêu đề luôn nằm trong vùng an toàn của canvas.
+// Nếu người dùng kéo lệch quá xa hoặc localStorage đang lưu tọa độ cũ ngoài màn hình,
+// normalizeTreeTitleLabel sẽ tự đưa về vùng nhìn thấy được.
+const TREE_TITLE_SAFE_BOUNDS = {
+  minX: 16,
+  minY: 16,
+  maxX: 1600,
+  maxY: 520,
+};
+
+const getTreeTitleStorageKey = (clanId) => `${TREE_TITLE_STORAGE_PREFIX}${clanId || "default"}`;
+
+const normalizeTreeTitleLabel = (value) => {
+  const source = value && typeof value === "object" ? value : {};
+  const x = Number(source.x);
+  const y = Number(source.y);
+  const fontSize = Number(source.fontSize ?? source.font_size);
+  const color = /^#[0-9a-f]{6}$/i.test(String(source.color || ""))
+    ? String(source.color)
+    : DEFAULT_TREE_TITLE_LABEL.color;
+
+  return {
+    x: Number.isFinite(x) ? clamp(x, TREE_TITLE_SAFE_BOUNDS.minX, TREE_TITLE_SAFE_BOUNDS.maxX) : DEFAULT_TREE_TITLE_LABEL.x,
+    y: Number.isFinite(y) ? clamp(y, TREE_TITLE_SAFE_BOUNDS.minY, TREE_TITLE_SAFE_BOUNDS.maxY) : DEFAULT_TREE_TITLE_LABEL.y,
+    color,
+    fontSize: Number.isFinite(fontSize) ? clamp(fontSize, 18, 96) : DEFAULT_TREE_TITLE_LABEL.fontSize,
+  };
+};
+
+const loadTreeTitleLabel = (clanId) => {
+  if (typeof window === "undefined") return normalizeTreeTitleLabel(null);
+  try {
+    const raw = window.localStorage.getItem(getTreeTitleStorageKey(clanId));
+    return normalizeTreeTitleLabel(raw ? JSON.parse(raw) : null);
+  } catch (error) {
+    console.warn("Cannot read saved tree title label", error);
+    return normalizeTreeTitleLabel(null);
+  }
+};
+
+const saveTreeTitleLabel = (clanId, value) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(getTreeTitleStorageKey(clanId), JSON.stringify(normalizeTreeTitleLabel(value)));
+  } catch (error) {
+    console.warn("Cannot save tree title label", error);
+  }
+};
+
 const aiRelationshipTypeLabel = (type, t) => {
   const option = AI_RELATION_TYPE_OPTIONS.find((item) => item.value === type);
   return option ? t(option.labelKey) : type;
@@ -263,9 +320,13 @@ export default function FamilyTreeEditor({
   const transformApiRef = useRef(null);
   const genealogyRecognitionRef = useRef(null);
   const scaleRef = useRef(0.85);
+  const defaultTreeTitleText = String(clan?.clan_name || t("tree.card.fallbackName")).toUpperCase();
   const [currentScale, setCurrentScale] = useState(0.85);
   const lastDragRef = useRef(null);
   const lineDragRef = useRef(null);
+  const titleDragRef = useRef(null);
+  const [treeTitleLabel, setTreeTitleLabel] = useState(() => loadTreeTitleLabel(clan?.id));
+  const [draggingTitleLabel, setDraggingTitleLabel] = useState(false);
   const [people, setPeople] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -467,6 +528,14 @@ export default function FamilyTreeEditor({
     setLineRoutes({ ...loadLineRoutes(clan?.id), ...normalizedSettings.line_routes });
     setCardSizes({ ...loadCardSizes(clan?.id), ...normalizedSettings.card_sizes });
   }, [clan?.id, layoutSettings]);
+
+  useEffect(() => {
+    setTreeTitleLabel(loadTreeTitleLabel(clan?.id));
+  }, [clan?.id]);
+
+  useEffect(() => {
+    saveTreeTitleLabel(clan?.id, treeTitleLabel);
+  }, [clan?.id, treeTitleLabel]);
 
   useEffect(() => {
     if (!enableRealtime) return undefined;
@@ -1835,6 +1904,57 @@ const submitCreateDialog = async () => {
     };
   }, [treeFullscreen]);
 
+  const updateTreeTitleLabel = useCallback((patch) => {
+    setTreeTitleLabel((current) => normalizeTreeTitleLabel({ ...current, ...patch }));
+  }, []);
+
+  const resizeTreeTitleLabel = useCallback((delta) => {
+    if (!canEditAll) return;
+    updateTreeTitleLabel({ fontSize: (Number(treeTitleLabel.fontSize) || DEFAULT_TREE_TITLE_LABEL.fontSize) + delta });
+  }, [canEditAll, treeTitleLabel.fontSize, updateTreeTitleLabel]);
+
+  const resetTreeTitleLabel = useCallback(() => {
+    if (!canEditAll) return;
+    updateTreeTitleLabel({ ...DEFAULT_TREE_TITLE_LABEL });
+  }, [canEditAll, updateTreeTitleLabel]);
+
+  const beginTreeTitleDrag = useCallback((event) => {
+    if (!canEditAll || event.button !== 0) return;
+    if (event.target?.closest?.("button, input")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    titleDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: Number(treeTitleLabel.x) || 0,
+      originY: Number(treeTitleLabel.y) || 0,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDraggingTitleLabel(true);
+  }, [canEditAll, treeTitleLabel.x, treeTitleLabel.y]);
+
+  const moveTreeTitleDrag = useCallback((event) => {
+    const drag = titleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const scale = scaleRef.current || 1;
+    updateTreeTitleLabel({
+      x: drag.originX + (event.clientX - drag.startX) / scale,
+      y: drag.originY + (event.clientY - drag.startY) / scale,
+    });
+  }, [updateTreeTitleLabel]);
+
+  const endTreeTitleDrag = useCallback((event) => {
+    const drag = titleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    titleDragRef.current = null;
+    setDraggingTitleLabel(false);
+  }, []);
+
   const treeEditorShell = (
     <section className={`fte-shell ${treeFullscreen ? "is-fullscreen" : ""}`}>
       <TransformWrapper
@@ -1843,7 +1963,7 @@ const submitCreateDialog = async () => {
         maxScale={2.6}
         centerOnInit={true}
         limitToBounds={false}
-        panning={{ disabled: draggingId !== null || draggingLineId !== null, velocityDisabled: false }}
+        panning={{ disabled: draggingId !== null || draggingLineId !== null || draggingTitleLabel, velocityDisabled: false }}
         doubleClick={{ disabled: true }}
 
         pinch={{ step: 5 }}
@@ -1899,6 +2019,17 @@ const submitCreateDialog = async () => {
                     className="fte-iconButton fte-aiButton"
                   >
                     <span className="material-symbols-outlined">auto_awesome</span>
+                  </button>
+                )}
+                {canEditAll && (
+                  <button
+                    type="button"
+                    onClick={resetTreeTitleLabel}
+                    disabled={loading || saving}
+                    title="Khôi phục tiêu đề gia phả về vị trí mặc định"
+                    className="fte-iconButton"
+                  >
+                    <span className="material-symbols-outlined">title</span>
                   </button>
                 )}
               </div>
@@ -2057,9 +2188,44 @@ const submitCreateDialog = async () => {
                       className={`fte-canvas ${treeRelationPicker ? "is-relation-picking" : ""}`}
                       style={{ width: canvasSize.width, height: canvasSize.height }}
                     >
-                      <div className="fte-canvasTitle">
+                      <div
+                        className={`fte-canvasTitle ${canEditAll ? "is-editable" : ""} ${draggingTitleLabel ? "is-dragging" : ""}`}
+                        style={{
+                          left: treeTitleLabel.x,
+                          top: treeTitleLabel.y,
+                          color: treeTitleLabel.color,
+                          "--tree-title-size": `${treeTitleLabel.fontSize}px`,
+                        }}
+                        title={canEditAll ? "Kéo để di chuyển tiêu đề, dùng nút bên dưới để đổi màu/cỡ chữ" : undefined}
+                        onPointerDown={beginTreeTitleDrag}
+                        onPointerMove={moveTreeTitleDrag}
+                        onPointerUp={endTreeTitleDrag}
+                        onPointerCancel={endTreeTitleDrag}
+                      >
                         <span>{t("tree.title")}</span>
-                        <strong>{String(clan?.clan_name || t("tree.card.fallbackName")).toUpperCase()}</strong>
+                        <strong>{defaultTreeTitleText}</strong>
+                        {canEditAll ? (
+                          <div className="fte-canvasTitleTools" onPointerDown={(event) => event.stopPropagation()}>
+                            <label className="fte-canvasTitleColor" title="Đổi màu chữ">
+                              <span className="material-symbols-outlined">palette</span>
+                              <input
+                                type="color"
+                                value={treeTitleLabel.color}
+                                onChange={(event) => updateTreeTitleLabel({ color: event.target.value })}
+                                aria-label="Đổi màu chữ tiêu đề"
+                              />
+                            </label>
+                            <button type="button" onClick={() => resizeTreeTitleLabel(-4)} title="Thu nhỏ chữ">
+                              <span className="material-symbols-outlined">text_decrease</span>
+                            </button>
+                            <button type="button" onClick={() => resizeTreeTitleLabel(4)} title="Phóng to chữ">
+                              <span className="material-symbols-outlined">text_increase</span>
+                            </button>
+                            <button type="button" onClick={resetTreeTitleLabel} title="Đặt lại vị trí, màu và cỡ chữ">
+                              <span className="material-symbols-outlined">restart_alt</span>
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                       <svg className="fte-lines" width={canvasSize.width} height={canvasSize.height} aria-hidden={false}>
                         {lines.filter((line) => line.type !== "route-control").map((line, index) => (
