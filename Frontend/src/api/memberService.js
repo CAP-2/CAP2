@@ -1,3 +1,5 @@
+import { buildApiUrl } from "../services/api";
+
 const BASE_URL = "/api/member";
 
 const getAuthHeaders = () => {
@@ -28,7 +30,7 @@ const parseResponse = async (res, fallbackMessage) => {
 
 const requestJson = async (path, options, fallbackMessage) => {
   try {
-    const res = await fetch(`${BASE_URL}${path}`, options);
+    const res = await fetch(buildApiUrl(`${BASE_URL}${path}`), options);
     return parseResponse(res, fallbackMessage);
   } catch (error) {
     if (error.status) throw error;
@@ -245,7 +247,7 @@ export const uploadImage = async (file, options = {}) => {
     formData.append("usage_type", options.usageType || options.usage_type);
   }
 
-  const res = await fetch("/api/upload", {
+  const res = await fetch(buildApiUrl("/api/upload"), {
     method: "POST",
     headers: getAuthHeaders(),
     body: formData,

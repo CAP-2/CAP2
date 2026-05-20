@@ -3,7 +3,9 @@ import { io } from "socket.io-client";
 const SOCKET_URL = (
   import.meta.env.VITE_SOCKET_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:3000"
+  (import.meta.env.PROD && typeof window !== "undefined"
+    ? window.location.origin
+    : "http://localhost:3000")
 ).replace(/\/$/, "");
 
 let socket = null;

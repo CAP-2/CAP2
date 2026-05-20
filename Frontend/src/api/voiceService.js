@@ -1,3 +1,5 @@
+import { buildApiUrl } from "../services/api";
+
 const BASE_URL = "/api/voice";
 
 const getAuthHeaders = () => {
@@ -26,7 +28,7 @@ export const uploadVoiceRecording = async (blob, options = {}) => {
     formData.append("duration_seconds", String(Math.round(options.durationSeconds)));
   }
 
-  const response = await fetch(`${BASE_URL}/recordings`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings`), {
     method: "POST",
     headers: getAuthHeaders(),
     body: formData,
@@ -36,7 +38,7 @@ export const uploadVoiceRecording = async (blob, options = {}) => {
 };
 
 export const getVoiceRecording = async (id) => {
-  const response = await fetch(`${BASE_URL}/recordings/${id}`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings/${id}`), {
     headers: getAuthHeaders(),
   });
 
@@ -44,7 +46,7 @@ export const getVoiceRecording = async (id) => {
 };
 
 export const getVoiceRecordings = async (limit = 50) => {
-  const response = await fetch(`${BASE_URL}/recordings?limit=${encodeURIComponent(limit)}`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings?limit=${encodeURIComponent(limit)}`), {
     headers: getAuthHeaders(),
   });
 
@@ -52,7 +54,7 @@ export const getVoiceRecordings = async (limit = 50) => {
 };
 
 export const updateVoiceTranscript = async (id, transcript) => {
-  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/transcript`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings/${encodeURIComponent(id)}/transcript`), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -65,7 +67,7 @@ export const updateVoiceTranscript = async (id, transcript) => {
 };
 
 export const retryVoiceRecording = async (id) => {
-  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/retry`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings/${encodeURIComponent(id)}/retry`), {
     method: "POST",
     headers: getAuthHeaders(),
   });
@@ -74,7 +76,7 @@ export const retryVoiceRecording = async (id) => {
 };
 
 export const getVoiceRecipientOptions = async () => {
-  const response = await fetch(`${BASE_URL}/recordings/recipient-options`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings/recipient-options`), {
     headers: getAuthHeaders(),
   });
 
@@ -82,7 +84,7 @@ export const getVoiceRecipientOptions = async () => {
 };
 
 export const sendVoiceRecording = async (id, payload) => {
-  const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(id)}/send`, {
+  const response = await fetch(buildApiUrl(`${BASE_URL}/recordings/${encodeURIComponent(id)}/send`), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -97,5 +99,5 @@ export const sendVoiceRecording = async (id, payload) => {
 export const getVoiceRecordingAudioUrl = (id) => {
   const token = getAuthToken();
   const query = token ? `?token=${encodeURIComponent(token)}` : "";
-  return `${BASE_URL}/recordings/${encodeURIComponent(id)}/audio${query}`;
+  return buildApiUrl(`${BASE_URL}/recordings/${encodeURIComponent(id)}/audio${query}`);
 };

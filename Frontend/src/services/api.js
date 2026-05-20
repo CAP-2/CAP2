@@ -1,5 +1,18 @@
-const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/$/, "");
+const DEFAULT_API_BASE_URL = import.meta.env.PROD ? "" : "http://localhost:3000";
+const RAW_API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  DEFAULT_API_BASE_URL;
+
+export const API_BASE_URL = String(RAW_API_BASE_URL || "").replace(/\/$/, "");
+
+export function buildApiUrl(path = "") {
+  const value = String(path || "");
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const normalizedPath = value.startsWith("/") ? value : `/${value}`;
+  return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+}
 
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -19,7 +32,7 @@ export async function apiRequest(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
     ...options,
     headers,
   });

@@ -14,6 +14,8 @@ const app = express();
 // 1. Cấu hình middleware toàn cục
 const allowedOrigins = [
     process.env.FRONTEND_URL,
+    'https://dinhvietquyet.website',
+    'http://dinhvietquyet.website',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
