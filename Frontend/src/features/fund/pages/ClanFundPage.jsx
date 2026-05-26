@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { apiRequest, buildApiUrl } from "../../../services/api";
+import { apiRequest } from "../../../services/api";
 import { resolveImageUrl } from "../../../shared/utils/media";
 import DateInput from "../../../shared/components/DateInput";
 import { formatDateVN, isoToVietnamDate, vietnamDateToIso, pad2 } from "../../../shared/utils/dateFormat";
@@ -264,9 +264,10 @@ export default function ClanFundPage() {
   const handleExportExcel = async (campaignId = null) => {
     try {
       const token = localStorage.getItem("auth_token");
+      const baseUrl = import.meta.env.VITE_API_URL || "";
       const url = campaignId
-        ? buildApiUrl(`/api/manager/fund/export?campaign_id=${campaignId}`)
-        : buildApiUrl(`/api/manager/fund/export?year=${new Date().getFullYear()}`);
+        ? `${baseUrl}/api/manager/fund/export?campaign_id=${campaignId}`
+        : `${baseUrl}/api/manager/fund/export?year=${new Date().getFullYear()}`;
 
       const response = await fetch(url, {
         headers: {

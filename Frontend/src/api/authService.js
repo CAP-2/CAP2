@@ -1,11 +1,9 @@
-import { buildApiUrl } from "../services/api";
-
 const BASE_URL = "/api/auth";
 
 async function postAuth(path, body, fallbackError) {
     let res;
     try {
-        res = await fetch(buildApiUrl(`${BASE_URL}${path}`), {
+        res = await fetch(`${BASE_URL}${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
